@@ -294,9 +294,11 @@ function EntradasTable({
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
-        const availableFields = new Set(columnsData.map((col) => col.nombrevar))
-        const filtered = (Array.isArray(parsed) ? parsed : []).filter((col) => availableFields.has(col?.nombrevar))
-        setSelectedColumns(filtered.length ? filtered : columnsData)
+        const columnsByField = new Map(columnsData.map((col) => [col.nombrevar, col]))
+        const restored = (Array.isArray(parsed) ? parsed : [])
+          .map((col) => columnsByField.get(col?.nombrevar))
+          .filter(Boolean)
+        setSelectedColumns(restored.length ? restored : columnsData)
       } catch {
         tableLayoutStore.removeItem('entradas-table-columns')
       }

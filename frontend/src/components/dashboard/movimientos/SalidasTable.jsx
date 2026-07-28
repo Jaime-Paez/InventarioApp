@@ -85,6 +85,7 @@ const SUBTYPE_FILTERS = [
 
 const SALIDAS_FILTER_FIELDS = [
   'no_documento',
+  'factura_referencia',
   'fecha',
   'sucursal_nombre',
   'sub_tipo_nombre',
@@ -95,6 +96,7 @@ const SALIDAS_FILTER_FIELDS = [
 
 const SALIDAS_FILTER_DEFAULT_MODES = {
   no_documento: FilterMatchMode.CONTAINS,
+  factura_referencia: FilterMatchMode.CONTAINS,
   fecha: FilterMatchMode.CONTAINS,
   sucursal_nombre: FilterMatchMode.CONTAINS,
   sub_tipo_nombre: FilterMatchMode.CONTAINS,
@@ -105,6 +107,7 @@ const SALIDAS_FILTER_DEFAULT_MODES = {
 
 const SALIDAS_ORDERING_MAP = {
   no_documento: 'no_documento',
+  factura_referencia: 'factura_referencia',
   fecha: 'fecha',
   sucursal_nombre: 'sucursal__nombre',
   sub_tipo_nombre: 'sub_tipo_movimiento__nombre',
@@ -119,6 +122,7 @@ const createInitialFilters = () => ({
 
 const initialSearchCriteria = {
   no_documento: '',
+  factura_referencia: '',
   producto_codigo: '',
   fecha_desde: '',
   fecha_hasta: '',
@@ -236,7 +240,8 @@ function SalidasTable({
   )
   const columnsData = useMemo(
     () => [
-      { nombrevar: 'no_documento', header: 'Documento', filterPlaceholder: 'Buscar por documento' },
+      { nombrevar: 'no_documento', header: 'Código', filterPlaceholder: 'Buscar por código' },
+      { nombrevar: 'factura_referencia', header: 'No. de documento', filterPlaceholder: 'Buscar por no. de documento' },
       { nombrevar: 'productos_resumen', header: 'Productos', filterPlaceholder: 'Buscar por productos' },
       { nombrevar: 'fecha', header: 'Fecha', filterPlaceholder: 'Buscar por fecha' },
       { nombrevar: 'sucursal_nombre', header: 'Sucursal', filterPlaceholder: 'Buscar por sucursal' },
@@ -281,9 +286,11 @@ function SalidasTable({
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
-        const availableFields = new Set(columnsData.map((col) => col.nombrevar))
-        const filtered = (Array.isArray(parsed) ? parsed : []).filter((col) => availableFields.has(col?.nombrevar))
-        setSelectedColumns(filtered.length ? filtered : columnsData)
+        const columnsByField = new Map(columnsData.map((col) => [col.nombrevar, col]))
+        const restored = (Array.isArray(parsed) ? parsed : [])
+          .map((col) => columnsByField.get(col?.nombrevar))
+          .filter(Boolean)
+        setSelectedColumns(restored.length ? restored : columnsData)
       } catch {
         tableLayoutStore.removeItem('salidas-table-columns')
       }
@@ -336,6 +343,7 @@ function SalidasTable({
     }
 
     addIfPresent('no_documento', criteria?.no_documento)
+    addIfPresent('factura_referencia', criteria?.factura_referencia)
     addIfPresent('producto_codigo', criteria?.producto_codigo)
     addIfPresent('fecha_desde', criteria?.fecha_desde)
     addIfPresent('fecha_hasta', criteria?.fecha_hasta)
@@ -1559,6 +1567,7 @@ function SalidasTable({
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={[
             'no_documento',
+            'factura_referencia',
             'productos_resumen',
             'productos_codigos',
             'fecha',
@@ -1782,12 +1791,23 @@ function SalidasTable({
 
                   <div className="create-user__grid create-user__grid--two">
                     <label className="create-user__field">
-                      <span>Documento</span>
+                      <span>Código</span>
                       <input
                         name="no_documento"
                         type="text"
-                        placeholder="Ej: FAC-001"
+                        placeholder="Ej: TR-VAL-SUR-3"
                         value={searchCriteria.no_documento}
+                        onChange={handleSearchInputChange}
+                      />
+                    </label>
+
+                    <label className="create-user__field">
+                      <span>No. de documento</span>
+                      <input
+                        name="factura_referencia"
+                        type="text"
+                        placeholder="Ej: FAC-001"
+                        value={searchCriteria.factura_referencia}
                         onChange={handleSearchInputChange}
                       />
                     </label>

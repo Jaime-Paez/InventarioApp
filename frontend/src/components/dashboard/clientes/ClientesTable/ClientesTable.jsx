@@ -478,14 +478,19 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
     const stored = tableLayoutStore.getItem('clientes-table-columns')
     if (stored) {
       try {
-        setSelectedColumns(JSON.parse(stored))
+        const parsed = JSON.parse(stored)
+        const columnsByField = new Map(columnsData.map((col) => [col.nombrevar, col]))
+        const restored = (Array.isArray(parsed) ? parsed : [])
+          .map((col) => columnsByField.get(col?.nombrevar))
+          .filter(Boolean)
+        setSelectedColumns(restored.length ? restored : columnsData)
       } catch {
         tableLayoutStore.removeItem('clientes-table-columns')
       }
     }
     // No cleanup-based flush here: handleCheckboxChangeColumn and
     // handleOrderChange already persist synchronously on every real change.
-  }, [])
+  }, [columnsData])
 
   const handleCheckboxChangeColumn = (column) => {
     const next = selectedColumns.some((c) => c.nombrevar === column.nombrevar)

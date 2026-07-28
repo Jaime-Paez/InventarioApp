@@ -720,14 +720,12 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         const parsed = JSON.parse(stored)
         const migrated = (Array.isArray(parsed) ? parsed : []).map((col) => {
           if (col?.nombrevar !== 'casas_comerciales_count') return col
-          return {
-            ...col,
-            nombrevar: 'casa_comercial_nombre',
-            header: 'Casa comercial',
-            filterPlaceholder: 'Buscar por casa comercial',
-          }
+          return { ...col, nombrevar: 'casa_comercial_nombre' }
         })
-        const visibleColumns = migrated.filter((column) => availableFields.has(column?.nombrevar))
+        const columnsByField = new Map(visibleColumnsData.map((column) => [column.nombrevar, column]))
+        const visibleColumns = migrated
+          .map((column) => columnsByField.get(column?.nombrevar))
+          .filter(Boolean)
         setSelectedColumns(visibleColumns.length ? visibleColumns : visibleColumnsData)
         return
       }

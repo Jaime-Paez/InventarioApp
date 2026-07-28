@@ -187,6 +187,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         row.get("no_documento") if is_mapping else getattr(row, "no_documento", "")
                         or ""
                     ).strip(),
+                    "factura_referencia": str(
+                        row.get("factura_referencia") if is_mapping else getattr(row, "factura_referencia", "")
+                        or ""
+                    ).strip(),
                     "fecha": fecha_value,
                     "sucursal_nombre": (
                         row.get("sucursal__nombre")
@@ -262,6 +266,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "no_documento": str(
                         getattr(solicitud, "no_documento", "") or ""
                     ).strip(),
+                    "factura_referencia": "",
                     "fecha": getattr(solicitud, "fecha", None),
                     "sucursal_nombre": (
                         getattr(getattr(solicitud, "sucursal_solicitante", None), "nombre", "")
@@ -317,6 +322,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         sub_tipo_movimiento_id = request.query_params.get("sub_tipo_movimiento_id")
         sucursal_id = request.query_params.get("sucursal_id")
         sucursal_objetivo_id = request.query_params.get("sucursal_objetivo_id")
+        cliente_id = request.query_params.get("cliente_id")
+        cliente_identificacion_param = (request.query_params.get("cliente_identificacion") or "").strip()
 
         if not tipo_movimiento_id:
             return Response({"detail": "tipo_movimiento_id es obligatorio."}, status=status.HTTP_400_BAD_REQUEST)
@@ -333,6 +340,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             if sucursal_objetivo_id
             else None
         )
+        cliente = Cliente.objects.filter(id=cliente_id).first() if cliente_id else None
+        # El cliente puede aun no existir en la BD (se esta creando junto con la
+        # salida), asi que se acepta la identificacion tal cual la escribio el
+        # usuario cuando no hay un cliente_id resuelto todavia.
+        cliente_identificacion = getattr(cliente, "cedula_ruc", None) or cliente_identificacion_param
 
         if not tipo_movimiento or not sub_tipo_movimiento or not sucursal:
             return Response(
@@ -347,6 +359,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if subtipo_key == "venta" and cliente_id and not cliente:
+            return Response(
+                {"detail": "No se encontro el cliente indicado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         tipo_nombre = str(getattr(tipo_movimiento, "nombre", "") or "").strip().lower()
         prefix_map = SALIDA_SUBTYPE_PREFIXES if tipo_nombre.startswith("sal") else None
 
@@ -357,6 +375,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 sucursal,
                 sucursal_objetivo,
                 prefix_map=prefix_map,
+                cliente_identificacion=cliente_identificacion,
             )
         except drf_serializers.ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
@@ -634,6 +653,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         if no_documento:
             queryset = queryset.filter(no_documento__icontains=no_documento)
 
+        factura_referencia = (params.get("factura_referencia") or "").strip()
+        if factura_referencia:
+            queryset = queryset.filter(factura_referencia__icontains=factura_referencia)
+
         fecha_desde = parse_date((params.get("fecha_desde") or "").strip())
         if fecha_desde:
             queryset = queryset.filter(fecha__gte=fecha_desde)
@@ -676,6 +699,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             ).values_list("movimiento_inventario_id", flat=True)
             search_query = (
                 Q(no_documento__icontains=search_term)
+                | Q(factura_referencia__icontains=search_term)
                 | Q(sucursal__nombre__icontains=search_term)
                 | Q(sucursal_objetivo__nombre__icontains=search_term)
                 | Q(sub_tipo_movimiento__nombre__icontains=search_term)

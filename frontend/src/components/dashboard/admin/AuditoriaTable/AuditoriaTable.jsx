@@ -95,9 +95,11 @@ function AuditoriaTable({ token }) {
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
-        const validFields = new Set(columnsData.map((c) => c.field))
-        const filtered = parsed.filter((c) => validFields.has(c.field))
-        if (filtered.length > 0) setSelectedColumns(filtered)
+        const columnsByField = new Map(columnsData.map((c) => [c.field, c]))
+        const restored = (Array.isArray(parsed) ? parsed : [])
+          .map((c) => columnsByField.get(c?.field))
+          .filter(Boolean)
+        if (restored.length > 0) setSelectedColumns(restored)
       } catch {
         // ignore
       }

@@ -45,6 +45,7 @@ ENTRY_SUBTYPE_PREFIXES = {
 SALIDA_SUBTYPE_PREFIXES = {
     **ENTRY_SUBTYPE_PREFIXES,
     "devolucion": "gar",
+    "venta": "cl",
 }
 BRANCH_WORD_STOPWORDS = {
     "de",
@@ -129,21 +130,37 @@ def _next_incremental_document_number(model, base, filters=None):
     return f"{base_token}-{max_number + 1}"
 
 
-def build_entry_document_base(subtipo_key, sucursal, sucursal_objetivo=None, prefix_map=None):
+def build_entry_document_base(
+    subtipo_key,
+    sucursal,
+    sucursal_objetivo=None,
+    prefix_map=None,
+    cliente_identificacion=None,
+):
     if prefix_map is None:
         prefix_map = ENTRY_SUBTYPE_PREFIXES
-    prefix = prefix_map.get(str(subtipo_key or "").strip())
+    normalized_subtipo_key = str(subtipo_key or "").strip()
+    prefix = prefix_map.get(normalized_subtipo_key)
     if not prefix:
         raise serializers.ValidationError(
             {"sub_tipo_movimiento_id": "No se pudo resolver el prefijo del documento."}
         )
 
     sucursal_token = _build_branch_token(sucursal)
-    if prefix != "tr":
-        return f"{prefix}-{sucursal_token}"
 
-    objetivo_token = _build_branch_token(sucursal_objetivo, fallback="destino")
-    return f"{prefix}-{sucursal_token}-{objetivo_token}"
+    if prefix == "tr":
+        objetivo_token = _build_branch_token(sucursal_objetivo, fallback="destino")
+        return f"{prefix}-{sucursal_token}-{objetivo_token}"
+
+    if normalized_subtipo_key == "venta":
+        cliente_token = re.sub(r"[^A-Za-z0-9]", "", str(cliente_identificacion or "")).strip().upper()
+        if not cliente_token:
+            raise serializers.ValidationError(
+                {"cliente_id": "Se requiere la identificacion del cliente para generar el documento."}
+            )
+        return f"{prefix}-{sucursal_token}-{cliente_token}"
+
+    return f"{prefix}-{sucursal_token}"
 
 
 def generate_entry_document_number(
@@ -152,6 +169,7 @@ def generate_entry_document_number(
     sucursal,
     sucursal_objetivo=None,
     prefix_map=None,
+    cliente_identificacion=None,
 ):
     if tipo_movimiento is None:
         raise serializers.ValidationError(
@@ -163,6 +181,7 @@ def generate_entry_document_number(
         sucursal=sucursal,
         sucursal_objetivo=sucursal_objetivo,
         prefix_map=prefix_map,
+        cliente_identificacion=cliente_identificacion,
     )
     return _next_incremental_document_number(
         model=MovimientoInventario,
@@ -275,6 +294,46 @@ class SolicitudTrasladoDetalleSerializer(serializers.ModelSerializer):
             "cantidad",
             "valor",
         ]
+
+    def _resolve_ubicacion_actual(self, instance):
+        sucursal_id = getattr(instance.solicitud, "sucursal_proveedora_id", None)
+        producto_id = getattr(instance, "producto_id", None)
+        if not sucursal_id or not producto_id:
+            return None
+        return (
+            Inventario.objects.filter(
+                producto_id=producto_id,
+                cantidad__gt=0,
+                subdivision__division__bodega__sucursal_id=sucursal_id,
+            )
+            .select_related("subdivision__division__bodega")
+            .order_by("-cantidad", "subdivision__division__nombre", "subdivision__nombre")
+            .first()
+        )
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        inventario = self._resolve_ubicacion_actual(instance)
+        if inventario is not None:
+            subdivision = inventario.subdivision
+            division = subdivision.division
+            bodega = division.bodega
+            data["ubicacion_bodega"] = bodega.nombre
+            data["ubicacion_division"] = division.nombre
+            data["ubicacion_subdivision"] = subdivision.nombre
+            data["ubicacion_bodega_layout"] = {
+                "id": bodega.id,
+                "nombre": bodega.nombre,
+                "ancho_metros": bodega.ancho_metros,
+                "alto_metros": bodega.alto_metros,
+                "ubicaciones": bodega.ubicaciones,
+            }
+        else:
+            data["ubicacion_bodega"] = None
+            data["ubicacion_division"] = None
+            data["ubicacion_subdivision"] = None
+            data["ubicacion_bodega_layout"] = None
+        return data
 
 
 class SolicitudTrasladoSerializer(serializers.ModelSerializer):

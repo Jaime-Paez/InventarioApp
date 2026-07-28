@@ -345,6 +345,7 @@ const normalizeClientePayload = (cliente) => ({
 const clienteRequiredFields = ['nombres', 'apellidos', 'cedula_ruc']
 const CLIENT_MODE_EXISTING = 'existing'
 const CLIENT_MODE_NEW = 'new'
+const CONSUMIDOR_FINAL_CEDULA = '000000000'
 const DOCUMENT_STATUS = {
   idle: 'idle',
   invalid: 'invalid',
@@ -604,6 +605,7 @@ function CreateSalida({
   const requiresStockValidation = isTraslado || isVenta || isDevolucion
   const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
+  const isConsumidorFinalSelected = String(selectedCliente?.cedula_ruc || '').trim() === CONSUMIDOR_FINAL_CEDULA
   const selectedClienteLabel = useMemo(
     () => formatClienteDropdownLabel(selectedCliente) || formatClienteFieldValue(selectedCliente),
     [selectedCliente]
@@ -640,7 +642,7 @@ function CreateSalida({
   const formattedFecha = useMemo(() => formatDate(formData.fecha, ''), [formData.fecha])
 
   const fetchNextDocumentNumber = useCallback(
-    async ({ subTipoId, sucursalId, sucursalObjetivoId }) => {
+    async ({ subTipoId, sucursalId, sucursalObjetivoId, clienteId, clienteIdentificacion }) => {
       if (!token || !salidaTipoId) {
         setDocumentStatus(DOCUMENT_STATUS.error)
         return false
@@ -661,6 +663,14 @@ function CreateSalida({
         const objetivoId = String(sucursalObjetivoId || '').trim()
         if (objetivoId) {
           params.set('sucursal_objetivo_id', objetivoId)
+        }
+        const normalizedClienteId = String(clienteId || '').trim()
+        if (normalizedClienteId) {
+          params.set('cliente_id', normalizedClienteId)
+        }
+        const normalizedClienteIdentificacion = String(clienteIdentificacion || '').trim()
+        if (normalizedClienteIdentificacion) {
+          params.set('cliente_identificacion', normalizedClienteIdentificacion)
         }
 
         const endpoint = `${API_URL}/movimientos/movimiento_inventario/next-document-number/?${params.toString()}`
@@ -699,68 +709,26 @@ function CreateSalida({
     [salidaTipoId, token]
   )
 
-  const resolveVentaDocumentNumber = useCallback(
-    async (facturaBase) => {
-      const base = String(facturaBase || '').trim()
-      if (!base || !salidaTipoId || !token) {
-        setDocumentStatus(base ? DOCUMENT_STATUS.error : DOCUMENT_STATUS.invalid)
-        setFormData((prev) => (prev.no_documento ? { ...prev, no_documento: '' } : prev))
-        return
-      }
-
-      const requestKey = Date.now()
-      documentRequestSeqRef.current = requestKey
-      setDocumentStatus(DOCUMENT_STATUS.checking)
-      setDocumentLoading(true)
-
-      try {
-        let candidate = base
-        let suffix = 0
-
-        while (true) {
-          const response = await authFetch(
-            `${API_URL}/movimientos/movimiento_inventario/validar-documento/?tipo_movimiento_id=${encodeURIComponent(salidaTipoId)}&no_documento=${encodeURIComponent(candidate)}`,
-            {},
-            token
-          )
-          if (documentRequestSeqRef.current !== requestKey) return
-          const payload = await response.json().catch(() => ({}))
-          if (!response.ok) {
-            setDocumentStatus(DOCUMENT_STATUS.error)
-            return
-          }
-          if (payload?.is_available) {
-            setFormData((prev) =>
-              prev.no_documento === candidate ? prev : { ...prev, no_documento: candidate }
-            )
-            setDocumentStatus(DOCUMENT_STATUS.available)
-            return
-          }
-          suffix += 1
-          candidate = `${base}-${suffix}`
-        }
-      } catch {
-        if (documentRequestSeqRef.current === requestKey) {
-          setDocumentStatus(DOCUMENT_STATUS.error)
-        }
-      } finally {
-        if (documentRequestSeqRef.current === requestKey) {
-          setDocumentLoading(false)
-        }
-      }
-    },
-    [salidaTipoId, token]
-  )
-
   useEffect(() => {
-    if (!open || isPrefilledTransfer || isVenta) return
+    if (!open || isPrefilledTransfer) return
 
     const subTipoId = String(formData.subTipoId || '').trim()
     const sucursalId = String(formData.sucursalId || '').trim()
     const sucursalObjetivoId = String(formData.sucursalObjetivoId || '').trim()
+    const clienteId = String(selectedCliente?.id || '').trim()
+    // El cliente puede aun no estar guardado (modo "Crear nuevo cliente"), asi
+    // que se usa la cedula/RUC que se este escribiendo en cualquiera de los
+    // dos modos, sin esperar a que el cliente exista en la base de datos.
+    const clienteIdentificacion = String(
+      selectedCliente?.cedula_ruc || clienteForm.cedula_ruc || ''
+    ).trim()
     const requiresObjective = isTraslado
+    const requiresCliente = isVenta
     const hasRequiredInput = Boolean(
-      subTipoId && sucursalId && (!requiresObjective || sucursalObjetivoId)
+      subTipoId &&
+      sucursalId &&
+      (!requiresObjective || sucursalObjetivoId) &&
+      (!requiresCliente || clienteIdentificacion)
     )
 
     if (!hasRequiredInput) {
@@ -789,6 +757,8 @@ function CreateSalida({
         subTipoId,
         sucursalId,
         sucursalObjetivoId,
+        clienteId,
+        clienteIdentificacion,
       })
     }, 220)
 
@@ -806,47 +776,10 @@ function CreateSalida({
     isPrefilledTransfer,
     isTraslado,
     isVenta,
+    selectedCliente?.id,
+    selectedCliente?.cedula_ruc,
+    clienteForm.cedula_ruc,
     open,
-  ])
-
-  useEffect(() => {
-    if (!open || !isVenta || isPrefilledTransfer) return
-
-    const facturaBase = String(formData.factura_referencia || '').trim()
-    const subTipoId = String(formData.subTipoId || '').trim()
-    const sucursalId = String(formData.sucursalId || '').trim()
-
-    if (documentCheckTimerRef.current) {
-      clearTimeout(documentCheckTimerRef.current)
-      documentCheckTimerRef.current = null
-    }
-
-    if (!facturaBase || !subTipoId || !sucursalId) {
-      setDocumentStatus(DOCUMENT_STATUS.invalid)
-      setFormData((prev) => (prev.no_documento ? { ...prev, no_documento: '' } : prev))
-      return
-    }
-
-    setFormData((prev) => (prev.no_documento ? { ...prev, no_documento: '' } : prev))
-
-    documentCheckTimerRef.current = setTimeout(() => {
-      void resolveVentaDocumentNumber(facturaBase)
-    }, 220)
-
-    return () => {
-      if (documentCheckTimerRef.current) {
-        clearTimeout(documentCheckTimerRef.current)
-        documentCheckTimerRef.current = null
-      }
-    }
-  }, [
-    formData.factura_referencia,
-    formData.subTipoId,
-    formData.sucursalId,
-    isPrefilledTransfer,
-    isVenta,
-    open,
-    resolveVentaDocumentNumber,
   ])
 
   const devolucionEstadoOptions = useMemo(
@@ -2705,27 +2638,34 @@ function CreateSalida({
     }
   }
 
-  const handleCedulaBlur = async () => {
-    const cedula = String(clienteForm.cedula_ruc || '').trim()
-    if (cedula.length < 5 || loading) return
+  const lookupClienteByCedula = async (cedula) => {
+    const normalized = String(cedula || '').trim()
+    if (normalized.length < 5) return null
     try {
       const response = await authFetch(
-        `${API_URL}/movimientos/movimiento_inventario/buscar-cliente/?q=${encodeURIComponent(cedula)}&page_size=10`,
+        `${API_URL}/movimientos/movimiento_inventario/buscar-cliente/?q=${encodeURIComponent(normalized)}&page_size=10`,
         {},
         token
       )
-      if (!response.ok) return
+      if (!response.ok) return null
       const data = await response.json()
       const results = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : [])
-      const exactMatch = results.find(
-        (c) => String(c.cedula_ruc || '').trim().toLowerCase() === cedula.toLowerCase()
+      return (
+        results.find((c) => String(c.cedula_ruc || '').trim().toLowerCase() === normalized.toLowerCase()) ||
+        null
       )
-      if (exactMatch) {
-        handleClienteSelect(exactMatch)
-        notifyError('Ya existe un cliente con esa cédula/RUC. Se seleccionó automáticamente.')
-      }
     } catch {
-      // ignore silently
+      return null
+    }
+  }
+
+  const handleCedulaBlur = async () => {
+    const cedula = String(clienteForm.cedula_ruc || '').trim()
+    if (cedula.length < 5 || loading) return
+    const exactMatch = await lookupClienteByCedula(cedula)
+    if (exactMatch) {
+      handleClienteSelect(exactMatch)
+      notifyError('Ya existe un cliente con esa cédula/RUC. Se seleccionó automáticamente.')
     }
   }
 
@@ -2749,6 +2689,17 @@ function CreateSalida({
     setSelectedClienteAutos([])
     setAutoConfirmData(null)
     setPendingClienteAutoDraft({ placa: '', modelo: '', anio: '', marca: '' })
+  }
+
+  const handleUseConsumidorFinal = async () => {
+    if (loading) return
+    setError('')
+    const existing = await lookupClienteByCedula(CONSUMIDOR_FINAL_CEDULA)
+    if (existing) {
+      handleClienteSelect(existing)
+      return
+    }
+    notifyError('No se encontró el cliente "Consumidor Final". Contacta al administrador.')
   }
 
   const handleAddClienteAuto = () => {
@@ -3111,6 +3062,11 @@ function CreateSalida({
 
     if (!formData.fecha) {
       notifyError('No se pudo resolver la fecha del movimiento.')
+      return false
+    }
+
+    if (isVenta && !String(selectedCliente?.cedula_ruc || clienteForm.cedula_ruc || '').trim()) {
+      notifyError('Selecciona un cliente existente o crea uno nuevo antes de continuar.')
       return false
     }
 
@@ -4084,6 +4040,16 @@ function CreateSalida({
                           >
                             Crear nuevo cliente
                           </button>
+                          <button
+                            type="button"
+                            className={`create-user__ghost create-salida__cliente-mode-btn ${
+                              isConsumidorFinalSelected ? 'is-active' : ''
+                            }`}
+                            onClick={handleUseConsumidorFinal}
+                            disabled={loading}
+                          >
+                            Consumidor final
+                          </button>
                         </div>
                       </div>
 
@@ -4302,7 +4268,7 @@ function CreateSalida({
                       </>
                     )}
 
-                    {useExistingCliente && selectedCliente?.id && (
+                    {useExistingCliente && selectedCliente?.id && !isConsumidorFinalSelected && (
                       <>
                         <div className="create-user__section-header" style={{ marginTop: 18 }}>
                           <div>

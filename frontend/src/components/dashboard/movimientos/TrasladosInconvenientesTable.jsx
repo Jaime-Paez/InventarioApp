@@ -377,9 +377,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
-        const availableFields = new Set(columnsData.map((column) => column.nombrevar))
-        const filtered = (Array.isArray(parsed) ? parsed : []).filter((column) => availableFields.has(column?.nombrevar))
-        setSelectedColumns(filtered.length ? filtered : columnsData)
+        const columnsByField = new Map(columnsData.map((column) => [column.nombrevar, column]))
+        const restored = (Array.isArray(parsed) ? parsed : [])
+          .map((column) => columnsByField.get(column?.nombrevar))
+          .filter(Boolean)
+        setSelectedColumns(restored.length ? restored : columnsData)
       } catch {
         tableLayoutStore.removeItem('traslados-inconvenientes-table-columns')
       }

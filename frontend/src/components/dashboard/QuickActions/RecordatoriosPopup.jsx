@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
+import BodegaLocationPreview from '../inventario/InventarioEditor/BodegaLocationPreview'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate, formatDateTime } from '../../../utils/dateFormat'
 import {
@@ -3347,12 +3348,20 @@ function RecordatoriosPopup({
                             <th>Código</th>
                             <th>Producto</th>
                             <th>Cantidad</th>
+                            {!activeDecisionIsGarantia && (
+                              <>
+                                <th>Bodega</th>
+                                <th>División</th>
+                                <th>Subdivisión</th>
+                                <th>Mapa</th>
+                              </>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
                           {!decisionDetalles.length && (
                             <tr>
-                              <td colSpan={3}>Sin productos en esta solicitud.</td>
+                              <td colSpan={activeDecisionIsGarantia ? 3 : 7}>Sin productos en esta solicitud.</td>
                             </tr>
                           )}
                           {decisionDetalles.map((detalle) => (
@@ -3360,6 +3369,24 @@ function RecordatoriosPopup({
                               <td>{detalle?.producto_codigo || '-'}</td>
                               <td>{detalle?.producto_nombre || '-'}</td>
                               <td>{detalle?.cantidad || '-'}</td>
+                              {!activeDecisionIsGarantia && (
+                                <>
+                                  <td>{detalle?.ubicacion_bodega || '-'}</td>
+                                  <td>{detalle?.ubicacion_division || '-'}</td>
+                                  <td>{detalle?.ubicacion_subdivision || '-'}</td>
+                                  <td>
+                                    {detalle?.ubicacion_bodega_layout ? (
+                                      <BodegaLocationPreview
+                                        bodega={detalle.ubicacion_bodega_layout}
+                                        divisionName={detalle.ubicacion_division}
+                                        subdivisionName={detalle.ubicacion_subdivision}
+                                      />
+                                    ) : (
+                                      '-'
+                                    )}
+                                  </td>
+                                </>
+                              )}
                             </tr>
                           ))}
                         </tbody>
