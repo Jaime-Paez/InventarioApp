@@ -3530,9 +3530,18 @@ function CreateEntrada({
     Boolean(String(formData.cliente || '').trim()) ||
     selectedReminderUserIds.length > 0
   )
+  const closeAllDropdowns = () => {
+    setShowProductDropdown(false)
+    setShowClienteDropdown(false)
+    setShowCasaComercialDropdown(false)
+    setLocationDropdownProductId('')
+    setLocationDropdownField('')
+  }
+
   const attemptClose = () => {
     if (loading) return
     if (hasUnsavedProgress) {
+      closeAllDropdowns()
       setShowCloseConfirm(true)
       return
     }

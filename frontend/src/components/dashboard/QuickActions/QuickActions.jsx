@@ -2613,7 +2613,7 @@ function QuickActions({
       if (hasUrgenteActiveRef.current) {
         playNotificationTone({ forceForAdmin: true, urgent: true })
       }
-    }, 60 * 1000)
+    }, 10 * 1000)
     return () => window.clearInterval(timer)
   }, [playNotificationTone])
 

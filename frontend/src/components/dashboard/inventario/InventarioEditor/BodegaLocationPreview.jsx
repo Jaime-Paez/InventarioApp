@@ -48,7 +48,11 @@ const normalizeLocation = (location, index) => ({
 
 const getPortalHost = () => {
   if (typeof document === 'undefined') return null
-  return document.querySelector('.dashboard-shell') || document.querySelector('.app-shell') || document.body
+  // Usar siempre document.body: ".dashboard-shell" tiene "transform" en su CSS
+  // (incluso "translateX(0)" cuenta), lo que crea un nuevo contexto de
+  // apilamiento y atrapa el z-index de este popup por debajo de cualquier
+  // otro modal (ej. Recordatorios) que si se porte directo al body.
+  return document.body
 }
 
 const resolvePlanSize = (bodega, locations) => {
@@ -77,6 +81,7 @@ const buildTypeColors = (locations) => {
 
 function BodegaLocationPreview({ bodega, divisionName, subdivisionName }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [isDarkMode, setIsDarkMode] = useState(false)
   const [portalRoot, setPortalRoot] = useState(null)
   useEffect(() => {
     if (portalRoot) return
@@ -122,7 +127,7 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName }) {
   const popup = isOpen && portalRoot
     ? createPortal(
       <div
-        className="inventario-map-popup"
+        className={`inventario-map-popup${isDarkMode ? ' inventario-map-popup--dark' : ''}`}
         role="dialog"
         aria-modal="true"
         onMouseDown={(event) => {
@@ -211,7 +216,10 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName }) {
         type="button"
         className="inventario-map-preview__trigger"
         aria-label={`Abrir mapa de ${bodega?.nombre || 'bodega'}`}
-        onClick={() => setIsOpen(true)}
+        onClick={() => {
+          setIsDarkMode(Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark')))
+          setIsOpen(true)
+        }}
       >
         <i className="pi pi-map-marker" aria-hidden="true" />
       </button>
