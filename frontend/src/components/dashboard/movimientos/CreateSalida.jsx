@@ -255,6 +255,27 @@ const calculateLineTotal = (cantidad, precio) => {
   return qty * value
 }
 
+const formatCentavos = (centsStr) => {
+  const digits = String(centsStr || '').replace(/\D/g, '')
+  if (!digits) return '0.00'
+  const n = parseInt(digits, 10)
+  const intPart = Math.floor(n / 100)
+  const decPart = n % 100
+  return `${intPart.toLocaleString('en-US')}.${String(decPart).padStart(2, '0')}`
+}
+
+const centavosToNumber = (centsStr) => {
+  const digits = String(centsStr || '').replace(/\D/g, '')
+  if (!digits) return 0
+  return parseInt(digits, 10) / 100
+}
+
+const decimalToCentavos = (value) => {
+  const parsed = parseNumber(value)
+  if (!Number.isFinite(parsed) || parsed < 0) return ''
+  return String(Math.round(parsed * 100))
+}
+
 const resolveProductPrice = (producto) => {
   const parsed = parseNumber(producto?.precio)
   if (parsed === null || parsed < 0) return ''
@@ -332,6 +353,7 @@ function CreateSalida({
   currentUser = null,
   token,
   onError,
+  onSuccess,
   preloadedTipoMovimientos = [],
   preloadedSubTipos = [],
   prefilledSucursalId = '',
@@ -340,6 +362,8 @@ function CreateSalida({
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
   const [, setError] = useState('')
+  const [totalDigitsInput, setTotalDigitsInput] = useState('')
+  const [isEditingTotal, setIsEditingTotal] = useState(false)
 
   const [branches, setBranches] = useState([])
   const [allBranches, setAllBranches] = useState([])
@@ -449,6 +473,18 @@ function CreateSalida({
       setError(message)
     },
     [onError]
+  )
+
+  const notifySuccess = useCallback(
+    (message) => {
+      if (!message) return
+      if (onSuccess) {
+        onSuccess(message)
+        return
+      }
+      setError(message)
+    },
+    [onSuccess]
   )
 
   useEffect(() => {
@@ -935,6 +971,41 @@ function CreateSalida({
   const totalConIva = subtotalNeto * (1 + ivaRateValue)
   const ivaPercent = (ivaRateValue * 100).toFixed(2).replace(/\.00$/, '')
   const descuentoPercentLabel = descuentoPercent.toFixed(2).replace(/\.00$/, '')
+
+  useEffect(() => {
+    if (isEditingTotal) return
+    setTotalDigitsInput(decimalToCentavos(totalConIva))
+  }, [totalConIva, isEditingTotal])
+
+  const applyDesiredTotal = (desiredTotal) => {
+    if (!Number.isFinite(desiredTotal) || desiredTotal < 0 || subtotalConBorrador <= 0) return
+
+    const desiredSubtotalNeto = desiredTotal / (1 + ivaRateValue)
+    const desiredDescuentoAplicado = subtotalConBorrador - desiredSubtotalNeto
+    const desiredDescuentoPercent = Math.min(
+      100,
+      Math.max(0, (desiredDescuentoAplicado / subtotalConBorrador) * 100)
+    )
+    setFormData((prev) => ({ ...prev, descuento: desiredDescuentoPercent.toFixed(2) }))
+  }
+
+  const handleTotalKeyDown = (event) => {
+    if (event.key === 'Backspace') {
+      event.preventDefault()
+      const nextDigits = totalDigitsInput.replace(/\D/g, '').slice(0, -1)
+      setTotalDigitsInput(nextDigits)
+      applyDesiredTotal(centavosToNumber(nextDigits))
+      return
+    }
+    if (/^\d$/.test(event.key)) {
+      event.preventDefault()
+      const nextDigits = totalDigitsInput.replace(/\D/g, '') + event.key
+      const maxTotal = subtotalConBorrador * (1 + ivaRateValue)
+      if (centavosToNumber(nextDigits) > maxTotal) return
+      setTotalDigitsInput(nextDigits)
+      applyDesiredTotal(centavosToNumber(nextDigits))
+    }
+  }
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
@@ -2934,11 +3005,17 @@ function CreateSalida({
           })
         }
 
-        const messages = []
-        if (newRows.length) messages.push(`Se agregaron ${newRows.length} producto(s).`)
-        if (notFound.length) messages.push(`No encontrados: ${notFound.join(', ')}.`)
-        if (skipped.length) messages.push(`Omitidos: ${skipped.join(', ')}.`)
-        setDetailError(messages.join(' ') || 'No se agrego ningun producto.')
+        const issues = []
+        if (notFound.length) issues.push(`No encontrados: ${notFound.join(', ')}.`)
+        if (skipped.length) issues.push(`Omitidos: ${skipped.join(', ')}.`)
+
+        if (newRows.length && !issues.length) {
+          notifySuccess(`Se agregaron ${newRows.length} producto(s).`)
+        } else if (newRows.length) {
+          notifyError(`Se agregaron ${newRows.length} producto(s). ${issues.join(' ')}`)
+        } else {
+          setDetailError(issues.join(' ') || 'No se agrego ningun producto.')
+        }
 
         setShowProductDropdown(false)
         setProductQuery('')
@@ -2958,6 +3035,8 @@ function CreateSalida({
       requiresStockValidation,
       stockByProduct,
       token,
+      notifySuccess,
+      notifyError,
     ]
   )
 
@@ -3923,7 +4002,25 @@ function CreateSalida({
                     <div className="create-user__locations-row create-salida__totals-row create-salida__totals-row--strong">
                       <span className="create-salida__totals-label">Total con IVA ({ivaPercent}%)</span>
                       <span className="create-salida__totals-value">
-                        <strong>{formatCurrency(totalConIva)}</strong>
+                        {isVenta && subtotalConBorrador > 0 ? (
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            readOnly
+                            value={formatCentavos(totalDigitsInput)}
+                            onFocus={() => {
+                              setIsEditingTotal(true)
+                              setTotalDigitsInput('')
+                            }}
+                            onBlur={() => setIsEditingTotal(false)}
+                            onChange={() => {}}
+                            onKeyDown={handleTotalKeyDown}
+                            disabled={loading}
+                            className="create-salida__total-inline-input"
+                          />
+                        ) : (
+                          <strong>{formatCurrency(totalConIva)}</strong>
+                        )}
                       </span>
                       <span className="create-salida__totals-spacer" />
                     </div>

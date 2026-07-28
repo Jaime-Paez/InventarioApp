@@ -1250,6 +1250,36 @@
   cursor: not-allowed;
 }
 
+.create-salida__total-inline-input {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  padding: 4px 6px;
+  font-size: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  border: 1px solid var(--color-border, #ccc);
+  border-radius: 4px;
+  background: var(--color-surface, #fff);
+  color: inherit;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.create-salida__total-inline-input::-webkit-outer-spin-button,
+.create-salida__total-inline-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.create-salida__total-inline-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .create-salida__input--invalid {
   border-color: var(--color-error-border) !important;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-error-border) 30%, transparent) !important;

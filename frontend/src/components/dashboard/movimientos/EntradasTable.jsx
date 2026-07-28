@@ -278,6 +278,17 @@ function EntradasTable({
     []
   )
 
+  const showSuccessToast = useCallback(
+    (detail, summary = 'Listo') =>
+      toast.current?.show({
+        severity: 'success',
+        summary,
+        detail,
+        life: 3500,
+      }),
+    []
+  )
+
   useEffect(() => {
     const stored = tableLayoutStore.getItem('entradas-table-columns')
     if (stored) {
@@ -1662,6 +1673,7 @@ function EntradasTable({
         onCreated={handleCreated}
         token={token}
         onError={showErrorToast}
+        onSuccess={showSuccessToast}
         preloadedTipoMovimientos={prefetchedTipoMovimientos}
         preloadedSubTipos={prefetchedSubTiposEntrada}
         prefilledSucursalId={hasSpecificCreateBranch ? normalizedCreateBranchId : ''}

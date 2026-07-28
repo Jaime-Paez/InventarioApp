@@ -384,6 +384,7 @@ function CreateEntrada({
   onCreated,
   token,
   onError,
+  onSuccess,
   preloadedTipoMovimientos = [],
   preloadedSubTipos = [],
   prefilledSucursalId = '',
@@ -516,6 +517,18 @@ function CreateEntrada({
       setError(message)
     },
     [onError]
+  )
+
+  const notifySuccess = useCallback(
+    (message) => {
+      if (!message) return
+      if (onSuccess) {
+        onSuccess(message)
+        return
+      }
+      setError(message)
+    },
+    [onSuccess]
   )
 
   const [liveUserScopes, setLiveUserScopes] = useState(null)
@@ -2785,11 +2798,17 @@ function CreateEntrada({
           })
         }
 
-        const messages = []
-        if (newRows.length) messages.push(`Se agregaron ${newRows.length} producto(s).`)
-        if (notFound.length) messages.push(`No encontrados: ${notFound.join(', ')}.`)
-        if (skipped.length) messages.push(`Omitidos: ${skipped.join(', ')}.`)
-        setDetailError(messages.join(' ') || 'No se agrego ningun producto.')
+        const issues = []
+        if (notFound.length) issues.push(`No encontrados: ${notFound.join(', ')}.`)
+        if (skipped.length) issues.push(`Omitidos: ${skipped.join(', ')}.`)
+
+        if (newRows.length && !issues.length) {
+          notifySuccess(`Se agregaron ${newRows.length} producto(s).`)
+        } else if (newRows.length) {
+          notifyError(`Se agregaron ${newRows.length} producto(s). ${issues.join(' ')}`)
+        } else {
+          setDetailError(issues.join(' ') || 'No se agrego ningun producto.')
+        }
 
         setShowProductDropdown(false)
         setProductQuery('')
@@ -2809,6 +2828,8 @@ function CreateEntrada({
       stockByProduct,
       isCompraEntrada,
       token,
+      notifySuccess,
+      notifyError,
     ]
   )
 

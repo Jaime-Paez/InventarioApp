@@ -265,6 +265,17 @@ function SalidasTable({
     []
   )
 
+  const showSuccessToast = useCallback(
+    (detail, summary = 'Listo') =>
+      toast.current?.show({
+        severity: 'success',
+        summary,
+        detail,
+        life: 3500,
+      }),
+    []
+  )
+
   useEffect(() => {
     const stored = tableLayoutStore.getItem('salidas-table-columns')
     if (stored) {
@@ -1703,6 +1714,7 @@ function SalidasTable({
         currentUser={user}
         token={token}
         onError={showErrorToast}
+        onSuccess={showSuccessToast}
         preloadedTipoMovimientos={prefetchedTipoMovimientos}
         preloadedSubTipos={prefetchedSubTiposSalida}
         prefilledSucursalId={hasSpecificCreateBranch ? normalizedCreateBranchId : ''}
