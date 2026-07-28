@@ -270,6 +270,15 @@ const centavosToNumber = (centsStr) => {
   return parseInt(digits, 10) / 100
 }
 
+const formatDescuentoPrecise = (value) => {
+  let str = value.toFixed(8).replace(/0+$/, '').replace(/\.$/, '')
+  if (str.includes('.')) {
+    const [intPart, decPart] = str.split('.')
+    return `${intPart}.${decPart.padEnd(2, '0')}`
+  }
+  return `${str}.00`
+}
+
 const decimalToCentavos = (value) => {
   const parsed = parseNumber(value)
   if (!Number.isFinite(parsed) || parsed < 0) return ''
@@ -986,7 +995,7 @@ function CreateSalida({
       100,
       Math.max(0, (desiredDescuentoAplicado / subtotalConBorrador) * 100)
     )
-    setFormData((prev) => ({ ...prev, descuento: desiredDescuentoPercent.toFixed(2) }))
+    setFormData((prev) => ({ ...prev, descuento: formatDescuentoPrecise(desiredDescuentoPercent) }))
   }
 
   const handleTotalKeyDown = (event) => {
@@ -1000,8 +1009,6 @@ function CreateSalida({
     if (/^\d$/.test(event.key)) {
       event.preventDefault()
       const nextDigits = totalDigitsInput.replace(/\D/g, '') + event.key
-      const maxTotal = subtotalConBorrador * (1 + ivaRateValue)
-      if (centavosToNumber(nextDigits) > maxTotal) return
       setTotalDigitsInput(nextDigits)
       applyDesiredTotal(centavosToNumber(nextDigits))
     }
