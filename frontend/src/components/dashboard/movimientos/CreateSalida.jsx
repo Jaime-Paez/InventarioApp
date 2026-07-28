@@ -345,6 +345,7 @@ const normalizeClientePayload = (cliente) => ({
 const clienteRequiredFields = ['nombres', 'apellidos', 'cedula_ruc']
 const CLIENT_MODE_EXISTING = 'existing'
 const CLIENT_MODE_NEW = 'new'
+const CLIENT_MODE_CONSUMIDOR_FINAL = 'consumidor_final'
 const CONSUMIDOR_FINAL_CEDULA = '000000000'
 const DOCUMENT_STATUS = {
   idle: 'idle',
@@ -605,7 +606,7 @@ function CreateSalida({
   const requiresStockValidation = isTraslado || isVenta || isDevolucion
   const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
-  const isConsumidorFinalSelected = String(selectedCliente?.cedula_ruc || '').trim() === CONSUMIDOR_FINAL_CEDULA
+  const useConsumidorFinal = clienteMode === CLIENT_MODE_CONSUMIDOR_FINAL
   const selectedClienteLabel = useMemo(
     () => formatClienteDropdownLabel(selectedCliente) || formatClienteFieldValue(selectedCliente),
     [selectedCliente]
@@ -2670,8 +2671,18 @@ function CreateSalida({
   }
 
   const handleUseExistingCliente = () => {
+    if (useExistingCliente) return
     setError('')
     setClienteMode(CLIENT_MODE_EXISTING)
+    setSelectedCliente(null)
+    setFormData((prev) => ({ ...prev, cliente: '' }))
+    setClienteQuery('')
+    setShowClienteDropdown(false)
+    setClienteOptions([])
+    setClienteLoading(false)
+    setSelectedClienteAutos([])
+    setAutoConfirmData(null)
+    setPendingClienteAutoDraft({ placa: '', modelo: '', anio: '', marca: '' })
   }
 
   const handleCreateNewCliente = () => {
@@ -2695,11 +2706,21 @@ function CreateSalida({
     if (loading) return
     setError('')
     const existing = await lookupClienteByCedula(CONSUMIDOR_FINAL_CEDULA)
-    if (existing) {
-      handleClienteSelect(existing)
+    if (!existing) {
+      notifyError('No se encontró el cliente "Consumidor Final". Contacta al administrador.')
       return
     }
-    notifyError('No se encontró el cliente "Consumidor Final". Contacta al administrador.')
+    setClienteMode(CLIENT_MODE_CONSUMIDOR_FINAL)
+    setSelectedCliente(existing)
+    setFormData((prev) => ({ ...prev, cliente: formatClienteFieldValue(existing) }))
+    setClienteQuery('')
+    setShowClienteDropdown(false)
+    setClienteOptions([])
+    setClienteLoading(false)
+    setClienteForm(normalizeClientePayload(existing))
+    setSelectedClienteAutos([])
+    setAutoConfirmData(null)
+    setPendingClienteAutoDraft({ placa: '', modelo: '', anio: '', marca: '' })
   }
 
   const handleAddClienteAuto = () => {
@@ -3145,7 +3166,7 @@ function CreateSalida({
       let ventaClienteLabel = String(formData.cliente || '').trim()
 
       if (isVenta) {
-        if (useExistingCliente) {
+        if (useExistingCliente || useConsumidorFinal) {
           if (!ventaCliente?.id) {
             setActiveTab('cliente')
             throw new Error('Selecciona un cliente existente o usa "Crear nuevo cliente".')
@@ -3199,7 +3220,7 @@ function CreateSalida({
           setClienteMode(CLIENT_MODE_EXISTING)
         }
 
-        if (!useExistingCliente && !useNewCliente) {
+        if (!useExistingCliente && !useNewCliente && !useConsumidorFinal) {
           setActiveTab('cliente')
           throw new Error('Selecciona como deseas asociar el cliente.')
         }
@@ -4043,7 +4064,7 @@ function CreateSalida({
                           <button
                             type="button"
                             className={`create-user__ghost create-salida__cliente-mode-btn ${
-                              isConsumidorFinalSelected ? 'is-active' : ''
+                              useConsumidorFinal ? 'is-active' : ''
                             }`}
                             onClick={handleUseConsumidorFinal}
                             disabled={loading}
@@ -4268,7 +4289,7 @@ function CreateSalida({
                       </>
                     )}
 
-                    {useExistingCliente && selectedCliente?.id && !isConsumidorFinalSelected && (
+                    {useExistingCliente && selectedCliente?.id && (
                       <>
                         <div className="create-user__section-header" style={{ marginTop: 18 }}>
                           <div>
