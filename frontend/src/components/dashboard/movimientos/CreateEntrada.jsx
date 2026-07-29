@@ -1206,7 +1206,7 @@ function CreateEntrada({
         next.funcional = true
         changed = true
       }
-      if (!isDevolucion && !isCompraEntrada && !isTraslado && next.factura_referencia) {
+      if (!isDevolucion && !isCompraEntrada && next.factura_referencia) {
         next.factura_referencia = ''
         changed = true
       }
@@ -3358,11 +3358,6 @@ function CreateEntrada({
       return
     }
 
-    if (isTraslado && !String(formData.factura_referencia || '').trim()) {
-      notifyError('El No. de Factura es obligatorio.')
-      return
-    }
-
     if (!guardarBorrador && !details.length) {
       notifyError('Agrega al menos un producto.')
       return
@@ -3788,7 +3783,7 @@ function CreateEntrada({
                   <div className="create-salida__field-groups">
                     {isSucursalPrincipalLocked && (
                       <div className="create-salida__field-group create-salida__field-group--defined create-salida__field-group--paired">
-                        <div className={`create-user__grid ${isDevolucion || isCompraEntrada || isTraslado ? 'create-user__grid--three' : 'create-user__grid--two'}`}>
+                        <div className={`create-user__grid ${isDevolucion || isCompraEntrada ? 'create-user__grid--three' : 'create-user__grid--two'}`}>
                           <StaticFieldDisplay
                             label={isTraslado ? 'Sucursal destino' : 'Sucursal'}
                             value={selectedSucursalName}
@@ -3817,19 +3812,6 @@ function CreateEntrada({
                                 name="fecha"
                                 type="date"
                                 value={formData.fecha}
-                                onChange={handleChange}
-                                disabled={loading}
-                                required
-                              />
-                            </label>
-                          )}
-                          {isTraslado && (
-                            <label className="create-user__field create-user__field--required">
-                              <span>No. de Factura</span>
-                              <input
-                                name="factura_referencia"
-                                type="text"
-                                value={formData.factura_referencia}
                                 onChange={handleChange}
                                 disabled={loading}
                                 required
@@ -3915,20 +3897,6 @@ function CreateEntrada({
                                   </option>
                                 ))}
                               </select>
-                            </label>
-                          )}
-
-                          {!isSucursalPrincipalLocked && (
-                            <label className="create-user__field create-user__field--required">
-                              <span>No. de Factura</span>
-                              <input
-                                name="factura_referencia"
-                                type="text"
-                                value={formData.factura_referencia}
-                                onChange={handleChange}
-                                disabled={loading}
-                                required
-                              />
                             </label>
                           )}
 

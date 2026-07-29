@@ -818,7 +818,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                     )
                 attrs["no_documento"] = original_document
 
-            requires_factura = subtipo_key in ("devolucion", "compra_local", "traslado")
+            requires_factura = subtipo_key in ("devolucion", "compra_local")
             if is_create and requires_factura and not factura_referencia:
                 message = (
                     "Debes ingresar la factura de venta para la devolucion."
