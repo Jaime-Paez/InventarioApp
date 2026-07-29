@@ -4474,17 +4474,6 @@ function QuickActions({
           />
 
           <button
-            ref={setBtnRef(0)}
-            type="button"
-            className="quick-actions__button"
-            aria-label="Buscar"
-            onMouseEnter={() => showAndMove(0)}
-            onFocus={() => showAndMove(0)}
-          >
-            <Search />
-          </button>
-
-          <button
             ref={handleReminderButtonRef}
             type="button"
             className={`quick-actions__button quick-actions__button--reminders${isReminderModalOpen ? ' is-active' : ''}`}
