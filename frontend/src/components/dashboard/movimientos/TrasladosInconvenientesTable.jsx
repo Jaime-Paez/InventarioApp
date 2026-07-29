@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
@@ -14,6 +15,7 @@ import { fetchRemindersFromBackend } from '../common/reminders/remindersStorage'
 import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
+import { getAppPortalRoot } from '../../../utils/portalRoot'
 import useModalAnimation from '../common/useModalAnimation'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersTable/UsersTable.css'
@@ -112,6 +114,22 @@ const selectionColStyle = {
   padding: 0,
 }
 
+function DecisionButton({ variant, label, tooltip, active, onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--${variant}${
+        active ? ' is-active' : ''
+      } cell-tooltip`}
+      data-pr-tooltip={tooltip}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {label}
+    </button>
+  )
+}
+
 function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicitudId, onPendingOpenHandled }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
@@ -172,6 +190,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const [resolverLocationDropdownField, setResolverLocationDropdownField] = useState('')
   const [resolverLocationDropdownDirection, setResolverLocationDropdownDirection] = useState('down')
   const [resolverLocationDropdownMaxHeight, setResolverLocationDropdownMaxHeight] = useState(null)
+  const [resolverLocationDropdownStyle, setResolverLocationDropdownStyle] = useState({})
   const [resolverLocationQuery, setResolverLocationQuery] = useState('')
   const [resolverLocationDebouncedQuery, setResolverLocationDebouncedQuery] = useState('')
   const [resolverSubmitting, setResolverSubmitting] = useState(false)
@@ -185,6 +204,7 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const [resolverProvLocationDropdownField, setResolverProvLocationDropdownField] = useState('')
   const [resolverProvLocationDropdownDirection, setResolverProvLocationDropdownDirection] = useState('down')
   const [resolverProvLocationDropdownMaxHeight, setResolverProvLocationDropdownMaxHeight] = useState(null)
+  const [resolverProvLocationDropdownStyle, setResolverProvLocationDropdownStyle] = useState({})
   const [resolverProvLocationQuery, setResolverProvLocationQuery] = useState('')
   const [resolverProvLocationDebouncedQuery, setResolverProvLocationDebouncedQuery] = useState('')
   const modalRef = useRef(null)
@@ -194,7 +214,9 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   const modalPositionRef = useRef(modalPosition)
   const modalRestoreRef = useRef(null)
   const resolverLocationDropdownRef = useRef(null)
+  const resolverLocationDropdownPanelRef = useRef(null)
   const resolverProvLocationDropdownRef = useRef(null)
+  const resolverProvLocationDropdownPanelRef = useRef(null)
 
   const { shouldRender: shouldRenderDetailsModal, isClosing: isClosingDetailsModal } =
     useModalAnimation(showDetailsModal)
@@ -976,6 +998,30 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     const nextMaxHeight = Math.max(140, Math.min(320, availableSpace))
     setResolverLocationDropdownDirection((prev) => (prev === nextDirection ? prev : nextDirection))
     setResolverLocationDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
+    // Se renderiza con un portal a getAppPortalRoot() para que no quede
+    // detras de los campos de Bodega/Division/Subdivision que le siguen
+    // dentro del mismo contenedor.
+    setResolverLocationDropdownStyle(
+      nextDirection === 'up'
+        ? {
+            position: 'fixed',
+            top: 'auto',
+            bottom: Math.max(window.innerHeight - triggerRect.top + spacing, VIEWPORT_PADDING),
+            left: triggerRect.left,
+            width: triggerRect.width,
+            maxHeight: `${nextMaxHeight}px`,
+            zIndex: 12000,
+          }
+        : {
+            position: 'fixed',
+            top: triggerRect.bottom + spacing,
+            bottom: 'auto',
+            left: triggerRect.left,
+            width: triggerRect.width,
+            maxHeight: `${nextMaxHeight}px`,
+            zIndex: 12000,
+          }
+    )
   }, [resolverLocationDropdownField, showDetailsModal])
 
   const toggleResolverLocationDropdown = useCallback(
@@ -1008,12 +1054,15 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   useEffect(() => {
     if (!showDetailsModal || !resolverLocationDropdownField) return undefined
     const handleClick = (event) => {
-      if (resolverLocationDropdownRef.current && !resolverLocationDropdownRef.current.contains(event.target)) {
+      const touched =
+        (resolverLocationDropdownRef.current && resolverLocationDropdownRef.current.contains(event.target)) ||
+        (resolverLocationDropdownPanelRef.current && resolverLocationDropdownPanelRef.current.contains(event.target))
+      if (!touched) {
         closeResolverLocationDropdown()
       }
     }
-    window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
+    window.addEventListener('mousedown', handleClick, true)
+    return () => window.removeEventListener('mousedown', handleClick, true)
   }, [closeResolverLocationDropdown, resolverLocationDropdownField, showDetailsModal])
 
   useEffect(() => {
@@ -1106,6 +1155,27 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
     const nextMaxHeight = Math.max(140, Math.min(320, availableSpace))
     setResolverProvLocationDropdownDirection((prev) => (prev === nextDirection ? prev : nextDirection))
     setResolverProvLocationDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
+    setResolverProvLocationDropdownStyle(
+      nextDirection === 'up'
+        ? {
+            position: 'fixed',
+            top: 'auto',
+            bottom: Math.max(window.innerHeight - triggerRect.top + spacing, VIEWPORT_PADDING),
+            left: triggerRect.left,
+            width: triggerRect.width,
+            maxHeight: `${nextMaxHeight}px`,
+            zIndex: 12000,
+          }
+        : {
+            position: 'fixed',
+            top: triggerRect.bottom + spacing,
+            bottom: 'auto',
+            left: triggerRect.left,
+            width: triggerRect.width,
+            maxHeight: `${nextMaxHeight}px`,
+            zIndex: 12000,
+          }
+    )
   }, [resolverProvLocationDropdownField, showDetailsModal])
 
   const toggleResolverProvLocationDropdown = useCallback(
@@ -1136,12 +1206,15 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
   useEffect(() => {
     if (!showDetailsModal || !resolverProvLocationDropdownField) return undefined
     const handleClick = (event) => {
-      if (resolverProvLocationDropdownRef.current && !resolverProvLocationDropdownRef.current.contains(event.target)) {
+      const touched =
+        (resolverProvLocationDropdownRef.current && resolverProvLocationDropdownRef.current.contains(event.target)) ||
+        (resolverProvLocationDropdownPanelRef.current && resolverProvLocationDropdownPanelRef.current.contains(event.target))
+      if (!touched) {
         closeResolverProvLocationDropdown()
       }
     }
-    window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
+    window.addEventListener('mousedown', handleClick, true)
+    return () => window.removeEventListener('mousedown', handleClick, true)
   }, [closeResolverProvLocationDropdown, resolverProvLocationDropdownField, showDetailsModal])
 
   useEffect(() => {
@@ -2098,37 +2171,23 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                           </p>
                           <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
                             <div className="transfer-issues-details__decision-wrap">
-                              <button
-                                type="button"
-                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
-                                  resolverDecision === 'olvidar' ? ' is-active' : ''
-                                }`}
+                              <DecisionButton
+                                variant="neutral"
+                                label="Olvidar proceso"
+                                tooltip="El inconveniente se marca como perdido/no recuperable y se cierra. Úsalo cuando decidas no seguir gestionando el reclamo con el proveedor."
+                                active={resolverDecision === 'olvidar'}
                                 onClick={() => setResolverDecision('olvidar')}
                                 disabled={resolverSubmitting}
-                              >
-                                Olvidar proceso
-                              </button>
-                              <i
-                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                data-pr-tooltip="El inconveniente se marca como perdido/no recuperable y se cierra. Úsalo cuando decidas no seguir gestionando el reclamo con el proveedor."
-                                onClick={(event) => event.stopPropagation()}
                               />
                             </div>
                             <div className="transfer-issues-details__decision-wrap">
-                              <button
-                                type="button"
-                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
-                                  resolverDecision === 'solucion' ? ' is-active' : ''
-                                }`}
+                              <DecisionButton
+                                variant="warning"
+                                label="Solución de inconveniente"
+                                tooltip="Registra la cantidad que enviará el proveedor y la fecha de entrega acordada. El inconveniente queda resuelto con esa información documentada."
+                                active={resolverDecision === 'solucion'}
                                 onClick={() => setResolverDecision('solucion')}
                                 disabled={resolverSubmitting}
-                              >
-                                Solución de inconveniente
-                              </button>
-                              <i
-                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                data-pr-tooltip="Registra la cantidad que enviará el proveedor y la fecha de entrega acordada. El inconveniente queda resuelto con esa información documentada."
-                                onClick={(event) => event.stopPropagation()}
                               />
                             </div>
                           </div>
@@ -2178,74 +2237,46 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                             {selectedIssue?.tipo === 'sobrante' ? (
                               <>
                                 <div className="transfer-issues-details__decision-wrap">
-                                  <button
-                                    type="button"
-                                    className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
-                                      resolverDecision === 'devolver_proveedor' ? ' is-active' : ''
-                                    }`}
+                                  <DecisionButton
+                                    variant="warning"
+                                    label="Devolver a proveedor"
+                                    tooltip="El excedente queda marcado como devuelto al proveedor. No se ajusta el inventario del sistema, solo se documenta el motivo del sobrante."
+                                    active={resolverDecision === 'devolver_proveedor'}
                                     onClick={() => setResolverDecision('devolver_proveedor')}
                                     disabled={resolverSubmitting}
-                                  >
-                                    Devolver a proveedor
-                                  </button>
-                                  <i
-                                    className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                    data-pr-tooltip="El excedente queda marcado como devuelto al proveedor. No se ajusta el inventario del sistema, solo se documenta el motivo del sobrante."
-                                    onClick={(event) => event.stopPropagation()}
                                   />
                                 </div>
                                 <div className="transfer-issues-details__decision-wrap">
-                                  <button
-                                    type="button"
-                                    className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
-                                      resolverDecision === 'aceptado' ? ' is-active' : ''
-                                    }`}
+                                  <DecisionButton
+                                    variant="neutral"
+                                    label="No hacer nada"
+                                    tooltip="El sobrante queda aceptado tal cual. No se genera ningún ajuste de inventario ni reclamo al proveedor."
+                                    active={resolverDecision === 'aceptado'}
                                     onClick={() => setResolverDecision('aceptado')}
                                     disabled={resolverSubmitting}
-                                  >
-                                    No hacer nada
-                                  </button>
-                                  <i
-                                    className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                    data-pr-tooltip="El sobrante queda aceptado tal cual. No se genera ningún ajuste de inventario ni reclamo al proveedor."
-                                    onClick={(event) => event.stopPropagation()}
                                   />
                                 </div>
                               </>
                             ) : (
                               <>
                                 <div className="transfer-issues-details__decision-wrap">
-                                  <button
-                                    type="button"
-                                    className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
-                                      resolverDecision === 'aceptado' ? ' is-active' : ''
-                                    }`}
+                                  <DecisionButton
+                                    variant="neutral"
+                                    label="No hacer nada"
+                                    tooltip="El faltante queda aceptado tal cual. No se genera ningún ajuste de inventario ni reclamo al proveedor."
+                                    active={resolverDecision === 'aceptado'}
                                     onClick={() => setResolverDecision('aceptado')}
                                     disabled={resolverSubmitting}
-                                  >
-                                    No hacer nada
-                                  </button>
-                                  <i
-                                    className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                    data-pr-tooltip="El faltante queda aceptado tal cual. No se genera ningún ajuste de inventario ni reclamo al proveedor."
-                                    onClick={(event) => event.stopPropagation()}
                                   />
                                 </div>
                                 <div className="transfer-issues-details__decision-wrap">
-                                  <button
-                                    type="button"
-                                    className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
-                                      resolverDecision === 'reportado_proveedor' ? ' is-active' : ''
-                                    }`}
+                                  <DecisionButton
+                                    variant="warning"
+                                    label="Generar un reclamo al proveedor"
+                                    tooltip="El inconveniente pasa a estado 'Reclamado' y se mantiene activo para que lo sigas gestionando hasta acordar una solución con el proveedor."
+                                    active={resolverDecision === 'reportado_proveedor'}
                                     onClick={() => setResolverDecision('reportado_proveedor')}
                                     disabled={resolverSubmitting}
-                                  >
-                                    Generar un reclamo al proveedor
-                                  </button>
-                                  <i
-                                    className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                    data-pr-tooltip="El inconveniente pasa a estado 'Reclamado' y se mantiene activo para que lo sigas gestionando hasta acordar una solución con el proveedor."
-                                    onClick={(event) => event.stopPropagation()}
                                   />
                                 </div>
                               </>
@@ -2272,11 +2303,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                           </p>
                           <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
                             <div className="transfer-issues-details__decision-wrap">
-                              <button
-                                type="button"
-                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--warning${
-                                  resolverDecision === 'devolver_proveedora' ? ' is-active' : ''
-                                }`}
+                              <DecisionButton
+                                variant="warning"
+                                label="Devolver"
+                                tooltip="Resta las unidades sobrantes del inventario de la sucursal destino y las suma de vuelta a la sucursal proveedora."
+                                active={resolverDecision === 'devolver_proveedora'}
                                 onClick={() => {
                                   setResolverDecision('devolver_proveedora')
                                   setResolverBodegaId('')
@@ -2291,21 +2322,14 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   closeResolverProvLocationDropdown()
                                 }}
                                 disabled={resolverSubmitting}
-                              >
-                                Devolver
-                              </button>
-                              <i
-                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                data-pr-tooltip="Resta las unidades sobrantes del inventario de la sucursal destino y las suma de vuelta a la sucursal proveedora."
-                                onClick={(event) => event.stopPropagation()}
                               />
                             </div>
                             <div className="transfer-issues-details__decision-wrap">
-                              <button
-                                type="button"
-                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--neutral${
-                                  resolverDecision === 'sin_cambios' ? ' is-active' : ''
-                                }`}
+                              <DecisionButton
+                                variant="neutral"
+                                label="Mantener"
+                                tooltip="Las unidades sobrantes se quedan en la sucursal destino. No se mueve inventario entre sucursales."
+                                active={resolverDecision === 'sin_cambios'}
                                 onClick={() => {
                                   setResolverDecision('sin_cambios')
                                   setResolverBodegaId('')
@@ -2320,13 +2344,6 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   closeResolverProvLocationDropdown()
                                 }}
                                 disabled={resolverSubmitting}
-                              >
-                                Mantener
-                              </button>
-                              <i
-                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                data-pr-tooltip="Las unidades sobrantes se quedan en la sucursal destino. No se mueve inventario entre sucursales."
-                                onClick={(event) => event.stopPropagation()}
                               />
                             </div>
                           </div>
@@ -2338,11 +2355,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                           </p>
                           <div className="transfer-issues-details__decisions">
                             <div className="transfer-issues-details__decision-wrap">
-                              <button
-                                type="button"
-                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--primary${
-                                  resolverDecision === 'sumar_proveedora' ? ' is-active' : ''
-                                }`}
+                              <DecisionButton
+                                variant="primary"
+                                label="Sumar a sucursal proveedora"
+                                tooltip="Suma las unidades faltantes de vuelta al inventario de la sucursal proveedora (asume que nunca salieron de ahí)."
+                                active={resolverDecision === 'sumar_proveedora'}
                                 onClick={() => {
                                   setResolverDecision('sumar_proveedora')
                                   setResolverBodegaId('')
@@ -2352,21 +2369,14 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   closeResolverLocationDropdown()
                                 }}
                                 disabled={resolverSubmitting}
-                              >
-                                Sumar a sucursal proveedora
-                              </button>
-                              <i
-                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                data-pr-tooltip="Suma las unidades faltantes de vuelta al inventario de la sucursal proveedora (asume que nunca salieron de ahí)."
-                                onClick={(event) => event.stopPropagation()}
                               />
                             </div>
                             <div className="transfer-issues-details__decision-wrap">
-                              <button
-                                type="button"
-                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--success${
-                                  resolverDecision === 'sumar_solicitante' ? ' is-active' : ''
-                                }`}
+                              <DecisionButton
+                                variant="success"
+                                label="Sumar a sucursal destino"
+                                tooltip="Suma las unidades faltantes al inventario de la sucursal destino (asume que sí llegaron)."
+                                active={resolverDecision === 'sumar_solicitante'}
                                 onClick={() => {
                                   setResolverDecision('sumar_solicitante')
                                   setResolverBodegaId('')
@@ -2376,21 +2386,14 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   closeResolverLocationDropdown()
                                 }}
                                 disabled={resolverSubmitting}
-                              >
-                                Sumar a sucursal destino
-                              </button>
-                              <i
-                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                data-pr-tooltip="Suma las unidades faltantes al inventario de la sucursal destino (asume que sí llegaron)."
-                                onClick={(event) => event.stopPropagation()}
                               />
                             </div>
                             <div className="transfer-issues-details__decision-wrap">
-                              <button
-                                type="button"
-                                className={`create-user__action create-user__action--secondary transfer-issues-details__decision-btn transfer-issues-details__decision-btn--danger${
-                                  resolverDecision === 'perdido' ? ' is-active' : ''
-                                }`}
+                              <DecisionButton
+                                variant="danger"
+                                label="Marcar como desaparecido"
+                                tooltip="Las unidades faltantes se dan de baja como pérdida. No se ajusta inventario en ninguna sucursal."
+                                active={resolverDecision === 'perdido'}
                                 onClick={() => {
                                   setResolverDecision('perdido')
                                   setResolverBodegaId('')
@@ -2400,13 +2403,6 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   closeResolverLocationDropdown()
                                 }}
                                 disabled={resolverSubmitting}
-                              >
-                                Marcar como desaparecido
-                              </button>
-                              <i
-                                className="pi pi-info-circle transfer-issues-details__decision-info cell-tooltip"
-                                data-pr-tooltip="Las unidades faltantes se dan de baja como pérdida. No se ajusta inventario en ninguna sucursal."
-                                onClick={(event) => event.stopPropagation()}
                               />
                             </div>
                           </div>
@@ -2437,16 +2433,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   <i className={`pi pi-chevron-${resolverLocationDropdownField === 'bodega' ? 'up' : 'down'}`} />
                                 </button>
 
-                                {resolverLocationDropdownField === 'bodega' && (
+                                {resolverLocationDropdownField === 'bodega' && createPortal(
                                   <div
-                                    className={`create-user__dropdown-panel ${
-                                      resolverLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                                    }`}
-                                    style={
-                                      resolverLocationDropdownMaxHeight
-                                        ? { maxHeight: `${resolverLocationDropdownMaxHeight}px` }
-                                        : undefined
-                                    }
+                                    ref={resolverLocationDropdownPanelRef}
+                                    className="create-user__dropdown-panel"
+                                    style={resolverLocationDropdownStyle}
                                   >
                                     <div className="create-user__dropdown-search">
                                       <i className="pi pi-search" />
@@ -2500,7 +2491,8 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                         </button>
                                       ))}
                                     </div>
-                                  </div>
+                                  </div>,
+                                  getAppPortalRoot()
                                 )}
                               </div>
                             </div>
@@ -2525,16 +2517,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   <i className={`pi pi-chevron-${resolverLocationDropdownField === 'division' ? 'up' : 'down'}`} />
                                 </button>
 
-                                {resolverLocationDropdownField === 'division' && (
+                                {resolverLocationDropdownField === 'division' && createPortal(
                                   <div
-                                    className={`create-user__dropdown-panel ${
-                                      resolverLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                                    }`}
-                                    style={
-                                      resolverLocationDropdownMaxHeight
-                                        ? { maxHeight: `${resolverLocationDropdownMaxHeight}px` }
-                                        : undefined
-                                    }
+                                    ref={resolverLocationDropdownPanelRef}
+                                    className="create-user__dropdown-panel"
+                                    style={resolverLocationDropdownStyle}
                                   >
                                     <div className="create-user__dropdown-search">
                                       <i className="pi pi-search" />
@@ -2589,7 +2576,8 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                         </button>
                                       ))}
                                     </div>
-                                  </div>
+                                  </div>,
+                                  getAppPortalRoot()
                                 )}
                               </div>
                             </div>
@@ -2614,16 +2602,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   <i className={`pi pi-chevron-${resolverLocationDropdownField === 'subdivision' ? 'up' : 'down'}`} />
                                 </button>
 
-                                {resolverLocationDropdownField === 'subdivision' && (
+                                {resolverLocationDropdownField === 'subdivision' && createPortal(
                                   <div
-                                    className={`create-user__dropdown-panel ${
-                                      resolverLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                                    }`}
-                                    style={
-                                      resolverLocationDropdownMaxHeight
-                                        ? { maxHeight: `${resolverLocationDropdownMaxHeight}px` }
-                                        : undefined
-                                    }
+                                    ref={resolverLocationDropdownPanelRef}
+                                    className="create-user__dropdown-panel"
+                                    style={resolverLocationDropdownStyle}
                                   >
                                     <div className="create-user__dropdown-search">
                                       <i className="pi pi-search" />
@@ -2680,7 +2663,8 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                         </button>
                                       ))}
                                     </div>
-                                  </div>
+                                  </div>,
+                                  getAppPortalRoot()
                                 )}
                               </div>
                             </div>
@@ -2722,12 +2706,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   </span>
                                   <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'bodega' ? 'up' : 'down'}`} />
                                 </button>
-                                {resolverProvLocationDropdownField === 'bodega' && (
+                                {resolverProvLocationDropdownField === 'bodega' && createPortal(
                                   <div
-                                    className={`create-user__dropdown-panel ${
-                                      resolverProvLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                                    }`}
-                                    style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${resolverProvLocationDropdownMaxHeight}px` } : undefined}
+                                    ref={resolverProvLocationDropdownPanelRef}
+                                    className="create-user__dropdown-panel"
+                                    style={resolverProvLocationDropdownStyle}
                                   >
                                     <div className="create-user__dropdown-search">
                                       <i className="pi pi-search" />
@@ -2761,7 +2744,8 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                         </button>
                                       ))}
                                     </div>
-                                  </div>
+                                  </div>,
+                                  getAppPortalRoot()
                                 )}
                               </div>
                             </div>
@@ -2785,12 +2769,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   </span>
                                   <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'division' ? 'up' : 'down'}`} />
                                 </button>
-                                {resolverProvLocationDropdownField === 'division' && (
+                                {resolverProvLocationDropdownField === 'division' && createPortal(
                                   <div
-                                    className={`create-user__dropdown-panel ${
-                                      resolverProvLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                                    }`}
-                                    style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${resolverProvLocationDropdownMaxHeight}px` } : undefined}
+                                    ref={resolverProvLocationDropdownPanelRef}
+                                    className="create-user__dropdown-panel"
+                                    style={resolverProvLocationDropdownStyle}
                                   >
                                     <div className="create-user__dropdown-search">
                                       <i className="pi pi-search" />
@@ -2825,7 +2808,8 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                         </button>
                                       ))}
                                     </div>
-                                  </div>
+                                  </div>,
+                                  getAppPortalRoot()
                                 )}
                               </div>
                             </div>
@@ -2849,12 +2833,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                   </span>
                                   <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'subdivision' ? 'up' : 'down'}`} />
                                 </button>
-                                {resolverProvLocationDropdownField === 'subdivision' && (
+                                {resolverProvLocationDropdownField === 'subdivision' && createPortal(
                                   <div
-                                    className={`create-user__dropdown-panel ${
-                                      resolverProvLocationDropdownDirection === 'up' ? 'create-salida__product-panel--up' : ''
-                                    }`}
-                                    style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${resolverProvLocationDropdownMaxHeight}px` } : undefined}
+                                    ref={resolverProvLocationDropdownPanelRef}
+                                    className="create-user__dropdown-panel"
+                                    style={resolverProvLocationDropdownStyle}
                                   >
                                     <div className="create-user__dropdown-search">
                                       <i className="pi pi-search" />
@@ -2889,7 +2872,8 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                                         </button>
                                       ))}
                                     </div>
-                                  </div>
+                                  </div>,
+                                  getAppPortalRoot()
                                 )}
                               </div>
                             </div>
