@@ -1,16 +1,20 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import './Sidebar.css'
 import { Settings, PanelLeftClose, Layers, LogOut } from 'lucide-react'
 import { MENU_STRUCTURE, filterMenuByPermissions } from '../menuConfig'
+import { API_URL, authFetch } from '../../../utils/api'
 import kavaDark from '../../../assets/login/kava(dark).png'
 import jpaezDark from '../../../assets/login/jpaez(dark).png'
+
+const INCONVENIENTES_POLL_MS = 30000
 
 function Sidebar({
   activeItem,
   onSelect,
   openTabs = [],
   user,
+  token,
   onLogout,
   brandLogo,
   partnerLogo,
@@ -67,6 +71,45 @@ function Sidebar({
   )
   const openTabSet = useMemo(() => new Set(openTabs), [openTabs])
 
+  const canSeeInconvenientes = useMemo(
+    () => menuItems.some((item) => item.label === 'Inconvenientes'),
+    [menuItems]
+  )
+  const [hasPendingInconvenientes, setHasPendingInconvenientes] = useState(false)
+
+  const checkPendingInconvenientes = useCallback(async () => {
+    if (!token) return
+    try {
+      const [trasladosRes, importacionesRes] = await Promise.all([
+        authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/?estado=pendiente`,
+          {},
+          token
+        ),
+        authFetch(`${API_URL}/importaciones/importaciones/inconvenientes/?estado=pendiente`, {}, token),
+      ])
+      const [traslados, importaciones] = await Promise.all([
+        trasladosRes.ok ? trasladosRes.json().catch(() => []) : [],
+        importacionesRes.ok ? importacionesRes.json().catch(() => []) : [],
+      ])
+      const trasladosCount = Array.isArray(traslados) ? traslados.length : 0
+      const importacionesCount = Array.isArray(importaciones) ? importaciones.length : 0
+      setHasPendingInconvenientes(trasladosCount + importacionesCount > 0)
+    } catch {
+      // Silencioso: si falla la verificación, simplemente no se resalta el ítem.
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (!canSeeInconvenientes || !token) {
+      setHasPendingInconvenientes(false)
+      return undefined
+    }
+    void checkPendingInconvenientes()
+    const intervalId = window.setInterval(checkPendingInconvenientes, INCONVENIENTES_POLL_MS)
+    return () => window.clearInterval(intervalId)
+  }, [canSeeInconvenientes, token, checkPendingInconvenientes])
+
   const toggleGroup = (label) => {
     setOpenGroups((prev) => {
       const shouldOpen = !prev[label]
@@ -115,6 +158,7 @@ function Sidebar({
             const hasOpenTab = openTabSet.has(item.label)
             const hasOpenChild =
               isGroup && item.children?.some((child) => openTabSet.has(child.label))
+            const hasPendingAlert = item.label === 'Inconvenientes' && hasPendingInconvenientes
 
             return (
               <li
@@ -123,7 +167,7 @@ function Sidebar({
               >
                 <button
                   type="button"
-                  className={`sidebar__link ${isActive ? 'active' : ''} ${isOpenGroup ? 'open' : ''}`}
+                  className={`sidebar__link ${isActive ? 'active' : ''} ${isOpenGroup ? 'open' : ''} ${hasPendingAlert ? 'sidebar__link--alert' : ''}`}
                   onClick={() => handlePrimarySelect(item)}
                 >
                   <Icon />

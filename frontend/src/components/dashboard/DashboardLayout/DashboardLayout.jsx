@@ -113,6 +113,7 @@ function DashboardLayout({
         onSelect={handleSelect}
         openTabs={openTabs}
         user={user}
+        token={token}
         onLogout={onLogout}
         brandLogo={brandLogo}
         partnerLogo={partnerLogo}
