@@ -3824,6 +3824,19 @@ function CreateEntrada({
                             </label>
                           )}
                           {isTraslado && (
+                            <label className="create-user__field create-user__field--required">
+                              <span>No. de Factura</span>
+                              <input
+                                name="factura_referencia"
+                                type="text"
+                                value={formData.factura_referencia}
+                                onChange={handleChange}
+                                disabled={loading}
+                                required
+                              />
+                            </label>
+                          )}
+                          {isTraslado && (
                             <label className="create-user__field">
                               <span>Sucursal proveedora</span>
                               <select
@@ -3845,19 +3858,6 @@ function CreateEntrada({
                                   </option>
                                 ))}
                               </select>
-                            </label>
-                          )}
-                          {isTraslado && (
-                            <label className="create-user__field create-user__field--required">
-                              <span>No. de Factura</span>
-                              <input
-                                name="factura_referencia"
-                                type="text"
-                                value={formData.factura_referencia}
-                                onChange={handleChange}
-                                disabled={loading}
-                                required
-                              />
                             </label>
                           )}
                           {isDevolucion && (
@@ -3919,6 +3919,20 @@ function CreateEntrada({
                           )}
 
                           {!isSucursalPrincipalLocked && (
+                            <label className="create-user__field create-user__field--required">
+                              <span>No. de Factura</span>
+                              <input
+                                name="factura_referencia"
+                                type="text"
+                                value={formData.factura_referencia}
+                                onChange={handleChange}
+                                disabled={loading}
+                                required
+                              />
+                            </label>
+                          )}
+
+                          {!isSucursalPrincipalLocked && (
                             <label className="create-user__field create-user__field--full">
                               <span>Sucursal proveedora</span>
                               <select
@@ -3940,20 +3954,6 @@ function CreateEntrada({
                                   </option>
                                 ))}
                               </select>
-                            </label>
-                          )}
-
-                          {!isSucursalPrincipalLocked && (
-                            <label className="create-user__field create-user__field--required">
-                              <span>No. de Factura</span>
-                              <input
-                                name="factura_referencia"
-                                type="text"
-                                value={formData.factura_referencia}
-                                onChange={handleChange}
-                                disabled={loading}
-                                required
-                              />
                             </label>
                           )}
                         </>
