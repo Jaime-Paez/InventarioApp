@@ -1627,7 +1627,7 @@ function CreateSalida({
         next.funcional = true
         changed = true
       }
-      if (!isVenta && !isDevolucion && next.factura_referencia) {
+      if (!isVenta && !isDevolucion && !isTraslado && next.factura_referencia) {
         next.factura_referencia = ''
         changed = true
       }
@@ -3103,7 +3103,7 @@ function CreateSalida({
       return false
     }
 
-    if ((isVenta || isDevolucion) && !String(formData.factura_referencia || '').trim()) {
+    if ((isVenta || isDevolucion || isTraslado) && !String(formData.factura_referencia || '').trim()) {
       notifyError('El No. de Factura es obligatorio.')
       return false
     }
@@ -3246,7 +3246,7 @@ function CreateSalida({
             ].filter((id, index, arr) => arr.indexOf(id) === index)
           : undefined,
         descripcion: buildDescripcion(ventaClienteLabel),
-        factura_referencia: isVenta || isDevolucion ? String(formData.factura_referencia || '').trim() : '',
+        factura_referencia: isVenta || isDevolucion || isTraslado ? String(formData.factura_referencia || '').trim() : '',
         funcional: true,
         sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
         estado_movimiento_id: Number(estadoMovimientoId),
@@ -3548,7 +3548,7 @@ function CreateSalida({
                                 />
                               )}
 
-                              {isDevolucion && (
+                              {(isDevolucion || isTraslado) && (
                                 <label className="create-user__field create-user__field--required">
                                   <span>No. de Factura</span>
                                   <input
