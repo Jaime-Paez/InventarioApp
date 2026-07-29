@@ -71,7 +71,6 @@ const BRANCH_SCOPED_MODULE_KEYS = new Set([
   'productos',
   'sucursales_bodegas',
   'solicitudes',
-  'importaciones',
 ])
 
 const normalizeModuleKey = (value) => String(value || '').trim().toLowerCase()
@@ -166,6 +165,12 @@ export const buildModuleScopeAccessIndex = (moduleScopes, isAdmin = false) => {
 
 const MODULE_ACTION_KEYS = ['puede_crear', 'puede_leer', 'puede_actualizar', 'puede_eliminar']
 
+// Importaciones ya no requiere sucursal para el acceso general al menu (ver
+// BRANCH_SCOPED_MODULE_KEYS), pero sus acciones "en camino"/"marcar llegada"
+// siguen concediendose por sucursal via UsuarioModuloSucursal, asi que se
+// mantiene aqui para que getScopedModuleActions pueda resolverlas.
+const MODULE_KEYS_WITH_BRANCH_SCOPED_ACTIONS = new Set([...BRANCH_SCOPED_MODULE_KEYS, 'importaciones'])
+
 const getScopedModuleActions = (moduleKey, moduleScopes) => {
   const normalizedModuleKey = normalizeModuleKey(moduleKey)
   const initialActions = {
@@ -179,7 +184,7 @@ const getScopedModuleActions = (moduleKey, moduleScopes) => {
 
   if (
     !normalizedModuleKey ||
-    !BRANCH_SCOPED_MODULE_KEYS.has(normalizedModuleKey) ||
+    !MODULE_KEYS_WITH_BRANCH_SCOPED_ACTIONS.has(normalizedModuleKey) ||
     !Array.isArray(moduleScopes)
   ) {
     return initialActions
