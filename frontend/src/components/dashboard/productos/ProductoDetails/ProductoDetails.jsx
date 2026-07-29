@@ -7,6 +7,7 @@ import '../../movimientos/CreateSalida.css'
 import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
+import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import InventarioEditor from '../../inventario/InventarioEditor/InventarioEditor'
 import useModalAnimation from '../../common/useModalAnimation'
 import ProductoRatingTab from '../ProductoRatingTab/ProductoRatingTab'
@@ -1442,7 +1443,7 @@ function ProductoDetails({
             })}
           </div>
         </div>,
-        document.body
+        getAppPortalRoot()
       )
     : null
 

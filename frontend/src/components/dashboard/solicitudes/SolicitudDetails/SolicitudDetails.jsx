@@ -7,6 +7,7 @@ import '../../movimientos/CreateSalida.css'
 import './SolicitudDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { formatDate } from '../../../../utils/dateFormat'
+import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import useModalAnimation from '../../common/useModalAnimation'
 import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
@@ -2240,7 +2241,7 @@ function SolicitudDetails({
         <div key={i} className="create-solicitud-details__oem-hover-row">{item}</div>
       ))}
     </div>,
-    document.body
+    getAppPortalRoot()
   )
 
   return (
@@ -2548,10 +2549,10 @@ function SolicitudDetails({
         />
         </div>
       </div>
-      {productModalOverlay && (canUsePortal ? createPortal(productModalOverlay, document.body) : productModalOverlay)}
-      {catalogProductModal && (canUsePortal ? createPortal(catalogProductModal, document.body) : catalogProductModal)}
-      {createProductModal && (canUsePortal ? createPortal(createProductModal, document.body) : createProductModal)}
-      {revisarModalOverlay && (canUsePortal ? createPortal(revisarModalOverlay, document.body) : revisarModalOverlay)}
+      {productModalOverlay && (canUsePortal ? createPortal(productModalOverlay, getAppPortalRoot()) : productModalOverlay)}
+      {catalogProductModal && (canUsePortal ? createPortal(catalogProductModal, getAppPortalRoot()) : catalogProductModal)}
+      {createProductModal && (canUsePortal ? createPortal(createProductModal, getAppPortalRoot()) : createProductModal)}
+      {revisarModalOverlay && (canUsePortal ? createPortal(revisarModalOverlay, getAppPortalRoot()) : revisarModalOverlay)}
       {oemTableHoverPortal}
     </>
   )

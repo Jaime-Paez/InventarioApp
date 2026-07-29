@@ -4,6 +4,7 @@ import { Eye, Info, Pencil } from 'lucide-react'
 import '../CreateUsuario/CreateUsuario.css'
 import './UsersDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import useModalAnimation from '../../common/useModalAnimation'
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -1711,7 +1712,7 @@ function UsersDetails({
             </div>
           </div>
         </div>,
-        document.querySelector('.dashboard-shell') || document.body
+        getAppPortalRoot()
       )}
 
       {allowDelete && showDeleteDialog && (
@@ -1784,7 +1785,7 @@ function UsersDetails({
         />
       </div>
     </div>,
-    document.querySelector('.dashboard-shell') || document.body
+    getAppPortalRoot()
   )
 }
 

@@ -2125,15 +2125,9 @@ function SalidaDetails({
                         />
                       </span>
                       <span>
-                        <input
-                          name="valor"
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={detailDraft.valor}
-                          readOnly
-                          disabled={editorDisabled || (requiresStockValidation && stockLoading)}
-                        />
+                        <span className="create-salida__table-static-value">
+                          {formatCurrency(detailDraft.valor)}
+                        </span>
                       </span>
                       <span>
                         <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />

@@ -15,6 +15,7 @@ import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import { formatDate } from '../../../utils/dateFormat'
 import { toUpperCode } from '../../../utils/textInput'
+import { getAppPortalRoot } from '../../../utils/portalRoot'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import '../admin/UsersTable/UsersTable.css'
@@ -22,7 +23,7 @@ import '../movimientos/CreateSalida.css'
 import '../QuickActions/QuickActions.css'
 import './ImportacionesTable.css'
 
-const getPortalRoot = () => document.querySelector('.dashboard-shell') || getPortalRoot()
+const getPortalRoot = () => getAppPortalRoot()
 
 const getProductoOem = (producto) =>
   (producto?.oem_productos || []).map((r) => r?.oem?.codigo).filter(Boolean).join(', ')
@@ -3743,7 +3744,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   }
 
   const stepLabel = step === 1 ? 'Descarga la plantilla' : step === 2 ? 'Sube el archivo' : 'Revisa los productos'
-  const portalRoot = document.querySelector('.dashboard-shell') || document.body
+  const portalRoot = getAppPortalRoot()
   // Mientras el usuario no haya redimensionado ni maximizado manualmente,
   // el alto sigue siendo 'auto' (ajustado al contenido) — apenas resize o
   // maximize se disparan, modalSize.height pasa a ser un número concreto y

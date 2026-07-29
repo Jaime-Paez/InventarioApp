@@ -5,13 +5,9 @@ import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { formatDateTime } from '../../../../utils/dateFormat'
+import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import '../CreateUsuario/CreateUsuario.css'
 import './RandomInspectionAdminTable.css'
-
-const getPortalHost = () => {
-  if (typeof document === 'undefined') return null
-  return document.querySelector('.dashboard-shell') || document.body
-}
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeId = (value) => (value == null ? '' : String(value).trim())
@@ -139,7 +135,7 @@ function CascadeDropdown({ placeholder, searchPlaceholder, options, valueId, onS
             ))}
           </div>
         </div>,
-        getPortalHost()
+        getAppPortalRoot()
       )}
     </div>
   )
@@ -1815,7 +1811,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             />
           </div>
         </div>,
-        document.body
+        getAppPortalRoot()
       )}
     </section>
   )

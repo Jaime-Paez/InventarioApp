@@ -4,6 +4,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSolicitud.css'
 import '../../clientes/CreateCliente/CreateCliente.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import useModalAnimation from '../../common/useModalAnimation'
 import {
   createReminderId,
@@ -188,7 +189,7 @@ function InlinePanel({ anchorRef, panelRef, open, className, children }) {
   if (!open) return null
   return createPortal(
     <div className={className} style={style} ref={panelRef}>{children}</div>,
-    document.body
+    getAppPortalRoot()
   )
 }
 

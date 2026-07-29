@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import './CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import useModalAnimation from '../../common/useModalAnimation'
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -1451,7 +1452,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
               </div>
             </div>
           </div>,
-          document.body
+          getAppPortalRoot()
         )}
 
         <button

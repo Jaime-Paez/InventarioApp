@@ -19,10 +19,9 @@ import '../../admin/UsersTable/UsersTable.css'
 import '../../movimientos/TrasladosInconvenientesTable.css'
 import '../../movimientos/CreateSalida.css'
 
-const getPortalRoot = () => document.querySelector('.dashboard-shell') || document.body
-
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { getAppPortalRoot as getPortalRoot } from '../../../../utils/portalRoot'
 import { formatDate } from '../../../../utils/dateFormat'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'

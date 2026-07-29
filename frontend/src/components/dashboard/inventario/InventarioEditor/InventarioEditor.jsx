@@ -6,11 +6,7 @@ import '../InventarioDetails/InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { emitRemindersSync } from '../../common/reminders/remindersStorage'
 import BodegaLocationPreview from './BodegaLocationPreview'
-
-const getPortalHost = () => {
-  if (typeof document === 'undefined') return null
-  return document.querySelector('.dashboard-shell') || document.body
-}
+import { getAppPortalRoot as getPortalHost } from '../../../../utils/portalRoot'
 
 const parseNumber = (value) => {
   const parsed = Number(value)

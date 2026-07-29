@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
 import { isBulkProductPasteText, parseBulkProductPasteText } from '../../../utils/bulkProductPaste'
+import { getAppPortalRoot } from '../../../utils/portalRoot'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
@@ -3237,7 +3238,7 @@ function CreateSalida({
         sucursal_id: Number(formData.sucursalId),
         tipo_movimiento_id: Number(salidaTipoId),
         sub_tipo_movimiento_id: Number(formData.subTipoId),
-        solicitud_traslado_id: (solicitudIdValue && selectedSolicitudTraslado) ? Number(solicitudIdValue) : null,
+        solicitud_traslado_id: solicitudIdValue ? Number(solicitudIdValue) : null,
         recipients_ids: isManualTransferMode
           ? [
               ...adminReminderRecipients.map((r) => normalizeReminderId(r?.id)).filter(Boolean).map(Number).filter(Boolean),
@@ -3660,7 +3661,7 @@ function CreateSalida({
                                           ))}
                                         </div>
                                       </div>,
-                                      document.body
+                                      getAppPortalRoot()
                                     )}
                                   </label>
 
@@ -3876,7 +3877,7 @@ function CreateSalida({
                                 })}
                               </div>
                             </div>,
-                            document.body
+                            getAppPortalRoot()
                           )}
                         </div>
                       </span>
@@ -3912,7 +3913,7 @@ function CreateSalida({
                       <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button
                           type="button"
-                          className="create-user__ghost create-user__ghost--primary"
+                          className="create-user__ghost create-salida__ghost--add"
                           onClick={handleAddDetail}
                           disabled={loading || transferRequiresRequest || (requiresStockValidation && stockLoading)}
                         >
@@ -4142,7 +4143,7 @@ function CreateSalida({
                                   })}
                                 </div>
                               </div>,
-                              document.body
+                              getAppPortalRoot()
                             )}
                           </div>
                         </label>

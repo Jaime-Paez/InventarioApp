@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { getAppPortalRoot } from '../../../utils/portalRoot'
 
 export default function useTableCellHover() {
   const [hover, setHover] = useState(null)
@@ -30,7 +31,7 @@ export default function useTableCellHover() {
         <div key={i} className="table-cell-hover-card__row">{item}</div>
       ))}
     </div>,
-    document.body
+    getAppPortalRoot()
   ) : null
 
   return { showHover, hideHover, portal }

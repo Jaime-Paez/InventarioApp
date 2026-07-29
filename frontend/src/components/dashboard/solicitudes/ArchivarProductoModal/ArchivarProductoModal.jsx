@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
+import { getAppPortalRoot } from '../../../../utils/portalRoot'
+import '../../admin/CreateUsuario/CreateUsuario.css'
 
 const VIEWPORT_PADDING = 12
 
@@ -126,7 +128,7 @@ function ArchivarProductoModal({ open, solicitudId, productoNombre, token, onArc
     </div>
   )
 
-  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal
+  return typeof document !== 'undefined' ? createPortal(modal, getAppPortalRoot()) : modal
 }
 
 export default ArchivarProductoModal

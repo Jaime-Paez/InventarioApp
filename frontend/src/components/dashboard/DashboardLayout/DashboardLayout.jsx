@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PanelLeftOpen } from 'lucide-react'
+import { APP_PORTAL_ROOT_ID } from '../../../utils/portalRoot'
 import kavaDark from '../../../assets/login/kava(dark).png'
 import kavaLight from '../../../assets/login/kava(light).png'
 import jpaezDark from '../../../assets/login/jpaez(dark).png'
@@ -105,6 +106,7 @@ function DashboardLayout({
   }
 
   return (
+    <>
     <div
       className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isSidebarOpen ? '' : 'collapsed'} ${isLeaving ? 'leaving' : hasEntered && !entryAnimationDone ? 'enter' : ''}`}
     >
@@ -158,6 +160,12 @@ function DashboardLayout({
         </button>
       )}
     </div>
+    <div
+      id={APP_PORTAL_ROOT_ID}
+      className={`dashboard-shell ${darkMode ? 'dark' : 'light'}`}
+      style={{ display: 'contents' }}
+    />
+    </>
   )
 }
 

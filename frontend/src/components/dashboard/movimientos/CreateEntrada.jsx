@@ -7,6 +7,7 @@ import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
 import { isBulkProductPasteText, parseBulkProductPasteText } from '../../../utils/bulkProductPaste'
+import { getAppPortalRoot } from '../../../utils/portalRoot'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
@@ -3698,7 +3699,7 @@ function CreateEntrada({
                             ))}
                           </div>
                         </div>,
-                        document.body
+                        getAppPortalRoot()
                       )}
                     </div>
                   </div>
@@ -4062,10 +4063,10 @@ function CreateEntrada({
                           <span>PVP Act.</span>
                         </>
                       )}
-                      <span>{isCompraEntrada ? 'PVP Nue.' : 'Precio'}</span>
+                      <span>{isCompraEntrada ? 'PVP Nue.' : isTraslado ? 'PVP U.' : 'Precio'}</span>
                       {isCompraEntrada && <span>PVP + IVA</span>}
                       <span>Cantidad</span>
-                      <span>{isCompraEntrada ? 'PVP Total' : 'Precio total'}</span>
+                      <span>{isCompraEntrada ? 'PVP Total' : isTraslado ? 'PVP T.' : 'Precio total'}</span>
                       <span className="create-user__locations-cell--action">Acciones</span>
                     </div>
 
@@ -4210,7 +4211,7 @@ function CreateEntrada({
                                 })}
                               </div>
                             </div>,
-                            document.body
+                            getAppPortalRoot()
                           )}
                         </div>
                       </span>
@@ -4291,17 +4292,9 @@ function CreateEntrada({
                             disabled={loading || !selectedDraftProductId}
                           />
                         ) : (
-                          <input
-                            name="valor"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={detailDraft.valor}
-                            onChange={handleDetailChange}
-                            onKeyDown={handleRowArrowKeyDown}
-                            disabled={loading || !selectedDraftProductId}
-                          />
+                          <span className="create-salida__table-static-value">
+                            {formatCurrency(detailDraft.valor)}
+                          </span>
                         )}
                       </span>
                       {isCompraEntrada && (
@@ -4450,19 +4443,9 @@ function CreateEntrada({
                                 disabled={loading}
                               />
                             ) : (
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                placeholder="0.00"
-                                className={detailFieldErrors[detail.uid]?.valor ? 'create-salida__input--error' : ''}
-                                value={detail.valor}
-                                onChange={(event) => handleDetailFieldChange(detail.uid, 'valor', event.target.value)}
-                                onKeyDown={handleRowArrowKeyDown}
-                                onDoubleClick={() => handleResetDetailPrecio(detail.uid)}
-                                title="Doble clic para restaurar el precio guardado en la base de datos"
-                                disabled={loading}
-                              />
+                              <span className="create-salida__table-static-value">
+                                {formatCurrency(detail.valor)}
+                              </span>
                             )}
                           </span>
                           {isCompraEntrada && (
@@ -4637,7 +4620,7 @@ function CreateEntrada({
                                   })}
                                 </div>
                               </div>,
-                              document.body
+                              getAppPortalRoot()
                             )}
                           </div>
                         </label>
@@ -5148,7 +5131,7 @@ function CreateEntrada({
                                       ))}
                                     </div>
                                   </div>,
-                                  document.body
+                                  getAppPortalRoot()
                                 )}
                               </div>
                             </div>
@@ -5225,7 +5208,7 @@ function CreateEntrada({
                                       ))}
                                     </div>
                                   </div>,
-                                  document.body
+                                  getAppPortalRoot()
                                 )}
                               </div>
                             </div>
@@ -5306,7 +5289,7 @@ function CreateEntrada({
                                       ))}
                                     </div>
                                   </div>,
-                                  document.body
+                                  getAppPortalRoot()
                                 )}
                               </div>
                             </div>

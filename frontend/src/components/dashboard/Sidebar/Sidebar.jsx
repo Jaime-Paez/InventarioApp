@@ -4,6 +4,7 @@ import './Sidebar.css'
 import { Settings, PanelLeftClose, Layers, LogOut } from 'lucide-react'
 import { MENU_STRUCTURE, filterMenuByPermissions } from '../menuConfig'
 import { API_URL, authFetch } from '../../../utils/api'
+import { getAppPortalRoot } from '../../../utils/portalRoot'
 import kavaDark from '../../../assets/login/kava(dark).png'
 import jpaezDark from '../../../assets/login/jpaez(dark).png'
 
@@ -249,7 +250,7 @@ function Sidebar({
               <span>Cerrar sesión</span>
             </button>
           </div>,
-          document.body
+          getAppPortalRoot()
         )}
       </footer>
     </aside>

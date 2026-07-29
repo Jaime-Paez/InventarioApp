@@ -2871,15 +2871,9 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                           </>
                         )}
                         <span>
-                          <input
-                            name="valor"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={detailDraft.valor}
-                            readOnly
-                            disabled={editorDisabled}
-                          />
+                          <span className="create-salida__table-static-value">
+                            {formatCurrency(detailDraft.valor)}
+                          </span>
                         </span>
                         {isCompraEntrada && (
                           <span className="create-salida__numeric">
