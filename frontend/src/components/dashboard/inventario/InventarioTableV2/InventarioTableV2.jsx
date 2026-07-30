@@ -171,7 +171,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const [products, setProducts] = useState([])
   const [totalRecords, setTotalRecords] = useState(0)
   const [pageFirst, setPageFirst] = useState(0)
-  const [pageSize, setPageSize] = useState(25)
+  const [pageSize, setPageSize] = useState(20)
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [error, setError] = useState(null)
@@ -243,7 +243,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const buildInventarioListUrl = useCallback((criteria, options = {}) => {
     const params = new URLSearchParams()
     const page = Number(options?.page) || 1
-    const rows = Number(options?.rows) || 25
+    const rows = Number(options?.rows) || 20
     const tableFilters = options?.tableFilters
     const tableSortField = options?.tableSortField
     const tableSortOrder = options?.tableSortOrder
@@ -2071,7 +2071,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           first={pageFirst}
           rows={pageSize}
           totalRecords={totalRecords}
-          rowsPerPageOptions={[5, 10, 25, 50]}
+          rowsPerPageOptions={[5, 10, 20, 25, 50]}
           onPage={handlePageChange}
           removableSort
           sortField={sortField || undefined}

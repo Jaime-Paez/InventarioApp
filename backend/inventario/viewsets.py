@@ -968,11 +968,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
         )
 
         product_ids = product_queryset.values("id").distinct()
-        first_oem_codigo_subquery = (
-            OEMProducto.objects.filter(producto_id=OuterRef("id"))
-            .order_by("id")
-            .values("oem__codigo")[:1]
-        )
         aggregated_queryset = (
             Producto.objects.filter(id__in=product_ids)
             .values("id")
@@ -985,7 +980,6 @@ class InventarioViewSet(viewsets.ModelViewSet):
             costo_minimo=Max("costo_minimo"),
             precio=Max("precio"),
             creado_en=Max("creado_en"),
-            oem_codes_sort=Subquery(first_oem_codigo_subquery, output_field=CharField()),
             total_general=Coalesce(
                 Sum(
                     "inventarios__cantidad",
@@ -1016,6 +1010,15 @@ class InventarioViewSet(viewsets.ModelViewSet):
             )
 
         ordering_param = (request.query_params.get("ordering") or "").strip()
+        if "oem_codes" in ordering_param:
+            first_oem_codigo_subquery = (
+                OEMProducto.objects.filter(producto_id=OuterRef("id"))
+                .order_by("id")
+                .values("oem__codigo")[:1]
+            )
+            aggregated_queryset = aggregated_queryset.annotate(
+                oem_codes_sort=Subquery(first_oem_codigo_subquery, output_field=CharField())
+            )
         for branch in all_branches:
             ub_field = f"ubicacion_sucursal_{branch.id}"
             sort_field = f"ubicacion_sort_{branch.id}"

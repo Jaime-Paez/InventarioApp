@@ -107,6 +107,9 @@ class Inventario(models.Model):
         verbose_name = "Inventario"
         verbose_name_plural = "Inventarios"
         unique_together = ("subdivision", "producto", "referencia")
+        indexes = [
+            models.Index(fields=["cantidad"], name="inventario_cantidad_idx"),
+        ]
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
         return f"{self.producto.codigo} - {self.subdivision.nombre} ({self.cantidad} uds)"

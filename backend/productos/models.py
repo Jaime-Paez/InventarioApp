@@ -1,6 +1,8 @@
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models.functions import Upper
 
 from casa_comercial.models import CasaComercial
 
@@ -47,6 +49,13 @@ class Producto(models.Model):
         ordering = ["nombre"]
         verbose_name = "Producto"
         verbose_name_plural = "Productos"
+        indexes = [
+            models.Index(fields=["nombre"], name="productos_nombre_idx"),
+            GinIndex(OpClass(Upper("codigo"), name="gin_trgm_ops"), name="productos_codigo_trgm"),
+            GinIndex(OpClass(Upper("nombre"), name="gin_trgm_ops"), name="productos_nombre_trgm"),
+            GinIndex(OpClass(Upper("descripcion"), name="gin_trgm_ops"), name="productos_descripcion_trgm"),
+            GinIndex(OpClass(Upper("referencia"), name="gin_trgm_ops"), name="productos_referencia_trgm"),
+        ]
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
         return f"{self.nombre} ({self.codigo})"
@@ -61,6 +70,9 @@ class OEM(models.Model):
         ordering = ["codigo"]
         verbose_name = "OEM"
         verbose_name_plural = "OEM"
+        indexes = [
+            GinIndex(OpClass(Upper("codigo"), name="gin_trgm_ops"), name="productos_oem_codigo_trgm"),
+        ]
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
         return self.codigo
