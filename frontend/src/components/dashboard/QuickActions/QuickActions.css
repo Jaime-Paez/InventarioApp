@@ -730,9 +730,23 @@
   color: var(--color-text-secondary);
 }
 
-.quick-actions__receive-head-factura {
-  font-size: 0.85rem !important;
-  color: var(--color-text-tertiary, var(--color-text-secondary));
+.quick-actions__receive-head-columns {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-actions__receive-head-col {
+  min-width: 0;
+}
+
+.quick-actions__receive-head-col h4 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-actions__receive-close {

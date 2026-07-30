@@ -2191,11 +2191,6 @@ function QuickActions({
     return filtered
   }, [receiveShipmentRows, receiveShipmentFilter, receiveShipmentSort])
 
-  const receiveShipmentSourceBranchName = useMemo(
-    () => String(activeInTransitShipment?.sucursal_proveedora || 'Sucursal proveedora').trim(),
-    [activeInTransitShipment]
-  )
-
   const receiveShipmentTransferCode = useMemo(
     () => String(activeInTransitShipment?.no_documento || activeInTransitShipment?.id || '').trim(),
     [activeInTransitShipment]
@@ -5041,14 +5036,18 @@ function QuickActions({
             aria-label="Registrar recepcion de envio"
           >
             <header className="quick-actions__receive-head">
-              <div>
-                <h4>
-                  {`Traslado desde ${receiveShipmentSourceBranchName || 'Sucursal proveedora'}: ${
-                    receiveShipmentTransferCode ? `#${receiveShipmentTransferCode.replace(/^#/, '')}` : 'sin codigo'
-                  }`}
-                </h4>
+              <div className="quick-actions__receive-head-columns">
+                <div className="quick-actions__receive-head-col">
+                  <h4>
+                    {`Traslado: ${
+                      receiveShipmentTransferCode ? `#${receiveShipmentTransferCode.replace(/^#/, '')}` : 'sin codigo'
+                    }`}
+                  </h4>
+                </div>
                 {!!receiveShipmentFacturaReferencia && (
-                  <p className="quick-actions__receive-head-factura">No. Factura: {receiveShipmentFacturaReferencia}</p>
+                  <div className="quick-actions__receive-head-col">
+                    <h4>{receiveShipmentFacturaReferencia}</h4>
+                  </div>
                 )}
               </div>
               <button
