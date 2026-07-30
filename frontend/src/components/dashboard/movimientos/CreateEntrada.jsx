@@ -4465,14 +4465,12 @@ function CreateEntrada({
                     <div className="create-user__locations-row create-salida__totals-row">
                       <span className="create-salida__totals-label">Subtotal</span>
                       <span className="create-salida__totals-value">{formatCurrency(subtotalConBorrador)}</span>
-                      <span className="create-salida__totals-spacer" />
                     </div>
 
                     {isVenta && (
                       <div className="create-user__locations-row create-salida__totals-row">
                         <span className="create-salida__totals-label">Descuento ({descuentoPercentLabel}%)</span>
                         <span className="create-salida__totals-value">-{formatCurrency(descuentoAplicado)}</span>
-                        <span className="create-salida__totals-spacer" />
                       </div>
                     )}
 
@@ -4481,7 +4479,6 @@ function CreateEntrada({
                       <span className="create-salida__totals-value">
                         <strong>{formatCurrency(totalConIva)}</strong>
                       </span>
-                      <span className="create-salida__totals-spacer" />
                     </div>
                   </div>
 

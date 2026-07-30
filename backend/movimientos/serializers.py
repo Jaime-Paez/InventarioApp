@@ -1139,7 +1139,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             iva_rate=salida.iva_rate,
             fecha=salida.fecha,
             no_documento=document_number,
-            factura_referencia="",
+            factura_referencia=str(salida.factura_referencia or "").strip(),
         )
 
         normalized_details = []

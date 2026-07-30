@@ -3012,7 +3012,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
 
                   <div className="create-salida__field-groups">
                     <div className="create-salida__field-group create-salida__field-group--defined">
-                      <div className="create-user__grid create-user__grid--three">
+                      <div className={`create-user__grid create-user__grid--${isTraslado ? 'four' : 'three'}`}>
                         <StaticFieldDisplay label="Sucursal" value={selectedBranchName} />
                         {requiresSucursalObjetivo && (
                           <StaticFieldDisplay
@@ -3023,7 +3023,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                         {isDevolucion && (
                           <StaticFieldDisplay label="No. factura venta origen" value={formData.factura_referencia} />
                         )}
-                        {isCompraEntrada && (
+                        {(isCompraEntrada || isTraslado) && (
                           <StaticFieldDisplay label="No. de Factura" value={formData.factura_referencia} />
                         )}
                         {isTraslado && (

@@ -5042,10 +5042,13 @@ function QuickActions({
           >
             <header className="quick-actions__receive-head">
               <div>
-                <h4>{receiveShipmentSourceBranchName || 'Sucursal proveedora'}</h4>
-                <p>{receiveShipmentTransferCode ? `#${receiveShipmentTransferCode.replace(/^#/, '')}` : 'Traslado sin codigo'}</p>
+                <h4>
+                  {`Traslado desde ${receiveShipmentSourceBranchName || 'Sucursal proveedora'}: ${
+                    receiveShipmentTransferCode ? `#${receiveShipmentTransferCode.replace(/^#/, '')}` : 'sin codigo'
+                  }`}
+                </h4>
                 {!!receiveShipmentFacturaReferencia && (
-                  <p className="quick-actions__receive-head-factura">Factura: {receiveShipmentFacturaReferencia}</p>
+                  <p className="quick-actions__receive-head-factura">No. Factura: {receiveShipmentFacturaReferencia}</p>
                 )}
               </div>
               <button
