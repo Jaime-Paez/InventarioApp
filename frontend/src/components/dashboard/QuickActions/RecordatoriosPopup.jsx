@@ -3402,9 +3402,9 @@ function RecordatoriosPopup({
                             <th className="recordatorios-popup__decision-cell--center">Cantidad</th>
                             {!activeDecisionIsGarantia && (
                               <>
-                                <th>Bodega</th>
-                                <th>División</th>
-                                <th>Subdivisión</th>
+                                <th className="recordatorios-popup__decision-cell--center">Bodega</th>
+                                <th className="recordatorios-popup__decision-cell--center">División</th>
+                                <th className="recordatorios-popup__decision-cell--center">Subdivisión</th>
                                 <th className="recordatorios-popup__decision-cell--center">Mapa</th>
                                 <th className="recordatorios-popup__decision-cell--center">Separado</th>
                               </>
@@ -3426,9 +3426,9 @@ function RecordatoriosPopup({
                               </td>
                               {!activeDecisionIsGarantia && (
                                 <>
-                                  <td>{detalle?.ubicacion_bodega || '-'}</td>
-                                  <td>{detalle?.ubicacion_division || '-'}</td>
-                                  <td>{detalle?.ubicacion_subdivision || '-'}</td>
+                                  <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_bodega || '-'}</td>
+                                  <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_division || '-'}</td>
+                                  <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_subdivision || '-'}</td>
                                   <td className="recordatorios-popup__decision-cell--center">
                                     {detalle?.ubicacion_bodega_layout ? (
                                       <BodegaLocationPreview

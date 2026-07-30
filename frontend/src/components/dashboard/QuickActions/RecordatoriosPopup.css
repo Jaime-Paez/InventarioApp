@@ -1981,14 +1981,21 @@
 .recordatorios-popup__decision-table td {
   padding: 8px 10px;
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
   text-align: left;
+}
+
+.recordatorios-popup__decision-table th:last-child,
+.recordatorios-popup__decision-table td:last-child {
+  border-right: none;
 }
 
 .recordatorios-popup__decision-table tbody tr:last-child td {
   border-bottom: none;
 }
 
-.recordatorios-popup__decision-cell--center {
+.recordatorios-popup__decision-table th.recordatorios-popup__decision-cell--center,
+.recordatorios-popup__decision-table td.recordatorios-popup__decision-cell--center {
   text-align: center;
 }
 
@@ -2012,6 +2019,7 @@
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table th,
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table td {
   color: rgba(255, 255, 255, 0.92);
+  border-right-color: #2f353d;
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table th {
