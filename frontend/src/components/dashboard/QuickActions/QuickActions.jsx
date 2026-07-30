@@ -2201,6 +2201,11 @@ function QuickActions({
     [activeInTransitShipment]
   )
 
+  const receiveShipmentFacturaReferencia = useMemo(
+    () => String(activeInTransitShipment?.factura_referencia || '').trim(),
+    [activeInTransitShipment]
+  )
+
   const receiveShipmentDestinationBranchName = useMemo(
     () => String(activeInTransitShipment?.sucursal_solicitante || 'Sucursal destino').trim(),
     [activeInTransitShipment]
@@ -3571,6 +3576,7 @@ function QuickActions({
             sucursal_proveedora: String(detail?.sucursal_proveedora_nombre || '').trim(),
             movimiento_salida_id: toPositiveInt(detail?.movimiento_salida_id, 0),
             movimiento_entrada_id: toPositiveInt(detail?.movimiento_entrada_id, 0),
+            factura_referencia: String(detail?.factura_referencia || '').trim(),
             descripcion: String(detail?.descripcion || '').trim(),
             borrador_recepcion: detail?.borrador_recepcion || {},
             detalles: detail.detalles.map((row) => ({
@@ -5038,6 +5044,9 @@ function QuickActions({
               <div>
                 <h4>{receiveShipmentSourceBranchName || 'Sucursal proveedora'}</h4>
                 <p>{receiveShipmentTransferCode ? `#${receiveShipmentTransferCode.replace(/^#/, '')}` : 'Traslado sin codigo'}</p>
+                {!!receiveShipmentFacturaReferencia && (
+                  <p className="quick-actions__receive-head-factura">Factura: {receiveShipmentFacturaReferencia}</p>
+                )}
               </div>
               <button
                 type="button"

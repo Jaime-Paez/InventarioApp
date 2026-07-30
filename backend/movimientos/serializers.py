@@ -358,6 +358,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
     movimiento_entrada_id = serializers.IntegerField(source="movimiento_entrada.id", read_only=True)
     estado_label = serializers.SerializerMethodField(read_only=True)
     rechazada_por_nombre = serializers.SerializerMethodField(read_only=True)
+    factura_referencia = serializers.SerializerMethodField(read_only=True)
     recordatorio_destinatario_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         write_only=True,
@@ -381,6 +382,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "sucursal_proveedora_id",
             "movimiento_salida_id",
             "movimiento_entrada_id",
+            "factura_referencia",
             "historial_transfer",
             "borrador_recepcion",
             "motivo_rechazo",
@@ -403,10 +405,15 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "rechazada_en",
             "movimiento_salida_id",
             "movimiento_entrada_id",
+            "factura_referencia",
             "historial_transfer",
             "created_at",
             "updated_at",
         ]
+
+    def get_factura_referencia(self, obj):
+        movimiento_salida = getattr(obj, "movimiento_salida", None)
+        return str(getattr(movimiento_salida, "factura_referencia", "") or "").strip()
 
     def get_rechazada_por_nombre(self, obj):
         user = getattr(obj, "rechazada_por", None)

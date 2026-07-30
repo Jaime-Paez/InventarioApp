@@ -2088,6 +2088,22 @@
   background: #b91c1c;
 }
 
+.recordatorios-popup__decision-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
+
+.recordatorios-popup__decision-button--accept:disabled,
+.recordatorios-popup__decision-button--accept:disabled:hover {
+  background: #22c55e;
+}
+
+.recordatorios-popup__decision-button--reject:disabled,
+.recordatorios-popup__decision-button--reject:disabled:hover {
+  background: #ef4444;
+}
+
 .recordatorios-popup__decision-close-link {
   border: none;
   background: transparent;

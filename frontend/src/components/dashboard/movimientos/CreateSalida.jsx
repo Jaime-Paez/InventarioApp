@@ -3537,7 +3537,7 @@ function CreateSalida({
                       <div className="create-salida__field-groups">
                           <div className="create-salida__field-group create-salida__field-group--defined create-salida__field-group--paired">
                             <div
-                              className={`create-user__grid create-user__grid--${isVenta ? 'three' : 'two'}${
+                              className={`create-user__grid create-user__grid--${isVenta || isTraslado ? 'three' : 'two'}${
                                 isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
                               }`}
                             >
@@ -3567,7 +3567,6 @@ function CreateSalida({
                                   <StaticFieldDisplay
                                     label="Sucursal destino"
                                     value={selectedObjetivoBranchName}
-                                    fullWidth
                                   />
                                 )}
 

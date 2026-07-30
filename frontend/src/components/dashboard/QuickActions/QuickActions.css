@@ -730,6 +730,11 @@
   color: var(--color-text-secondary);
 }
 
+.quick-actions__receive-head-factura {
+  font-size: 0.85rem !important;
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+}
+
 .quick-actions__receive-close {
   width: 30px;
   height: 30px;

@@ -803,6 +803,7 @@ function RecordatoriosPopup({
   const [decisionDetail, setDecisionDetail] = useState(null)
   const [decisionLoading, setDecisionLoading] = useState(false)
   const [decisionSubmitting, setDecisionSubmitting] = useState(false)
+  const [decisionSubmittingAction, setDecisionSubmittingAction] = useState('')
   const [decisionError, setDecisionError] = useState('')
   const [verificandoDetalleId, setVerificandoDetalleId] = useState('')
   const [rejectionReason, setRejectionReason] = useState('')
@@ -1674,6 +1675,7 @@ function RecordatoriosPopup({
     }
 
     setDecisionSubmitting(true)
+    setDecisionSubmittingAction(decision)
     setDecisionError('')
     setRejectReasonError('')
 
@@ -1789,6 +1791,7 @@ function RecordatoriosPopup({
       return false
     } finally {
       setDecisionSubmitting(false)
+      setDecisionSubmittingAction('')
     }
   }
 
@@ -1807,6 +1810,7 @@ function RecordatoriosPopup({
     }
 
     setDecisionSubmitting(true)
+    setDecisionSubmittingAction(decision)
     setDecisionError('')
     setRejectReasonError('')
 
@@ -1838,6 +1842,7 @@ function RecordatoriosPopup({
       return false
     } finally {
       setDecisionSubmitting(false)
+      setDecisionSubmittingAction('')
     }
   }
 
@@ -3401,7 +3406,7 @@ function RecordatoriosPopup({
                                 <th>División</th>
                                 <th>Subdivisión</th>
                                 <th className="recordatorios-popup__decision-cell--center">Mapa</th>
-                                <th className="recordatorios-popup__decision-cell--center">Ubicado</th>
+                                <th className="recordatorios-popup__decision-cell--center">Separado</th>
                               </>
                             )}
                           </tr>
@@ -3440,7 +3445,7 @@ function RecordatoriosPopup({
                                       checked={Boolean(detalle?.verificado)}
                                       disabled={!canSubmitDecision || decisionSubmitting || verificandoDetalleId === normalizeId(detalle?.id)}
                                       onChange={() => handleToggleDetalleVerificado(detalle)}
-                                      aria-label={`Marcar ${detalle?.producto_codigo || 'producto'} como ubicado`}
+                                      aria-label={`Marcar ${detalle?.producto_codigo || 'producto'} como separado`}
                                     />
                                   </td>
                                 </>
@@ -3462,6 +3467,11 @@ function RecordatoriosPopup({
               </div>
 
               <div className="recordatorios-popup__decision-actions">
+                {canSubmitDecision && !activeDecisionIsGarantia && !allDetallesVerificados && (
+                  <p className="recordatorios-popup__decision-hint">
+                    *Marca todos los productos como separados para poder aceptar la solicitud.
+                  </p>
+                )}
                 {canSubmitDecision && (
                   <div className="recordatorios-popup__decision-actions-row">
                     <button
@@ -3470,23 +3480,18 @@ function RecordatoriosPopup({
                       onClick={handleRejectButtonClick}
                       disabled={decisionSubmitting || decisionLoading}
                     >
-                      {decisionSubmitting ? 'Guardando...' : 'Rechazar'}
+                      {decisionSubmittingAction === 'rechazar' ? 'Rechazando...' : 'Rechazar'}
                     </button>
                     <button
                       type="button"
                       className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--accept"
                       onClick={() => activeDecisionIsGarantia ? handleGarantiaDecision('aceptar') : handleTransferDecision('aceptar')}
                       disabled={decisionSubmitting || decisionLoading || !allDetallesVerificados}
-                      title={allDetallesVerificados ? undefined : 'Marca todos los productos como ubicados antes de aceptar.'}
+                      title={allDetallesVerificados ? undefined : 'Marca todos los productos como separados antes de aceptar.'}
                     >
-                      {decisionSubmitting ? 'Guardando...' : 'Aceptar'}
+                      {decisionSubmittingAction === 'aceptar' ? 'Aceptando...' : 'Aceptar'}
                     </button>
                   </div>
-                )}
-                {canSubmitDecision && !activeDecisionIsGarantia && !allDetallesVerificados && (
-                  <p className="recordatorios-popup__decision-hint">
-                    Marca todos los productos como ubicados para poder aceptar la solicitud.
-                  </p>
                 )}
               </div>
 
@@ -3535,7 +3540,7 @@ function RecordatoriosPopup({
                         onClick={handleConfirmRejectDecision}
                         disabled={decisionSubmitting || decisionLoading}
                       >
-                        {decisionSubmitting ? 'Guardando...' : 'Confirmar rechazo'}
+                        {decisionSubmittingAction === 'rechazar' ? 'Rechazando...' : 'Confirmar rechazo'}
                       </button>
                     </div>
                   </div>

@@ -3677,6 +3677,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "sucursal_proveedora": str(getattr(solicitud.sucursal_proveedora, "nombre", "") or "").strip(),
                     "movimiento_salida_id": int(solicitud.movimiento_salida_id or 0),
                     "movimiento_entrada_id": int(solicitud.movimiento_entrada_id or 0),
+                    "factura_referencia": str(
+                        getattr(solicitud.movimiento_salida, "factura_referencia", "") or ""
+                    ).strip(),
                     "estado_entrada": str(getattr(movimiento_entrada.estado_movimiento, "nombre", "") or "").strip(),
                     "descripcion": str(solicitud.descripcion or "").strip(),
                     "detalles": detalles_payload,
