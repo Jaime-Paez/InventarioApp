@@ -136,7 +136,10 @@ const mergeTransferHistoryForContext = (reminders, contextId) => {
         String(entry?.description || '').trim(),
       ].join('|')
       if (!signature.replace(/\|/g, '')) return
-      bySignature.set(signature, entry)
+      bySignature.set(signature, {
+        ...entry,
+        recipients: Array.isArray(reminder?.recipients) ? reminder.recipients : [],
+      })
     })
   })
 
@@ -333,6 +336,7 @@ function EntityRemindersTab({
           description: '',
           at: fallbackCreatedAt,
           actor: fallbackCreator,
+          recipients: Array.isArray(oldestReminder?.recipients) ? oldestReminder.recipients : [],
         },
         ...mergedHistory,
       ].sort((a, b) => String(a?.at || '').localeCompare(String(b?.at || '')))
@@ -359,12 +363,18 @@ function EntityRemindersTab({
       const displayLabel = String(entry?.displayLabel || '').trim() || getTransferHistoryStageLabel(entry?.stage)
       const historyStatus = getTransferHistoryVisualStatus(entry?.stage, displayLabel)
       const rejectionReason = extractTransferHistoryRejectionReason(entry)
+      const recipientNames = (Array.isArray(entry?.recipients) ? entry.recipients : [])
+        .map((recipient) => String(recipient?.name || '').trim())
+        .filter(Boolean)
+        .filter((name, nameIndex, list) => list.indexOf(name) === nameIndex)
+        .join(', ')
 
       return {
         id: `actual-${String(entry?.stage || 'stage').trim()}-${String(entry?.at || index).trim()}`,
         label: historyStatus.label,
         className: historyStatus.className,
         actorName: String(entry?.actor?.name || '').trim(),
+        recipientNames,
         detailText: rejectionReason ? `Motivo: ${rejectionReason}` : '',
         timestamp: String(entry?.at || '').trim(),
         isPlaceholder: false,
@@ -381,6 +391,7 @@ function EntityRemindersTab({
           label: historyStatus.label,
           className: historyStatus.className,
           actorName: '',
+          recipientNames: '',
           timestamp: '',
           isPlaceholder: true,
         }
@@ -579,6 +590,9 @@ function EntityRemindersTab({
                           {!!entry.actorName && (
                             <small>Por {entry.actorName}</small>
                           )}
+                          {!!entry.recipientNames && (
+                            <small>Dirigido a: {entry.recipientNames}</small>
+                          )}
                           {!!entry.detailText && (
                             <p className="recordatorios-popup__detail-history-reason">{entry.detailText}</p>
                           )}
@@ -591,7 +605,7 @@ function EntityRemindersTab({
             </div>
           )}
 
-          {!relatedReminders.length ? (
+          {reminderContext?.type !== 'solicitud_traslado' && (!relatedReminders.length ? (
             <p className="entity-reminders__empty">No hay recordatorios para este registro.</p>
           ) : (
             <table className="entity-reminders__table">
@@ -673,7 +687,7 @@ function EntityRemindersTab({
                 })}
               </tbody>
             </table>
-          )}
+          ))}
         </div>
 
       {activeReminderDetail && activeReminderDetailStatus && (

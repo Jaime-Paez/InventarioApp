@@ -10,6 +10,13 @@ import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import StaticFieldDisplay from './StaticFieldDisplay'
+import {
+  emitRemindersSync,
+  extractUserId,
+  formatCurrentUserName,
+  normalizeId,
+  sanitizeRecipient,
+} from '../common/reminders/remindersStorage'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -54,12 +61,109 @@ const initialDetail = {
 }
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
+
+const parseApiErrorValue = (value) => {
+  if (!value) return ''
+  if (typeof value === 'string') return value.trim()
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const parsed = parseApiErrorValue(entry)
+      if (parsed) return parsed
+    }
+    return ''
+  }
+  if (typeof value === 'object') {
+    for (const entry of Object.values(value)) {
+      const parsed = parseApiErrorValue(entry)
+      if (parsed) return parsed
+    }
+  }
+  return ''
+}
+
+const resolveApiErrorMessage = (payload, fallback) => {
+  const detail = parseApiErrorValue(payload?.detail)
+  if (detail) return detail
+  const fallbackFromBody = parseApiErrorValue(payload)
+  if (fallbackFromBody) return fallbackFromBody
+  return fallback
+}
 const normalizeValue = (value) =>
   String(value ?? '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase()
+
+const normalizeString = (value) => String(value ?? '').trim().toLowerCase()
+const hasUsersModuleAccess = (permissions) =>
+  (Array.isArray(permissions) ? permissions : []).some((permission) => {
+    if (normalizeString(permission?.modulo) !== 'usuarios') return false
+    return Boolean(
+      permission?.puede_crear ||
+        permission?.puede_actualizar ||
+        permission?.puede_eliminar
+    )
+  })
+
+const normalizeModuleScopes = (rawScopes) => {
+  const scopes = {}
+  ;(Array.isArray(rawScopes) ? rawScopes : []).forEach((item) => {
+    const moduleKey = normalizeString(item?.modulo)
+    if (!moduleKey) return
+    const ids = (Array.isArray(item?.sucursales_ids) ? item.sucursales_ids : [])
+      .map((branchId) => normalizeId(branchId))
+      .filter(Boolean)
+    if (!ids.length) return
+    scopes[moduleKey] = ids
+  })
+  return scopes
+}
+
+const normalizeModuleScopeActions = (rawScopes) => {
+  const scopes = {}
+  ;(Array.isArray(rawScopes) ? rawScopes : []).forEach((item) => {
+    const moduleKey = normalizeString(item?.modulo)
+    if (!moduleKey) return
+
+    const branchActions = {}
+    ;(Array.isArray(item?.acciones_por_sucursal) ? item.acciones_por_sucursal : []).forEach((entry) => {
+      const branchId = normalizeId(entry?.sucursal_id)
+      if (!branchId) return
+      branchActions[branchId] = {
+        puede_crear: Boolean(entry?.puede_crear),
+        puede_actualizar: Boolean(entry?.puede_actualizar),
+        puede_crear_compra_local: Boolean(entry?.puede_crear_compra_local),
+        puede_crear_importacion: Boolean(entry?.puede_crear_importacion),
+        puede_crear_traslado: Boolean(entry?.puede_crear_traslado),
+        puede_crear_devolucion: Boolean(entry?.puede_crear_devolucion),
+      }
+    })
+
+    if (Object.keys(branchActions).length) {
+      scopes[moduleKey] = branchActions
+    }
+  })
+  return scopes
+}
+
+const hasModuleBranchAccess = (userItem, moduleKey, branchId) => {
+  const normalizedModule = normalizeString(moduleKey)
+  const normalizedBranchId = normalizeId(branchId)
+  if (!normalizedModule || !normalizedBranchId) return false
+  const ids = userItem?.moduleScopes?.[normalizedModule]
+  return Array.isArray(ids) && ids.includes(normalizedBranchId)
+}
+
+const hasModuleBranchCreateAndUpdateAccess = (userItem, moduleKey, branchId) => {
+  if (!hasModuleBranchAccess(userItem, moduleKey, branchId)) return false
+  const normalizedModule = normalizeString(moduleKey)
+  const normalizedBranchId = normalizeId(branchId)
+  const moduleActions = userItem?.moduleScopeActions?.[normalizedModule]
+  const branchActions = moduleActions?.[normalizedBranchId]
+  if (!branchActions) return false
+  return Boolean(branchActions?.puede_crear && branchActions?.puede_actualizar)
+}
 
 const parseNumber = (value) => {
   const cleaned = String(value ?? '').replace(',', '.').trim()
@@ -345,6 +449,10 @@ function EntradaDetails({
   const [stockByProduct, setStockByProduct] = useState({})
   const [stockLoading, setStockLoading] = useState(false)
   const [transferSolicitudId, setTransferSolicitudId] = useState('')
+  const [reminderUsers, setReminderUsers] = useState([])
+  const [reminderUsersLoading, setReminderUsersLoading] = useState(false)
+  const [reminderUsersError, setReminderUsersError] = useState('')
+  const [selectedReminderUserIds, setSelectedReminderUserIds] = useState([])
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -400,9 +508,9 @@ function EntradaDetails({
   ).trim()
   const hasPreviewData = Boolean(previewData?.es_solicitud_traslado || linkedSolicitudId)
   const normalizedSolicitudStateName = normalizeValue(
-    previewData?.estado_nombre ||
+    formData.estadoNombre ||
+      previewData?.estado_nombre ||
       previewData?.estado ||
-      formData.estadoNombre ||
       ''
   )
   const isPreviewPendingSolicitud = hasPreviewData && normalizedSolicitudStateName.includes('pend')
@@ -450,6 +558,222 @@ function EntradaDetails({
     [branches, formData.sucursalObjetivoId]
   )
   const formattedFecha = useMemo(() => formatDate(formData.fecha), [formData.fecha])
+
+  const currentCreatorId = useMemo(() => normalizeId(extractUserId(currentUser)), [currentUser])
+  const currentCreatorName = useMemo(() => formatCurrentUserName(currentUser), [currentUser])
+  const currentCreatorEmail = String(currentUser?.correo || currentUser?.email || '').trim()
+  const isCurrentUserAdmin = useMemo(
+    () => hasUsersModuleAccess(currentUser?.permisos),
+    [currentUser]
+  )
+
+  const selectedReminderTargetBranchId = String(formData.sucursalObjetivoId || '').trim()
+  const hasSelectedReminderTargetBranch = Boolean(selectedReminderTargetBranchId)
+
+  const reminderBranchUsers = useMemo(() => {
+    if (!isTraslado || !selectedReminderTargetBranchId) return []
+    return reminderUsers.filter((userItem) =>
+      hasModuleBranchCreateAndUpdateAccess(
+        userItem,
+        'movimientos_salidas',
+        selectedReminderTargetBranchId
+      )
+    )
+  }, [isTraslado, reminderUsers, selectedReminderTargetBranchId])
+
+  const adminReminderRecipients = useMemo(() => {
+    if (!isTraslado) return []
+    return reminderUsers
+      .filter((userItem) => userItem.isAdmin)
+      .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
+      .filter(Boolean)
+      .filter(
+        (recipient, index, list) =>
+          list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+      )
+  }, [isTraslado, reminderUsers])
+
+  const adminReminderRecipientIds = useMemo(
+    () => new Set(adminReminderRecipients.map((recipient) => normalizeId(recipient?.id)).filter(Boolean)),
+    [adminReminderRecipients]
+  )
+
+  const reminderUsersById = useMemo(
+    () => new Map(reminderUsers.map((userItem) => [normalizeId(userItem?.id), userItem])),
+    [reminderUsers]
+  )
+
+  const adminReminderRows = useMemo(
+    () =>
+      adminReminderRecipients
+        .map((recipient) => {
+          const recipientId = normalizeId(recipient?.id)
+          if (!recipientId) return null
+          const matchedUser = reminderUsersById.get(recipientId)
+          const fallbackEmail = recipientId === currentCreatorId ? currentCreatorEmail : ''
+          return {
+            id: recipientId,
+            name: String(recipient?.name || 'Administrador').trim() || 'Administrador',
+            email: String(matchedUser?.email || fallbackEmail || '').trim(),
+          }
+        })
+        .filter(Boolean),
+    [adminReminderRecipients, currentCreatorEmail, currentCreatorId, reminderUsersById]
+  )
+
+  const selectableReminderUsers = useMemo(
+    () => reminderBranchUsers.filter((userItem) => !adminReminderRecipientIds.has(normalizeId(userItem.id))),
+    [adminReminderRecipientIds, reminderBranchUsers]
+  )
+
+  const selectedReminderRecipients = useMemo(() => {
+    if (!selectedReminderUserIds.length) return []
+    const usersMap = new Map(reminderBranchUsers.map((userItem) => [normalizeId(userItem.id), userItem]))
+    return selectedReminderUserIds
+      .map((recipientId) => usersMap.get(normalizeId(recipientId)))
+      .filter(Boolean)
+      .map((userItem) => sanitizeRecipient({ id: userItem.id, name: userItem.name }))
+      .filter(Boolean)
+      .filter(
+        (recipient, index, list) =>
+          list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+      )
+  }, [reminderBranchUsers, selectedReminderUserIds])
+
+  const hasAdminReminderRecipients = adminReminderRecipients.length > 0
+  const hasAdditionalReminderRecipients = selectedReminderRecipients.length > 0
+
+  const toggleReminderUser = (userId) => {
+    const normalizedId = normalizeId(userId)
+    if (!normalizedId || adminReminderRecipientIds.has(normalizedId)) return
+
+    setSelectedReminderUserIds((prev) =>
+      prev.includes(normalizedId)
+        ? prev.filter((id) => id !== normalizedId)
+        : [...prev, normalizedId]
+    )
+  }
+
+  const fetchReminderUsers = useCallback(async () => {
+    if (!token) {
+      setReminderUsers([])
+      setReminderUsersLoading(false)
+      setReminderUsersError('')
+      return
+    }
+
+    setReminderUsersLoading(true)
+    setReminderUsersError('')
+
+    const ensureCurrentCreator = (list) => {
+      if (!currentCreatorId) return list
+      if (list.some((userItem) => normalizeId(userItem.id) === currentCreatorId)) return list
+
+      return [
+        {
+          id: currentCreatorId,
+          name: currentCreatorName || 'Usuario',
+          email: currentCreatorEmail,
+          isAdmin: isCurrentUserAdmin,
+          moduleScopes: normalizeModuleScopes(currentUser?.sucursales_por_modulo),
+          moduleScopeActions: normalizeModuleScopeActions(currentUser?.sucursales_por_modulo),
+        },
+        ...list,
+      ]
+    }
+
+    try {
+      const rows = []
+      let url = `${API_URL}/usuarios/listado/destinatarios/?page_size=200`
+
+      while (url) {
+        const response = await authFetch(url, {}, token)
+        if (!response.ok) {
+          throw new Error('No se pudo cargar la lista de usuarios para recordatorios.')
+        }
+
+        const payload = await response.json().catch(() => ({}))
+        if (Array.isArray(payload)) {
+          rows.push(...payload)
+          url = null
+        } else {
+          const pageResults = Array.isArray(payload?.results) ? payload.results : []
+          rows.push(...pageResults)
+          url = payload?.next || null
+        }
+      }
+
+      const seenIds = new Set()
+      const normalizedUsers = []
+      rows.forEach((item) => {
+        const userId = normalizeId(extractUserId(item))
+        if (!userId || seenIds.has(userId)) return
+        seenIds.add(userId)
+
+        normalizedUsers.push({
+          id: userId,
+          name: formatCurrentUserName(item),
+          email: String(item?.correo || item?.email || '').trim(),
+          isAdmin: Boolean(item?.es_administrador),
+          moduleScopes: normalizeModuleScopes(item?.sucursales_por_modulo),
+          moduleScopeActions: normalizeModuleScopeActions(item?.sucursales_por_modulo),
+        })
+      })
+
+      const withCreator = ensureCurrentCreator(normalizedUsers).sort((a, b) =>
+        String(a?.name || '').localeCompare(String(b?.name || ''), 'es', { sensitivity: 'base' })
+      )
+      setReminderUsers(withCreator)
+    } catch (err) {
+      setReminderUsersError(err?.message || 'No se pudieron cargar los usuarios para recordatorios.')
+      setReminderUsers(ensureCurrentCreator([]))
+    } finally {
+      setReminderUsersLoading(false)
+    }
+  }, [
+    currentCreatorEmail,
+    currentCreatorId,
+    currentCreatorName,
+    currentUser,
+    isCurrentUserAdmin,
+    token,
+  ])
+
+  useEffect(() => {
+    if (!open || !isTraslado || !isPreviewGuardadoSolicitud) return
+    fetchReminderUsers()
+  }, [fetchReminderUsers, isPreviewGuardadoSolicitud, isTraslado, open])
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedReminderUserIds([])
+      setReminderUsers([])
+      setReminderUsersError('')
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!reminderUsersError) return
+    notifyError(reminderUsersError)
+  }, [notifyError, reminderUsersError])
+
+  useEffect(() => {
+    if ((!isTraslado || !isPreviewGuardadoSolicitud) && activeTab === 'recordatorio') {
+      setActiveTab('general')
+    }
+    if (isTraslado && isPreviewGuardadoSolicitud && activeTab === 'recordatorios') {
+      setActiveTab('general')
+    }
+  }, [activeTab, isPreviewGuardadoSolicitud, isTraslado])
+
+  useEffect(() => {
+    setSelectedReminderUserIds((prev) => {
+      if (!prev.length) return prev
+      const validIds = new Set(selectableReminderUsers.map((userItem) => normalizeId(userItem.id)).filter(Boolean))
+      const filtered = prev.filter((id) => validIds.has(normalizeId(id)))
+      return filtered.length === prev.length ? prev : filtered
+    })
+  }, [selectableReminderUsers])
 
   const stockBranchId = useMemo(() => {
     if (isTraslado) {
@@ -2039,6 +2363,13 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
           ? Boolean(options.guardarBorrador)
           : isPreviewGuardadoSolicitud
 
+        const isFinalizing = isPreviewGuardadoSolicitud && !guardarBorrador
+        const reminderRecipientIds = isFinalizing
+          ? selectedReminderRecipients
+              .map((recipient) => Number.parseInt(normalizeId(recipient?.id), 10))
+              .filter((recipientId) => Number.isFinite(recipientId) && recipientId > 0)
+          : []
+
         const payload = {
           sucursal_solicitante_id: Number(formData.sucursalId),
           sucursal_proveedora_id: Number(formData.sucursalObjetivoId),
@@ -2047,6 +2378,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
           funcional: Boolean(formData.funcional),
           detalles: detallesPayload,
           guardar_borrador: guardarBorrador,
+          ...(isFinalizing ? { recordatorio_destinatario_ids: reminderRecipientIds } : {}),
         }
 
         const response = await authFetch(
@@ -2059,11 +2391,16 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
         )
         const data = await response.json().catch(() => ({}))
         if (!response.ok) {
-          const detail = data?.detail || 'No se pudo actualizar la solicitud de traslado.'
-          throw new Error(detail)
+          throw new Error(resolveApiErrorMessage(data, 'No se pudo actualizar la solicitud de traslado.'))
         }
 
-        const updatedForm = { ...formData, cliente: ventaClienteLabel }
+        const updatedForm = {
+          ...formData,
+          cliente: ventaClienteLabel,
+          ...(isFinalizing
+            ? { estadoNombre: String(data?.estado_label || data?.estado || 'Pendiente').trim() }
+            : {}),
+        }
         setFormData(updatedForm)
         const nextOriginal = {
           form: { ...updatedForm },
@@ -2078,6 +2415,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
         setDetailDraft(initialDetail)
         setDetailError('')
         setIsEditing(false)
+        if (isFinalizing) emitRemindersSync()
         onUpdated?.(data)
         return true
       } catch (err) {
@@ -2095,6 +2433,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       isPreviewGuardadoSolicitud,
       notifyError,
       onUpdated,
+      selectedReminderRecipients,
       token,
       transferSolicitudId,
     ]
@@ -2130,14 +2469,35 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       return
     }
 
+    if (reminderUsersLoading) {
+      setActiveTab('recordatorio')
+      notifyError('Espera a que se carguen los usuarios para recordatorios.')
+      return
+    }
+
+    if (!hasAdminReminderRecipients) {
+      setActiveTab('recordatorio')
+      notifyError('No se pudo resolver un administrador para el recordatorio obligatorio.')
+      return
+    }
+
+    if (!hasAdditionalReminderRecipients) {
+      setActiveTab('recordatorio')
+      notifyError('Debes seleccionar al menos un usuario adicional para el recordatorio.')
+      return
+    }
+
     await handleUpdatePendingSolicitud('', { guardarBorrador: false })
   }, [
     details,
     formData.sucursalId,
     formData.sucursalObjetivoId,
     handleUpdatePendingSolicitud,
+    hasAdditionalReminderRecipients,
+    hasAdminReminderRecipients,
     isPreviewGuardadoSolicitud,
     notifyError,
+    reminderUsersLoading,
     saving,
     transferSolicitudId,
   ])
@@ -2305,8 +2665,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || 'No se pudo actualizar la entrada.'
-        throw new Error(detail)
+        throw new Error(resolveApiErrorMessage(data, 'No se pudo actualizar la entrada.'))
       }
 
       const updatedForm = { ...formData, cliente: ventaClienteLabel }
@@ -2378,8 +2737,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
 
       if (!response.ok && response.status !== 204) {
         const data = await response.json().catch(() => ({}))
-        const detail = data?.detail || 'No se pudo eliminar la entrada.'
-        throw new Error(detail)
+        throw new Error(resolveApiErrorMessage(data, 'No se pudo eliminar la entrada.'))
       }
 
       setShowDeleteConfirm(false)
@@ -2614,13 +2972,24 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                 Datos del cliente
               </button>
             )}
-            <button
-              type="button"
-              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('recordatorios')}
-            >
-              Recordatorios
-            </button>
+            {isTraslado && isPreviewGuardadoSolicitud && effectiveAllowEdit && (
+              <button
+                type="button"
+                className={`create-user__tab ${activeTab === 'recordatorio' ? 'create-user__tab--active' : ''}`}
+                onClick={() => setActiveTab('recordatorio')}
+              >
+                Recordatorio
+              </button>
+            )}
+            {!(isTraslado && isPreviewGuardadoSolicitud) && (
+              <button
+                type="button"
+                className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
+                onClick={() => setActiveTab('recordatorios')}
+              >
+                Recordatorios
+              </button>
+            )}
           </div>
           {isRejectedSolicitudRibbon && activeTab === 'general' && (
             <div className="entrada-details__rejection-reason" role="note" aria-live="polite">
@@ -2918,6 +3287,9 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                         const stockLabel = showProveedorStockInfo
                           ? Math.max(0, Math.trunc(allowance))
                           : null
+                        const insufficientStock = Boolean(
+                          showProveedorStockInfo && !stockLoading && currentQty > remaining
+                        )
 
                         const descuentoValor = isCompraEntrada
                           ? calculateDescuentoValor(detail.costo, detail.descuentoPorcentaje)
@@ -2980,9 +3352,16 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                                   onChange={(event) => handleUpdateDetailQuantity(detail.uid, event.target.value)}
                                   disabled={editorDisabled}
                                   max={remaining || undefined}
+                                  className={insufficientStock ? 'create-salida__input--error' : undefined}
+                                  title={insufficientStock ? `Disponible: ${remaining}` : undefined}
                                 />
                             ) : (
-                              detail.cantidad
+                              <span
+                                className={insufficientStock ? 'create-salida__cantidad--insufficient' : undefined}
+                                title={insufficientStock ? `Disponible: ${remaining}` : undefined}
+                              >
+                                {detail.cantidad}
+                              </span>
                             )}
                           </span>
                           <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
@@ -3173,6 +3552,129 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                     {selectedCliente?.id && (
                       <small className="muted">Cliente existente detectado. Se usara el registro actual al guardar.</small>
                     )}
+                  </section>
+                )}
+
+                {isTraslado && isPreviewGuardadoSolicitud && effectiveAllowEdit && activeTab === 'recordatorio' && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header">
+                      <div>
+                        <p className="create-user__eyebrow">Recordatorio</p>
+                        <h4>Usuarios a quienes recordar</h4>
+                      </div>
+                    </div>
+
+                    <p className="create-salida__reminder-helper">
+                      Al enviar la solicitud se genera automáticamente un recordatorio para administradores y usuarios seleccionados.
+                    </p>
+                    <div className="create-salida__reminder-rule" role="note">
+                      Solo se listan usuarios con permisos de <strong>crear y editar</strong> en{' '}
+                      <strong>Movimientos - Salidas</strong> de la <strong>sucursal proveedora</strong>.
+                    </div>
+
+                    {!hasSelectedReminderTargetBranch && (
+                      <small className="muted">No se pudo resolver la sucursal proveedora para cargar usuarios.</small>
+                    )}
+
+                    <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdminReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
+                      <div className="create-salida__reminder-head">
+                        <h5>Administradores incluidos</h5>
+                        <span className="create-salida__reminder-count">{adminReminderRows.length}</span>
+                      </div>
+                      {reminderUsersLoading ? (
+                        <p className="muted">Cargando administradores...</p>
+                      ) : (
+                        <div className="create-salida__reminder-table-wrap">
+                          <div className="permissions-matrix__table create-salida__reminder-table" role="grid">
+                            <div className="permissions-matrix__row permissions-matrix__row--head">
+                              <div className="permissions-matrix__cell permissions-matrix__cell--label">Usuario</div>
+                              <div className="permissions-matrix__cell permissions-matrix__cell--label">Correo</div>
+                              <div className="permissions-matrix__cell permissions-matrix__cell--action">Estado</div>
+                            </div>
+
+                            {adminReminderRows.map((recipient) => (
+                              <div key={`entrada-details-admin-recipient-${recipient.id}`} className="permissions-matrix__row">
+                                <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                                  {recipient.name}
+                                </div>
+                                <div className="permissions-matrix__cell create-salida__reminder-email">
+                                  {recipient.email || '-'}
+                                </div>
+                                <div className="permissions-matrix__cell permissions-matrix__cell--action">
+                                  <span className="create-salida__reminder-badge">Incluido</span>
+                                </div>
+                              </div>
+                            ))}
+
+                            {!adminReminderRows.length && (
+                              <div className="permissions-matrix__row create-salida__reminder-row--empty">
+                                <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                                  No se detectaron administradores para la sucursal proveedora seleccionada.
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdditionalReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
+                      <div className="create-salida__reminder-head">
+                        <h5>Usuarios adicionales</h5>
+                        <span className="create-salida__reminder-count">{selectedReminderUserIds.length}</span>
+                      </div>
+                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdditionalReminderRecipients && (
+                        <small className="create-user__field-error">Debes seleccionar al menos un usuario adicional.</small>
+                      )}
+                      <div className="create-salida__reminder-table-wrap">
+                        <div className="permissions-matrix__table create-salida__reminder-table" role="grid">
+                          <div className="permissions-matrix__row permissions-matrix__row--head">
+                            <div className="permissions-matrix__cell permissions-matrix__cell--label">Usuario</div>
+                            <div className="permissions-matrix__cell permissions-matrix__cell--label">Correo</div>
+                            <div className="permissions-matrix__cell permissions-matrix__cell--action">Incluir</div>
+                          </div>
+
+                          {!hasSelectedReminderTargetBranch && (
+                            <div className="permissions-matrix__row create-salida__reminder-row--empty">
+                              <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                                No se pudo resolver la sucursal proveedora.
+                              </div>
+                            </div>
+                          )}
+
+                          {hasSelectedReminderTargetBranch && !reminderUsersLoading && !selectableReminderUsers.length && (
+                            <div className="permissions-matrix__row create-salida__reminder-row--empty">
+                              <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                                No hay usuarios disponibles con permisos de crear y editar en salidas para esta sucursal.
+                              </div>
+                            </div>
+                          )}
+
+                          {selectableReminderUsers.map((userItem) => {
+                            const userId = normalizeId(userItem?.id)
+                            const checked = selectedReminderUserIds.includes(userId)
+                            return (
+                              <div key={`entrada-details-reminder-user-${userId}`} className="permissions-matrix__row">
+                                <div className="permissions-matrix__cell permissions-matrix__cell--label">
+                                  {userItem.name || 'Usuario'}
+                                </div>
+                                <div className="permissions-matrix__cell create-salida__reminder-email">
+                                  {userItem.email || '-'}
+                                </div>
+                                <label className="permissions-matrix__cell permissions-matrix__cell--action">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleReminderUser(userId)}
+                                    disabled={saving || reminderUsersLoading || !hasSelectedReminderTargetBranch}
+                                  />
+                                </label>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
                   </section>
                 )}
 

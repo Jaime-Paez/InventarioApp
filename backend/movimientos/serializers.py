@@ -513,6 +513,15 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
                     {"detalles": "Debes agregar al menos un producto en la solicitud."}
                 )
 
+            if not attrs.get("recordatorio_destinatario_ids"):
+                raise serializers.ValidationError(
+                    {
+                        "recordatorio_destinatario_ids": (
+                            "Debes seleccionar al menos un usuario adicional para el recordatorio."
+                        )
+                    }
+                )
+
         if detalles_data is not None:
             repeated = set()
             stock_cache = {}
