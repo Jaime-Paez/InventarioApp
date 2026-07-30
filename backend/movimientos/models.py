@@ -39,7 +39,7 @@ class MovimientoInventario(models.Model):
         on_delete=models.PROTECT,
         related_name="movimientos",
     )
-    descuento = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    descuento = models.DecimalField(max_digits=11, decimal_places=8, default=0)
     iva_rate = models.DecimalField(
         max_digits=5,
         decimal_places=4,

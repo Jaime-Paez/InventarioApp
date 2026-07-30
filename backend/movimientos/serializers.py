@@ -1,5 +1,5 @@
 from collections import defaultdict
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 import unicodedata
 
@@ -788,6 +788,24 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "sucursal_solicitante_id": int(solicitud.sucursal_solicitante_id),
             "sucursal_proveedora_id": int(solicitud.sucursal_proveedora_id),
         }
+
+    def to_internal_value(self, data):
+        # El frontend calcula el descuento con alta precision para que el
+        # Total cuadre exacto al editar directamente el campo Total. En vez
+        # de depender de que el cliente nunca mande mas decimales de los que
+        # el campo admite, se redondea aqui de forma defensiva para que la
+        # creacion/edicion nunca falle por precision decimal.
+        if isinstance(data, dict) and data.get("descuento") not in (None, ""):
+            try:
+                descuento_decimal = Decimal(str(data["descuento"]))
+            except (InvalidOperation, ValueError, TypeError):
+                pass
+            else:
+                decimal_places = MovimientoInventario._meta.get_field("descuento").decimal_places
+                quantizer = Decimal(1).scaleb(-decimal_places)
+                rounded = descuento_decimal.quantize(quantizer, rounding=ROUND_HALF_UP)
+                data = {**data, "descuento": str(rounded)}
+        return super().to_internal_value(data)
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
