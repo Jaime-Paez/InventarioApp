@@ -3399,7 +3399,7 @@ function RecordatoriosPopup({
                           <tr>
                             <th>Código</th>
                             <th>Producto</th>
-                            <th>Cantidad</th>
+                            <th className="recordatorios-popup__decision-cell--center">Cantidad</th>
                             {!activeDecisionIsGarantia && (
                               <>
                                 <th>Bodega</th>
@@ -3421,7 +3421,9 @@ function RecordatoriosPopup({
                             <tr key={detalle.id || `${detalle.producto_id}-${detalle.cantidad}`}>
                               <td>{detalle?.producto_codigo || '-'}</td>
                               <td>{detalle?.producto_nombre || '-'}</td>
-                              <td>{detalle?.cantidad || '-'}</td>
+                              <td className="recordatorios-popup__decision-cell--center">
+                                <strong>{detalle?.cantidad || '-'}</strong>
+                              </td>
                               {!activeDecisionIsGarantia && (
                                 <>
                                   <td>{detalle?.ubicacion_bodega || '-'}</td>
