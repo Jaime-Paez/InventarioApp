@@ -4677,7 +4677,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         clientes_qs = Cliente.objects.filter(search_q).order_by("nombres", "apellidos").distinct()[:10]
         payload = []
-        seen_keys: set = set()
         for cliente in clientes_qs:
             nombres = str(getattr(cliente, "nombres", "") or "").strip()
             apellidos = str(getattr(cliente, "apellidos", "") or "").strip()
@@ -4694,65 +4693,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "direccion": str(getattr(cliente, "direccion", "") or "").strip(),
                 }
             )
-            if cedula:
-                seen_keys.add(cedula.lower())
-
-        # Also search salida descriptions when Cliente model gives few/no results
-        if len(payload) < 10:
-            desc_q = Q(descripcion__icontains=query)
-            desc_qs = (
-                MovimientoInventario.objects.filter(
-                    tipo_movimiento__nombre__istartswith="sal",
-                    descripcion__iregex=r"(?i)^cliente:",
-                )
-                .filter(desc_q)
-                .values_list("descripcion", flat=True)
-                .distinct()[:200]
-            )
-            for desc in desc_qs:
-                if len(payload) >= 10:
-                    break
-                first_line = desc.split("\n")[0].strip()
-                if not first_line.lower().startswith("cliente:"):
-                    continue
-                info = first_line[len("cliente:"):].strip()
-                if not info:
-                    continue
-                sep = info.find(":")
-                if sep > 0:
-                    cedula = info[:sep].strip()
-                    nombre = info[sep + 1:].strip()
-                else:
-                    cedula = ""
-                    nombre = info.strip()
-                if not (cedula or nombre):
-                    continue
-                unique_key = cedula.lower() if cedula else nombre.lower()[:30]
-                if unique_key in seen_keys:
-                    continue
-                combined = f"{cedula} {nombre}".lower()
-                q_lower = query.lower()
-                matches = (
-                    all(t.lower() in combined for t in tokens)
-                    if tokens
-                    else q_lower in combined
-                )
-                if not matches:
-                    continue
-                seen_keys.add(unique_key)
-                nombre_parts = nombre.split() if nombre else []
-                payload.append(
-                    {
-                        "id": None,
-                        "nombres": nombre_parts[0] if nombre_parts else nombre,
-                        "apellidos": " ".join(nombre_parts[1:]) if len(nombre_parts) > 1 else "",
-                        "nombre_completo": nombre,
-                        "cedula_ruc": cedula,
-                        "correo": "",
-                        "telefono": "",
-                        "direccion": "",
-                    }
-                )
 
         return Response({"results": payload}, status=status.HTTP_200_OK)
 

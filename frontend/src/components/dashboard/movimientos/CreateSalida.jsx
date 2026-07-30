@@ -256,21 +256,6 @@ const calculateLineTotal = (cantidad, precio) => {
   return qty * value
 }
 
-const formatCentavos = (centsStr) => {
-  const digits = String(centsStr || '').replace(/\D/g, '')
-  if (!digits) return '0.00'
-  const n = parseInt(digits, 10)
-  const intPart = Math.floor(n / 100)
-  const decPart = n % 100
-  return `${intPart.toLocaleString('en-US')}.${String(decPart).padStart(2, '0')}`
-}
-
-const centavosToNumber = (centsStr) => {
-  const digits = String(centsStr || '').replace(/\D/g, '')
-  if (!digits) return 0
-  return parseInt(digits, 10) / 100
-}
-
 const formatDescuentoPrecise = (value) => {
   let str = value.toFixed(8).replace(/0+$/, '').replace(/\.$/, '')
   if (str.includes('.')) {
@@ -280,10 +265,21 @@ const formatDescuentoPrecise = (value) => {
   return `${str}.00`
 }
 
-const decimalToCentavos = (value) => {
+const formatTwoDecimals = (value) => {
   const parsed = parseNumber(value)
-  if (!Number.isFinite(parsed) || parsed < 0) return ''
-  return String(Math.round(parsed * 100))
+  if (!Number.isFinite(parsed) || parsed < 0) return '0.00'
+  return parsed.toFixed(2)
+}
+
+const sanitizeDecimalRawInput = (rawValue) => {
+  const normalized = String(rawValue ?? '').replace(',', '.')
+  const cleaned = normalized.replace(/[^\d.]/g, '')
+  const firstDotIndex = cleaned.indexOf('.')
+  if (firstDotIndex === -1) return cleaned
+  return (
+    cleaned.slice(0, firstDotIndex + 1) +
+    cleaned.slice(firstDotIndex + 1).replace(/\./g, '')
+  )
 }
 
 const resolveProductPrice = (producto) => {
@@ -374,8 +370,10 @@ function CreateSalida({
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
   const [, setError] = useState('')
-  const [totalDigitsInput, setTotalDigitsInput] = useState('')
+  const [totalRawInput, setTotalRawInput] = useState('')
   const [isEditingTotal, setIsEditingTotal] = useState(false)
+  const [descuentoRawInput, setDescuentoRawInput] = useState('')
+  const [isEditingDescuento, setIsEditingDescuento] = useState(false)
 
   const [branches, setBranches] = useState([])
   const [allBranches, setAllBranches] = useState([])
@@ -918,7 +916,7 @@ function CreateSalida({
 
   useEffect(() => {
     if (isEditingTotal) return
-    setTotalDigitsInput(decimalToCentavos(totalConIva))
+    setTotalRawInput(formatTwoDecimals(totalConIva))
   }, [totalConIva, isEditingTotal])
 
   const applyDesiredTotal = (desiredTotal) => {
@@ -933,20 +931,40 @@ function CreateSalida({
     setFormData((prev) => ({ ...prev, descuento: formatDescuentoPrecise(desiredDescuentoPercent) }))
   }
 
-  const handleTotalKeyDown = (event) => {
-    if (event.key === 'Backspace') {
-      event.preventDefault()
-      const nextDigits = totalDigitsInput.replace(/\D/g, '').slice(0, -1)
-      setTotalDigitsInput(nextDigits)
-      applyDesiredTotal(centavosToNumber(nextDigits))
-      return
-    }
-    if (/^\d$/.test(event.key)) {
-      event.preventDefault()
-      const nextDigits = totalDigitsInput.replace(/\D/g, '') + event.key
-      setTotalDigitsInput(nextDigits)
-      applyDesiredTotal(centavosToNumber(nextDigits))
-    }
+  const handleTotalFocus = (event) => {
+    setIsEditingTotal(true)
+    event.target.select()
+  }
+
+  const handleTotalChange = (event) => {
+    const sanitized = sanitizeDecimalRawInput(event.target.value)
+    setTotalRawInput(sanitized)
+    const parsed = parseNumber(sanitized)
+    if (parsed !== null) applyDesiredTotal(parsed)
+  }
+
+  const handleTotalBlur = () => {
+    setIsEditingTotal(false)
+  }
+
+  useEffect(() => {
+    if (isEditingDescuento) return
+    setDescuentoRawInput(formatTwoDecimals(formData.descuento))
+  }, [formData.descuento, isEditingDescuento])
+
+  const handleDescuentoFocus = (event) => {
+    setIsEditingDescuento(true)
+    event.target.select()
+  }
+
+  const handleDescuentoChange = (event) => {
+    const sanitized = sanitizeDecimalRawInput(event.target.value)
+    setDescuentoRawInput(sanitized)
+    setFormData((prev) => ({ ...prev, descuento: sanitized }))
+  }
+
+  const handleDescuentoBlur = () => {
+    setIsEditingDescuento(false)
   }
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
@@ -3088,6 +3106,7 @@ function CreateSalida({
     }
 
     if (isVenta && !String(selectedCliente?.cedula_ruc || clienteForm.cedula_ruc || '').trim()) {
+      setActiveTab('cliente')
       notifyError('Selecciona un cliente existente o crea uno nuevo antes de continuar.')
       return false
     }
@@ -3966,12 +3985,12 @@ function CreateSalida({
                           Descuento&nbsp;(
                           <input
                             name="descuento"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            max="100"
-                            value={formData.descuento}
-                            onChange={handleChange}
+                            type="text"
+                            inputMode="decimal"
+                            value={descuentoRawInput}
+                            onChange={handleDescuentoChange}
+                            onFocus={handleDescuentoFocus}
+                            onBlur={handleDescuentoBlur}
                             disabled={loading}
                             className="create-salida__discount-inline-input"
                           />
@@ -3987,16 +4006,11 @@ function CreateSalida({
                         {isVenta && subtotalConBorrador > 0 ? (
                           <input
                             type="text"
-                            inputMode="numeric"
-                            readOnly
-                            value={formatCentavos(totalDigitsInput)}
-                            onFocus={() => {
-                              setIsEditingTotal(true)
-                              setTotalDigitsInput('')
-                            }}
-                            onBlur={() => setIsEditingTotal(false)}
-                            onChange={() => {}}
-                            onKeyDown={handleTotalKeyDown}
+                            inputMode="decimal"
+                            value={totalRawInput}
+                            onFocus={handleTotalFocus}
+                            onChange={handleTotalChange}
+                            onBlur={handleTotalBlur}
                             disabled={loading}
                             className="create-salida__total-inline-input"
                           />
@@ -4080,6 +4094,10 @@ function CreateSalida({
                               ref={clienteDropdownTriggerRef}
                               className={`create-user__dropdown-trigger${
                                 !selectedClienteLabel ? ' create-salida__cliente-trigger--placeholder' : ''
+                              }${
+                                formSubmitted && !String(selectedCliente?.cedula_ruc || '').trim()
+                                  ? ' create-salida__input--invalid'
+                                  : ''
                               }`}
                               onClick={handleClienteDropdownToggle}
                               disabled={loading}
@@ -4119,7 +4137,7 @@ function CreateSalida({
                                     <small className="muted">Sin resultados.</small>
                                   )}
                                   {clienteOptions.map((cliente) => {
-                                    const optionLabel = formatClienteDropdownLabel(cliente)
+                                    const optionLabel = resolveClienteNombre(cliente)
                                     const selected = String(selectedCliente?.id || '') === String(cliente?.id || '')
                                     return (
                                       <button
@@ -4131,7 +4149,7 @@ function CreateSalida({
                                       >
                                         <div className="create-user__result-info">
                                           <strong>{optionLabel || `Cliente ${cliente.id}`}</strong>
-                                          <small>ID: {cliente.id}</small>
+                                          <small>Cédula: {cliente.cedula_ruc || '-'}</small>
                                         </div>
                                         {selected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
                                       </button>

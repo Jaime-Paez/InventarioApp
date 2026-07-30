@@ -4597,7 +4597,7 @@ function CreateEntrada({
                                     <small className="muted">Sin resultados.</small>
                                   )}
                                   {clienteOptions.map((cliente) => {
-                                    const optionLabel = formatClienteDropdownLabel(cliente)
+                                    const optionLabel = resolveClienteNombre(cliente)
                                     const selected = String(selectedCliente?.id || '') === String(cliente?.id || '')
                                     return (
                                       <button
@@ -4609,7 +4609,7 @@ function CreateEntrada({
                                       >
                                         <div className="create-user__result-info">
                                           <strong>{optionLabel || `Cliente ${cliente.id}`}</strong>
-                                          <small>ID: {cliente.id}</small>
+                                          <small>Cédula: {cliente.cedula_ruc || '-'}</small>
                                         </div>
                                         {selected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
                                       </button>
