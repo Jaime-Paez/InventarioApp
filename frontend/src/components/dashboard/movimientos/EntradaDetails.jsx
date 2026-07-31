@@ -460,6 +460,7 @@ function EntradaDetails({
   const modalRef = useRef(null)
   const productDropdownRef = useRef(null)
   const productDropdownTriggerRef = useRef(null)
+  const productSearchSeqRef = useRef(0)
   const clienteDropdownRef = useRef(null)
   const clienteSearchTimerRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
@@ -1052,34 +1053,63 @@ function EntradaDetails({
     [stockByProduct]
   )
 
+  const hasInsufficientStockDetail = useMemo(() => {
+    if (!showProveedorStockInfo || stockLoading) return false
+    return details.some((detail) => {
+      const productId = String(detail?.productoId || detail?.producto_id || '').trim()
+      const currentQty = parseIntValue(detail?.cantidad) ?? 0
+      const reservedQty = getProductReservedQuantity(productId)
+      const others = Math.max(reservedQty - currentQty, 0)
+      const allowance = getProductStockAllowance(productId)
+      const remaining = Math.max(allowance - others, 0)
+      return currentQty > remaining
+    })
+  }, [details, getProductReservedQuantity, getProductStockAllowance, showProveedorStockInfo, stockLoading])
+
   const selectedDraftProduct = useMemo(
     () => productos.find((producto) => String(producto.id) === String(detailDraft.productoId)) || null,
     [detailDraft.productoId, productos]
   )
+
+  const draftStockRemaining = useMemo(() => {
+    if (!isTraslado) return null
+    const productoId = String(detailDraft.productoId || '').trim()
+    if (!productoId) return null
+    const available = Number(stockByProduct[productoId] ?? 0)
+    const alreadyUsed = getProductReservedQuantity(productoId)
+    return Math.max(available - alreadyUsed, 0)
+  }, [detailDraft.productoId, getProductReservedQuantity, isTraslado, stockByProduct])
 
   const detailProductIdSet = useMemo(
     () => new Set(details.map((d) => String(d?.productoId || '').trim()).filter(Boolean)),
     [details]
   )
 
+  const formatProductoBaseLabel = useCallback((producto) => {
+    if (!producto) return ''
+    const codigo = String(producto?.codigo || '').trim()
+    const nombre = String(producto?.nombre || '').trim()
+    return [codigo, nombre].filter(Boolean).join(' - ') || `ID: ${producto?.id ?? ''}`
+  }, [])
+
   const formatProductoOptionLabel = useCallback(
     (producto) => {
-      if (!producto) return ''
-      const codigo = String(producto?.codigo || '').trim()
-      const nombre = String(producto?.nombre || '').trim()
-      const baseLabel = [codigo, nombre].filter(Boolean).join(' - ') || `ID: ${producto?.id ?? ''}`
-      if (!isTraslado) return baseLabel
+      const baseLabel = formatProductoBaseLabel(producto)
+      if (!baseLabel || !isTraslado) return baseLabel
       const available = getProductStockAllowance(String(producto?.id))
       return `${baseLabel} (Disp: ${Number.isFinite(available) ? available : 0})`
     },
-    [isTraslado, getProductStockAllowance]
+    [formatProductoBaseLabel, isTraslado, getProductStockAllowance]
   )
 
   const searchProducts = useCallback(
     async (query) => {
+      const requestSeq = productSearchSeqRef.current + 1
+      productSearchSeqRef.current = requestSeq
+
       const term = String(query ?? '').trim()
     if (!term || !token || (isTraslado && !stockBranchId)) {
-      setProductOptions([])
+      if (requestSeq === productSearchSeqRef.current) setProductOptions([])
       return
     }
 
@@ -1093,21 +1123,31 @@ function EntradaDetails({
         if (!response.ok) throw new Error('No se pudieron cargar los productos.')
 
         const payload = await response.json()
-        let list = parseApiList(payload)
-        if (isTraslado) {
-          list = list.filter((producto) => getProductStockAllowance(String(producto?.id)) > 0)
+        const list = parseApiList(payload)
+        const normalizedTerm = normalizeValue(term)
+        const relevanceOf = (producto) => {
+          const codigo = normalizeValue(producto?.codigo)
+          if (codigo.startsWith(normalizedTerm)) return 0
+          if (codigo.includes(normalizedTerm)) return 1
+          return 2
         }
         list.sort((a, b) => {
-          const qa = getProductStockAllowance(String(a?.id))
-          const qb = getProductStockAllowance(String(b?.id))
-          return (qb > 0 ? 1 : 0) - (qa > 0 ? 1 : 0)
+          if (isTraslado) {
+            const qa = getProductStockAllowance(String(a?.id))
+            const qb = getProductStockAllowance(String(b?.id))
+            const hasStockDiff = (qb > 0 ? 1 : 0) - (qa > 0 ? 1 : 0)
+            if (hasStockDiff !== 0) return hasStockDiff
+          }
+          const relevanceDiff = relevanceOf(a) - relevanceOf(b)
+          if (relevanceDiff !== 0) return relevanceDiff
+          return normalizeValue(a?.codigo).localeCompare(normalizeValue(b?.codigo))
         })
 
-        setProductOptions(list)
+        if (requestSeq === productSearchSeqRef.current) setProductOptions(list)
       } catch {
-        setProductOptions([])
+        if (requestSeq === productSearchSeqRef.current) setProductOptions([])
       } finally {
-        setProductLoading(false)
+        if (requestSeq === productSearchSeqRef.current) setProductLoading(false)
       }
     },
     [stockBranchId, isTraslado, getProductStockAllowance, token]
@@ -2469,6 +2509,12 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       return
     }
 
+    if (hasInsufficientStockDetail) {
+      setActiveTab('general')
+      notifyError('Hay productos con cantidad mayor al stock disponible en la sucursal proveedora.')
+      return
+    }
+
     if (reminderUsersLoading) {
       setActiveTab('recordatorio')
       notifyError('Espera a que se carguen los usuarios para recordatorios.')
@@ -2495,6 +2541,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     handleUpdatePendingSolicitud,
     hasAdditionalReminderRecipients,
     hasAdminReminderRecipients,
+    hasInsufficientStockDetail,
     isPreviewGuardadoSolicitud,
     notifyError,
     reminderUsersLoading,
@@ -3103,7 +3150,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
 
                     {!isReadOnlyMode && !lineItemsReadOnly && (
                       <div className="create-user__locations-row create-user__locations-row--form">
-                        <span className="create-salida__product-picker">
+                        <span className="create-salida__product-picker create-salida__product-picker--single">
                           <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
                             <button
                               type="button"
@@ -3126,9 +3173,14 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                             >
                               <span>
                                 {selectedDraftProduct
-                                  ? formatProductoOptionLabel(selectedDraftProduct)
+                                  ? formatProductoBaseLabel(selectedDraftProduct)
                                   : 'Selecciona un producto'}
                               </span>
+                              {selectedDraftProduct && isTraslado && (
+                                <small className="create-salida__row-stock">
+                                  {Math.max(0, Math.trunc(getProductStockAllowance(String(selectedDraftProduct.id))))}
+                                </small>
+                              )}
                               <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
                             </button>
 
@@ -3167,6 +3219,8 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                                     const isSelected = String(producto.id) === String(detailDraft.productoId)
                                     const isAlreadyAdded = detailProductIdSet.has(String(producto.id).trim())
                                     const available = Number(stockByProduct[String(producto.id)] ?? 0)
+                                    const isOutOfStock = isTraslado && available <= 0
+                                    const isDisabled = isAlreadyAdded || isOutOfStock
                                     return (
                                       <button
                                         key={producto.id}
@@ -3176,11 +3230,11 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                                         onClick={(event) => {
                                           event.preventDefault()
                                           event.stopPropagation()
-                                          if (isAlreadyAdded) return
+                                          if (isDisabled) return
                                           handleProductSelect(producto)
                                         }}
-                                        disabled={isAlreadyAdded}
-                                        title={isAlreadyAdded ? 'Ya agregado' : undefined}
+                                        disabled={isDisabled}
+                                        title={isAlreadyAdded ? 'Ya agregado' : isOutOfStock ? 'Sin stock en la sucursal proveedora' : undefined}
                                       >
                                         <div className="create-user__result-info">
                                           <strong>{formatProductoOptionLabel(producto)}</strong>
@@ -3188,24 +3242,28 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                                         </div>
                                         {isSelected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
                                         {isAlreadyAdded && <span className="create-user__result-tag is-added">Ya agregado</span>}
+                                        {!isAlreadyAdded && isOutOfStock && <span className="create-user__result-tag is-added">Sin stock</span>}
                                       </button>
                                     )
                                   })}
+                                  {!productLoading && productOptions.length > 0 && (
+                                    <small className="muted create-salida__product-search-hint">
+                                      Para resultados más precisos escribe un código más específico.
+                                    </small>
+                                  )}
                                 </div>
                               </div>
                             )}
                           </div>
                         </span>
-                        {isCompraEntrada && (
-                          <span
-                            onMouseEnter={(e) => showHover(e, [selectedDraftProduct?.nombre].filter(Boolean), 'Descripción')}
-                            onMouseLeave={hideHover}
-                          >
-                            <span className="create-salida__table-static-value create-salida__table-static-value--name">
-                              <span className="create-salida__product-name-text">{selectedDraftProduct?.nombre || '-'}</span>
-                            </span>
+                        <span
+                          onMouseEnter={(e) => showHover(e, [selectedDraftProduct?.nombre].filter(Boolean), 'Descripción')}
+                          onMouseLeave={hideHover}
+                        >
+                          <span className="create-salida__table-static-value create-salida__table-static-value--name">
+                            <span className="create-salida__product-name-text">{selectedDraftProduct?.nombre || '-'}</span>
                           </span>
-                        )}
+                        </span>
                         {isCompraEntrada && (
                           <>
                             <span>
@@ -3255,16 +3313,18 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                             type="number"
                             min="0"
                             step="1"
+                            max={draftStockRemaining ?? undefined}
                             value={detailDraft.cantidad}
                             onChange={handleDetailChange}
                             disabled={editorDisabled}
+                            title={draftStockRemaining !== null ? `Disponible: ${draftStockRemaining}` : undefined}
                           />
                         </span>
                         <span>
                           <input value={draftLineTotal !== null ? draftLineTotal.toFixed(2) : ''} readOnly disabled />
                         </span>
                         <span className="create-user__locations-cell create-user__locations-cell--action">
-                          <button type="button" className="create-user__ghost" onClick={handleAddDetail} disabled={editorDisabled}>
+                          <button type="button" className="create-user__ghost create-user__ghost--success" onClick={handleAddDetail} disabled={editorDisabled}>
                             Agregar
                           </button>
                         </span>
@@ -3302,7 +3362,10 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                           : null
 
                         return (
-                          <div key={detail.uid} className="create-user__locations-row">
+                          <div
+                            key={detail.uid}
+                            className={`create-user__locations-row${insufficientStock ? ' create-salida__row--insufficient' : ''}`}
+                          >
                             <span>
                               {detail.productoCodigo || '-'}
                               {stockLabel !== null && (

@@ -1221,6 +1221,22 @@
   color: var(--color-button-primary);
 }
 
+.create-user__ghost--success {
+  background: #2e7d32;
+  border-color: #2e7d32;
+  color: #fff;
+}
+
+.create-user__ghost--success:hover {
+  filter: brightness(1.1);
+}
+
+.dashboard-shell.dark .create-user__ghost--success {
+  background: #388e3c;
+  border-color: #388e3c;
+  color: #fff;
+}
+
 .create-user__ghost:disabled {
   opacity: 0.55;
   cursor: not-allowed;
