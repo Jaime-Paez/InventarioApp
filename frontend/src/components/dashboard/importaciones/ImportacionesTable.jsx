@@ -8049,11 +8049,16 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         cantidad: d.cantidad ?? 0,
         sinCatalogo: !d.producto?.id,
       }))
+      const isEnCaminoConfirmada = item?.estado === 'confirmacion' && item?.numero_factura
+      const estado_label = isEnCaminoConfirmada
+        ? 'En camino'
+        : (STATUS_BADGE[item?.estado]?.label || item?.estado || '-')
       return {
         ...item,
         casa_nombre: item?.casa_comercial?.nombre ?? '-',
-        productos_resumen: detalles.slice(0, 3).map((d) => `${d.producto?.codigo || d.codigo || 'Prod'} x${d.cantidad}`).join(', ') + (detalles.length > 3 ? ` +${detalles.length - 3}` : ''),
+        productos_resumen: productos.map((p) => `${p.codigo} ${p.nombre} ${p.oem}`).join(' | '),
         productos,
+        estado_label,
       }
     })
   , [])
@@ -8674,7 +8679,17 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
           rowsPerPageOptions={[10, 25, 50]}
           onPage={(e) => setPageFirst(e.first)}
           filters={filters}
-          globalFilterFields={['codigo', 'fecha', 'casa_nombre', 'productos_resumen']}
+          globalFilterFields={[
+            'codigo',
+            'fecha',
+            'creado_en',
+            'fecha_llegada',
+            'casa_nombre',
+            'estado',
+            'estado_label',
+            'dias_entrega_estimados',
+            'productos_resumen',
+          ]}
           removableSort
           reorderableColumns
           onColReorder={handleColumnReorder}
