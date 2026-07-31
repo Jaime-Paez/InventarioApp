@@ -3162,6 +3162,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
 
   const [step, setStep] = useState('casa')
   const [downloading, setDownloading] = useState(false)
+  const [downloadingReview, setDownloadingReview] = useState(false)
 
   // Casa step
   const [casaDraft, setCasaDraft] = useState(null)
@@ -3566,6 +3567,101 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       URL.revokeObjectURL(link.href)
     } catch (e) { console.error(e) }
     setDownloading(false)
+  }
+
+  const handleDownloadReviewExcel = async () => {
+    setDownloadingReview(true)
+    try {
+      const XLSXStyle = (await import('xlsx-js-style')).default
+      const headers = [
+        'CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANTIDAD',
+        'PRECIO BASE (BD)', 'PRECIO NUEVO (EXCEL)', 'CASA COMERCIAL', 'NOTA',
+      ]
+      const headerStyle = {
+        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+        fill: { fgColor: { rgb: '1A1A2E' }, patternType: 'solid' },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin', color: { rgb: '2563EB' } },
+          bottom: { style: 'medium', color: { rgb: '2563EB' } },
+          left: { style: 'thin', color: { rgb: '2563EB' } },
+          right: { style: 'thin', color: { rgb: '2563EB' } },
+        },
+      }
+      const borderStyle = { style: 'thin', color: { rgb: 'DBEAFE' } }
+      const border = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
+      const yellowFill = { fgColor: { rgb: 'FEF08A' }, patternType: 'solid' }
+      const redFill = { fgColor: { rgb: 'FECACA' }, patternType: 'solid' }
+
+      const resolvePrecioNuevo = (row) => (
+        row.matched_producto_id
+          ? Number(row.pvp || 0)
+          : Number(row.precio_nuevo || 0) / 100
+      )
+
+      const rows = [...validRows, ...conflictoRows].map((row) => {
+        const isConflict = Boolean(row.conflicto_casa)
+        return {
+          codigo: row.codigo || '',
+          referencia: row.referencia || '',
+          oem: row.oem || '',
+          descripcion: row.descripcion || '',
+          cantidad: row.cantidad ?? '',
+          precioBase: row.matched_producto_precio != null ? Number(row.matched_producto_precio) : '',
+          precioNuevo: resolvePrecioNuevo(row),
+          casa: isConflict ? (row.conflicto_casa_nombre || '') : (selectedCasa?.nombre || ''),
+          nota: isConflict
+            ? `Excluido — pertenece a ${row.conflicto_casa_nombre || 'otra casa'}`
+            : (row.codigo_sugerido ? 'Sugerido (nuevo)' : ''),
+          isConflict,
+          isSuggested: Boolean(row.codigo_sugerido),
+        }
+      })
+
+      const aoa = [
+        headers,
+        ...rows.map((r) => [
+          r.codigo, r.referencia, r.oem, r.descripcion, r.cantidad,
+          r.precioBase, r.precioNuevo, r.casa, r.nota,
+        ]),
+      ]
+      const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
+      headers.forEach((_, ci) => {
+        const ref = XLSXStyle.utils.encode_cell({ r: 0, c: ci })
+        if (worksheet[ref]) worksheet[ref].s = headerStyle
+      })
+      rows.forEach((r, i) => {
+        const ri = i + 1
+        for (let ci = 0; ci < headers.length; ci++) {
+          const ref = XLSXStyle.utils.encode_cell({ r: ri, c: ci })
+          if (!worksheet[ref]) worksheet[ref] = { t: 's', v: '' }
+          worksheet[ref].s = {
+            border,
+            alignment: { vertical: 'center' },
+            ...(r.isConflict ? { fill: redFill } : {}),
+          }
+        }
+        if (r.isSuggested && !r.isConflict) {
+          const codigoRef = XLSXStyle.utils.encode_cell({ r: ri, c: 0 })
+          worksheet[codigoRef].s = { ...worksheet[codigoRef].s, fill: yellowFill }
+        }
+      })
+      worksheet['!cols'] = [
+        { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 11 },
+        { wch: 16 }, { wch: 18 }, { wch: 20 }, { wch: 34 },
+      ]
+      worksheet['!rows'] = [{ hpt: 22 }]
+      const workbook = XLSXStyle.utils.book_new()
+      XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Revisión')
+      const out = XLSXStyle.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(blob)
+      link.download = `revision-sugerencia-${selectedCasa?.nombre || 'excel'}.xlsx`
+      document.body.appendChild(link); link.click(); document.body.removeChild(link)
+      URL.revokeObjectURL(link.href)
+    } catch (e) { console.error(e) }
+    setDownloadingReview(false)
   }
 
   const handleFileSelect = (file) => {
@@ -4019,25 +4115,11 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 ) : (
                   <>
                     {conflictoRows.length > 0 && (
-                      <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <i className="pi pi-exclamation-triangle" style={{ color: '#dc2626', fontSize: 'var(--font-size-base)' }} />
-                          <strong style={{ fontSize: 'var(--font-size-sm)', color: '#dc2626' }}>
-                            {conflictoRows.length} producto{conflictoRows.length !== 1 ? 's' : ''} excluido{conflictoRows.length !== 1 ? 's' : ''} — pertenece{conflictoRows.length === 1 ? '' : 'n'} a otra casa comercial
-                          </strong>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {conflictoRows.map((row, i) => (
-                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)' }}>
-                              <span style={{ fontWeight: 600, color: '#dc2626', minWidth: 80 }}>{row.codigo || '—'}</span>
-                              <span style={{ color: '#7f1d1d' }}>{row.descripcion || row.referencia || '—'}</span>
-                              <span style={{ marginLeft: 'auto', color: '#b91c1c', fontStyle: 'italic', whiteSpace: 'nowrap' }}>→ {row.conflicto_casa_nombre}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#7f1d1d' }}>
-                          Estos códigos no se incluirán en la sugerencia. Para agregarlos, primero asígnalos a <strong>{selectedCasa?.nombre}</strong> en el catálogo de productos.
-                        </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8 }}>
+                        <i className="pi pi-exclamation-triangle" style={{ color: '#dc2626', fontSize: 'var(--font-size-base)', flexShrink: 0 }} />
+                        <span style={{ fontSize: 'var(--font-size-sm)', color: '#7f1d1d' }}>
+                          {conflictoRows.length} producto{conflictoRows.length !== 1 ? 's' : ''} (en rojo en la tabla) no se incluirá{conflictoRows.length !== 1 ? 'n' : ''} en la sugerencia — pertenece{conflictoRows.length === 1 ? '' : 'n'} a otra casa comercial. Para agregarlos, primero asígnalos a <strong>{selectedCasa?.nombre}</strong> en el catálogo de productos.
+                        </span>
                       </div>
                     )}
 
@@ -4271,6 +4353,30 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                               </tr>
                             )
                           })}
+                          {conflictoRows.map((row, i) => (
+                            <tr
+                              key={`conflict-${i}`}
+                              style={{ borderBottom: '1px solid #fecaca', background: '#fef2f2' }}
+                              title={`Pertenece a ${row.conflicto_casa_nombre}. No se incluirá en esta sugerencia.`}
+                            >
+                              <td style={{ padding: '7px 12px', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {row.codigo || '—'}
+                              </td>
+                              <td style={{ padding: '7px 12px', color: '#7f1d1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {row.referencia || '—'}
+                              </td>
+                              <td style={{ padding: '7px 12px', color: '#7f1d1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {row.oem || '—'}
+                              </td>
+                              <td style={{ padding: '7px 12px', color: '#7f1d1d', fontStyle: 'italic' }}>
+                                {row.descripcion ? `${row.descripcion} — ` : ''}Pertenece a {row.conflicto_casa_nombre}, no se incluirá
+                              </td>
+                              <td style={{ padding: '7px 12px', textAlign: 'center', color: '#7f1d1d', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                {row.cantidad ?? '—'}
+                              </td>
+                              <td style={{ padding: '7px 12px', textAlign: 'right', color: '#7f1d1d' }}>—</td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>
@@ -4320,21 +4426,34 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 incompleteRows.length > 0 ? (
                   <button type="button" className="create-user__action create-user__action--primary" onClick={handleRetry}>Volver a intentar</button>
                 ) : (
-                  <button
-                    type="button"
-                    className="create-user__action create-user__action--primary"
-                    onClick={handleCreate}
-                    disabled={submitting || validRows.length === 0}
-                    title={
-                      validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia'
-                        : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos'
-                        : !allDescripcionesSet ? `Debes ingresar la descripción para ${pendingDescripcionCount} producto${pendingDescripcionCount !== 1 ? 's' : ''} nuevo${pendingDescripcionCount !== 1 ? 's' : ''}`
-                        : !allPricesSet ? `Debes ingresar el precio para ${pendingPriceCount} producto${pendingPriceCount !== 1 ? 's' : ''} nuevo${pendingPriceCount !== 1 ? 's' : ''}`
-                        : undefined
-                    }
-                  >
-                    {submitting ? 'Creando sugerencia...' : `Crear sugerencia${validRows.length > 0 && conflictoRows.length > 0 ? ` (${validRows.length} productos)` : ''}`}
-                  </button>
+                  <>
+                    {(validRows.length > 0 || conflictoRows.length > 0) && (
+                      <button
+                        type="button"
+                        className="create-user__action create-user__action--cancel"
+                        onClick={handleDownloadReviewExcel}
+                        disabled={downloadingReview}
+                      >
+                        <i className="pi pi-download" style={{ marginRight: 6 }} />
+                        {downloadingReview ? 'Descargando...' : 'Descargar Excel'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--primary"
+                      onClick={handleCreate}
+                      disabled={submitting || validRows.length === 0}
+                      title={
+                        validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia'
+                          : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos'
+                          : !allDescripcionesSet ? `Debes ingresar la descripción para ${pendingDescripcionCount} producto${pendingDescripcionCount !== 1 ? 's' : ''} nuevo${pendingDescripcionCount !== 1 ? 's' : ''}`
+                          : !allPricesSet ? `Debes ingresar el precio para ${pendingPriceCount} producto${pendingPriceCount !== 1 ? 's' : ''} nuevo${pendingPriceCount !== 1 ? 's' : ''}`
+                          : undefined
+                      }
+                    >
+                      {submitting ? 'Creando sugerencia...' : `Crear sugerencia${validRows.length > 0 && conflictoRows.length > 0 ? ` (${validRows.length} productos)` : ''}`}
+                    </button>
+                  </>
                 )
               )}
             </div>
