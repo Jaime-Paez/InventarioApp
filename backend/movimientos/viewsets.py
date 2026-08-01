@@ -953,9 +953,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         elif self._is_traslado_movement(serializer):
             raw_ids = self.request.data.get("recipients_ids", [])
             recipient_ids = [i for i in (raw_ids if isinstance(raw_ids, list) else []) if i]
-            if recipient_ids:
+            direct_transfer_solicitud = getattr(movement, "_direct_transfer_solicitud", None)
+            if recipient_ids and direct_transfer_solicitud is not None:
                 reminder_added = self._append_direct_transfer_shipment_reminder(
                     movement=movement,
+                    solicitud_id=direct_transfer_solicitud.id,
                     actor_user=self.request.user,
                     recipient_ids=recipient_ids,
                 )
@@ -1959,6 +1961,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         self,
         *,
         movement,
+        solicitud_id,
         actor_user,
         recipient_ids,
     ):
@@ -1966,7 +1969,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             return False
 
         movement_id = int(getattr(movement, "id", 0) or 0)
-        if movement_id <= 0:
+        solicitud_id = int(solicitud_id or 0)
+        if movement_id <= 0 or solicitud_id <= 0:
             return False
 
         User = get_user_model()
@@ -1994,7 +1998,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "recipients": recipients,
             "context": {
                 "type": "solicitud_traslado",
-                "id": str(movement_id),
+                "id": str(solicitud_id),
                 "label": context_label,
                 "sucursal_solicitante_id": str(getattr(movement, "sucursal_objetivo_id", "") or ""),
                 "sucursal_proveedora_id": str(getattr(movement, "sucursal_id", "") or ""),

@@ -1145,20 +1145,38 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
 
     def _create_transfer_entry_from_salida(self, salida, detalles_data, solicitud_traslado):
         tipo_entrada, subtipo_traslado = self._resolve_transfer_entry_subtipo()
-        solicitud_document_number = str(
-            getattr(solicitud_traslado, "no_documento", "") or ""
-        ).strip()
-        if not solicitud_document_number:
-            raise serializers.ValidationError(
-                {
-                    "solicitud_traslado_id": (
-                        "La solicitud de traslado debe tener un numero de documento para generar la entrada."
-                    )
-                }
-            )
-        document_number = solicitud_document_number
         descripcion_salida = str(salida.descripcion or "").strip()
-        descripcion_base = f"Entrada automatica por traslado solicitado #{solicitud_traslado.no_documento}"
+
+        if solicitud_traslado is not None:
+            document_number = str(getattr(solicitud_traslado, "no_documento", "") or "").strip()
+            if not document_number:
+                raise serializers.ValidationError(
+                    {
+                        "solicitud_traslado_id": (
+                            "La solicitud de traslado debe tener un numero de documento para generar la entrada."
+                        )
+                    }
+                )
+            sucursal_solicitante = solicitud_traslado.sucursal_solicitante
+            sucursal_proveedora = solicitud_traslado.sucursal_proveedora
+            descripcion_base = f"Entrada automatica por traslado solicitado #{solicitud_traslado.no_documento}"
+        else:
+            # Traslado directo: no hay SolicitudTraslado previa, asi que la
+            # entrada se deriva directamente de los datos ya presentes en la
+            # salida (sucursal_objetivo es el destino que eligio quien envio).
+            document_number = str(salida.no_documento or "").strip()
+            if not document_number:
+                raise serializers.ValidationError(
+                    {
+                        "no_documento": (
+                            "El traslado directo debe tener un numero de documento para generar la entrada."
+                        )
+                    }
+                )
+            sucursal_solicitante = salida.sucursal_objetivo
+            sucursal_proveedora = salida.sucursal
+            descripcion_base = f"Entrada automatica por traslado directo #{document_number}"
+
         descripcion = (
             f"{descripcion_base}\n{descripcion_salida}"
             if descripcion_salida
@@ -1166,12 +1184,12 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         )
 
         entrada = MovimientoInventario.objects.create(
-            sucursal=solicitud_traslado.sucursal_solicitante,
+            sucursal=sucursal_solicitante,
             tipo_movimiento=tipo_entrada,
             sub_tipo_movimiento=subtipo_traslado,
             descripcion=descripcion,
             funcional=bool(salida.funcional),
-            sucursal_objetivo=solicitud_traslado.sucursal_proveedora,
+            sucursal_objetivo=sucursal_proveedora,
             estado_movimiento=salida.estado_movimiento,
             descuento=Decimal("0"),
             iva_rate=salida.iva_rate,
@@ -1317,6 +1335,12 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             and subtipo_key == "traslado"
             and solicitud_traslado is not None
         )
+        is_direct_transfer = (
+            tipo_name.startswith("sal")
+            and subtipo_key == "traslado"
+            and solicitud_traslado is None
+            and validated_data.get("sucursal_objetivo") is not None
+        )
 
         if is_transfer_approval:
             solicitud_document_number = str(
@@ -1376,6 +1400,49 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                         "updated_at",
                     ]
                 )
+            elif is_direct_transfer:
+                # Traslado directo (sin solicitud previa): se genera la
+                # entrada igual que en un traslado aprobado, y se crea una
+                # SolicitudTraslado ya "aprobada" para que el resto del
+                # sistema (envios en camino, recepcion, inconvenientes,
+                # recordatorios) trate este traslado exactamente igual que
+                # uno que si paso por el flujo de solicitud.
+                movimiento_entrada = self._create_transfer_entry_from_salida(
+                    movimiento,
+                    detalles_data,
+                    None,
+                )
+                request_obj = self.context.get("request")
+                actor_user = getattr(request_obj, "user", None) if request_obj is not None else None
+                solicitud_directa = SolicitudTraslado.objects.create(
+                    sucursal_solicitante=movimiento.sucursal_objetivo,
+                    sucursal_proveedora=movimiento.sucursal,
+                    descripcion=str(movimiento.descripcion or "").strip(),
+                    fecha=movimiento.fecha,
+                    no_documento=str(movimiento.no_documento or "").strip(),
+                    estado=SolicitudTraslado.Estados.APROBADA,
+                    creado_por=actor_user,
+                    enviado_por=actor_user,
+                    movimiento_salida=movimiento,
+                    movimiento_entrada=movimiento_entrada,
+                )
+                SolicitudTrasladoDetalle.objects.bulk_create(
+                    [
+                        SolicitudTrasladoDetalle(
+                            solicitud=solicitud_directa,
+                            producto=detalle.get("producto"),
+                            cantidad=int(detalle.get("cantidad") or 0),
+                            valor=(
+                                detalle.get("valor")
+                                if detalle.get("valor") is not None
+                                else Decimal("0")
+                            ),
+                        )
+                        for detalle in detalles_data
+                        if detalle.get("producto") is not None
+                    ]
+                )
+                movimiento._direct_transfer_solicitud = solicitud_directa
         return movimiento
 
     def update(self, instance, validated_data):
