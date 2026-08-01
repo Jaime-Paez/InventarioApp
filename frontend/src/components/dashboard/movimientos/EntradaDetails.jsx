@@ -3369,7 +3369,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                             <span>
                               {detail.productoCodigo || '-'}
                               {stockLabel !== null && (
-                                <small className="create-salida__row-stock">
+                                <small className={`create-salida__row-stock${insufficientStock ? ' create-salida__row-stock--insufficient' : ''}`}>
                                   {stockLabel}
                                 </small>
                               )}

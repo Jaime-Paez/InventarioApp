@@ -2040,7 +2040,7 @@ function CreateSolicitud({
                                 <small className="muted">Sin resultados.</small>
                               )}
                               {clienteResultados.map((item) => {
-                                const optionLabel = formatClienteLabel(item)
+                                const optionLabel = resolveClienteNombre(item)
                                 const selected = String(selectedCliente?.id || '') === String(item?.id || '')
                                 return (
                                   <button
@@ -2052,7 +2052,7 @@ function CreateSolicitud({
                                   >
                                     <div className="create-user__result-info">
                                       <strong>{optionLabel || `Cliente ${item.id}`}</strong>
-                                      <small>ID: {item.id}</small>
+                                      <small>Cédula: {item.cedula_ruc || '-'}</small>
                                     </div>
                                     {selected && <span className="create-user__result-tag is-selected">Seleccionado</span>}
                                   </button>

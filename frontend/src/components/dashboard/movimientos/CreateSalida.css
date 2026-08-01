@@ -748,6 +748,20 @@
   color: var(--color-text-secondary);
 }
 
+.create-salida__row-stock--insufficient {
+  border-width: 2px;
+  border-color: var(--color-error-border);
+  color: var(--color-error-text);
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 2px 10px;
+}
+
+.dashboard-shell.dark .create-salida__row-stock--insufficient {
+  border-color: var(--color-error-border-dark);
+  color: var(--color-error-text-dark);
+}
+
 .create-salida__results-header {
   display: grid;
   grid-template-columns: minmax(72px, 0.65fr) 1fr minmax(68px, auto);

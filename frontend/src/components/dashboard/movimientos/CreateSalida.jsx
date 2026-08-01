@@ -3116,10 +3116,21 @@ function CreateSalida({
       return false
     }
 
-    const documentoDisponible = await validateDocumentNumber(formData.no_documento)
-    if (!documentoDisponible) {
-      notifyError('No se puede usar dos iguales.')
-      return false
+    if (!isPrefilledTransfer) {
+      // Cuando el traslado viene prefilled de una solicitud aceptada, el
+      // no_documento es el codigo de esa solicitud (unico desde su creacion)
+      // y no lo edita el usuario, asi que esta verificacion es redundante ahi
+      // y a veces daba falso positivo. En cualquier otro caso (traslado
+      // manual, venta, devolucion) el numero se genera por secuencia y si
+      // puede chocar entre dos envios casi simultaneos, asi que ahi la
+      // verificacion sigue aplicando. Ver el efecto que llama a
+      // fetchNextDocumentNumber: usa exactamente esta misma condicion
+      // (isPrefilledTransfer) para decidir si autogenera el numero o no.
+      const documentoDisponible = await validateDocumentNumber(formData.no_documento)
+      if (!documentoDisponible) {
+        notifyError('No se puede usar dos iguales.')
+        return false
+      }
     }
 
     if ((isVenta || isDevolucion || isTraslado) && !String(formData.factura_referencia || '').trim()) {

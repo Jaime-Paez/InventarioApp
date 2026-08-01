@@ -1,7 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
 
-from app.views import _purge_reminders_for_context
 from .models import SolicitudTraslado
 from .stock_availability import get_available_transfer_quantities_by_product
 
@@ -119,7 +118,18 @@ def cancel_pending_transfer_requests(
                 ]
             )
 
-            _purge_reminders_for_context("solicitud_traslado", solicitud.id)
+            # Import diferido: viewsets.py importa este modulo, asi que
+            # importarlo arriba crearia un ciclo. El metodo no usa self.request
+            # ni nada propio de la vista, solo arma el recordatorio de "rechazada"
+            # (mismo aviso que ve el usuario cuando alguien rechaza a mano).
+            from .viewsets import MovimientoInventarioViewSet
+
+            MovimientoInventarioViewSet()._append_transfer_decision_result_reminder(
+                solicitud=solicitud,
+                actor_user=actor_user,
+                decision_status="rechazada",
+                rejection_reason=motivo,
+            )
             changed = True
 
     return changed
