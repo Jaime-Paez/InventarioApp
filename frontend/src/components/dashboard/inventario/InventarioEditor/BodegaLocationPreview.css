@@ -187,13 +187,15 @@
   opacity: 0.75;
 }
 
-.dashboard-shell.dark .inventario-map-preview__trigger {
+.dashboard-shell.dark .inventario-map-preview__trigger,
+.inventario-map-preview__trigger--dark {
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
   border-color: var(--color-border);
 }
 
-.dashboard-shell.dark .inventario-map-preview__trigger:hover {
+.dashboard-shell.dark .inventario-map-preview__trigger:hover,
+.inventario-map-preview__trigger--dark:hover {
   background: color-mix(in srgb, var(--color-primary-dark) 24%, var(--color-surface-darker));
 }
 

@@ -79,7 +79,7 @@ const buildTypeColors = (locations) => {
   return map
 }
 
-function BodegaLocationPreview({ bodega, divisionName, subdivisionName }) {
+function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode }) {
   const [isOpen, setIsOpen] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [portalRoot, setPortalRoot] = useState(null)
@@ -214,10 +214,12 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName }) {
     <div className="inventario-map-preview">
       <button
         type="button"
-        className="inventario-map-preview__trigger"
+        className={`inventario-map-preview__trigger${darkMode ? ' inventario-map-preview__trigger--dark' : ''}`}
         aria-label={`Abrir mapa de ${bodega?.nombre || 'bodega'}`}
         onClick={() => {
-          setIsDarkMode(Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark')))
+          setIsDarkMode(darkMode !== undefined
+            ? Boolean(darkMode)
+            : Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark')))
           setIsOpen(true)
         }}
       >

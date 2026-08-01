@@ -2291,21 +2291,12 @@ function CreateSalida({
     if (!selectedSolicitudTraslado) return
 
     const objetivoId = String(selectedSolicitudTraslado.sucursal_solicitante_id || '').trim()
-    const autoTransferDescription = [
-      selectedSolicitudDoc ? `Envío de traslado #${selectedSolicitudDoc}.` : 'Envío de traslado.',
-      `Desde ${transferSourceBranchLabel} hacia ${transferTargetBranchLabel}.`,
-    ].join(' ')
     setFormData((prev) => {
       const next = { ...prev }
       let changed = false
 
       if (String(next.sucursalObjetivoId) !== objetivoId) {
         next.sucursalObjetivoId = objetivoId
-        changed = true
-      }
-
-      if (!String(next.descripcion || '').trim() && autoTransferDescription) {
-        next.descripcion = autoTransferDescription
         changed = true
       }
 
@@ -2359,10 +2350,7 @@ function CreateSalida({
     isTraslado,
     open,
     productos,
-    selectedSolicitudDoc,
     selectedSolicitudTraslado,
-    transferSourceBranchLabel,
-    transferTargetBranchLabel,
     transferRequiresRequest,
   ])
 
@@ -4046,6 +4034,11 @@ function CreateSalida({
                       disabled={loading}
                       rows={3}
                       required={isDevolucion}
+                      placeholder={
+                        isTraslado
+                          ? 'Escribe detalles de cómo vas a enviar esta salida, la forma de empacar, el vehículo o lo que creas necesario.'
+                          : undefined
+                      }
                     />
                   </label>
                 </section>

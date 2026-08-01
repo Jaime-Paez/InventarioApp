@@ -3435,6 +3435,7 @@ function RecordatoriosPopup({
                                         bodega={detalle.ubicacion_bodega_layout}
                                         divisionName={detalle.ubicacion_division}
                                         subdivisionName={detalle.ubicacion_subdivision}
+                                        darkMode={darkMode}
                                       />
                                     ) : (
                                       '-'
