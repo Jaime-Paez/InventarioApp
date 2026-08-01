@@ -4185,6 +4185,30 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           </tr>
                         </thead>
                         <tbody>
+                          {conflictoRows.map((row, i) => (
+                            <tr
+                              key={`conflict-${i}`}
+                              style={{ borderBottom: '1px solid #fecaca', background: '#fef2f2' }}
+                              title={`Pertenece a ${row.conflicto_casa_nombre}. No se incluirá en esta sugerencia.`}
+                            >
+                              <td style={{ padding: '7px 12px', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {row.codigo || '—'}
+                              </td>
+                              <td style={{ padding: '7px 12px', color: '#7f1d1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {row.referencia || '—'}
+                              </td>
+                              <td style={{ padding: '7px 12px', color: '#7f1d1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {row.oem || '—'}
+                              </td>
+                              <td style={{ padding: '7px 12px', color: '#7f1d1d', fontStyle: 'italic' }}>
+                                {row.descripcion ? `${row.descripcion} — ` : ''}Pertenece a {row.conflicto_casa_nombre}, no se incluirá
+                              </td>
+                              <td style={{ padding: '7px 12px', textAlign: 'center', color: '#7f1d1d', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                {row.cantidad ?? '—'}
+                              </td>
+                              <td style={{ padding: '7px 12px', textAlign: 'right', color: '#7f1d1d' }}>—</td>
+                            </tr>
+                          ))}
                           {validRows.map((row, i) => {
                             const conflict = hasReferenciaConflict(row)
                             const decision = referenciaDecisions[i]
@@ -4353,30 +4377,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                               </tr>
                             )
                           })}
-                          {conflictoRows.map((row, i) => (
-                            <tr
-                              key={`conflict-${i}`}
-                              style={{ borderBottom: '1px solid #fecaca', background: '#fef2f2' }}
-                              title={`Pertenece a ${row.conflicto_casa_nombre}. No se incluirá en esta sugerencia.`}
-                            >
-                              <td style={{ padding: '7px 12px', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {row.codigo || '—'}
-                              </td>
-                              <td style={{ padding: '7px 12px', color: '#7f1d1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {row.referencia || '—'}
-                              </td>
-                              <td style={{ padding: '7px 12px', color: '#7f1d1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {row.oem || '—'}
-                              </td>
-                              <td style={{ padding: '7px 12px', color: '#7f1d1d', fontStyle: 'italic' }}>
-                                {row.descripcion ? `${row.descripcion} — ` : ''}Pertenece a {row.conflicto_casa_nombre}, no se incluirá
-                              </td>
-                              <td style={{ padding: '7px 12px', textAlign: 'center', color: '#7f1d1d', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                {row.cantidad ?? '—'}
-                              </td>
-                              <td style={{ padding: '7px 12px', textAlign: 'right', color: '#7f1d1d' }}>—</td>
-                            </tr>
-                          ))}
                         </tbody>
                       </table>
                     </div>

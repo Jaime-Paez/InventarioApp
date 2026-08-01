@@ -24,6 +24,7 @@ from .models import (
     PagoMovimiento,
     SolicitudTraslado,
     SolicitudTrasladoDetalle,
+    TrasladoInconveniente,
 )
 from .stock_availability import get_available_transfer_quantities_by_product
 from .transfer_helpers import cancel_pending_transfer_requests, REMINDERS_SYNC_FLAG
@@ -673,6 +674,24 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         required=False,
         write_only=True,
     )
+    nota_inconveniente = serializers.SerializerMethodField(read_only=True)
+
+    def get_nota_inconveniente(self, obj):
+        # La nota general de "algo no salio como lo esperado" al recibir un
+        # traslado se guarda como TrasladoInconveniente (tipo Otro) ligada a
+        # la entrada. Se expone aqui para que tanto la entrada como la salida
+        # de ese mismo traslado puedan mostrarla junto a la nota normal.
+        inconveniente = obj.inconvenientes_traslado.filter(
+            tipo=TrasladoInconveniente.Tipos.OTRO
+        ).order_by("-id").first()
+        if inconveniente is None:
+            solicitud_salida = getattr(obj, "solicitud_traslado_salida", None)
+            if solicitud_salida is not None and solicitud_salida.movimiento_entrada_id:
+                inconveniente = TrasladoInconveniente.objects.filter(
+                    movimiento_entrada_id=solicitud_salida.movimiento_entrada_id,
+                    tipo=TrasladoInconveniente.Tipos.OTRO,
+                ).order_by("-id").first()
+        return str(inconveniente.motivo).strip() if inconveniente else ""
 
     class Meta:
         model = MovimientoInventario
@@ -704,6 +723,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "estado_garantia",
             "casa_comercial",
             "casa_comercial_id",
+            "nota_inconveniente",
         ]
         extra_kwargs = {
             "no_documento": {
