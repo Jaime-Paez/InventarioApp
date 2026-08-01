@@ -61,7 +61,9 @@ def get_alterno_group_ids(producto_id):
 
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = (
-        Producto.objects.prefetch_related("casas_comerciales", "oem_productos__oem")
+        Producto.objects.prefetch_related(
+            "casas_comerciales__pais", "oem_productos__oem", "alternativas__alterno"
+        )
         .all()
         .order_by("-creado_en", "-id")
     )

@@ -55,6 +55,7 @@ class Producto(models.Model):
             GinIndex(OpClass(Upper("nombre"), name="gin_trgm_ops"), name="productos_nombre_trgm"),
             GinIndex(OpClass(Upper("descripcion"), name="gin_trgm_ops"), name="productos_descripcion_trgm"),
             GinIndex(OpClass(Upper("referencia"), name="gin_trgm_ops"), name="productos_referencia_trgm"),
+            models.Index(fields=["-creado_en", "-id"], name="productos_creado_en_id_idx"),
         ]
 
     def __str__(self) -> str:  # pragma: no cover - representación legible

@@ -373,7 +373,7 @@ class ProductoSerializer(serializers.ModelSerializer):
 
     def get_alternativas(self, obj):
         alternativas = []
-        for relacion in obj.alternativas.select_related("alterno").all():
+        for relacion in obj.alternativas.all():
             alterno = relacion.alterno
             alternativas.append(
                 {
