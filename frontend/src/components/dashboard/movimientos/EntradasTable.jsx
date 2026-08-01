@@ -908,7 +908,9 @@ function EntradasTable({
   }
 
   const totalBodyTemplate = (rowData) => {
-    const value = parseCurrency(rowData?.total)
+    const normalizedSubTipo = normalizeValue(rowData?.sub_tipo_nombre || rowData?.sub_tipo_movimiento)
+    const isTransferRow = Boolean(rowData?.es_solicitud_traslado) || normalizedSubTipo.includes('trasl')
+    const value = isTransferRow ? '$0.00' : parseCurrency(rowData?.total)
     return (
       <span className="cell-tooltip" data-pr-tooltip={value}>
         {value}

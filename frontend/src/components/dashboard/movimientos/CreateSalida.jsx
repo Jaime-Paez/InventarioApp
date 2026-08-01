@@ -3986,7 +3986,7 @@ function CreateSalida({
                     ))}
 
                     <div className="create-user__locations-row create-salida__totals-row">
-                      <span className="create-salida__totals-label">Subtotal</span>
+                      <span className="create-salida__totals-label">{isTraslado ? 'Total' : 'Subtotal'}</span>
                       <span className="create-salida__totals-value">{formatCurrency(subtotalConBorrador)}</span>
                     </div>
 
@@ -4011,25 +4011,27 @@ function CreateSalida({
                       </div>
                     )}
 
-                    <div className="create-user__locations-row create-salida__totals-row create-salida__totals-row--strong">
-                      <span className="create-salida__totals-label">Total con IVA ({ivaPercent}%)</span>
-                      <span className="create-salida__totals-value">
-                        {isVenta && subtotalConBorrador > 0 ? (
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={totalRawInput}
-                            onFocus={handleTotalFocus}
-                            onChange={handleTotalChange}
-                            onBlur={handleTotalBlur}
-                            disabled={loading}
-                            className="create-salida__total-inline-input"
-                          />
-                        ) : (
-                          <strong>{formatCurrency(totalConIva)}</strong>
-                        )}
-                      </span>
-                    </div>
+                    {!isTraslado && (
+                      <div className="create-user__locations-row create-salida__totals-row create-salida__totals-row--strong">
+                        <span className="create-salida__totals-label">Total con IVA ({ivaPercent}%)</span>
+                        <span className="create-salida__totals-value">
+                          {isVenta && subtotalConBorrador > 0 ? (
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={totalRawInput}
+                              onFocus={handleTotalFocus}
+                              onChange={handleTotalChange}
+                              onBlur={handleTotalBlur}
+                              disabled={loading}
+                              className="create-salida__total-inline-input"
+                            />
+                          ) : (
+                            <strong>{formatCurrency(totalConIva)}</strong>
+                          )}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                 </section>
