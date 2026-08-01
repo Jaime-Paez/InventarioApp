@@ -15,14 +15,14 @@
   min-width: 84px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, #eab308 28%, transparent);
+  background: color-mix(in srgb, #eab308 55%, transparent);
   color: #713f12 !important;
   font-weight: 600;
   font-size: 0.8em;
 }
 
 .dashboard-shell.dark .salidas-garantia-pendiente-chip {
-  background: color-mix(in srgb, #eab308 32%, transparent);
+  background: color-mix(in srgb, #eab308 60%, transparent);
   color: #fef08a !important;
 }
 
@@ -97,31 +97,31 @@
 }
 
 .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada > td {
-  background: color-mix(in srgb, #eab308 14%, var(--table-color)) !important;
+  background: color-mix(in srgb, #eab308 46%, var(--table-color)) !important;
   border-bottom-color: color-mix(in srgb, #ca8a04 28%, transparent) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada:hover > td {
-  background: color-mix(in srgb, #eab308 22%, var(--table-color-hover)) !important;
+  background: color-mix(in srgb, #eab308 56%, var(--table-color-hover)) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada.selected-row-shadow > td,
 .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada.selected-row-shadow:hover > td {
-  background: color-mix(in srgb, #eab308 28%, var(--table-color-selected)) !important;
+  background: color-mix(in srgb, #eab308 62%, var(--table-color-selected)) !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada > td {
-  background: color-mix(in srgb, #eab308 18%, var(--table-color-dark)) !important;
+  background: color-mix(in srgb, #eab308 44%, var(--table-color-dark)) !important;
   border-bottom-color: color-mix(in srgb, #eab308 38%, var(--color-border-dark)) !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada:hover > td {
-  background: color-mix(in srgb, #eab308 26%, var(--table-color-dark-hover)) !important;
+  background: color-mix(in srgb, #eab308 54%, var(--table-color-dark-hover)) !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada.selected-row-shadow > td,
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--garantia-solicitada.selected-row-shadow:hover > td {
-  background: color-mix(in srgb, #eab308 32%, var(--table-color-selected-dark)) !important;
+  background: color-mix(in srgb, #eab308 60%, var(--table-color-selected-dark)) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.salidas-row--sent-traslado > td {

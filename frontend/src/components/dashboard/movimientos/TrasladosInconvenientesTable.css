@@ -99,9 +99,9 @@
 }
 
 .transfer-issues-state--pendiente {
-  color: #a16207;
-  background: rgba(250, 204, 21, 0.16);
-  border-color: rgba(250, 204, 21, 0.3);
+  color: #713f12;
+  background: rgba(250, 204, 21, 0.55);
+  border-color: rgba(250, 204, 21, 0.7);
 }
 
 .transfer-issues-state--resuelto {
@@ -123,12 +123,12 @@
 }
 
 .users-datatable .p-datatable-tbody > tr.transfer-issues-row--pendiente > td {
-  background: color-mix(in srgb, #facc15 17%, var(--table-color)) !important;
+  background: color-mix(in srgb, #facc15 48%, var(--table-color)) !important;
   border-bottom-color: color-mix(in srgb, #ca8a04 28%, transparent) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.transfer-issues-row--pendiente:hover > td {
-  background: color-mix(in srgb, #facc15 24%, var(--table-color-hover)) !important;
+  background: color-mix(in srgb, #facc15 58%, var(--table-color-hover)) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.transfer-issues-row--resuelto > td {
@@ -151,18 +151,18 @@
 
 /* Aceptados: no borrador yet → amber */
 .users-datatable .p-datatable-tbody > tr.sol-row--no-borrador > td {
-  background: color-mix(in srgb, #f59e0b 10%, var(--table-color)) !important;
+  background: color-mix(in srgb, #f59e0b 46%, var(--table-color)) !important;
   border-bottom-color: color-mix(in srgb, #d97706 22%, transparent) !important;
 }
 .users-datatable .p-datatable-tbody > tr.sol-row--no-borrador:hover > td {
-  background: color-mix(in srgb, #f59e0b 18%, var(--table-color-hover)) !important;
+  background: color-mix(in srgb, #f59e0b 56%, var(--table-color-hover)) !important;
 }
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.sol-row--no-borrador > td {
-  background: color-mix(in srgb, #f59e0b 14%, var(--table-color-dark)) !important;
+  background: color-mix(in srgb, #f59e0b 44%, var(--table-color-dark)) !important;
   border-bottom-color: color-mix(in srgb, #f59e0b 30%, var(--color-border-dark)) !important;
 }
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.sol-row--no-borrador:hover > td {
-  background: color-mix(in srgb, #f59e0b 22%, var(--table-color-dark-hover)) !important;
+  background: color-mix(in srgb, #f59e0b 54%, var(--table-color-dark-hover)) !important;
 }
 
 /* Aceptados: already in a borrador → blue */
@@ -515,8 +515,8 @@
 
 .dashboard-shell.dark .transfer-issues-state--pendiente {
   color: #fde047;
-  background: rgba(250, 204, 21, 0.18);
-  border-color: rgba(250, 204, 21, 0.4);
+  background: rgba(250, 204, 21, 0.5);
+  border-color: rgba(250, 204, 21, 0.65);
 }
 
 .dashboard-shell.dark .transfer-issues-details__history-item {
@@ -538,7 +538,7 @@
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.transfer-issues-row--pendiente > td {
-  background: color-mix(in srgb, #facc15 25%, var(--table-color-dark)) !important;
+  background: color-mix(in srgb, #facc15 46%, var(--table-color-dark)) !important;
   border-bottom-color: color-mix(in srgb, #facc15 42%, var(--color-border-dark)) !important;
 }
 

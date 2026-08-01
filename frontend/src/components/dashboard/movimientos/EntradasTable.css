@@ -51,17 +51,17 @@
 }
 
 .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud > td {
-  background: color-mix(in srgb, #facc15 20%, var(--table-color)) !important;
+  background: color-mix(in srgb, #facc15 48%, var(--table-color)) !important;
   border-bottom-color: color-mix(in srgb, #ca8a04 32%, transparent) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud:hover > td {
-  background: color-mix(in srgb, #facc15 30%, var(--table-color-hover)) !important;
+  background: color-mix(in srgb, #facc15 58%, var(--table-color-hover)) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud.selected-row-shadow > td,
 .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud.selected-row-shadow:hover > td {
-  background: color-mix(in srgb, #facc15 34%, var(--table-color-selected)) !important;
+  background: color-mix(in srgb, #facc15 64%, var(--table-color-selected)) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.entradas-row--guardado-solicitud > td {
@@ -97,7 +97,7 @@
   min-width: 84px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, #facc15 34%, transparent);
+  background: color-mix(in srgb, #facc15 58%, transparent);
   color: #854d0e !important;
   font-weight: 700;
 }
@@ -207,21 +207,21 @@
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud > td {
-  background: color-mix(in srgb, #facc15 24%, var(--table-color-dark)) !important;
+  background: color-mix(in srgb, #facc15 46%, var(--table-color-dark)) !important;
   border-bottom-color: color-mix(in srgb, #facc15 38%, var(--color-border-dark)) !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud:hover > td {
-  background: color-mix(in srgb, #facc15 30%, var(--table-color-dark-hover)) !important;
+  background: color-mix(in srgb, #facc15 56%, var(--table-color-dark-hover)) !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud.selected-row-shadow > td,
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.entradas-row--pending-solicitud.selected-row-shadow:hover > td {
-  background: color-mix(in srgb, #facc15 32%, var(--table-color-selected-dark)) !important;
+  background: color-mix(in srgb, #facc15 60%, var(--table-color-selected-dark)) !important;
 }
 
 .dashboard-shell.dark .entradas-pending-state-chip {
-  background: color-mix(in srgb, #facc15 42%, transparent);
+  background: color-mix(in srgb, #facc15 62%, transparent);
   color: #111827 !important;
 }
 
