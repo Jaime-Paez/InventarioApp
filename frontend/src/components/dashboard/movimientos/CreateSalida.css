@@ -1916,6 +1916,7 @@
 }
 
 .create-salida__inconveniente-note {
+  margin-top: 10px;
   border: 1px solid #f87171;
   border-radius: 8px;
   padding: 10px 14px;
@@ -1951,6 +1952,45 @@
 
 .dashboard-shell.dark .create-salida__inconveniente-note p {
   color: #fecaca;
+}
+
+.create-salida__inconveniente-resolucion-note {
+  margin-top: 10px;
+  border: 1px solid #4ade80;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background-color: #f0fdf4;
+}
+
+.create-salida__inconveniente-resolucion-note span {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #16a34a;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.create-salida__inconveniente-resolucion-note p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #14532d;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dashboard-shell.dark .create-salida__inconveniente-resolucion-note {
+  border-color: #166534;
+  background-color: #142a1c;
+}
+
+.dashboard-shell.dark .create-salida__inconveniente-resolucion-note span {
+  color: #4ade80;
+}
+
+.dashboard-shell.dark .create-salida__inconveniente-resolucion-note p {
+  color: #bbf7d0;
 }
 
 /* Shared table cell hover card */

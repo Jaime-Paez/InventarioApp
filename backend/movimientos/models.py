@@ -359,6 +359,14 @@ class TrasladoInconveniente(models.Model):
         blank=True,
     )
     motivo = models.TextField(blank=True, default="")
+    motivo_resolucion = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Nota de como se solucionó el inconveniente, distinta de `motivo` "
+            "(la novedad original reportada al detectarlo)."
+        ),
+    )
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

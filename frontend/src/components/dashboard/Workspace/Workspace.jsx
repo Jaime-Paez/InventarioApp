@@ -578,6 +578,11 @@ function Workspace({
             ? () => { setPendingOpenDetailsId(null); setPendingOpenDetailsTab(null); setPendingOpenDetailsStatus(null) }
             : undefined
         }
+        onOpenTransferRequestInEntradas={
+          (tab === INCONVENIENTES_TAB || tab === INCONVENIENTES_TAB_LEGACY)
+            ? handleOpenTransferRequestInEntradas
+            : undefined
+        }
       />
     )
   }

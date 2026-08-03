@@ -42,6 +42,7 @@ const emptyForm = {
   iva_rate: String(DEFAULT_IVA_RATE),
   urgente: false,
   notaInconveniente: '',
+  notaInconvenienteResolucion: '',
 }
 
 const initialClienteForm = {
@@ -1350,6 +1351,7 @@ function EntradaDetails({
         iva_rate: String(salida?.iva_rate ?? DEFAULT_IVA_RATE),
         urgente: Boolean(linkedSolicitud?.urgente ?? salida?.urgente),
         notaInconveniente: String(salida?.nota_inconveniente || '').trim(),
+        notaInconvenienteResolucion: String(salida?.nota_inconveniente_resolucion || '').trim(),
       },
       clienteForm,
       detalles,
@@ -3491,6 +3493,14 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       <div className="create-user__field create-user__field--full create-salida__inconveniente-note">
                         <span>Nota de inconveniente</span>
                         <p>{formData.notaInconveniente}</p>
+                      </div>
+                    </div>
+                  )}
+                  {formData.notaInconvenienteResolucion && (
+                    <div className="create-user__grid create-user__grid--two">
+                      <div className="create-user__field create-user__field--full create-salida__inconveniente-resolucion-note">
+                        <span>Resolución del inconveniente</span>
+                        <p>{formData.notaInconvenienteResolucion}</p>
                       </div>
                     </div>
                   )}

@@ -33,6 +33,7 @@ const emptyForm = {
   descuento: '',
   iva_rate: String(DEFAULT_IVA_RATE),
   notaInconveniente: '',
+  notaInconvenienteResolucion: '',
 }
 
 const initialClienteForm = {
@@ -816,6 +817,7 @@ function SalidaDetails({
         descuento: salida?.descuento ?? '',
         iva_rate: String(salida?.iva_rate ?? DEFAULT_IVA_RATE),
         notaInconveniente: String(salida?.nota_inconveniente || '').trim(),
+        notaInconvenienteResolucion: String(salida?.nota_inconveniente_resolucion || '').trim(),
       },
       clienteForm,
       detalles,
@@ -2226,6 +2228,14 @@ function SalidaDetails({
                       <div className="create-user__field create-user__field--full create-salida__inconveniente-note">
                         <span>Nota de inconveniente</span>
                         <p>{formData.notaInconveniente}</p>
+                      </div>
+                    </div>
+                  )}
+                  {formData.notaInconvenienteResolucion && (
+                    <div className="create-user__grid create-user__grid--two">
+                      <div className="create-user__field create-user__field--full create-salida__inconveniente-resolucion-note">
+                        <span>Resolución del inconveniente</span>
+                        <p>{formData.notaInconvenienteResolucion}</p>
                       </div>
                     </div>
                   )}

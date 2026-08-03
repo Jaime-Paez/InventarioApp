@@ -675,12 +675,17 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         write_only=True,
     )
     nota_inconveniente = serializers.SerializerMethodField(read_only=True)
+    nota_inconveniente_resolucion = serializers.SerializerMethodField(read_only=True)
 
-    def get_nota_inconveniente(self, obj):
+    def _resolve_otro_inconveniente(self, obj):
         # La nota general de "algo no salio como lo esperado" al recibir un
         # traslado se guarda como TrasladoInconveniente (tipo Otro) ligada a
-        # la entrada. Se expone aqui para que tanto la entrada como la salida
-        # de ese mismo traslado puedan mostrarla junto a la nota normal.
+        # la entrada. Se resuelve aqui para que tanto la entrada como la
+        # salida de ese mismo traslado puedan mostrarla junto a la nota normal.
+        cached = getattr(obj, "_otro_inconveniente_cache", None)
+        if cached is not None:
+            return cached or None
+
         inconveniente = obj.inconvenientes_traslado.filter(
             tipo=TrasladoInconveniente.Tipos.OTRO
         ).order_by("-id").first()
@@ -691,7 +696,16 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                     movimiento_entrada_id=solicitud_salida.movimiento_entrada_id,
                     tipo=TrasladoInconveniente.Tipos.OTRO,
                 ).order_by("-id").first()
+        obj._otro_inconveniente_cache = inconveniente or False
+        return inconveniente
+
+    def get_nota_inconveniente(self, obj):
+        inconveniente = self._resolve_otro_inconveniente(obj)
         return str(inconveniente.motivo).strip() if inconveniente else ""
+
+    def get_nota_inconveniente_resolucion(self, obj):
+        inconveniente = self._resolve_otro_inconveniente(obj)
+        return str(inconveniente.motivo_resolucion).strip() if inconveniente else ""
 
     class Meta:
         model = MovimientoInventario
@@ -724,6 +738,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "casa_comercial",
             "casa_comercial_id",
             "nota_inconveniente",
+            "nota_inconveniente_resolucion",
         ]
         extra_kwargs = {
             "no_documento": {

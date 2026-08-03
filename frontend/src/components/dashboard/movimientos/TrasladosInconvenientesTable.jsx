@@ -130,7 +130,13 @@ function DecisionButton({ variant, label, tooltip, active, onClick, disabled }) 
   )
 }
 
-function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicitudId, onPendingOpenHandled }) {
+function TrasladosInconvenientesTable({
+  token,
+  moduleActions,
+  pendingOpenSolicitudId,
+  onPendingOpenHandled,
+  onOpenTransferRequestInEntradas,
+}) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
@@ -2096,27 +2102,26 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                       <p className="create-user__eyebrow">Resumen</p>
                       <h4>Detalle general</h4>
                     </div>
+                    {selectedIssue?.movimiento_entrada_id && typeof onOpenTransferRequestInEntradas === 'function' ? (
+                      <button
+                        type="button"
+                        className="create-user__ghost"
+                        onClick={() => {
+                          onOpenTransferRequestInEntradas({
+                            solicitudId: selectedIssue.solicitud_id,
+                            movimientoEntradaId: selectedIssue.movimiento_entrada_id,
+                            sucursalSolicitanteId: selectedIssue.sucursal_solicitante_id,
+                            mode: 'view',
+                          })
+                          closeDetails()
+                        }}
+                      >
+                        Ver entrada
+                      </button>
+                    ) : null}
                   </div>
                   <div className="create-salida__field-group--defined">
                     <div className="create-user__grid create-user__grid--two">
-                      <StaticFieldDisplay
-                        label="Producto"
-                        value={
-                          selectedIssue?.tipo === 'otro'
-                            ? 'Sin producto especifico'
-                            : `${String(selectedIssue?.producto_codigo || '-').trim()} - ${String(selectedIssue?.producto_nombre || '-').trim()}`
-                        }
-                      />
-                      {selectedIssue?.tipo === 'otro' ? (
-                        <StaticFieldDisplay label="Tipo" value="Otro" />
-                      ) : (
-                        <div className="create-user__field create-salida__static-field">
-                          <span>{selectedIssue?.tipo === 'sobrante' ? 'Sobrante' : 'Faltante'}</span>
-                          <div className={`create-salida__static-value transfer-issues-cantidad--${selectedIssue?.tipo === 'sobrante' ? 'sobrante' : 'faltante'}`}>
-                            {selectedIssue?.tipo === 'sobrante' ? '+' : '−'}{String(Number.parseInt(String(selectedIssue?.cantidad_faltante || 0), 10) || 0)}
-                          </div>
-                        </div>
-                      )}
                       <StaticFieldDisplay
                         label={selectedIssue?.origen === 'importacion' ? 'Casa comercial' : 'Sucursal proveedora'}
                         value={String(selectedIssue?.sucursal_proveedora || '-').trim() || '-'}
@@ -2129,6 +2134,22 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                             : String(selectedIssue?.sucursal_solicitante || '-').trim() || '-'
                         }
                       />
+                    </div>
+                    {selectedIssue?.tipo !== 'otro' && (
+                      <div className="create-user__grid create-user__grid--two">
+                        <StaticFieldDisplay
+                          label="Producto"
+                          value={`${String(selectedIssue?.producto_codigo || '-').trim()} - ${String(selectedIssue?.producto_nombre || '-').trim()}`}
+                        />
+                        <div className="create-user__field create-salida__static-field">
+                          <span>{selectedIssue?.tipo === 'sobrante' ? 'Sobrante' : 'Faltante'}</span>
+                          <div className={`create-salida__static-value transfer-issues-cantidad--${selectedIssue?.tipo === 'sobrante' ? 'sobrante' : 'faltante'}`}>
+                            {selectedIssue?.tipo === 'sobrante' ? '+' : '−'}{String(Number.parseInt(String(selectedIssue?.cantidad_faltante || 0), 10) || 0)}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="create-user__grid create-user__grid--two">
                       <StaticFieldDisplay
                         label="Estado"
                         value={formatEstado(selectedIssue?.estado)}
@@ -2139,11 +2160,10 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                       />
                     </div>
                     {String(selectedIssue?.motivo || '').trim() ? (
-                      <StaticFieldDisplay
-                        label="Novedad"
-                        value={String(selectedIssue?.motivo || '').trim()}
-                        fullWidth
-                      />
+                      <div className="create-salida__inconveniente-note">
+                        <span>Novedad</span>
+                        <p>{String(selectedIssue?.motivo || '').trim()}</p>
+                      </div>
                     ) : null}
                   </div>
                 </section>
@@ -2151,15 +2171,21 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Resolucion</p>
-                      <h4>Accion por producto</h4>
+                      <h4>{selectedIssue?.tipo === 'otro' ? 'Resolucion' : 'Accion por producto'}</h4>
                     </div>
                   </div>
                   {canResolveSelectedIssue ? (
                     selectedIssue?.tipo === 'otro' ? (
                       <>
-                        <p className="muted transfer-issues-details__hint">
-                          Marca este inconveniente como solucionado una vez que lo hayas atendido.
-                        </p>
+                        <label className="create-user__field create-user__field--full transfer-issues-details__field">
+                          <span>¿Cómo se solucionó este inconveniente?</span>
+                          <textarea
+                            rows={3}
+                            value={resolverMotivo}
+                            onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
+                            disabled={resolverSubmitting}
+                          />
+                        </label>
                         {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
                       </>
                     ) : (
@@ -2906,6 +2932,11 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                       )}
                     </>
                     )
+                  ) : selectedIssue?.tipo === 'otro' && String(selectedIssue?.motivo_resolucion || '').trim() ? (
+                    <div className="create-salida__inconveniente-resolucion-note">
+                      <span>Resolución</span>
+                      <p>{String(selectedIssue.motivo_resolucion).trim()}</p>
+                    </div>
                   ) : (
                     <p className="muted transfer-issues-details__hint">
                       Este registro ya fue procesado o no tienes permisos para resolverlo.
@@ -2913,29 +2944,31 @@ function TrasladosInconvenientesTable({ token, moduleActions, pendingOpenSolicit
                   )}
                 </section>
 
-                <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <p className="create-user__eyebrow">Seguimiento</p>
-                      <h4>Historial</h4>
+                {selectedIssue?.tipo !== 'otro' && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header">
+                      <div>
+                        <p className="create-user__eyebrow">Seguimiento</p>
+                        <h4>Historial</h4>
+                      </div>
                     </div>
-                  </div>
-                  {!selectedHistoryRows.length ? (
-                    <p className="muted transfer-issues-details__hint">Sin historial.</p>
-                  ) : (
-                    <div className="transfer-issues-details__history">
-                      {selectedHistoryRows.map((item) => (
-                        <article key={`issue-history-${selectedIssue?.row_key}-${item?.id}`} className="transfer-issues-details__history-item">
-                          <strong>{formatHistorialAccion(item?.accion)}</strong>
-                          <p>{String(item?.detalle || '-').trim() || '-'}</p>
-                          <small>
-                            {String(item?.actor_nombre || 'Sistema').trim()} - {formatDateTime(item?.created_at)}
-                          </small>
-                        </article>
-                      ))}
-                    </div>
-                  )}
-                </section>
+                    {!selectedHistoryRows.length ? (
+                      <p className="muted transfer-issues-details__hint">Sin historial.</p>
+                    ) : (
+                      <div className="transfer-issues-details__history">
+                        {selectedHistoryRows.map((item) => (
+                          <article key={`issue-history-${selectedIssue?.row_key}-${item?.id}`} className="transfer-issues-details__history-item">
+                            <strong>{formatHistorialAccion(item?.accion)}</strong>
+                            <p>{String(item?.detalle || '-').trim() || '-'}</p>
+                            <small>
+                              {String(item?.actor_nombre || 'Sistema').trim()} - {formatDateTime(item?.created_at)}
+                            </small>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                )}
               </div>
 
               <footer className="create-user__footer">

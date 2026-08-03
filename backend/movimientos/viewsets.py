@@ -2566,6 +2566,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 getattr(getattr(inconveniente, "subdivision_resolucion", None), "nombre", "") or ""
             ).strip(),
             "motivo": str(inconveniente.motivo or "").strip(),
+            "motivo_resolucion": str(inconveniente.motivo_resolucion or "").strip(),
             "creado_por_id": int(inconveniente.creado_por_id) if inconveniente.creado_por_id else None,
             "creado_por_nombre": self._resolve_user_display(getattr(inconveniente, "creado_por", None)),
             "resuelto_por_id": int(inconveniente.resuelto_por_id) if inconveniente.resuelto_por_id else None,
@@ -4560,11 +4561,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             inconveniente_locked.resolucion = resolucion
             inconveniente_locked.sucursal_resolucion_id = sucursal_resolucion_id
             inconveniente_locked.subdivision_resolucion_id = subdivision_resolucion_id
-            if not es_otro:
-                # Para "Otro" no hay campo de motivo en el resolver (solo el
-                # boton "Solucionado"): se conserva la nota original con la
-                # que se creo el inconveniente en vez de pisarla con un
-                # `motivo` vacio.
+            if es_otro:
+                # Para "Otro" el campo `motivo` guarda la novedad original con
+                # la que se creo el inconveniente (se muestra en "Novedad"),
+                # asi que la nota de como se soluciono se guarda aparte en
+                # `motivo_resolucion` para no pisar la novedad original.
+                inconveniente_locked.motivo_resolucion = motivo
+            else:
                 inconveniente_locked.motivo = motivo
             inconveniente_locked.resuelto_por = request.user
             inconveniente_locked.save(
@@ -4574,6 +4577,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "sucursal_resolucion",
                     "subdivision_resolucion",
                     "motivo",
+                    "motivo_resolucion",
                     "resuelto_por",
                     "updated_at",
                 ]
