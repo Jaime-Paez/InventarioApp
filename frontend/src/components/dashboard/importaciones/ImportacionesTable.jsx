@@ -3599,7 +3599,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           : Number(row.precio_nuevo || 0) / 100
       )
 
-      const rows = [...validRows, ...conflictoRows].map((row) => {
+      // Mismo orden que la tabla en pantalla: los excluidos (en rojo) primero,
+      // luego los válidos.
+      const rows = [...conflictoRows, ...validRows].map((row) => {
         const isConflict = Boolean(row.conflicto_casa)
         return {
           codigo: row.codigo || '',
@@ -3799,7 +3801,16 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const canProcess = Boolean(selectedFile && selectedCasa)
   const conflictoRows = parsedRows.filter(r => r.conflicto_casa)
   const incompleteRows = parsedRows.filter(r => !r.conflicto_casa && (r.faltan_datos || []).length > 0)
-  const validRows = parsedRows.filter(r => !r.conflicto_casa && (r.faltan_datos || []).length === 0)
+  // Orden (debajo de los conflictos en rojo, que van aparte en conflictoRows):
+  // 1) código sugerido (amarillo, necesitan confirmar el código nuevo),
+  // 2) ya vinculados al catálogo, 3) el resto (sin catálogo). sort es
+  // estable, así que dentro de cada grupo se conserva el orden del Excel.
+  // Esto define el orden en pantalla, en el Excel descargado y en la
+  // sugerencia creada, ya que todos esos consumidores iteran validRows.
+  const rowSortRank = (row) => (row.codigo_sugerido ? 0 : row.matched_producto_id ? 1 : 2)
+  const validRows = parsedRows
+    .filter(r => !r.conflicto_casa && (r.faltan_datos || []).length === 0)
+    .sort((a, b) => rowSortRank(a) - rowSortRank(b))
   const matchedCount = validRows.filter(r => r.matched_producto_id).length
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
   const referenciaConflictCount = validRows.filter(r => hasReferenciaConflict(r)).length
@@ -4184,7 +4195,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           <col style={{ width: 100 }} />
                           <col style={{ width: 190 }} />
                           <col style={{ width: '16%' }} />
-                          <col />
+                          <col style={{ width: 220 }} />
                           <col style={{ width: 60 }} />
                           <col style={{ width: 80 }} />
                         </colgroup>
@@ -4239,8 +4250,19 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           {validRows.map((row, i) => {
                             const conflict = hasReferenciaConflict(row)
                             const decision = referenciaDecisions[i]
+                            const isSuggested = Boolean(row.codigo_sugerido)
                             return (
-                              <tr key={i} style={{ borderBottom: '1px solid var(--color-border, #e2e8f0)', background: conflict && decision === undefined ? '#fffbeb' : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)' }}>
+                              <tr
+                                key={i}
+                                style={{
+                                  borderBottom: '1px solid var(--color-border, #e2e8f0)',
+                                  background: isSuggested
+                                    ? '#fef08a'
+                                    : conflict && decision === undefined
+                                      ? '#fffbeb'
+                                      : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)',
+                                }}
+                              >
                                 <td
                                   style={{ padding: row.codigo_sugerido ? '4px 8px' : '7px 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                                   title={!row.matched_producto_id && !row.codigo_sugerido ? 'Sin catálogo' : undefined}
