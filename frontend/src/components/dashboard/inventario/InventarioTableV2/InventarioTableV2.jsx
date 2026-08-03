@@ -285,7 +285,26 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       allowedFields: allowedFilterFields,
       defaultMatchModes: filterDefaultModes,
     })
-    if (columnFilters) params.set('column_filters', JSON.stringify(columnFilters))
+
+    // Rango de cantidad por sucursal (Búsqueda avanzada): a diferencia de
+    // cantidad_min/cantidad_max (que filtran el total general), estos
+    // constraints se aplican por sucursal y se combinan con AND entre si y
+    // con cualquier otro column_filter, para poder pedir por ejemplo
+    // "minimo en Tumbaco" Y "maximo en 9 de Octubre" al mismo tiempo.
+    let mergedColumnFilters = columnFilters ? { ...columnFilters } : null
+    branches.forEach((branch) => {
+      const minValue = String(criteria?.[`sucursal_min_${branch.id}`] ?? '').trim()
+      const maxValue = String(criteria?.[`sucursal_max_${branch.id}`] ?? '').trim()
+      if (!minValue && !maxValue) return
+      const constraints = []
+      if (minValue) constraints.push({ value: minValue, matchMode: 'gte' })
+      if (maxValue) constraints.push({ value: maxValue, matchMode: 'lte' })
+      if (!constraints.length) return
+      mergedColumnFilters = mergedColumnFilters || {}
+      mergedColumnFilters[`sucursal_${branch.id}`] = { operator: 'AND', constraints }
+    })
+
+    if (mergedColumnFilters) params.set('column_filters', JSON.stringify(mergedColumnFilters))
 
     const orderingMap = { ...INVENTARIO_V2_ORDERING_MAP }
     branchFields.forEach((field) => {
@@ -2695,6 +2714,52 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                     </label>
                   </div>
                 </section>
+
+                {branches.length > 0 && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header">
+                      <div>
+                        <p className="create-user__eyebrow">Filtros</p>
+                        <h4>Cantidad por sucursal</h4>
+                      </div>
+                    </div>
+                    <p className="muted">
+                      Puedes combinar varias sucursales: por ejemplo, un mínimo en una y un máximo en otra, y solo se mostrarán los productos que cumplan ambas condiciones a la vez.
+                    </p>
+                    <div className="create-user__grid create-user__grid--three">
+                      {branches.map((branch) => (
+                        <React.Fragment key={`branch-qty-filter-${branch.id}`}>
+                          <div className="create-user__field">
+                            <span>Sucursal</span>
+                            <strong style={{ display: 'block', paddingTop: 4 }}>{branch.nombre}</strong>
+                          </div>
+                          <label className="create-user__field">
+                            <span>Mínimo</span>
+                            <input
+                              name={`sucursal_min_${branch.id}`}
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={searchCriteria[`sucursal_min_${branch.id}`] || ''}
+                              onChange={handleSearchInputChange}
+                            />
+                          </label>
+                          <label className="create-user__field">
+                            <span>Máximo</span>
+                            <input
+                              name={`sucursal_max_${branch.id}`}
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={searchCriteria[`sucursal_max_${branch.id}`] || ''}
+                              onChange={handleSearchInputChange}
+                            />
+                          </label>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </section>
+                )}
               </div>
 
               <div className="create-user__footer">

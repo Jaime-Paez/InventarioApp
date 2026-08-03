@@ -3685,8 +3685,19 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       })
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data.detail || 'Error al procesar el archivo.')
+      // Si no trae descripcion, se precarga con el nombre de la primera
+      // coincidencia por OEM (la misma lista que se ve en el hover del ícono
+      // "i"): es solo un punto de partida, el usuario puede corregirla si no
+      // encaja. Se aplica al final, sin importar por cuál rama pasó la fila
+      // (con codigo propio, conflicto de casa, sugerido, etc.), para que
+      // nunca quede sin completar por tomar un atajo antes.
+      const withFirstMatchDescripcion = (row) => {
+        if (String(row.descripcion || '').trim()) return row
+        const firstMatchName = (row.oem_matches || [])[0]?.nombre || ''
+        return firstMatchName ? { ...row, descripcion: firstMatchName } : row
+      }
       const rowsWithSuggestions = (data.rows || []).map((row) => {
-        if (row.matched_producto_id || row.codigo) return row
+        if (row.matched_producto_id || row.codigo) return withFirstMatchDescripcion(row)
         const existing = findExistingMatchForCasa(row, selectedCasa?.codigo)
         if (existing) {
           // El OEM ya está vinculado a un producto de esta misma casa: es el
@@ -3696,7 +3707,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           // backend no la pidió porque, desde su punto de vista, no había match.
           const faltan = [...(row.faltan_datos || [])]
           if (Number(row.cantidad) <= 0 && !faltan.includes('Cantidad')) faltan.push('Cantidad')
-          return {
+          return withFirstMatchDescripcion({
             ...row,
             codigo: existing.codigo,
             referencia: row.referencia || existing.referencia || '',
@@ -3706,10 +3717,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
             matched_producto_nombre: existing.nombre,
             matched_producto_referencia: existing.referencia,
             faltan_datos: faltan,
-          }
+          })
         }
         const suggested = deriveSuggestedCodigo(row, selectedCasa?.codigo)
-        return suggested ? { ...row, codigo: suggested, codigo_sugerido: true } : row
+        if (suggested) {
+          return withFirstMatchDescripcion({ ...row, codigo: suggested, codigo_sugerido: true })
+        }
+        return withFirstMatchDescripcion(row)
       })
       setParsedRows(rowsWithSuggestions)
       setReferenciaDecisions({})
@@ -4189,7 +4203,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             <tr
                               key={`conflict-${i}`}
                               style={{ borderBottom: '1px solid #fecaca', background: '#fef2f2' }}
-                              title={`Pertenece a ${row.conflicto_casa_nombre}. No se incluirá en esta sugerencia.`}
                             >
                               <td style={{ padding: '7px 12px', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                 {row.codigo || '—'}
@@ -4197,11 +4210,25 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                               <td style={{ padding: '7px 12px', color: '#7f1d1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {row.referencia || '—'}
                               </td>
-                              <td style={{ padding: '7px 12px', color: '#7f1d1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {row.oem || '—'}
+                              <td style={{ padding: '7px 12px' }}>
+                                {row.oem ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                    <span
+                                      style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#7f1d1d' }}
+                                    >
+                                      {row.oem}
+                                    </span>
+                                    <Info
+                                      size={13}
+                                      style={{ flexShrink: 0, color: '#dc2626' }}
+                                      onMouseEnter={(e) => showCellHover(e, `Pertenece a ${row.conflicto_casa_nombre}, no se incluirá.`, 'Motivo de exclusión')}
+                                      onMouseLeave={hideCellHover}
+                                    />
+                                  </div>
+                                ) : '—'}
                               </td>
                               <td style={{ padding: '7px 12px', color: '#7f1d1d', fontStyle: 'italic' }}>
-                                {row.descripcion ? `${row.descripcion} — ` : ''}Pertenece a {row.conflicto_casa_nombre}, no se incluirá
+                                {row.descripcion || '—'}
                               </td>
                               <td style={{ padding: '7px 12px', textAlign: 'center', color: '#7f1d1d', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                 {row.cantidad ?? '—'}
