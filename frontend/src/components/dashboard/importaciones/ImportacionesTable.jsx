@@ -3184,10 +3184,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const EXCEL_MODAL_MIN_WIDTH = 460
   const EXCEL_MODAL_MIN_HEIGHT = 260
   const EXCEL_STEP_WIDTH = 820
-  const EXCEL_STEP3_WIDTH = 820
+  // El paso 3 necesita suficiente ancho para que la tabla de revisión (870px
+  // de minWidth) entre completa sin scroll horizontal, contando el padding
+  // del modal y el scrollbar vertical de la tabla cuando hay muchas filas.
+  const EXCEL_STEP3_WIDTH = 950
 
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
-  const [modalSize, setModalSize] = useState({ width: SELECTOR_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
+  const [modalSize, setModalSize] = useState({ width: EXCEL_STEP_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
   const [isMaximized, setIsMaximized] = useState(false)
   const modalRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
@@ -3202,7 +3205,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const [selectedFile, setSelectedFile] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const [parsing, setParsing] = useState(false)
+  const [parsingProgress, setParsingProgress] = useState(0)
   const [parseError, setParseError] = useState('')
+  const parsingCancelledRef = useRef(false)
+  useEffect(() => () => { parsingCancelledRef.current = true }, [])
 
   // Step 3
   const [parsedRows, setParsedRows] = useState([])
@@ -3317,16 +3323,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // contenido corto y fijo que no crece con el modal, así que no ofrecen esa
   // opción.
   const isMaximizableStep = step === 3
-  // El paso 1 se ajusta a su contenido ("fit-content"); el paso 2 reutiliza
-  // ese mismo ancho ya medido para que la transición entre ambos no salte
-  // de tamaño de forma rara.
-  const step1MeasuredWidthRef = useRef(null)
-
-  useLayoutEffect(() => {
-    if (step !== 1) return
-    const measured = modalRef.current?.offsetWidth
-    if (measured) step1MeasuredWidthRef.current = measured
-  }, [step, modalSize.width])
 
   useLayoutEffect(() => {
     // Si se vuelve a un paso que no permite maximizar (p. ej. con "Atrás"
@@ -3337,19 +3333,14 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     if (forceRestore) setIsMaximized(false)
     const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
     const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
-    // El paso 1 se ajusta a su contenido ("fit-content"); el paso 2 usa ese
-    // mismo ancho ya medido (su subidor de archivos ocupa el 100% del
-    // modal, así que necesita un ancho definido, no fit-content) para que
-    // no se vea un salto de tamaño raro entre ambos pasos.
-    const preferredWidth = isCasaStep
-      ? SELECTOR_WIDTH
-      : step === 3
-        ? EXCEL_STEP3_WIDTH
-        : step === 1
-          ? 'fit-content'
-          : (step1MeasuredWidthRef.current || EXCEL_STEP_WIDTH)
-    const nextWidth = preferredWidth === 'fit-content' ? 'fit-content' : Math.min(preferredWidth, availableWidth)
-    const measuredWidth = typeof nextWidth === 'number' ? nextWidth : (modalRef.current?.offsetWidth || EXCEL_STEP_WIDTH)
+    // La selección de casa y los pasos 1 y 2 comparten el mismo ancho fijo
+    // (a diferencia de un "fit-content" que se mide después de renderizar,
+    // esto evita que el modal se recentre con una medida vieja y se vea
+    // saltar de lugar al pasar de un paso a otro). Solo el paso 3 es más
+    // ancho, porque necesita espacio real para la tabla de revisión.
+    const preferredWidth = step === 3 ? EXCEL_STEP3_WIDTH : EXCEL_STEP_WIDTH
+    const measuredWidth = Math.min(preferredWidth, availableWidth)
+    const nextWidth = measuredWidth
     const measuredHeight = modalRef.current?.offsetHeight || (isCasaStep ? (casaDraft ? 380 : 200) : 300)
     const nextHeight = Math.min(measuredHeight, availableHeight)
     setModalSize({ width: nextWidth, height: SELECTOR_HEIGHT_EMPTY })
@@ -3459,7 +3450,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       // primer resize manual: en ese caso se parte del tamaño ya renderizado.
       startWidth: typeof modalSizeRef.current.width === 'number'
         ? modalSizeRef.current.width
-        : (modalRef.current?.offsetWidth || EXCEL_MODAL_MIN_WIDTH),
+        : (modalRef.current?.offsetWidth || EXCEL_STEP3_WIDTH),
       startHeight: typeof modalSizeRef.current.height === 'number'
         ? modalSizeRef.current.height
         : (modalRef.current?.offsetHeight || EXCEL_MODAL_MIN_HEIGHT),
@@ -3468,10 +3459,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       if (!resizeData.current.active) return
       const deltaX = moveEvent.clientX - resizeData.current.startX
       const deltaY = moveEvent.clientY - resizeData.current.startY
-      const maxWidth = Math.max(EXCEL_MODAL_MIN_WIDTH, window.innerWidth - modalPositionRef.current.x - VIEWPORT_PADDING)
+      // El resize handle solo se muestra en el paso 3 (ver isMaximizableStep),
+      // así que el mínimo acá siempre debe ser el ancho que necesita la tabla
+      // de revisión para no requerir scroll horizontal.
+      const maxWidth = Math.max(EXCEL_STEP3_WIDTH, window.innerWidth - modalPositionRef.current.x - VIEWPORT_PADDING)
       const maxHeight = Math.max(EXCEL_MODAL_MIN_HEIGHT, window.innerHeight - modalPositionRef.current.y - VIEWPORT_PADDING)
       setModalSize({
-        width: clamp(resizeData.current.startWidth + deltaX, EXCEL_MODAL_MIN_WIDTH, maxWidth),
+        width: clamp(resizeData.current.startWidth + deltaX, EXCEL_STEP3_WIDTH, maxWidth),
         height: clamp(resizeData.current.startHeight + deltaY, EXCEL_MODAL_MIN_HEIGHT, maxHeight),
       })
     }
@@ -3575,7 +3569,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       const XLSXStyle = (await import('xlsx-js-style')).default
       const headers = [
         'CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANTIDAD',
-        'PRECIO BASE (BD)', 'PRECIO NUEVO (EXCEL)', 'CASA COMERCIAL', 'NOTA',
+        'PRECIO BASE (BD)', 'PRECIO NUEVO (EXCEL)', 'PVP APROX', 'CASA COMERCIAL', 'NOTA',
       ]
       const headerStyle = {
         font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
@@ -3611,6 +3605,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           cantidad: row.cantidad ?? '',
           precioBase: row.matched_producto_precio != null ? Number(row.matched_producto_precio) : '',
           precioNuevo: resolvePrecioNuevo(row),
+          pvpAprox: Number(row.pvp) > 0 ? Number(row.pvp) : '',
           casa: isConflict ? (row.conflicto_casa_nombre || '') : (selectedCasa?.nombre || ''),
           nota: isConflict
             ? `Excluido — pertenece a ${row.conflicto_casa_nombre || 'otra casa'}`
@@ -3624,7 +3619,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         headers,
         ...rows.map((r) => [
           r.codigo, r.referencia, r.oem, r.descripcion, r.cantidad,
-          r.precioBase, r.precioNuevo, r.casa, r.nota,
+          r.precioBase, r.precioNuevo, r.pvpAprox, r.casa, r.nota,
         ]),
       ]
       const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
@@ -3650,7 +3645,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       })
       worksheet['!cols'] = [
         { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 11 },
-        { wch: 16 }, { wch: 18 }, { wch: 20 }, { wch: 34 },
+        { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 20 }, { wch: 34 },
       ]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
@@ -3676,17 +3671,37 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const handleProcess = async () => {
     setParseError('')
     setParsing(true)
+    setParsingProgress(0)
+    parsingCancelledRef.current = false
     try {
       const formData = new FormData()
       formData.append('file', selectedFile)
       formData.append('casa_comercial_id', selectedCasa.id)
-      const resp = await fetch(`${API_URL}/importaciones/importaciones/parse-excel/`, {
+      const startResp = await fetch(`${API_URL}/importaciones/importaciones/parse-excel-iniciar/`, {
         method: 'POST',
         headers: { Authorization: `Token ${token}` },
         body: formData,
       })
-      const data = await resp.json().catch(() => ({}))
-      if (!resp.ok) throw new Error(data.detail || 'Error al procesar el archivo.')
+      const startData = await startResp.json().catch(() => ({}))
+      if (!startResp.ok) throw new Error(startData.detail || 'Error al procesar el archivo.')
+      const jobId = startData.job_id
+
+      // El backend procesa el Excel en segundo plano y va reportando el
+      // progreso (0-100); acá se hace polling hasta que quede listo o falle.
+      let data = null
+      while (true) {
+        if (parsingCancelledRef.current) return
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        if (parsingCancelledRef.current) return
+        const statusResp = await fetch(`${API_URL}/importaciones/importaciones/parse-excel-estado/${jobId}/`, {
+          headers: { Authorization: `Token ${token}` },
+        })
+        const statusData = await statusResp.json().catch(() => ({}))
+        if (!statusResp.ok) throw new Error(statusData.detail || 'Error al procesar el archivo.')
+        setParsingProgress(statusData.progreso || 0)
+        if (statusData.estado === 'listo') { data = statusData; break }
+        if (statusData.estado === 'error') throw new Error(statusData.detail || 'Error al procesar el archivo.')
+      }
       // Si no trae descripcion, se precarga con el nombre de la primera
       // coincidencia por OEM (la misma lista que se ve en el hover del ícono
       // "i"): es solo un punto de partida, el usuario puede corregirla si no
@@ -3732,9 +3747,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       setSubmitError('')
       setStep(3)
     } catch (e) {
-      setParseError(e.message)
+      if (!parsingCancelledRef.current) setParseError(e.message)
     } finally {
-      setParsing(false)
+      if (!parsingCancelledRef.current) setParsing(false)
     }
   }
 
@@ -3894,7 +3909,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
             left: modalPosition.x,
             width: modalSize.width,
             height: modalSize.height,
-            minWidth: isCasaStep ? undefined : EXCEL_MODAL_MIN_WIDTH,
+            minWidth: isCasaStep ? undefined : step === 3 ? EXCEL_STEP3_WIDTH : EXCEL_MODAL_MIN_WIDTH,
             minHeight: isCasaStep ? undefined : EXCEL_MODAL_MIN_HEIGHT,
             maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
             maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
@@ -4051,14 +4066,14 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
                   Descarga la plantilla y rellénala con los productos a sugerir. No incluye columnas de sucursales.
                 </p>
-                <div style={{ alignSelf: 'flex-start', maxWidth: '100%', background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <strong style={{ fontSize: 'var(--font-size-md)' }}>Columnas de la plantilla</strong>
-                  <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 5, minWidth: 0 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, minWidth: 0 }}>
                     {[
                       { label: 'CODIGO JP', type: 'texto' }, { label: 'REFERENCIA', type: 'texto' }, { label: 'OEM', type: 'texto' },
-                      { label: 'DESCRIPCIÓN', type: 'texto' }, { label: 'CANTIDAD', type: 'número' }, { label: 'PVP', type: 'número, opcional' },
+                      { label: 'DESCRIPCIÓN', type: 'texto' }, { label: 'CANTIDAD', type: 'número' }, { label: 'PVP', type: 'opcional' },
                     ].map(col => (
-                      <span key={col.label} style={{ background: '#1A1A2E', color: '#fff', borderRadius: 4, padding: '2px 6px', fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      <span key={col.label} style={{ background: '#1A1A2E', color: '#fff', borderRadius: 6, padding: '6px 4px', fontSize: '0.68rem', fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {col.label} <span style={{ opacity: 0.55, fontWeight: 400 }}>({col.type})</span>
                       </span>
                     ))}
@@ -4109,6 +4124,24 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                     </div>
                   )}
                 </div>
+                {parsing && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
+                    <div style={{ width: '100%', height: 8, borderRadius: 6, background: 'var(--color-border, #e2e8f0)', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${parsingProgress}%`,
+                          height: '100%',
+                          borderRadius: 6,
+                          background: 'var(--color-primary, #2563eb)',
+                          transition: 'width .3s ease',
+                        }}
+                      />
+                    </div>
+                    <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', textAlign: 'right' }}>
+                      {parsingProgress}%
+                    </span>
+                  </div>
+                )}
                 {parseError && <p style={{ margin: 0, fontSize: 'var(--font-size-md)', color: '#dc2626' }}>{parseError}</p>}
               </>
             )}
@@ -4189,15 +4222,16 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       </div>
                     )}
 
-                    <div style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
-                      <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 620 }}>
+                    <div className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
+                      <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 870 }}>
                         <colgroup>
                           <col style={{ width: 100 }} />
                           <col style={{ width: 190 }} />
-                          <col style={{ width: '16%' }} />
+                          <col style={{ width: 130 }} />
                           <col style={{ width: 220 }} />
                           <col style={{ width: 60 }} />
                           <col style={{ width: 80 }} />
+                          <col style={{ width: 90 }} />
                         </colgroup>
                         <thead>
                           <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1, fontSize: 'var(--font-size-sm)' }}>
@@ -4207,6 +4241,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
                             <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
                             <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>PVP</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="Precio que traía el Excel, como referencia">PVP Aprox</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -4245,6 +4280,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                 {row.cantidad ?? '—'}
                               </td>
                               <td style={{ padding: '7px 12px', textAlign: 'right', color: '#7f1d1d' }}>—</td>
+                              <td style={{ padding: '7px 12px', textAlign: 'right', color: '#7f1d1d' }}>
+                                {Number(row.pvp) > 0 ? `$${Number(row.pvp).toFixed(2)}` : '—'}
+                              </td>
                             </tr>
                           ))}
                           {validRows.map((row, i) => {
@@ -4422,6 +4460,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                       </span>
                                     )
                                   })()}
+                                </td>
+                                <td style={{ padding: '7px 12px', textAlign: 'right', color: 'var(--color-text-secondary)' }}>
+                                  {Number(row.pvp) > 0 ? `$${Number(row.pvp).toFixed(2)}` : '—'}
                                 </td>
                               </tr>
                             )

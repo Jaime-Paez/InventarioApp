@@ -1,8 +1,12 @@
+import io
 import statistics
+import threading
+import unicodedata
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import connections, transaction
 from django.utils import timezone
 
 from rest_framework import filters, status, viewsets
@@ -27,10 +31,280 @@ from .models import (
     ImportacionDetalle,
     ImportacionEnvio,
     ImportacionEnvioDetalle,
+    ImportacionExcelJob,
     ImportacionInconveniente,
     ImportacionInconvenienteHistorial,
 )
 from .serializers import ImportacionDetalleSerializer, ImportacionSerializer, generate_next_importacion_code
+
+
+def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
+    """Procesa el Excel de sugerencia en un thread aparte, reportando progreso
+    incremental en el job (0-100) para que el frontend pueda hacer polling.
+    """
+    import openpyxl
+
+    def set_progress(pct):
+        ImportacionExcelJob.objects.filter(pk=job_id).update(progreso=min(99, max(0, int(pct))))
+
+    try:
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+            ws = wb.active
+        except Exception:
+            raise ValueError("No se pudo leer el archivo. Asegúrate de que sea un .xlsx válido.")
+        all_rows = list(ws.iter_rows(values_only=True))
+        if not all_rows:
+            raise ValueError("El archivo está vacío.")
+
+        set_progress(5)
+
+        def normalize_header(val):
+            text = str(val or "").strip().upper()
+            text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+            return text
+
+        header = [normalize_header(h) for h in all_rows[0]]
+        # Known columns can appear in any order; anything left over (after the
+        # known ones) is treated as a per-sucursal quantity column.
+        known_aliases = {
+            "codigo": ["CODIGO JP", "CODIGO"],
+            "referencia": ["REFERENCIA"],
+            "oem": ["OEM"],
+            "descripcion": ["DESCRIPCION"],
+            "cantidad": ["CANTIDAD"],
+            "pvp": ["PVP", "PVP APROX", "PVP APROXIMADO"],
+        }
+        col_idx_by_field = {}
+        known_col_indexes = set()
+        for field, aliases in known_aliases.items():
+            for idx, name in enumerate(header):
+                if name in aliases:
+                    col_idx_by_field[field] = idx
+                    known_col_indexes.add(idx)
+                    break
+
+        sucursal_cols = [(idx, name) for idx, name in enumerate(header) if idx not in known_col_indexes and name]
+
+        from inventario.models import Sucursal as SucursalModel
+        suc_by_name = {s.nombre.strip().upper(): s.id for s in SucursalModel.objects.all()}
+        sucursal_col_ids = {idx: suc_by_name.get(name) for idx, name in sucursal_cols}
+
+        def cell(row, field):
+            idx = col_idx_by_field.get(field)
+            if idx is None or idx >= len(row):
+                return None
+            return row[idx]
+
+        def safe_str(val):
+            return str(val or "").strip()
+
+        def safe_int(val):
+            try:
+                return int(float(val))
+            except (TypeError, ValueError):
+                return 0
+
+        def safe_float(val):
+            try:
+                return float(val or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        set_progress(10)
+
+        # Junta todos los códigos OEM del Excel para resolverlos en una sola
+        # consulta (en vez de una por fila) y así poder mostrar, por fila, qué
+        # productos del catálogo ya tienen registrado ese mismo OEM.
+        from django.db.models.functions import Lower
+
+        all_oem_codes_lower = set()
+        for row in all_rows[1:]:
+            for code in safe_str(cell(row, "oem")).split(","):
+                code = code.strip()
+                if code:
+                    all_oem_codes_lower.add(code.lower())
+
+        iva_rate = ConfiguracionSistema.get_solo().iva_rate or 0
+
+        def with_iva(precio):
+            return round(float(precio) * (1 + float(iva_rate)), 2) if precio is not None else None
+
+        oem_matches_by_code = {}
+        if all_oem_codes_lower:
+            oem_links = (
+                OEMProducto.objects
+                .select_related("producto", "oem")
+                .prefetch_related("producto__casas_comerciales")
+                .annotate(codigo_lower=Lower("oem__codigo"))
+                .filter(codigo_lower__in=all_oem_codes_lower)
+            )
+            for link in oem_links:
+                precio = float(link.producto.precio) if link.producto.precio is not None else None
+                oem_matches_by_code.setdefault(link.codigo_lower, []).append({
+                    "producto_id": link.producto_id,
+                    "codigo": link.producto.codigo,
+                    "nombre": link.producto.nombre,
+                    "referencia": link.producto.referencia,
+                    # Códigos JP se arman como <base><sufijo de la casa comercial>;
+                    # se manda el sufijo de cada casa a la que pertenece este
+                    # producto para que el frontend pueda inferir la base y
+                    # sugerir el código con el sufijo de la casa actual.
+                    "casas_comerciales_codigos": [
+                        c.codigo for c in link.producto.casas_comerciales.all() if c.codigo
+                    ],
+                    "precio": precio,
+                    "precio_con_iva": with_iva(precio),
+                })
+
+        set_progress(20)
+
+        data_rows = all_rows[1:]
+        total_data_rows = max(len(data_rows), 1)
+        parsed = []
+        for i, (fila_excel, row) in enumerate(enumerate(data_rows, start=2), start=1):
+            codigo = safe_str(cell(row, "codigo"))
+            referencia = safe_str(cell(row, "referencia"))
+            oem = safe_str(cell(row, "oem"))
+            descripcion = safe_str(cell(row, "descripcion"))
+            cantidad = safe_int(cell(row, "cantidad"))
+            pvp = safe_float(cell(row, "pvp"))
+            if not codigo and not referencia and not oem and not descripcion and cantidad <= 0 and pvp <= 0:
+                if i % 10 == 0 or i == total_data_rows:
+                    set_progress(20 + (i / total_data_rows) * 75)
+                continue  # fully blank template row
+
+            matched = None
+            # Un match por código o referencia es una identidad fuerte (ese
+            # código/referencia es unico de ese producto), asi que si resulta
+            # ser de otra casa es un conflicto real. Un match por OEM en
+            # cambio solo indica que el repuesto es compatible/equivalente:
+            # es normal que el mismo OEM lo fabriquen o lo cataloguen varias
+            # casas, asi que por si solo NO implica que sea el mismo producto
+            # de esa otra casa (ver mas abajo).
+            matched_via_identity = False
+            conflicto_casa = False
+            conflicto_casa_nombre = ""
+            if codigo:
+                matched = Producto.objects.filter(codigo__iexact=codigo).first()
+                if matched:
+                    matched_via_identity = True
+            if not matched and referencia:
+                matched = Producto.objects.filter(referencia__iexact=referencia).first()
+                if matched:
+                    matched_via_identity = True
+
+            oem_matches_dict = {}
+            for code in oem.split(","):
+                code = code.strip()
+                if not code:
+                    continue
+                for m in oem_matches_by_code.get(code.lower(), []):
+                    oem_matches_dict[m["producto_id"]] = m
+            oem_matches = list(oem_matches_dict.values())
+
+            # Si el Excel solo trae OEM (sin código ni referencia, o con datos
+            # que no encontraron producto), y ese OEM identifica sin ambigüedad
+            # un único producto del catálogo, se usa para vincular la fila igual
+            # que si hubiera traído código o referencia. Referencia u OEM son
+            # identificadores alternativos: basta con uno de los dos.
+            if not matched and len(oem_matches) == 1:
+                matched = Producto.objects.filter(pk=oem_matches[0]["producto_id"]).first()
+                # matched_via_identity se deja en False: ver comentario arriba.
+
+            if matched and casa_comercial_id:
+                casas_ids = list(matched.casas_comerciales.values_list("id", flat=True))
+                if casas_ids and casa_comercial_id not in casas_ids:
+                    if matched_via_identity:
+                        # Product is linked to other casa(s) but not the selected one
+                        otra = matched.casas_comerciales.exclude(id=casa_comercial_id).first()
+                        conflicto_casa = True
+                        conflicto_casa_nombre = otra.nombre if otra else "otra casa comercial"
+                    # Si el match fue solo por OEM, no es un conflicto: se
+                    # descarta el match (matched = None) y la fila sigue como
+                    # sin catálogo, para que el frontend pueda sugerir un
+                    # código nuevo a partir de oem_matches (igual que cuando
+                    # el OEM es ambiguo entre varias casas).
+                    matched = None  # treat as unmatched so it never enters the import
+
+            # Si el producto ya existe (por código, referencia u OEM), completa
+            # código/referencia/descripción con los datos del catálogo cuando el
+            # Excel no los trae: cualquiera de esos identificadores solo ya
+            # identifica el producto.
+            if matched:
+                if not codigo:
+                    codigo = matched.codigo
+                if not referencia:
+                    referencia = matched.referencia or ""
+                if not descripcion:
+                    descripcion = matched.nombre or ""
+
+            faltan_datos = []
+            if not conflicto_casa:
+                # Referencia u OEM identifican el producto (ver
+                # ImportacionDetalleSerializer.validate): basta con que el Excel
+                # traiga uno de los dos, no hace falta ambos ni que el producto
+                # ya exista en el catálogo.
+                if not referencia and not oem:
+                    faltan_datos.append("Referencia u OEM")
+                # La cantidad solo es obligatoria si el producto ya existe en el
+                # catálogo: ahí sí se está registrando una entrada real de stock.
+                # Un producto pendiente (sin vincular a uno existente) se puede
+                # crear con cantidad 0 y pedir unidades después, así que no
+                # bloquea este paso (ver ImportacionDetalleSerializer.validate).
+                if matched and cantidad <= 0:
+                    faltan_datos.append("Cantidad")
+                # La descripción de un producto pendiente ya no bloquea este
+                # paso: se completa directamente en la revisión (paso 3), igual
+                # que el precio de un producto nuevo con código sugerido.
+
+            suc_quantities = {}
+            for idx, suc_id in sucursal_col_ids.items():
+                if suc_id is None or idx >= len(row):
+                    continue
+                qty = safe_int(row[idx])
+                if qty > 0:
+                    suc_quantities[str(suc_id)] = qty
+
+            parsed.append({
+                "fila_excel": fila_excel,
+                "codigo": codigo,
+                "referencia": referencia,
+                "oem": oem,
+                "descripcion": descripcion,
+                "cantidad": cantidad,
+                "pvp": round(pvp, 2),
+                "matched_producto_id": matched.id if matched else None,
+                "matched_producto_codigo": matched.codigo if matched else None,
+                "matched_producto_nombre": matched.nombre if matched else None,
+                "matched_producto_referencia": matched.referencia if matched else None,
+                "matched_producto_precio": float(matched.precio) if matched and matched.precio is not None else None,
+                "oem_matches": oem_matches,
+                "sucursal_quantities": suc_quantities,
+                "conflicto_casa": conflicto_casa,
+                "conflicto_casa_nombre": conflicto_casa_nombre,
+                "faltan_datos": faltan_datos,
+            })
+
+            if i % 10 == 0 or i == total_data_rows:
+                set_progress(20 + (i / total_data_rows) * 75)
+
+        if not parsed:
+            raise ValueError("No se encontraron filas con datos válidos (cantidad > 0).")
+
+        ImportacionExcelJob.objects.filter(pk=job_id).update(
+            estado=ImportacionExcelJob.ESTADO_LISTO,
+            progreso=100,
+            resultado={"rows": parsed, "total": len(parsed)},
+        )
+    except Exception as exc:
+        ImportacionExcelJob.objects.filter(pk=job_id).update(
+            estado=ImportacionExcelJob.ESTADO_ERROR,
+            progreso=100,
+            error=str(exc) or "No se pudo procesar el archivo.",
+        )
+    finally:
+        connections.close_all()
 
 
 class ImportacionViewSet(viewsets.ModelViewSet):
@@ -878,234 +1152,49 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             store.payload = payload
             store.save(update_fields=["payload", "updated_at"])
 
-    @action(detail=False, methods=["post"], url_path="parse-excel")
-    def parse_excel(self, request):
-        import openpyxl
+    @action(detail=False, methods=["post"], url_path="parse-excel-iniciar")
+    def parse_excel_iniciar(self, request):
         file = request.FILES.get("file")
         if not file:
             return Response({"detail": "No se envió ningún archivo."}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            wb = openpyxl.load_workbook(file, read_only=True, data_only=True)
-            ws = wb.active
+            file_bytes = file.read()
         except Exception:
-            return Response({"detail": "No se pudo leer el archivo. Asegúrate de que sea un .xlsx válido."}, status=status.HTTP_400_BAD_REQUEST)
-
-        all_rows = list(ws.iter_rows(values_only=True))
-        if not all_rows:
+            return Response({"detail": "No se pudo leer el archivo."}, status=status.HTTP_400_BAD_REQUEST)
+        if not file_bytes:
             return Response({"detail": "El archivo está vacío."}, status=status.HTTP_400_BAD_REQUEST)
 
-        import unicodedata
-
-        def normalize_header(val):
-            text = str(val or "").strip().upper()
-            text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-            return text
-
-        header = [normalize_header(h) for h in all_rows[0]]
-        # Known columns can appear in any order; anything left over (after the
-        # known ones) is treated as a per-sucursal quantity column.
-        known_aliases = {
-            "codigo": ["CODIGO JP", "CODIGO"],
-            "referencia": ["REFERENCIA"],
-            "oem": ["OEM"],
-            "descripcion": ["DESCRIPCION"],
-            "cantidad": ["CANTIDAD"],
-            "pvp": ["PVP"],
-        }
-        col_idx_by_field = {}
-        known_col_indexes = set()
-        for field, aliases in known_aliases.items():
-            for idx, name in enumerate(header):
-                if name in aliases:
-                    col_idx_by_field[field] = idx
-                    known_col_indexes.add(idx)
-                    break
-
-        sucursal_cols = [(idx, name) for idx, name in enumerate(header) if idx not in known_col_indexes and name]
-
-        from inventario.models import Sucursal as SucursalModel
-        suc_by_name = {s.nombre.strip().upper(): s.id for s in SucursalModel.objects.all()}
-        sucursal_col_ids = {idx: suc_by_name.get(name) for idx, name in sucursal_cols}
-
-        def cell(row, field):
-            idx = col_idx_by_field.get(field)
-            if idx is None or idx >= len(row):
-                return None
-            return row[idx]
-
-        def safe_str(val):
-            return str(val or "").strip()
-
-        def safe_int(val):
-            try:
-                return int(float(val))
-            except (TypeError, ValueError):
-                return 0
-
-        def safe_float(val):
-            try:
-                return float(val or 0)
-            except (TypeError, ValueError):
-                return 0.0
-
-        # Optional: validate products against a specific casa comercial
         try:
             casa_comercial_id = int(request.data.get("casa_comercial_id") or 0) or None
         except (ValueError, TypeError):
             casa_comercial_id = None
 
-        # Junta todos los códigos OEM del Excel para resolverlos en una sola
-        # consulta (en vez de una por fila) y así poder mostrar, por fila, qué
-        # productos del catálogo ya tienen registrado ese mismo OEM.
-        from django.db.models.functions import Lower
+        job = ImportacionExcelJob.objects.create(
+            creado_por=request.user if request.user.is_authenticated else None,
+        )
+        thread = threading.Thread(
+            target=_run_parse_excel_job,
+            args=(job.id, file_bytes, casa_comercial_id),
+            daemon=True,
+        )
+        thread.start()
+        return Response({"job_id": str(job.id)}, status=status.HTTP_202_ACCEPTED)
 
-        all_oem_codes_lower = set()
-        for row in all_rows[1:]:
-            for code in safe_str(cell(row, "oem")).split(","):
-                code = code.strip()
-                if code:
-                    all_oem_codes_lower.add(code.lower())
+    @action(detail=False, methods=["get"], url_path=r"parse-excel-estado/(?P<job_id>[0-9a-fA-F-]+)")
+    def parse_excel_estado(self, request, job_id=None):
+        try:
+            job = ImportacionExcelJob.objects.get(pk=job_id)
+        except (ImportacionExcelJob.DoesNotExist, DjangoValidationError):
+            return Response({"detail": "No se encontró el proceso solicitado."}, status=status.HTTP_404_NOT_FOUND)
 
-        iva_rate = ConfiguracionSistema.get_solo().iva_rate or 0
-
-        def with_iva(precio):
-            return round(float(precio) * (1 + float(iva_rate)), 2) if precio is not None else None
-
-        oem_matches_by_code = {}
-        if all_oem_codes_lower:
-            oem_links = (
-                OEMProducto.objects
-                .select_related("producto", "oem")
-                .prefetch_related("producto__casas_comerciales")
-                .annotate(codigo_lower=Lower("oem__codigo"))
-                .filter(codigo_lower__in=all_oem_codes_lower)
-            )
-            for link in oem_links:
-                precio = float(link.producto.precio) if link.producto.precio is not None else None
-                oem_matches_by_code.setdefault(link.codigo_lower, []).append({
-                    "producto_id": link.producto_id,
-                    "codigo": link.producto.codigo,
-                    "nombre": link.producto.nombre,
-                    "referencia": link.producto.referencia,
-                    # Códigos JP se arman como <base><sufijo de la casa comercial>;
-                    # se manda el sufijo de cada casa a la que pertenece este
-                    # producto para que el frontend pueda inferir la base y
-                    # sugerir el código con el sufijo de la casa actual.
-                    "casas_comerciales_codigos": [
-                        c.codigo for c in link.producto.casas_comerciales.all() if c.codigo
-                    ],
-                    "precio": precio,
-                    "precio_con_iva": with_iva(precio),
-                })
-
-        parsed = []
-        for fila_excel, row in enumerate(all_rows[1:], start=2):
-            codigo = safe_str(cell(row, "codigo"))
-            referencia = safe_str(cell(row, "referencia"))
-            oem = safe_str(cell(row, "oem"))
-            descripcion = safe_str(cell(row, "descripcion"))
-            cantidad = safe_int(cell(row, "cantidad"))
-            pvp = safe_float(cell(row, "pvp"))
-            if not codigo and not referencia and not oem and not descripcion and cantidad <= 0 and pvp <= 0:
-                continue  # fully blank template row
-
-            matched = None
-            conflicto_casa = False
-            conflicto_casa_nombre = ""
-            if codigo:
-                matched = Producto.objects.filter(codigo__iexact=codigo).first()
-            if not matched and referencia:
-                matched = Producto.objects.filter(referencia__iexact=referencia).first()
-
-            oem_matches_dict = {}
-            for code in oem.split(","):
-                code = code.strip()
-                if not code:
-                    continue
-                for m in oem_matches_by_code.get(code.lower(), []):
-                    oem_matches_dict[m["producto_id"]] = m
-            oem_matches = list(oem_matches_dict.values())
-
-            # Si el Excel solo trae OEM (sin código ni referencia, o con datos
-            # que no encontraron producto), y ese OEM identifica sin ambigüedad
-            # un único producto del catálogo, se usa para vincular la fila igual
-            # que si hubiera traído código o referencia. Referencia u OEM son
-            # identificadores alternativos: basta con uno de los dos.
-            if not matched and len(oem_matches) == 1:
-                matched = Producto.objects.filter(pk=oem_matches[0]["producto_id"]).first()
-
-            if matched and casa_comercial_id:
-                casas_ids = list(matched.casas_comerciales.values_list("id", flat=True))
-                if casas_ids and casa_comercial_id not in casas_ids:
-                    # Product is linked to other casa(s) but not the selected one
-                    otra = matched.casas_comerciales.exclude(id=casa_comercial_id).first()
-                    conflicto_casa = True
-                    conflicto_casa_nombre = otra.nombre if otra else "otra casa comercial"
-                    matched = None  # treat as unmatched so it never enters the import
-
-            # Si el producto ya existe (por código, referencia u OEM), completa
-            # código/referencia/descripción con los datos del catálogo cuando el
-            # Excel no los trae: cualquiera de esos identificadores solo ya
-            # identifica el producto.
-            if matched:
-                if not codigo:
-                    codigo = matched.codigo
-                if not referencia:
-                    referencia = matched.referencia or ""
-                if not descripcion:
-                    descripcion = matched.nombre or ""
-
-            faltan_datos = []
-            if not conflicto_casa:
-                # Referencia u OEM identifican el producto (ver
-                # ImportacionDetalleSerializer.validate): basta con que el Excel
-                # traiga uno de los dos, no hace falta ambos ni que el producto
-                # ya exista en el catálogo.
-                if not referencia and not oem:
-                    faltan_datos.append("Referencia u OEM")
-                # La cantidad solo es obligatoria si el producto ya existe en el
-                # catálogo: ahí sí se está registrando una entrada real de stock.
-                # Un producto pendiente (sin vincular a uno existente) se puede
-                # crear con cantidad 0 y pedir unidades después, así que no
-                # bloquea este paso (ver ImportacionDetalleSerializer.validate).
-                if matched and cantidad <= 0:
-                    faltan_datos.append("Cantidad")
-                # La descripción de un producto pendiente ya no bloquea este
-                # paso: se completa directamente en la revisión (paso 3), igual
-                # que el precio de un producto nuevo con código sugerido.
-
-            suc_quantities = {}
-            for idx, suc_id in sucursal_col_ids.items():
-                if suc_id is None or idx >= len(row):
-                    continue
-                qty = safe_int(row[idx])
-                if qty > 0:
-                    suc_quantities[str(suc_id)] = qty
-
-            parsed.append({
-                "fila_excel": fila_excel,
-                "codigo": codigo,
-                "referencia": referencia,
-                "oem": oem,
-                "descripcion": descripcion,
-                "cantidad": cantidad,
-                "pvp": round(pvp, 2),
-                "matched_producto_id": matched.id if matched else None,
-                "matched_producto_codigo": matched.codigo if matched else None,
-                "matched_producto_nombre": matched.nombre if matched else None,
-                "matched_producto_referencia": matched.referencia if matched else None,
-                "matched_producto_precio": float(matched.precio) if matched and matched.precio is not None else None,
-                "oem_matches": oem_matches,
-                "sucursal_quantities": suc_quantities,
-                "conflicto_casa": conflicto_casa,
-                "conflicto_casa_nombre": conflicto_casa_nombre,
-                "faltan_datos": faltan_datos,
-            })
-
-        if not parsed:
-            return Response({"detail": "No se encontraron filas con datos válidos (cantidad > 0)."}, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response({"rows": parsed, "total": len(parsed)}, status=status.HTTP_200_OK)
+        payload = {"job_id": str(job.id), "estado": job.estado, "progreso": job.progreso}
+        if job.estado == ImportacionExcelJob.ESTADO_LISTO:
+            resultado = job.resultado or {}
+            payload["rows"] = resultado.get("rows", [])
+            payload["total"] = resultado.get("total", 0)
+        elif job.estado == ImportacionExcelJob.ESTADO_ERROR:
+            payload["detail"] = job.error or "No se pudo procesar el archivo."
+        return Response(payload, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="envios-pendientes")
     def envios_pendientes(self, request):

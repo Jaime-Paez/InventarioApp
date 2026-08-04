@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -298,3 +300,44 @@ class ImportacionInconvenienteHistorial(models.Model):
 
     def __str__(self):
         return f"{self.inconveniente_id} - {self.accion}"
+
+
+class ImportacionExcelJob(models.Model):
+    """Job en segundo plano para procesar un Excel de sugerencia (paso 3 del wizard).
+
+    Se procesa en un thread aparte para poder reportar progreso vía polling
+    (GET), ya que el proyecto no cuenta con Celery/Redis ni otra cola de
+    tareas en segundo plano.
+    """
+
+    ESTADO_PROCESANDO = "procesando"
+    ESTADO_LISTO = "listo"
+    ESTADO_ERROR = "error"
+    ESTADO_CHOICES = [
+        (ESTADO_PROCESANDO, "Procesando"),
+        (ESTADO_LISTO, "Listo"),
+        (ESTADO_ERROR, "Error"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_PROCESANDO)
+    progreso = models.PositiveSmallIntegerField(default=0)
+    resultado = models.JSONField(null=True, blank=True, default=None)
+    error = models.TextField(blank=True, default="")
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="importacion_excel_jobs",
+        null=True,
+        blank=True,
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-creado_en"]
+        verbose_name = "Job de procesamiento de Excel"
+        verbose_name_plural = "Jobs de procesamiento de Excel"
+
+    def __str__(self):
+        return f"{self.id} ({self.estado} {self.progreso}%)"

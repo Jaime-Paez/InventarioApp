@@ -15,6 +15,13 @@
   background: #b45309 !important;
 }
 
+/* El scroll horizontal del wizard de sugerencia desde Excel no debe tener
+   animación de suavizado: debe moverse 1 a 1 con la rueda/trackpad. */
+.imp-excel-review-table-wrap,
+.imp-excel-review-table-wrap * {
+  scroll-behavior: auto !important;
+}
+
 .importaciones-table {
   display: flex;
   flex-direction: column;
