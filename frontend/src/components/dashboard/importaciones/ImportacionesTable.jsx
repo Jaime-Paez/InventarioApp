@@ -3200,6 +3200,24 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const [casaPanelStyle, setCasaPanelStyle] = useState(null)
 
+  // La tabla de revisión (paso 3) debe scrollear 1 a 1 con la rueda/trackpad,
+  // sin la animación de "smooth scroll" que Chrome/Windows aplica por
+  // defecto al wheel (esa animación no depende de CSS scroll-behavior, así
+  // que hay que interceptar el wheel a mano y mover scrollTop/scrollLeft
+  // directamente).
+  const reviewTableWrapRef = useRef(null)
+  useEffect(() => {
+    const el = reviewTableWrapRef.current
+    if (!el) return
+    const handleWheel = (e) => {
+      e.preventDefault()
+      el.scrollTop += e.deltaY
+      el.scrollLeft += e.deltaX
+    }
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  }, [step])
+
   // Step 2: file upload
   const fileInputRef = useRef(null)
   const [selectedFile, setSelectedFile] = useState(null)
@@ -4222,7 +4240,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       </div>
                     )}
 
-                    <div className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
+                    <div ref={reviewTableWrapRef} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
                       <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 870 }}>
                         <colgroup>
                           <col style={{ width: 100 }} />
