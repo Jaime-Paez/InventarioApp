@@ -146,12 +146,37 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
             oem_links = (
                 OEMProducto.objects
                 .select_related("producto", "oem")
-                .prefetch_related("producto__casas_comerciales")
+                .prefetch_related(
+                    "producto__casas_comerciales",
+                    "producto__alternativas__alterno__casas_comerciales",
+                    "producto__alternativas_para__producto__casas_comerciales",
+                )
                 .annotate(codigo_lower=Lower("oem__codigo"))
                 .filter(codigo_lower__in=all_oem_codes_lower)
             )
             for link in oem_links:
                 precio = float(link.producto.precio) if link.producto.precio is not None else None
+                # Productos "alternos" (ProductoAlterno, en cualquiera de las dos
+                # direcciones): aunque no compartan este mismo OEM, son la MISMA
+                # pieza física en otras casas comerciales, así que también sirven
+                # como fuente del patrón <base><sufijo> para sugerir un código
+                # nuevo cuando el match directo por OEM no alcanza otra casa.
+                alterno_productos = [rel.alterno for rel in link.producto.alternativas.all()]
+                alterno_productos += [rel.producto for rel in link.producto.alternativas_para.all()]
+                alternos_payload = []
+                for alt in alterno_productos:
+                    alt_precio = float(alt.precio) if alt.precio is not None else None
+                    alternos_payload.append({
+                        "producto_id": alt.id,
+                        "codigo": alt.codigo,
+                        "nombre": alt.nombre,
+                        "referencia": alt.referencia,
+                        "casas_comerciales_codigos": [
+                            c.codigo for c in alt.casas_comerciales.all() if c.codigo
+                        ],
+                        "precio": alt_precio,
+                        "precio_con_iva": with_iva(alt_precio),
+                    })
                 oem_matches_by_code.setdefault(link.codigo_lower, []).append({
                     "producto_id": link.producto_id,
                     "codigo": link.producto.codigo,
@@ -169,6 +194,7 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                     "casas_comerciales_nombres": [
                         c.nombre for c in link.producto.casas_comerciales.all() if c.nombre
                     ],
+                    "alternos": alternos_payload,
                     "precio": precio,
                     "precio_con_iva": with_iva(precio),
                 })

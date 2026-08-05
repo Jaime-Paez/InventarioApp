@@ -3302,14 +3302,23 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // pertenece a la MISMA casa comercial de este import, no es un producto
   // nuevo: el backend solo no lo detectó porque el Excel no traía código ni
   // una referencia que calzara. Se usa ese producto ya existente tal cual.
+  // También se revisan sus "alternos" (ProductoAlterno): si el match directo
+  // por OEM es de otra casa pero uno de sus alternos ya es de la casa
+  // actual, ese alterno ES el producto existente — no hay que sugerir un
+  // código nuevo, hay que usar el que ya existe.
   const findExistingMatchForCasa = (row, casaCodigo) => {
     const targetSuffix = (casaCodigo || '').trim().toUpperCase()
     if (!targetSuffix) return null
-    return (row.oem_matches || []).find((match) =>
-      (match.casas_comerciales_codigos || []).some(
+    const belongsToCasa = (candidate) =>
+      (candidate.casas_comerciales_codigos || []).some(
         (c) => (c || '').trim().toUpperCase() === targetSuffix
       )
-    ) || null
+    for (const match of row.oem_matches || []) {
+      if (belongsToCasa(match)) return match
+      const alterno = (match.alternos || []).find(belongsToCasa)
+      if (alterno) return alterno
+    }
+    return null
   }
 
   // Los códigos JP se arman como <base><sufijo de casa comercial>. Si el OEM
@@ -3319,18 +3328,25 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // comerciales calza como terminación) y se le pega el sufijo de la casa
   // comercial seleccionada en este import — así el producto pendiente nace
   // con el código que le correspondería en esta casa.
+  // Además del match directo por OEM, también se revisan sus "alternos"
+  // (ProductoAlterno): son la misma pieza física en otra casa aunque no
+  // compartan el OEM en el catálogo, así que sirven igual como fuente del
+  // patrón <base><sufijo>.
   const deriveSuggestedCodigo = (row, casaCodigo) => {
     const targetSuffix = (casaCodigo || '').trim().toUpperCase()
     if (!targetSuffix) return ''
     for (const match of row.oem_matches || []) {
-      const matchCodigo = (match.codigo || '').trim().toUpperCase()
-      if (!matchCodigo) continue
-      for (const otherSuffix of match.casas_comerciales_codigos || []) {
-        const suffix = (otherSuffix || '').trim().toUpperCase()
-        if (!suffix || suffix === targetSuffix) continue
-        if (matchCodigo.endsWith(suffix)) {
-          const base = matchCodigo.slice(0, matchCodigo.length - suffix.length)
-          if (base) return `${base}${targetSuffix}`
+      const candidates = [match, ...(match.alternos || [])]
+      for (const candidate of candidates) {
+        const candidateCodigo = (candidate.codigo || '').trim().toUpperCase()
+        if (!candidateCodigo) continue
+        for (const otherSuffix of candidate.casas_comerciales_codigos || []) {
+          const suffix = (otherSuffix || '').trim().toUpperCase()
+          if (!suffix || suffix === targetSuffix) continue
+          if (candidateCodigo.endsWith(suffix)) {
+            const base = candidateCodigo.slice(0, candidateCodigo.length - suffix.length)
+            if (base) return `${base}${targetSuffix}`
+          }
         }
       }
     }
