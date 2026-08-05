@@ -3332,22 +3332,42 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // (ProductoAlterno): son la misma pieza física en otra casa aunque no
   // compartan el OEM en el catálogo, así que sirven igual como fuente del
   // patrón <base><sufijo>.
+  // Largo fijo del "base" de un código JP (p. ej. "C1130" o "P1631": una
+  // letra + 4 dígitos). Se usa como respaldo cuando el código no termina
+  // limpiamente en el sufijo de casa conocido (p. ej. "C1130CL-L" no
+  // termina en "CL", termina en "-L" — un calificador extra tipo lado
+  // izq./der. que no es parte del sufijo de casa).
+  const CODIGO_BASE_LENGTH = 5
+
   const deriveSuggestedCodigo = (row, casaCodigo) => {
     const targetSuffix = (casaCodigo || '').trim().toUpperCase()
     if (!targetSuffix) return ''
+    const allCandidates = []
     for (const match of row.oem_matches || []) {
-      const candidates = [match, ...(match.alternos || [])]
-      for (const candidate of candidates) {
-        const candidateCodigo = (candidate.codigo || '').trim().toUpperCase()
-        if (!candidateCodigo) continue
-        for (const otherSuffix of candidate.casas_comerciales_codigos || []) {
-          const suffix = (otherSuffix || '').trim().toUpperCase()
-          if (!suffix || suffix === targetSuffix) continue
-          if (candidateCodigo.endsWith(suffix)) {
-            const base = candidateCodigo.slice(0, candidateCodigo.length - suffix.length)
-            if (base) return `${base}${targetSuffix}`
-          }
+      allCandidates.push(match, ...(match.alternos || []))
+    }
+    for (const candidate of allCandidates) {
+      const candidateCodigo = (candidate.codigo || '').trim().toUpperCase()
+      if (!candidateCodigo) continue
+      for (const otherSuffix of candidate.casas_comerciales_codigos || []) {
+        const suffix = (otherSuffix || '').trim().toUpperCase()
+        if (!suffix || suffix === targetSuffix) continue
+        if (candidateCodigo.endsWith(suffix)) {
+          const base = candidateCodigo.slice(0, candidateCodigo.length - suffix.length)
+          if (base) return `${base}${targetSuffix}`
         }
+      }
+    }
+    // Respaldo: si ningún candidato termina limpiamente en un sufijo de
+    // casa conocido (p. ej. porque el código trae un calificador extra
+    // después del sufijo, o porque la casa del producto no tiene código
+    // registrado), se usa el largo fijo del base en vez de intentar
+    // adivinar dónde termina el sufijo.
+    for (const candidate of allCandidates) {
+      const candidateCodigo = (candidate.codigo || '').trim().toUpperCase()
+      if (candidateCodigo.length > CODIGO_BASE_LENGTH) {
+        const base = candidateCodigo.slice(0, CODIGO_BASE_LENGTH)
+        return `${base}${targetSuffix}`
       }
     }
     return ''
