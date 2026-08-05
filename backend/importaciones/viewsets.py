@@ -99,6 +99,17 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
         def safe_str(val):
             return str(val or "").strip()
 
+        def safe_code(val):
+            # Código/referencia/OEM son identificadores, pero si en el Excel
+            # la columna quedó con formato numérico (común cuando el código
+            # es solo dígitos, p. ej. un OEM "9822498280"), Excel lo guarda
+            # como float y str(9822498280.0) da "9822498280.0" — ese ".0" de
+            # más rompe la comparación exacta contra el código real en la
+            # base de datos. Si es un float entero, se descarta el ".0".
+            if isinstance(val, float) and val.is_integer():
+                return str(int(val)).strip()
+            return str(val or "").strip()
+
         def safe_int(val):
             try:
                 return int(float(val))
@@ -120,7 +131,7 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
 
         all_oem_codes_lower = set()
         for row in all_rows[1:]:
-            for code in safe_str(cell(row, "oem")).split(","):
+            for code in safe_code(cell(row, "oem")).split(","):
                 code = code.strip()
                 if code:
                     all_oem_codes_lower.add(code.lower())
@@ -153,6 +164,11 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                     "casas_comerciales_codigos": [
                         c.codigo for c in link.producto.casas_comerciales.all() if c.codigo
                     ],
+                    # Nombres completos (para mostrarlos en el hover de OEMs,
+                    # a diferencia de los códigos de arriba que son para lógica).
+                    "casas_comerciales_nombres": [
+                        c.nombre for c in link.producto.casas_comerciales.all() if c.nombre
+                    ],
                     "precio": precio,
                     "precio_con_iva": with_iva(precio),
                 })
@@ -163,9 +179,9 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
         total_data_rows = max(len(data_rows), 1)
         parsed = []
         for i, (fila_excel, row) in enumerate(enumerate(data_rows, start=2), start=1):
-            codigo = safe_str(cell(row, "codigo"))
-            referencia = safe_str(cell(row, "referencia"))
-            oem = safe_str(cell(row, "oem"))
+            codigo = safe_code(cell(row, "codigo"))
+            referencia = safe_code(cell(row, "referencia"))
+            oem = safe_code(cell(row, "oem"))
             descripcion = safe_str(cell(row, "descripcion"))
             cantidad = safe_int(cell(row, "cantidad"))
             pvp = safe_float(cell(row, "pvp"))
