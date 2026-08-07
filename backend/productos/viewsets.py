@@ -274,6 +274,23 @@ class ProductoViewSet(viewsets.ModelViewSet):
             },
         )
 
+        # Con "search" (FuzzyTokenSearchFilter) el orden por defecto
+        # (-creado_en, -id) puede dejar un match exacto de codigo fuera de la
+        # primera pagina cuando hay varios productos con codigos parecidos
+        # (ej. "P0936S-R" vs "P0936SL-R"/"P0936SO-R"). Se prioriza el codigo
+        # exacto, luego el que empieza con el termino buscado, antes de caer
+        # al orden por defecto.
+        search_term = (params.get("search") or "").strip()
+        if search_term:
+            queryset = queryset.annotate(
+                _search_relevance=Case(
+                    When(codigo__iexact=search_term, then=Value(0)),
+                    When(codigo__istartswith=search_term, then=Value(1)),
+                    default=Value(2),
+                    output_field=IntegerField(),
+                )
+            ).order_by("_search_relevance", "-creado_en", "-id")
+
         return queryset.distinct()
 
     def perform_destroy(self, instance):

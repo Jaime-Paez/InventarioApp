@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import WorkspaceTabs from '../tabs/WorkspaceTabs/WorkspaceTabs'
 import QuickActions from '../QuickActions/QuickActions'
 import UsersTable from '../admin/UsersTable/UsersTable'
@@ -591,7 +591,10 @@ function Workspace({
   // Cualquier dropdown abierto (renderizado via portal, fuera del panel oculto
   // por display:none) debe cerrarse al cambiar de pestana; si no, se queda
   // flotando visualmente sobre el contenido de la pestana recien activada.
-  useEffect(() => {
+  // useLayoutEffect (no useEffect) para que el cierre ocurra en el mismo
+  // paint que el cambio de pestana, sin un frame intermedio donde se vea
+  // el dropdown viejo flotando sobre la pestana nueva.
+  useLayoutEffect(() => {
     dispatchCloseAllDropdowns()
   }, [activeItem])
 
