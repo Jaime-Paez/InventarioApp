@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import './CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../../common/useModalAnimation'
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -271,6 +272,10 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   const [selectedBranchId, setSelectedBranchId] = useState(null)
   const [showPermissionsPopup, setShowPermissionsPopup] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => setShowPermissionsPopup(false), [])
+  )
 
   const modalRef = useRef(null)
   const [position, setPosition] = useState({ x: 0, y: 0 })

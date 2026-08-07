@@ -8,6 +8,7 @@ import './SolicitudDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { formatDate } from '../../../../utils/dateFormat'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../../common/useModalAnimation'
 import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
@@ -1538,6 +1539,13 @@ function SolicitudDetails({
     window.addEventListener('mousedown', handleClickOutside)
     return () => window.removeEventListener('mousedown', handleClickOutside)
   }, [showRevisarCasaDropdown])
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setShowRevisarCasaDropdown(false)
+      hideOemTableHover()
+    }, [hideOemTableHover])
+  )
 
   const { shouldRender, isClosing } = useModalAnimation(open)
   if (!shouldRender) return null

@@ -6,6 +6,7 @@ import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { formatDateTime } from '../../../../utils/dateFormat'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import '../CreateUsuario/CreateUsuario.css'
 import './RandomInspectionAdminTable.css'
 
@@ -50,6 +51,13 @@ function CascadeDropdown({ placeholder, searchPlaceholder, options, valueId, onS
     document.addEventListener('mousedown', handleOutsideClick)
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [open])
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setOpen(false)
+      setQuery('')
+    }, [])
+  )
 
   const filtered = useMemo(() => {
     if (!debouncedQuery) return options

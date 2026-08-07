@@ -19,6 +19,7 @@ import TrasladosInconvenientesTable from '../movimientos/TrasladosInconvenientes
 import './Workspace.css'
 import { getModuleActions, labelHasAccess } from '../menuConfig'
 import { API_URL, authFetch } from '../../../utils/api'
+import { dispatchCloseAllDropdowns } from '../../../hooks/useCloseDropdownsOnTabSwitch'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const parseScopedBranchIdsHeader = (rawValue) => {
@@ -586,6 +587,13 @@ function Workspace({
       />
     )
   }
+
+  // Cualquier dropdown abierto (renderizado via portal, fuera del panel oculto
+  // por display:none) debe cerrarse al cambiar de pestana; si no, se queda
+  // flotando visualmente sobre el contenido de la pestana recien activada.
+  useEffect(() => {
+    dispatchCloseAllDropdowns()
+  }, [activeItem])
 
   const renderContent = () => {
     if (!openTabs.length) return null

@@ -8,6 +8,7 @@ import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
 import { isBulkProductPasteText, parseBulkProductPasteText } from '../../../utils/bulkProductPaste'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
@@ -1859,7 +1860,7 @@ function CreateSalida({
           : Promise.resolve(stockByProductRef.current)
         const [response, stockMap] = await Promise.all([
           authFetch(
-            `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
+            `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=25`,
             {},
             token
           ),
@@ -2226,6 +2227,14 @@ function CreateSalida({
       setShowProductDropdown(false)
     }
   }, [activeTab, showClienteDropdown, showProductDropdown, showTipoPagoDropdown])
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setShowClienteDropdown(false)
+      setShowTipoPagoDropdown(false)
+      setShowProductDropdown(false)
+    }, [])
+  )
 
   useEffect(() => {
     if (!open || !showProductDropdown) return undefined

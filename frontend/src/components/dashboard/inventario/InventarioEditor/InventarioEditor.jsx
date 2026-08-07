@@ -7,6 +7,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { emitRemindersSync } from '../../common/reminders/remindersStorage'
 import BodegaLocationPreview from './BodegaLocationPreview'
 import { getAppPortalRoot as getPortalHost } from '../../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 
 const parseNumber = (value) => {
   const parsed = Number(value)
@@ -321,6 +322,14 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     document.addEventListener('mousedown', handleOutsideClick)
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [openTransferDropdown])
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setOpenTransferDropdown(null)
+      setTransferDropdownRect(null)
+      setTransferDropdownQuery('')
+    }, [])
+  )
 
   useEffect(() => {
     const timer = window.setTimeout(

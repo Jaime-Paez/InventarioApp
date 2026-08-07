@@ -1120,7 +1120,7 @@ function EntradaDetails({
       setProductLoading(true)
       try {
         const response = await authFetch(
-          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=25`,
           {},
           token
         )

@@ -22,6 +22,7 @@ import '../../movimientos/CreateSalida.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { getAppPortalRoot as getPortalRoot } from '../../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import { formatDate } from '../../../../utils/dateFormat'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
@@ -144,6 +145,10 @@ function SolicitudesTable({ token, onSelect, user, moduleActions, createBranchId
   const [borradorPopup, setBorradorPopup] = useState(null)
   const borradorPopupTimerRef = useRef(null)
   const [borradorImpsRefreshKey, setBorradorImpsRefreshKey] = useState(0)
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => setBorradorPopup(null), [])
+  )
 
   useEffect(() => {
     if (statusFilter !== 'aceptado' || !token) { setBorradorImps([]); return undefined }

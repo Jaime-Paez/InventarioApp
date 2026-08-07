@@ -5,6 +5,7 @@ import './CreateSolicitud.css'
 import '../../clientes/CreateCliente/CreateCliente.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../../common/useModalAnimation'
 import {
   createReminderId,
@@ -631,7 +632,7 @@ function CreateSolicitud({
 
       try {
         const response = await authFetch(
-          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=25`,
           {},
           token
         )
@@ -794,6 +795,16 @@ function CreateSolicitud({
     window.addEventListener('mousedown', handleClickOutside)
     return () => window.removeEventListener('mousedown', handleClickOutside)
   }, [showCasaComercialDropdown, showClienteDropdown, showCodigoDropdown, showOemDropdown, showReferenciaDropdown])
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setShowClienteDropdown(false)
+      setShowReferenciaDropdown(false)
+      setShowCodigoDropdown(false)
+      setShowOemDropdown(false)
+      setShowCasaComercialDropdown(false)
+    }, [])
+  )
 
   useEffect(() => {
     const handleMouseMove = (event) => {

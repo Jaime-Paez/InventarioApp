@@ -16,6 +16,7 @@ import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../common/useModalAnimation'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersTable/UsersTable.css'
@@ -1288,6 +1289,13 @@ function TrasladosInconvenientesTable({
       resolverProvSubdivisionPathById,
       resolverProvSubdivisionsByDivision,
     ]
+  )
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      closeResolverLocationDropdown()
+      closeResolverProvLocationDropdown()
+    }, [closeResolverLocationDropdown, closeResolverProvLocationDropdown])
   )
 
   const clearFilter = useCallback(() => {

@@ -1,10 +1,14 @@
 import { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../hooks/useCloseDropdownsOnTabSwitch'
 
 export default function useTableCellHover() {
   const [hover, setHover] = useState(null)
   const timerRef = useRef(null)
+
+  const hideHoverRef = useRef(null)
+  useCloseDropdownsOnTabSwitch(() => hideHoverRef.current?.())
 
   const showHover = useCallback((event, items, label) => {
     if (!items.length) return
@@ -20,6 +24,7 @@ export default function useTableCellHover() {
     if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
     setHover(null)
   }, [])
+  hideHoverRef.current = hideHover
 
   const portal = hover ? createPortal(
     <div

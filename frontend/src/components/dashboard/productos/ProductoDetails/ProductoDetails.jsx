@@ -8,6 +8,7 @@ import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import InventarioEditor from '../../inventario/InventarioEditor/InventarioEditor'
 import useModalAnimation from '../../common/useModalAnimation'
 import ProductoRatingTab from '../ProductoRatingTab/ProductoRatingTab'
@@ -463,7 +464,7 @@ function ProductoDetails({
       setAlternoLoading(true)
       try {
         const response = await authFetch(
-          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=25`,
           {},
           token
         )
@@ -608,6 +609,13 @@ function ProductoDetails({
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
   }, [showCasaDropdown, showAlternoDropdown])
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setShowCasaDropdown(false)
+      setShowAlternoDropdown(false)
+    }, [])
+  )
 
   useLayoutEffect(() => {
     if (!showAlternoDropdown) {

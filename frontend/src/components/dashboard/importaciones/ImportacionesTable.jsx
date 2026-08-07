@@ -16,6 +16,7 @@ import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/export
 import { formatDate } from '../../../utils/dateFormat'
 import { toUpperCode } from '../../../utils/textInput'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../hooks/useCloseDropdownsOnTabSwitch'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import '../admin/UsersTable/UsersTable.css'
@@ -786,6 +787,15 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     setEnvioItemsHoverPos(computeSmartPopoverPosition(envioItemsHover, envioItemsHoverCardRef.current))
   }, [envioItemsHover])
 
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setShowReceiveExcelDropdown(false)
+      hideCellHover()
+      hideAlternosHover()
+      hideEnvioItemsHover()
+    }, [hideCellHover, hideAlternosHover, hideEnvioItemsHover])
+  )
+
   const storageKey = `imp-receive-${imp.id}`
   // IDs de ítems que eran sinCat al abrir el modal (fijo, no cambia con el fetch fresco)
   const [originalSinCatIds] = useState(() =>
@@ -1203,7 +1213,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     setDupStatus(prev => ({ ...prev, [key]: { checking: true, error: '', checked: false } }))
     dupCheckTimersRef.current[key] = setTimeout(async () => {
       try {
-        const resp = await authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`, {}, token)
+        const resp = await authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=25`, {}, token)
         if (dupCheckSeqRef.current[key] !== seq) return
         if (!resp.ok) { setDupStatus(prev => ({ ...prev, [key]: { checking: false, error: '', checked: false } })); return }
         const data = await resp.json()
@@ -2421,6 +2431,13 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     setCellHover(null)
   }, [])
 
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      hideCellHover()
+      setTrackerEditingField(null)
+    }, [hideCellHover])
+  )
+
   // A qué sucursales se envió cada producto y en qué cantidad, derivado de los
   // envíos generados al confirmar la llegada (solo existen una vez "importada").
   const enviosDistribucion = useMemo(() => {
@@ -3058,6 +3075,8 @@ function HistorialConfirmacionModal({ imp, onClose }) {
     setCellHover(null)
   }, [])
 
+  useCloseDropdownsOnTabSwitch(hideCellHover)
+
   return createPortal(
     <>
       <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -3285,6 +3304,16 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const cancelHideOemMatchesHover = () => {
     if (oemMatchesHoverTimerRef.current) { clearTimeout(oemMatchesHoverTimerRef.current); oemMatchesHoverTimerRef.current = null }
   }
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setShowCasaDropdown(false)
+      hideCellHover()
+      cancelHideOemMatchesHover()
+      setOemMatchesHover(null)
+      setOemMatchesHoverPos(null)
+    }, [])
+  )
 
   useLayoutEffect(() => {
     if (!oemMatchesHover || !oemMatchesHoverCardRef.current) return
@@ -5276,6 +5305,14 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     setCellHover(null)
   }, [])
 
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setShowCasaDropdown(false)
+      setShowProductDropdown(false)
+      hideCellHover()
+    }, [hideCellHover])
+  )
+
   useEffect(() => {
     if (!showNuevoProductoView) return
     const codigoVal = nuevoProductoDraft.codigo.trim()
@@ -6248,6 +6285,15 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
   const [nuevoProductoDraft, setNuevoProductoDraft] = useState({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
   const [nuevoProductoErrors, setNuevoProductoErrors] = useState({})
   const [nuevoProductoExisting, setNuevoProductoExisting] = useState({ codigo: null, referencia: null })
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setShowProductDropdown(false)
+      hideCellHover()
+      hideFechaSalidaInfo()
+      setShowVerificarExcelDropdown(false)
+    }, [hideCellHover, hideFechaSalidaInfo])
+  )
 
   const modalRef = useRef(null)
   const toastRef = useRef(null)
@@ -8440,6 +8486,13 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
     clearProductHoverTimer()
     setProductHoverCard(null)
   }, [clearProductHoverTimer])
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setShowCreateMenu(false)
+      hideProductHoverCard()
+    }, [hideProductHoverCard])
+  )
 
   const scheduleHideProductHoverCard = useCallback(() => {
     clearProductHoverTimer()

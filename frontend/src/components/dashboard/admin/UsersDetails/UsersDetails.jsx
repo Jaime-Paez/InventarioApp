@@ -5,6 +5,7 @@ import '../CreateUsuario/CreateUsuario.css'
 import './UsersDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../../common/useModalAnimation'
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -352,6 +353,10 @@ function UsersDetails({
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [size, setSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => setShowPermissionsPopup(false), [])
+  )
 
   const modalRef = useRef(null)
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })

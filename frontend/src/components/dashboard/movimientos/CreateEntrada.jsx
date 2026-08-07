@@ -8,6 +8,7 @@ import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
 import { isBulkProductPasteText, parseBulkProductPasteText } from '../../../utils/bulkProductPaste'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
+import { useCloseDropdownsOnTabSwitch } from '../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
@@ -1050,7 +1051,7 @@ function CreateEntrada({
       setProductLoading(true)
       try {
         const response = await authFetch(
-          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=5`,
+          `${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=25`,
           {},
           token
         )
@@ -2167,6 +2168,19 @@ function CreateEntrada({
     window.addEventListener('mousedown', handleClick)
     return () => window.removeEventListener('mousedown', handleClick)
   }, [locationDropdownField, locationDropdownProductId, open, showCasaComercialDropdown, showClienteDropdown, showProductDropdown])
+
+  useCloseDropdownsOnTabSwitch(
+    useCallback(() => {
+      setShowProductDropdown(false)
+      setShowClienteDropdown(false)
+      setShowCasaComercialDropdown(false)
+      setLocationDropdownProductId('')
+      setLocationDropdownField('')
+      setLocationDropdownMaxHeight(null)
+      setLocationQuery('')
+      setLocationDebouncedQuery('')
+    }, [])
+  )
 
   useEffect(() => {
     if (activeTab !== 'cliente' && showClienteDropdown) {
