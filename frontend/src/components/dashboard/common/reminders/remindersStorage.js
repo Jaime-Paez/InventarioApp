@@ -699,7 +699,21 @@ const inferTransferDecisionStatusFromDescription = (reminder) => {
 export const getReminderDecisionStatus = (reminder) => {
   const latestHistoryStage = normalizeTransferHistoryStage(getLatestTransferHistoryEntry(reminder)?.stage)
   if (latestHistoryStage === 'pendiente') return 'pendiente'
-  if (latestHistoryStage === 'aceptada' || latestHistoryStage === 'rechazada' || latestHistoryStage === 'enviado' || latestHistoryStage === 'cancelado') {
+  if (
+    latestHistoryStage === 'aceptada' ||
+    latestHistoryStage === 'rechazada' ||
+    latestHistoryStage === 'enviado' ||
+    latestHistoryStage === 'cancelado' ||
+    latestHistoryStage === 'completo' ||
+    latestHistoryStage === 'incompleto'
+  ) {
+    // completo/incompleto: el traslado ya se recibio, asi que esto manda
+    // sobre el `decision.status` guardado -- ese campo puede haber quedado
+    // congelado en 'rechazada' de un rechazo parcial (un solo producto sin
+    // stock) que no impidio que el resto del traslado se enviara y llegara.
+    // Sin este caso, un solicitante seguia viendo su traslado como
+    // "rechazado" (con el aviso urgente bloqueante) aunque ya le hubiera
+    // llegado, solo porque una linea puntual fallo en el camino.
     return latestHistoryStage
   }
   const explicitStatus = normalizeDecisionStatus(reminder?.decision?.status)
