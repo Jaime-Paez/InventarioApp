@@ -8,6 +8,27 @@
   max-height: 180px;
 }
 
+/* Badge para movimientos migrados del sistema anterior (es_legado): no
+   reemplaza el chip de estado, se agrega al lado, siempre en gris neutro
+   porque no es un estado de negocio (no es exito ni pendiente). */
+.movimientos-legado-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #64748b 35%, transparent);
+  color: #334155 !important;
+  font-weight: 600;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.dashboard-shell.dark .movimientos-legado-badge {
+  background: color-mix(in srgb, #94a3b8 40%, transparent);
+  color: #e2e8f0 !important;
+}
+
 .salidas-garantia-pendiente-chip {
   display: inline-flex;
   align-items: center;

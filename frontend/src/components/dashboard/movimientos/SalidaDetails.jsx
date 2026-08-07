@@ -34,6 +34,7 @@ const emptyForm = {
   iva_rate: String(DEFAULT_IVA_RATE),
   notaInconveniente: '',
   notaInconvenienteResolucion: '',
+  esLegado: false,
 }
 
 const initialClienteForm = {
@@ -503,7 +504,7 @@ function SalidaDetails({
       !estadoMatchesRejected &&
       !estadoMatchesAccepted)
   const isSentSolicitud = isTraslado && estadoMatchesSent
-  const isReadOnlyMode = isSentSolicitud
+  const isReadOnlyMode = isSentSolicitud || formData.esLegado
 
   const ivaRateValue = useMemo(() => {
     const parsed = parseNumber(formData.iva_rate)
@@ -818,6 +819,7 @@ function SalidaDetails({
         iva_rate: String(salida?.iva_rate ?? DEFAULT_IVA_RATE),
         notaInconveniente: String(salida?.nota_inconveniente || '').trim(),
         notaInconvenienteResolucion: String(salida?.nota_inconveniente_resolucion || '').trim(),
+        esLegado: Boolean(salida?.es_legado),
       },
       clienteForm,
       detalles,
@@ -1846,10 +1848,11 @@ function SalidaDetails({
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
   const isSentTransferRibbon = isSentSolicitud
+  const showRibbon = isSentTransferRibbon || formData.esLegado
   const modalClassName = [
     'create-user__modal',
     'create-salida__modal',
-    isSentTransferRibbon ? 'entrada-details__modal--pending' : '',
+    showRibbon ? 'entrada-details__modal--pending' : '',
     isClosing ? 'create-user__modal--closing' : '',
     isResizingModal ? 'create-salida__modal--resizing' : '',
     formSubmitted ? 'create-user__modal--submitted' : '',
@@ -1868,13 +1871,17 @@ function SalidaDetails({
       style={overlayStyle}
     >
       <div ref={modalRef} className={modalClassName} style={modalStyle}>
-        {isSentTransferRibbon && (
+        {showRibbon && (
           <div
-            className="entrada-details__pending-ribbon entrada-details__pending-ribbon--sent"
-            aria-label="Solicitud enviada"
-            title="Solicitud enviada"
+            className={`entrada-details__pending-ribbon${
+              formData.esLegado ? ' entrada-details__pending-ribbon--legado' : ' entrada-details__pending-ribbon--sent'
+            }`}
+            aria-label={formData.esLegado ? 'Registro previo a Kava' : 'Solicitud enviada'}
+            title={formData.esLegado ? 'Registro previo a Kava: no se puede editar ni eliminar.' : 'Solicitud enviada'}
           >
-            <span className="entrada-details__pending-ribbon-label">{'Solicitud\nenviada'}</span>
+            <span className="entrada-details__pending-ribbon-label">
+              {formData.esLegado ? 'Previo a\nKava' : 'Solicitud\nenviada'}
+            </span>
           </div>
         )}
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>

@@ -889,6 +889,7 @@ function SalidasTable({
     )
     const estadoGarantia = field === 'estado_nombre' ? String(rowData?.estado_garantia || '').trim() : ''
     const isGarantiaSolicitada = estadoGarantia === 'solicitada'
+    const isLegado = Boolean(rowData?.es_legado)
     const className = [
       'cell-tooltip',
       field === 'estado_nombre' && isSentTransfer ? 'salidas-sent-state-chip' : '',
@@ -901,6 +902,11 @@ function SalidasTable({
     return (
       <span className={className} data-pr-tooltip={displayContent} style={{ color: textColor }}>
         {displayContent}
+        {field === 'estado_nombre' && isLegado && (
+          <span className="movimientos-legado-badge" title="Registro previo a Kava: no se puede editar">
+            Registro previo a Kava
+          </span>
+        )}
       </span>
     )
   }

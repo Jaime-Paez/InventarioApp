@@ -86,6 +86,17 @@ class MovimientoInventario(models.Model):
         blank=True,
         help_text="Proveedor asociado al movimiento (compra local o importacion).",
     )
+    es_legado = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True si el movimiento viene migrado del sistema anterior: no se puede editar.",
+    )
+    datos_legado = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Datos crudos del sistema anterior sin equivalente directo (auditoria/soporte).",
+    )
 
     class Meta:
         ordering = ["-fecha", "-id"]

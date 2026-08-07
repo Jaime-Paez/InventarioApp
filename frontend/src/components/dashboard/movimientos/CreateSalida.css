@@ -1679,6 +1679,18 @@
   box-shadow: 0 12px 20px color-mix(in srgb, #f97316 54%, transparent);
 }
 
+.entrada-details__pending-ribbon--legado {
+  background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+  color: #f1f5f9;
+  box-shadow: 0 10px 18px color-mix(in srgb, #64748b 46%, transparent);
+}
+
+.dashboard-shell.dark .entrada-details__pending-ribbon--legado {
+  background: linear-gradient(135deg, #64748b 0%, #334155 100%);
+  color: #e2e8f0;
+  box-shadow: 0 12px 20px color-mix(in srgb, #64748b 54%, transparent);
+}
+
 .entrada-details__rejection-reason {
   margin: 6px 18px 0;
   padding: 10px 12px;

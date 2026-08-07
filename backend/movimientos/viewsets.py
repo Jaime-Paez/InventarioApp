@@ -223,6 +223,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "estado_garantia": (
                         row.get("estado_garantia") if is_mapping else getattr(row, "estado_garantia", None)
                     ) or None,
+                    "es_legado": bool(
+                        row.get("es_legado") if is_mapping else getattr(row, "es_legado", False)
+                    ),
                     "_sort_created_at": (
                         fecha_value.isoformat()
                         if getattr(fecha_value, "isoformat", None)
@@ -900,6 +903,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         instance = self.get_object()
+        if instance.es_legado:
+            return Response(
+                {"detail": "Este registro fue migrado del sistema anterior y no se puede editar."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
@@ -1012,6 +1020,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        if instance.es_legado:
+            return Response(
+                {"detail": "Este registro fue migrado del sistema anterior y no se puede eliminar."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         inventory_action = str(
             request.query_params.get("inventory_action") or "keep"
         ).strip().lower()

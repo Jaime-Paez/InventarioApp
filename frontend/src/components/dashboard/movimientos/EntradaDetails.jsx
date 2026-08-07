@@ -43,6 +43,7 @@ const emptyForm = {
   urgente: false,
   notaInconveniente: '',
   notaInconvenienteResolucion: '',
+  esLegado: false,
 }
 
 const initialClienteForm = {
@@ -932,6 +933,7 @@ function EntradaDetails({
   const isReadOnlyMode = Boolean(
     readOnly ||
       isSentSolicitud ||
+      formData.esLegado ||
       (isTraslado && !estadoMatchesPending && !estadoMatchesRejected && !estadoMatchesGuardado)
   )
   const effectiveAllowEdit =
@@ -1352,6 +1354,7 @@ function EntradaDetails({
         urgente: Boolean(linkedSolicitud?.urgente ?? salida?.urgente),
         notaInconveniente: String(salida?.nota_inconveniente || '').trim(),
         notaInconvenienteResolucion: String(salida?.nota_inconveniente_resolucion || '').trim(),
+        esLegado: Boolean(salida?.es_legado),
       },
       clienteForm,
       detalles,
@@ -2816,6 +2819,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
   }
   const showSolicitudRibbon =
+    formData.esLegado ||
     isPendingSolicitudRibbon ||
     isRejectedSolicitudRibbon ||
     isAcceptedSolicitudRibbon ||
@@ -2823,17 +2827,23 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     isReceivedRibbon ||
     isGuardadoSolicitudRibbon
   const _ribbonStateLabel = rawApiEstadoNombre || selectedEstadoName || ''
-  const solicitudRibbonLabel = isTraslado
-    ? (isGuardadoSolicitudRibbon ? 'Guardado' : isRejectedSolicitudRibbon ? 'Solicitud rechazada' : isAcceptedSolicitudRibbon ? 'Solicitud aceptada' : isSentSolicitudRibbon ? 'Solicitud enviada' : 'Solicitud pendiente')
-    : _ribbonStateLabel
-  const solicitudRibbonTitle = isTraslado
-    ? (isGuardadoSolicitudRibbon ? 'Pedido a sucursal guardado, aún falta completarlo.' : isRejectedSolicitudRibbon ? 'Solicitud rechazada por la sucursal proveedora' : isAcceptedSolicitudRibbon ? 'Solicitud aceptada por la sucursal proveedora' : isSentSolicitudRibbon ? 'Solicitud en estado de envio (traslado).' : 'Solicitud esperando a ser aceptada')
-    : _ribbonStateLabel
-  const solicitudRibbonDisplayLabel = isReceivedRibbon
-    ? _ribbonStateLabel.replace(' ', '\n')
+  const solicitudRibbonLabel = formData.esLegado
+    ? 'Registro previo a Kava'
     : isTraslado
-      ? (isGuardadoSolicitudRibbon ? 'Guardado' : isRejectedSolicitudRibbon ? 'Solicitud\nrechazada' : isAcceptedSolicitudRibbon ? 'Solicitud\naceptada' : isSentSolicitudRibbon ? 'Solicitud\nenviada' : 'Solicitud\npendiente')
-      : _ribbonStateLabel.replace(' ', '\n')
+      ? (isGuardadoSolicitudRibbon ? 'Guardado' : isRejectedSolicitudRibbon ? 'Solicitud rechazada' : isAcceptedSolicitudRibbon ? 'Solicitud aceptada' : isSentSolicitudRibbon ? 'Solicitud enviada' : 'Solicitud pendiente')
+      : _ribbonStateLabel
+  const solicitudRibbonTitle = formData.esLegado
+    ? 'Registro previo a Kava: no se puede editar ni eliminar.'
+    : isTraslado
+      ? (isGuardadoSolicitudRibbon ? 'Pedido a sucursal guardado, aún falta completarlo.' : isRejectedSolicitudRibbon ? 'Solicitud rechazada por la sucursal proveedora' : isAcceptedSolicitudRibbon ? 'Solicitud aceptada por la sucursal proveedora' : isSentSolicitudRibbon ? 'Solicitud en estado de envio (traslado).' : 'Solicitud esperando a ser aceptada')
+      : _ribbonStateLabel
+  const solicitudRibbonDisplayLabel = formData.esLegado
+    ? 'Previo a\nKava'
+    : isReceivedRibbon
+      ? _ribbonStateLabel.replace(' ', '\n')
+      : isTraslado
+        ? (isGuardadoSolicitudRibbon ? 'Guardado' : isRejectedSolicitudRibbon ? 'Solicitud\nrechazada' : isAcceptedSolicitudRibbon ? 'Solicitud\naceptada' : isSentSolicitudRibbon ? 'Solicitud\nenviada' : 'Solicitud\npendiente')
+        : _ribbonStateLabel.replace(' ', '\n')
   const solicitudRejectionReason = String(previewData?.motivo_rechazo || '').trim()
   const resolvedSolicitudRejectionReason = (
     solicitudRejectionReason || 'Sin motivo de rechazo registrado.'
@@ -2957,15 +2967,17 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
         {showSolicitudRibbon && (
           <div
             className={`entrada-details__pending-ribbon${
-              isRejectedSolicitudRibbon
-                ? ' entrada-details__pending-ribbon--rejected'
-                : isAcceptedSolicitudRibbon
-                  ? ' entrada-details__pending-ribbon--accepted'
-                  : isSentSolicitudRibbon
-                    ? ' entrada-details__pending-ribbon--sent'
-                    : isReceivedRibbon
-                      ? ' entrada-details__pending-ribbon--received'
-                      : ' entrada-details__pending-ribbon--pending'
+              formData.esLegado
+                ? ' entrada-details__pending-ribbon--legado'
+                : isRejectedSolicitudRibbon
+                  ? ' entrada-details__pending-ribbon--rejected'
+                  : isAcceptedSolicitudRibbon
+                    ? ' entrada-details__pending-ribbon--accepted'
+                    : isSentSolicitudRibbon
+                      ? ' entrada-details__pending-ribbon--sent'
+                      : isReceivedRibbon
+                        ? ' entrada-details__pending-ribbon--received'
+                        : ' entrada-details__pending-ribbon--pending'
             }`}
             aria-label={solicitudRibbonLabel}
             title={solicitudRibbonTitle}

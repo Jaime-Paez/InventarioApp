@@ -889,6 +889,7 @@ function EntradasTable({
     const isPartialSolicitud =
       isTransferRow &&
       normalizedEstado.includes('parcial')
+    const isLegado = Boolean(rowData?.es_legado)
     const className = [
       'cell-tooltip',
       field === 'estado_nombre' && isPendingSolicitud ? 'entradas-pending-state-chip' : '',
@@ -903,6 +904,11 @@ function EntradasTable({
     return (
       <span className={className} data-pr-tooltip={String(content)} style={{ color: textColor }}>
         {String(content)}
+        {field === 'estado_nombre' && isLegado && (
+          <span className="movimientos-legado-badge" title="Registro previo a Kava: no se puede editar">
+            Registro previo a Kava
+          </span>
+        )}
       </span>
     )
   }

@@ -739,6 +739,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "casa_comercial_id",
             "nota_inconveniente",
             "nota_inconveniente_resolucion",
+            "es_legado",
         ]
         extra_kwargs = {
             "no_documento": {
@@ -753,6 +754,9 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 "read_only": True,
             },
             "estado_garantia": {
+                "read_only": True,
+            },
+            "es_legado": {
                 "read_only": True,
             },
         }
