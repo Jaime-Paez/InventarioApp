@@ -8,6 +8,7 @@ from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
+from app.models import ReminderState, UsuarioPreferencia
 from inventario.models import Bodega, Division, Inventario, SubDivision, Sucursal
 from productos.models import Producto
 from tipos.models import (
@@ -17,6 +18,7 @@ from tipos.models import (
     TipoDivision,
     TipoMovimiento,
 )
+from usuarios.models import RolPermiso, UsuarioModuloSucursal
 
 from .serializers import MovimientoInventarioSerializer
 from .models import (
@@ -321,6 +323,106 @@ class DocumentNumberConcurrencyTests(TransactionTestCase):
         self.assertEqual(errors, [])
         self.assertEqual(len(results), 2)
         self.assertEqual(len(set(results)), 2, f"Numeros duplicados: {results}")
+
+
+class SolicitudTrasladoReminderRecipientsTests(APITestCase):
+    """
+    Antes, el recordatorio de una solicitud de traslado solo le llegaba a
+    los usuarios marcados con el checkbox ("Usuarios adicionales") -- el
+    resto de la lista de opciones no se enteraba de nada. Ahora todos los
+    elegibles de la sucursal proveedora deben recibir el recordatorio, pero
+    solo los marcados deben quedar en decision.assignedRecipients (que es
+    lo que hace crecer la bola urgente).
+    """
+
+    def setUp(self):
+        user_model = get_user_model()
+        self.actor = user_model.objects.create_user(
+            username="actor_traslado",
+            email="actor_traslado@example.com",
+            password="test12345",
+        )
+        UsuarioPreferencia.objects.get_or_create(usuario=self.actor, defaults={"es_administrador": True})
+        self.client.force_authenticate(user=self.actor)
+
+        self.sucursal_solicitante = Sucursal.objects.create(nombre="Solicitante", direccion="Dir 1")
+        self.sucursal_proveedora = Sucursal.objects.create(nombre="Proveedora", direccion="Dir 2")
+
+        self.checked_user = user_model.objects.create_user(
+            username="checked_user",
+            email="checked_user@example.com",
+            password="test12345",
+        )
+        self.unchecked_user_a = user_model.objects.create_user(
+            username="unchecked_user_a",
+            email="unchecked_user_a@example.com",
+            password="test12345",
+        )
+        self.unchecked_user_b = user_model.objects.create_user(
+            username="unchecked_user_b",
+            email="unchecked_user_b@example.com",
+            password="test12345",
+        )
+        for user in (self.checked_user, self.unchecked_user_a, self.unchecked_user_b):
+            UsuarioModuloSucursal.objects.create(
+                usuario=user,
+                modulo=RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+                sucursal=self.sucursal_proveedora,
+            )
+
+        self.producto, _ = Producto.objects.get_or_create(
+            codigo="PR-REM-001",
+            defaults={"nombre": "Producto Recordatorio", "precio": Decimal("10.00")},
+        )
+
+        tipo_division, _ = TipoDivision.objects.get_or_create(nombre="General")
+        bodega = Bodega.objects.create(sucursal=self.sucursal_proveedora, nombre="Bodega Proveedora")
+        division = Division.objects.create(bodega=bodega, tipo_division=tipo_division, nombre="Division Proveedora")
+        subdivision = SubDivision.objects.create(division=division, nombre="Subdivision Proveedora")
+        Inventario.objects.create(
+            producto=self.producto,
+            subdivision=subdivision,
+            referencia="",
+            cantidad=10,
+        )
+
+    def test_todos_los_elegibles_reciben_el_recordatorio_pero_solo_el_marcado_queda_asignado(self):
+        payload = {
+            "sucursal_solicitante_id": self.sucursal_solicitante.id,
+            "sucursal_proveedora_id": self.sucursal_proveedora.id,
+            "fecha": "2026-03-11",
+            "descripcion": "Solicitud de prueba",
+            "recordatorio_destinatario_ids": [self.checked_user.id],
+            "detalles": [
+                {"producto_id": self.producto.id, "cantidad": 2, "valor": "10.00"},
+            ],
+        }
+
+        response = self.client.post(
+            reverse("movimientos-movimiento-inventario-solicitudes-traslado"),
+            payload,
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        solicitud_id = str(response.data["id"])
+
+        store = ReminderState.objects.get(key=ReminderState.GLOBAL_KEY)
+        reminder = next(
+            item
+            for item in store.payload
+            if item.get("kind") == "solicitud_traslado_decision"
+            and str(item.get("context", {}).get("id")) == solicitud_id
+        )
+
+        recipient_ids = {str(r["id"]) for r in reminder["recipients"]}
+        assigned_ids = {str(r["id"]) for r in reminder["decision"]["assignedRecipients"]}
+
+        for user in (self.checked_user, self.unchecked_user_a, self.unchecked_user_b):
+            self.assertIn(str(user.id), recipient_ids, f"{user.username} deberia recibir el recordatorio")
+
+        self.assertEqual(assigned_ids, {str(self.checked_user.id)})
+        self.assertNotIn(str(self.unchecked_user_a.id), assigned_ids)
+        self.assertNotIn(str(self.unchecked_user_b.id), assigned_ids)
 
 
 class MovimientoInventarioTablaTests(APITestCase):

@@ -1632,6 +1632,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "name": "Sistema",
         }
         admin_recipients = self._resolve_transfer_request_admin_recipients()
+        # El recordatorio le debe llegar a todos los usuarios elegibles de la
+        # sucursal proveedora (todo el listado de opciones del checkbox), no
+        # solo a los que el creador marco -- eso es lo que decide quien ve la
+        # bola urgente creciendo (assignedRecipients), no quien se entera.
+        all_provider_recipients = self._resolve_transfer_provider_recipients(
+            solicitud.sucursal_proveedora_id,
+        )
         selected_recipients = self._resolve_transfer_selected_recipients(
             solicitud.sucursal_proveedora_id,
             selected_user_ids,
@@ -1652,7 +1659,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         for candidate in admin_recipients:
             append_unique(candidate)
-        for candidate in selected_recipients:
+        for candidate in all_provider_recipients:
             append_unique(candidate)
         append_unique(actor_recipient)
 
