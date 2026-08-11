@@ -449,6 +449,12 @@
   color: var(--color-text-primary);
   background: var(--table-color);
   white-space: nowrap;
+  /* Sin esto, la celda depende de heredar vertical-align desde <tbody> para
+     centrarse -- cualquier cosa en la cadena que lo rompa (o simplemente
+     que nunca se haya heredado bien en algun navegador) deja el contenido
+     pegado arriba en vez de centrado en la fila. Se pone explicito para
+     que no dependa de la herencia. */
+  vertical-align: middle;
 }
 .users-datatable .p-datatable-tbody > tr > td:last-child {
   border-right: none;
@@ -1289,25 +1295,43 @@ body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypane
   border-bottom-color: color-mix(in srgb, var(--color-border) 52%, transparent);
 }
 
-/* ====== Shared OEM cell (used by ProductosTable and InventarioTableV2) ====== */
+/* ====== Shared OEM cell (used by ProductosTable, InventarioTableV2, SolicitudesTable) ====== */
+/* Plain inline-block, exactly like the other columns' bare <span class="cell-tooltip">
+   -- that's what lets the table cell's own vertical-align: middle center it
+   correctly. A flex/inline-flex wrapper here previously caused a few pixels
+   of vertical drift (flex containers get their own synthesized baseline,
+   which doesn't line up with a plain text baseline). The "eye" button (only
+   present when there's more than one value) is taken out of flow entirely
+   with position: absolute, so its presence never affects the text's own
+   box or alignment either. */
 .inventario-v2__location-cell {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  vertical-align: middle;
   min-width: 0;
 }
 
 .inventario-v2__location-main {
-  display: block;
+  /* display/line-height deliberately NOT overridden here -- this element
+     already carries the "cell-tooltip" class (display: inline-block, no
+     custom line-height), same as every plain text cell in the table. This
+     class only adds what's actually different about it (bold, space for
+     the eye button); anything else defined here would fight cell-tooltip's
+     box model and reintroduce a vertical mismatch against sibling cells. */
   min-width: 0;
   font-weight: 600;
-  line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  padding-right: 28px;
 }
 
 .inventario-v2__location-eye {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
   width: 24px;
   height: 24px;
   border-radius: 999px;
@@ -1318,7 +1342,6 @@ body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypane
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  flex: 0 0 auto;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
