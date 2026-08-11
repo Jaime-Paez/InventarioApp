@@ -497,18 +497,6 @@ function CreateEntrada({
   const appliedPrefillTransferKeyRef = useRef('')
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
-  const getViewportMetrics = useCallback((compactMode = false) => {
-    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
-    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
-    const targetMinWidth = compactMode ? SELECTOR_MIN_WIDTH : MIN_WIDTH
-    const targetMinHeight = compactMode ? SELECTOR_MIN_HEIGHT : MIN_HEIGHT
-    return {
-      availableWidth,
-      availableHeight,
-      minWidth: Math.min(targetMinWidth, availableWidth),
-      minHeight: Math.min(targetMinHeight, availableHeight),
-    }
-  }, [])
 
   const notifyError = useCallback(
     (message) => {
@@ -651,6 +639,24 @@ function CreateEntrada({
   const isTraslado = selectedSubTipoName.includes('trasl')
   const isVenta = selectedSubTipoName.includes('vent')
   const isCompraEntrada = selectedSubTipoName.includes('compra')
+
+  const getViewportMetrics = useCallback((compactMode = false) => {
+    const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
+    const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
+    // La tabla de compra local necesita su ancho completo para mostrar el
+    // codigo, la referencia y el resto de columnas sin truncarse -- no basta
+    // con el MIN_WIDTH generico, o el usuario podia reducir el modal hasta
+    // que esas columnas volvieran a cortarse.
+    const targetMinWidth = compactMode ? SELECTOR_MIN_WIDTH : (isCompraEntrada ? COMPRA_LOCAL_WIDTH : MIN_WIDTH)
+    const targetMinHeight = compactMode ? SELECTOR_MIN_HEIGHT : MIN_HEIGHT
+    return {
+      availableWidth,
+      availableHeight,
+      minWidth: Math.min(targetMinWidth, availableWidth),
+      minHeight: Math.min(targetMinHeight, availableHeight),
+    }
+  }, [isCompraEntrada])
+
   const isEditableEntryDate = !isTraslado && !isDevolucion
   const useExistingCliente = clienteMode === CLIENT_MODE_EXISTING
   const useNewCliente = clienteMode === CLIENT_MODE_NEW
