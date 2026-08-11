@@ -43,7 +43,7 @@ class Cliente(models.Model):
     """Información básica de los clientes que realizan solicitudes."""
 
     nombres = models.CharField(max_length=255)
-    apellidos = models.CharField(max_length=255)
+    apellidos = models.CharField(max_length=255, blank=True)
     correo = models.EmailField(blank=True)
     telefono = models.CharField(max_length=50, blank=True)
     direccion = models.CharField(max_length=255, blank=True)

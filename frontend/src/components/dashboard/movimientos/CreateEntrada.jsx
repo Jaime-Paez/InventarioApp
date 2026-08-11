@@ -3076,6 +3076,7 @@ function CreateEntrada({
             precio_anterior: isCompraEntrada && Number.isFinite(parseNumber(detail.productoPrecioBD))
               ? parseNumber(detail.productoPrecioBD)
               : null,
+            ...(isCompraEntrada ? { producto_referencia: String(detail.productoReferencia || '').trim() } : {}),
           })),
           ubicaciones_iniciales: (Array.isArray(ubicacionesIniciales) ? ubicacionesIniciales : [])
             .map((item) => ({

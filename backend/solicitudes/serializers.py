@@ -49,6 +49,7 @@ class ClienteSerializer(serializers.ModelSerializer):
         model = Cliente
         fields = ["id", "nombres", "apellidos", "correo", "telefono", "direccion", "cedula_ruc", "autos"]
         extra_kwargs = {
+            "apellidos": {"required": False, "allow_blank": True},
             "correo": {"required": False, "allow_blank": True},
             "telefono": {"required": False, "allow_blank": True},
             "direccion": {"required": False, "allow_blank": True},
@@ -73,8 +74,6 @@ class ClienteSerializer(serializers.ModelSerializer):
         errors = {}
         if not nombres:
             errors["nombres"] = ["Los nombres son obligatorios."]
-        if not apellidos:
-            errors["apellidos"] = ["Los apellidos son obligatorios."]
         if not cedula_ruc:
             errors["cedula_ruc"] = ["La cedula/RUC es obligatoria."]
 

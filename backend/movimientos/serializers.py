@@ -218,6 +218,11 @@ class DetalleMovimientoSerializer(serializers.ModelSerializer):
         queryset=EstadoProducto.objects.all(),
         write_only=True,
     )
+    # No pertenece a DetalleMovimiento -- se usa solo para actualizar
+    # Producto.referencia en compra local (ver _sync_producto_pricing_from_compra_local).
+    producto_referencia = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, allow_null=True
+    )
 
     class Meta:
         model = DetalleMovimiento
@@ -233,6 +238,7 @@ class DetalleMovimientoSerializer(serializers.ModelSerializer):
             "costo",
             "descuento_porcentaje",
             "precio_anterior",
+            "producto_referencia",
         ]
         extra_kwargs = {
             "costo": {"required": False, "allow_null": True},
@@ -1751,9 +1757,12 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
 
     def _replace_detalles(self, movimiento, detalles_data):
         for detalle in detalles_data:
+            detalle_kwargs = {
+                key: value for key, value in detalle.items() if key != "producto_referencia"
+            }
             DetalleMovimiento.objects.create(
                 movimiento_inventario=movimiento,
-                **detalle,
+                **detalle_kwargs,
             )
 
     def _sync_producto_pricing_from_compra_local(self, detalles_data):
@@ -1773,6 +1782,12 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             if valor is not None:
                 producto.precio = valor
                 update_fields.append("precio")
+            referencia = detalle.get("producto_referencia")
+            if referencia is not None:
+                referencia_normalizada = str(referencia).strip()
+                if referencia_normalizada != str(producto.referencia or "").strip():
+                    producto.referencia = referencia_normalizada
+                    update_fields.append("referencia")
             if update_fields:
                 producto.save(update_fields=update_fields)
 

@@ -340,7 +340,7 @@ const normalizeClientePayload = (cliente) => ({
   direccion: String(cliente?.direccion || '').trim(),
 })
 
-const clienteRequiredFields = ['nombres', 'apellidos', 'cedula_ruc']
+const clienteRequiredFields = ['nombres', 'cedula_ruc']
 const CLIENT_MODE_EXISTING = 'existing'
 const CLIENT_MODE_NEW = 'new'
 const CLIENT_MODE_CONSUMIDOR_FINAL = 'consumidor_final'
@@ -4213,7 +4213,6 @@ function CreateSalida({
                               value={clienteForm.apellidos}
                               onChange={handleClienteFieldChange}
                               disabled={loading}
-                              required
                             />
                           </label>
 
