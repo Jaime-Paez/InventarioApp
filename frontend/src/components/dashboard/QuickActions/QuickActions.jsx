@@ -3399,23 +3399,27 @@ function QuickActions({
       // Open first and hydrate catalogs afterwards so the modal feels instant.
       void (async () => {
         try {
+          // page_size=500 se quedaba corto: sucursales grandes (9 de Octubre
+          // llega a 775 subdivisiones) superaban el limite y esas ubicaciones
+          // nunca aparecian al recibir un envio. 2000 deja margen holgado
+          // sobre la sucursal mas grande que existe hoy (775).
           const [bodegasResponse, divisionsResponse, subdivisionsResponse] = await Promise.all([
           authFetch(
-            `${API_URL}/inventario/bodegas/?page_size=500&sucursal_id=${encodeURIComponent(
+            `${API_URL}/inventario/bodegas/?page_size=2000&sucursal_id=${encodeURIComponent(
               sucursalSolicitanteId
             )}`,
             {},
             token
           ),
           authFetch(
-            `${API_URL}/inventario/divisiones/?page_size=500&sucursal_id=${encodeURIComponent(
+            `${API_URL}/inventario/divisiones/?page_size=2000&sucursal_id=${encodeURIComponent(
               sucursalSolicitanteId
             )}`,
             {},
             token
           ),
           authFetch(
-            `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(
+            `${API_URL}/inventario/subdivisiones/?page_size=2000&sucursal_id=${encodeURIComponent(
               sucursalSolicitanteId
             )}`,
             {},

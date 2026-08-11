@@ -1128,6 +1128,16 @@
   background: var(--modal-color);
 }
 
+/* Agrupa los botones del lado derecho (ej. Guardar + Crear) para que
+   space-between en .create-user__footer los trate como un solo bloque
+   pegado a la derecha, en vez de repartir cada boton a distancias
+   iguales (lo que dejaba "Guardar" centrado en vez de junto a "Crear"). */
+.create-user__footer-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .dashboard-shell.dark .create-user__footer {
   background: var(--table-color-dark);
   border-top-color: var(--color-border);
@@ -1189,6 +1199,21 @@
   background: var(--color-surface-darker);
   border-color: var(--color-border);
   color: var(--color-text-dark);
+}
+
+/* Mismo celeste que el boton "Buscar" (.users-topbtn--search) -- para que
+   "Guardar" se distinga claramente de Cancelar/Crear en vez de verse como
+   una tercera variante gris mas. */
+.create-user__action--info {
+  background: #0288d1;
+  border-color: #0288d1;
+  color: #ffffff;
+}
+
+.dashboard-shell.dark .create-user__action--info {
+  background: #0277bd;
+  border-color: #0277bd;
+  color: #ffffff;
 }
 
 .create-user__ghost {

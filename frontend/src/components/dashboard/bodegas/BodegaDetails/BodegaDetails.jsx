@@ -146,11 +146,15 @@ function BodegaDetails({
     if (!bodegaId) return
     setLoadingDivisions(true)
     try {
-      const list = await fetchAll(`${API_URL}/inventario/divisiones/`)
-      const filtered = list.filter(
-        (division) => Number(division?.bodega?.id) === Number(bodegaId)
+      // Antes traia TODAS las divisiones del sistema (de cualquier bodega,
+      // de cualquier sucursal) y filtraba por bodegaId en el navegador. El
+      // backend ya soporta filtrar por bodega_id -- pedirle solo lo que
+      // corresponde evita tener que paginar por decenas de paginas cuando
+      // el catalogo crece, que es justo lo que dejaba esto colgado/vacio.
+      const list = await fetchAll(
+        `${API_URL}/inventario/divisiones/?bodega_id=${encodeURIComponent(bodegaId)}&page_size=200`
       )
-      setDivisions(filtered)
+      setDivisions(list)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al cargar las divisiones.')
     } finally {
@@ -162,12 +166,13 @@ function BodegaDetails({
     if (!bodegaId) return
     setLoadingSubdivisions(true)
     try {
-      const list = await fetchAll(`${API_URL}/inventario/subdivisiones/`)
-      const filtered = list.filter(
-        (subdivision) =>
-          Number(subdivision?.division?.bodega?.id) === Number(bodegaId)
+      // Mismo motivo que fetchDivisions: filtrar por bodega_id en el
+      // servidor en vez de traer las ~1900+ subdivisiones de todo el
+      // sistema (decenas de paginas) y filtrar en el navegador.
+      const list = await fetchAll(
+        `${API_URL}/inventario/subdivisiones/?bodega_id=${encodeURIComponent(bodegaId)}&page_size=200`
       )
-      setSubdivisions(filtered)
+      setSubdivisions(list)
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al cargar las subdivisiones.')
     } finally {

@@ -1465,8 +1465,12 @@ function CreateEntrada({
   const fetchSubdivisionsForLocationResolver = useCallback(
     async (sucursalId) => {
       if (!token || !sucursalId) return []
+      // 500 se quedaba corto en sucursales grandes (hasta 775 subdivisiones
+      // hoy); 2000 deja margen holgado. La busqueda en servidor de mas
+      // abajo (searchSubdivisionsForLocationResolver) sigue como respaldo
+      // para cuando el catalogo crezca mas alla de esto.
       const response = await authFetch(
-        `${API_URL}/inventario/subdivisiones/?page_size=500&sucursal_id=${encodeURIComponent(
+        `${API_URL}/inventario/subdivisiones/?page_size=2000&sucursal_id=${encodeURIComponent(
           sucursalId
         )}&modulo=movimientos_entradas`,
         {},
@@ -4901,17 +4905,29 @@ function CreateEntrada({
                 Siguiente
               </button>
             ) : formData.subTipoId && (
-              <button
-                type="submit"
-                className="create-user__action create-user__action--primary"
-                disabled={loading || checkingLocationCoverage}
-              >
-                {loading
-                  ? 'Guardando...'
-                  : checkingLocationCoverage
-                    ? 'Verificando ubicaciones...'
-                    : (isTraslado ? 'Crear solicitud de traslado' : 'Crear entrada')}
-              </button>
+              <div className="create-user__footer-group">
+                {isTraslado && (
+                  <button
+                    type="button"
+                    className="create-user__action create-user__action--info"
+                    disabled={loading || checkingLocationCoverage || !hasUnsavedProgress}
+                    onClick={(event) => handleSubmit(event, { guardarBorrador: true })}
+                  >
+                    {loading ? 'Guardando...' : 'Guardar'}
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className="create-user__action create-user__action--primary"
+                  disabled={loading || checkingLocationCoverage}
+                >
+                  {loading
+                    ? 'Guardando...'
+                    : checkingLocationCoverage
+                      ? 'Verificando ubicaciones...'
+                      : (isTraslado ? 'Crear solicitud de traslado' : 'Crear entrada')}
+                </button>
+              </div>
             )}
           </div>
         </form>
