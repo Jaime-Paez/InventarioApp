@@ -478,7 +478,9 @@ const getTransferVisualStatus = (baseStatus, visualDecisionStatus) => {
     return {
       label: 'Rechazada',
       className: 'rejected',
-      canMarkSeen: false,
+      // Rejected is terminal for the requester -- must stay dismissable (see
+      // buildReminderStatusForUser) or the urgent shield bubble never clears.
+      canMarkSeen: Boolean(baseStatus?.canMarkSeen),
     }
   }
   if (visualDecisionStatus === 'cancelado') {

@@ -1035,7 +1035,10 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
     return {
       label: 'Rechazada',
       className: 'rejected',
-      canMarkSeen: false,
+      // A rejected transfer is a terminal outcome for the requester -- unlike a pending
+      // decision, there's nothing left to approve/deny, so it must be dismissable or it
+      // nags (and keeps the urgent shield bubble alive) forever with no way to clear it.
+      canMarkSeen: !isSpecialReminder,
     }
   }
 
@@ -1214,7 +1217,7 @@ const getTransferVisualStatus = (baseStatus, visualDecisionStatus) => {
   if (visualDecisionStatus === 'recibido') return { label: 'Cumplido', className: 'arrived', canMarkSeen: false }
   if (visualDecisionStatus === 'enviado') return { label: 'Enviado', className: 'sent', canMarkSeen: false }
   if (visualDecisionStatus === 'aceptada') return { label: 'Aceptada', className: 'accepted', canMarkSeen: false }
-  if (visualDecisionStatus === 'rechazada') return { label: 'Rechazada', className: 'rejected', canMarkSeen: false }
+  if (visualDecisionStatus === 'rechazada') return { label: 'Rechazada', className: 'rejected', canMarkSeen: Boolean(baseStatus?.canMarkSeen) }
   if (visualDecisionStatus === 'cancelado') return { label: 'Cancelado', className: 'cancelled', canMarkSeen: false }
   return baseStatus
 }
