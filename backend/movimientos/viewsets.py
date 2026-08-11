@@ -1824,6 +1824,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             if not recipients:
                 return False
 
+            # Rechazada/cancelado is a terminal, no-action-needed outcome for the
+            # requester -- there is nothing to approve/reject anymore, only to read.
+            # Seeding completedBy with every recipient keeps it from ever entering the
+            # "pending correction" urgent-shield bubble, instead of relying on someone
+            # opening the reminders panel to dismiss it (which could never happen).
+            initial_completed_by = (
+                [str(r.get("id") or "").strip() for r in recipients if r.get("id")]
+                if normalized_status in {"rechazada", "cancelado"}
+                else []
+            )
+
             reminder = {
                 "id": str(uuid4()),
                 "date": now.strftime("%Y-%m-%d"),
@@ -1847,7 +1858,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "assignedRecipients": assigned_recipients,
                 },
                 "transferHistory": full_history,
-                "completedBy": [],
+                "completedBy": initial_completed_by,
             }
 
             merged = self._upsert_transfer_context_reminder(
