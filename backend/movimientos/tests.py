@@ -118,16 +118,17 @@ class MovimientoInventarioStockRulesTests(TestCase):
         )
         return int(total)
 
-    def _build_detail(self, cantidad):
-        return [
-            {
-                "producto_id": self.producto.id,
-                "cantidad": int(cantidad),
-                "estado_producto_id": self.estado_producto.id,
-                "valor": "10.00",
-                "valor_total": str(Decimal("10.00") * int(cantidad)),
-            }
-        ]
+    def _build_detail(self, cantidad, costo=None):
+        detail = {
+            "producto_id": self.producto.id,
+            "cantidad": int(cantidad),
+            "estado_producto_id": self.estado_producto.id,
+            "valor": "10.00",
+            "valor_total": str(Decimal("10.00") * int(cantidad)),
+        }
+        if costo is not None:
+            detail["costo"] = costo
+        return [detail]
 
     def _create_movement(self, payload):
         serializer = MovimientoInventarioSerializer(data=payload)
@@ -141,9 +142,10 @@ class MovimientoInventarioStockRulesTests(TestCase):
             "sub_tipo_movimiento_id": self.subtipo_compra_local.id,
             "estado_movimiento_id": self.estado_recibido.id,
             "no_documento": "TMP",
+            "factura_referencia": "FAC-TEST-1",
             "descripcion": "Ingreso por compra",
             "fecha": "2026-03-11",
-            "detalles": self._build_detail(cantidad=5),
+            "detalles": self._build_detail(cantidad=5, costo="5.00"),
         }
 
         before = self._stock_total(self.sucursal)

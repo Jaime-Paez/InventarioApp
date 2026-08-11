@@ -480,45 +480,6 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
                 }
             )
 
-        is_urgente = bool(attrs.get("urgente", False))
-        if sucursal_solicitante is not None and sucursal_proveedora is not None and not is_urgente:
-            conflicting_qs = SolicitudTraslado.objects.filter(
-                sucursal_solicitante_id=int(sucursal_solicitante.id),
-                sucursal_proveedora_id=int(sucursal_proveedora.id),
-                estado__in=[
-                    SolicitudTraslado.Estados.GUARDADO,
-                    SolicitudTraslado.Estados.PENDIENTE,
-                ],
-            )
-            if self.instance is not None:
-                conflicting_qs = conflicting_qs.exclude(pk=self.instance.pk)
-
-            conflicting = conflicting_qs.order_by("-created_at", "-id").first()
-            if conflicting is not None:
-                existing_document = str(conflicting.no_documento or "").strip()
-                if conflicting.estado == SolicitudTraslado.Estados.GUARDADO:
-                    intro = (
-                        f"Ya hay un pedido a sucursal guardado para estas sucursales ({existing_document})."
-                        if existing_document
-                        else "Ya hay un pedido a sucursal guardado para estas sucursales."
-                    )
-                    raise serializers.ValidationError(
-                        {
-                            "sucursal_proveedora_id": (
-                                f"{intro} Edítalo o complétalo para poder hacer más solicitudes a esa sucursal."
-                            )
-                        }
-                    )
-                raise serializers.ValidationError(
-                    {
-                        "sucursal_proveedora_id": (
-                            "Ya existe una solicitud pendiente para estas sucursales "
-                            f"({existing_document}). Debes aceptarla o rechazarla antes "
-                            "de crear otra."
-                        )
-                    }
-                )
-
         is_finalizing = (
             self.instance is not None
             and getattr(self.instance, "estado", None) == SolicitudTraslado.Estados.GUARDADO

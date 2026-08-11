@@ -2742,58 +2742,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         serializer = SolicitudTrasladoSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=["get"], url_path="solicitudes-traslado/conflicto")
-    def solicitud_traslado_conflicto(self, request):
-        """
-        Chequeo liviano para el formulario de creacion: si ya hay una
-        solicitud guardada o pendiente de esta sucursal hacia la proveedora
-        elegida, se bloquea la creacion de otra no urgente. No requiere
-        permiso de lectura sobre la sucursal proveedora (a diferencia del
-        listado completo), solo de creacion sobre la solicitante.
-        """
-        sucursal_solicitante_raw = (request.query_params.get("sucursal_solicitante_id") or "").strip()
-        sucursal_proveedora_raw = (request.query_params.get("sucursal_proveedora_id") or "").strip()
-        if not sucursal_solicitante_raw.isdigit() or not sucursal_proveedora_raw.isdigit():
-            return Response(
-                {"detail": "Debes enviar sucursal_solicitante_id y sucursal_proveedora_id validos."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        sucursal_solicitante_id = int(sucursal_solicitante_raw)
-        sucursal_proveedora_id = int(sucursal_proveedora_raw)
-
-        ensure_sucursal_allowed_for_modules(
-            request.user,
-            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
-            sucursal_solicitante_id,
-            field_label="sucursal solicitante",
-            action_key="puede_crear",
-        )
-
-        conflicting = (
-            SolicitudTraslado.objects.filter(
-                sucursal_solicitante_id=sucursal_solicitante_id,
-                sucursal_proveedora_id=sucursal_proveedora_id,
-                estado__in=[
-                    SolicitudTraslado.Estados.GUARDADO,
-                    SolicitudTraslado.Estados.PENDIENTE,
-                ],
-            )
-            .order_by("-created_at", "-id")
-            .first()
-        )
-        if conflicting is None:
-            return Response({"conflicto": False})
-
-        return Response(
-            {
-                "conflicto": True,
-                "solicitud_id": int(conflicting.id),
-                "estado": conflicting.estado,
-                "no_documento": str(conflicting.no_documento or "").strip(),
-            }
-        )
-
     @action(
         detail=False,
         methods=["get", "put", "delete"],

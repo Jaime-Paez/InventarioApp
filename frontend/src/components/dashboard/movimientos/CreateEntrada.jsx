@@ -449,7 +449,6 @@ function CreateEntrada({
   const [documentStatus, setDocumentStatus] = useState(DOCUMENT_STATUS.invalid)
   const [showUrgenteConfirm, setShowUrgenteConfirm] = useState(false)
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
-  const [trasladoConflict, setTrasladoConflict] = useState(null)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -487,7 +486,6 @@ function CreateEntrada({
   const casaComercialTimerRef = useRef(null)
   const documentCheckTimerRef = useRef(null)
   const documentCheckSequenceRef = useRef(0)
-  const trasladoConflictTimerRef = useRef(null)
   const modalDrag = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const modalResize = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const justTransitionedFromCasaRef = useRef(false)
@@ -1427,62 +1425,6 @@ function CreateEntrada({
     isCurrentUserAdmin,
     token,
   ])
-
-  useEffect(() => {
-    if (trasladoConflictTimerRef.current) {
-      clearTimeout(trasladoConflictTimerRef.current)
-      trasladoConflictTimerRef.current = null
-    }
-
-    if (!open || !isTraslado || formData.urgente || !token) {
-      setTrasladoConflict(null)
-      return undefined
-    }
-
-    const sucursalSolicitanteId = String(formData.sucursalId || '').trim()
-    const sucursalProveedoraId = String(formData.sucursalObjetivoId || '').trim()
-    if (!sucursalSolicitanteId || !sucursalProveedoraId) {
-      setTrasladoConflict(null)
-      return undefined
-    }
-
-    trasladoConflictTimerRef.current = setTimeout(async () => {
-      try {
-        const response = await authFetch(
-          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/conflicto/` +
-            `?sucursal_solicitante_id=${encodeURIComponent(sucursalSolicitanteId)}` +
-            `&sucursal_proveedora_id=${encodeURIComponent(sucursalProveedoraId)}`,
-          {},
-          token
-        )
-        if (!response.ok) {
-          setTrasladoConflict(null)
-          return
-        }
-        const data = await response.json().catch(() => ({}))
-        if (data?.conflicto) {
-          setTrasladoConflict(data)
-          const isGuardado = String(data?.estado || '').trim().toLowerCase() === 'guardado'
-          notifyError(
-            isGuardado
-              ? 'Ya hay un pedido a sucursal guardado a esta sucursal, edítalo o complétalo para poder hacer más solicitudes a esa sucursal.'
-              : `Ya existe una solicitud pendiente para estas sucursales (${data?.no_documento || ''}). Debes aceptarla o rechazarla antes de crear otra.`
-          )
-        } else {
-          setTrasladoConflict(null)
-        }
-      } catch {
-        setTrasladoConflict(null)
-      }
-    }, 350)
-
-    return () => {
-      if (trasladoConflictTimerRef.current) {
-        clearTimeout(trasladoConflictTimerRef.current)
-        trasladoConflictTimerRef.current = null
-      }
-    }
-  }, [open, isTraslado, formData.urgente, formData.sucursalId, formData.sucursalObjetivoId, token, notifyError])
 
   const fetchStockByBranch = useCallback(
     async (sucursalId) => {
@@ -3336,16 +3278,6 @@ function CreateEntrada({
       return
     }
 
-    if (isTraslado && !formData.urgente && trasladoConflict?.conflicto) {
-      const isGuardadoConflict = String(trasladoConflict?.estado || '').trim().toLowerCase() === 'guardado'
-      notifyError(
-        isGuardadoConflict
-          ? 'Ya hay un pedido a sucursal guardado a esta sucursal, edítalo o complétalo para poder hacer más solicitudes a esa sucursal.'
-          : `Ya existe una solicitud pendiente para estas sucursales (${trasladoConflict?.no_documento || ''}). Debes aceptarla o rechazarla antes de crear otra.`
-      )
-      return
-    }
-
     if (!isTraslado && !formData.estadoId) {
       notifyError('No se pudo resolver el estado del movimiento.')
       return
@@ -3850,11 +3782,6 @@ function CreateEntrada({
                                 onChange={handleChange}
                                 disabled={loading}
                                 required={requiresSucursalObjetivo}
-                                className={
-                                  !formData.urgente && trasladoConflict?.conflicto
-                                    ? 'create-salida__input--error'
-                                    : ''
-                                }
                               >
                                 <option value="">Selecciona una sucursal</option>
                                 {destinationBranches.map((branch) => (
@@ -3932,11 +3859,6 @@ function CreateEntrada({
                                 onChange={handleChange}
                                 disabled={loading}
                                 required={requiresSucursalObjetivo}
-                                className={
-                                  !formData.urgente && trasladoConflict?.conflicto
-                                    ? 'create-salida__input--error'
-                                    : ''
-                                }
                               >
                                 <option value="">Selecciona una sucursal</option>
                                 {destinationBranches.map((branch) => (
