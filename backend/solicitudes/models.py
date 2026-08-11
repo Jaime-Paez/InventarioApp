@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from casa_comercial.models import CasaComercial
+from core.concurrency import acquire_sequence_lock
 
 
 def normalize_sucursal_name(value):
@@ -176,6 +177,10 @@ class Solicitud(models.Model):
     @classmethod
     def generate_next_codigo(cls, sucursal, exclude_id=None):
         base = cls.build_codigo_base(sucursal)
+        # Si se llama dentro de un transaction.atomic() que tambien crea la
+        # Solicitud (el caso normal), serializa a dos requests generando un
+        # codigo para el mismo prefijo -- ver acquire_sequence_lock.
+        acquire_sequence_lock(cls._meta.label, base)
         queryset = cls.objects.filter(codigo__istartswith=f"{base}-")
         if exclude_id is not None:
             queryset = queryset.exclude(pk=exclude_id)

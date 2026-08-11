@@ -3,9 +3,10 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 import unicodedata
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
+from core.concurrency import acquire_sequence_lock
 from casa_comercial.models import CasaComercial
 from configuracion.models import ConfiguracionSistema
 from inventario.models import Inventario, SubDivision, Sucursal
@@ -112,6 +113,12 @@ def _next_incremental_document_number(model, base, filters=None):
     base_token = str(base or "").strip().upper().strip("-")
     if not base_token:
         base_token = "DOC"
+
+    # Debe llamarse dentro del mismo transaction.atomic() que hace el INSERT
+    # que reserva el numero (ver acquire_sequence_lock): sin esto, dos
+    # entradas/salidas/traslados creados al mismo tiempo pueden calcular el
+    # mismo "siguiente numero" y chocar contra el unique de no_documento.
+    acquire_sequence_lock(model._meta.label, base_token)
 
     query_filters = dict(filters or {})
     query_filters["no_documento__istartswith"] = f"{base_token}-"
@@ -578,11 +585,13 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         detalles_data = validated_data.pop("detalles", [])
         validated_data.pop("recordatorio_destinatario_ids", None)
-        validated_data["no_documento"] = generate_transfer_request_document_number(
-            sucursal_solicitante=validated_data.get("sucursal_solicitante"),
-            sucursal_proveedora=validated_data.get("sucursal_proveedora"),
-        )
+        # La generacion del numero tiene que quedar dentro del mismo atomic()
+        # que el INSERT que lo reserva -- ver acquire_sequence_lock.
         with transaction.atomic():
+            validated_data["no_documento"] = generate_transfer_request_document_number(
+                sucursal_solicitante=validated_data.get("sucursal_solicitante"),
+                sucursal_proveedora=validated_data.get("sucursal_proveedora"),
+            )
             solicitud = SolicitudTraslado.objects.create(**validated_data)
             for detalle in detalles_data:
                 SolicitudTrasladoDetalle.objects.create(solicitud=solicitud, **detalle)
@@ -1347,6 +1356,34 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 defaults={"cantidad": 0},
             )
 
+    def _create_movimiento_with_document_retry(self, validated_data, tipo_name, max_attempts=5):
+        # Las salidas (a diferencia de entradas y traslados) reciben el
+        # no_documento ya elegido por el cliente -- normalmente el numero
+        # sugerido por el preview de /siguiente-documento/, que dos usuarios
+        # pueden haber pedido casi al mismo tiempo y recibido igual. validate()
+        # ya chequea que no exista, pero ese chequeo y este INSERT no son
+        # atomicos entre requests, asi que reintenta con un numero nuevo
+        # (calculado con lock, ver acquire_sequence_lock) si el INSERT choca
+        # contra el unique de no_documento -- en vez de devolver un error al
+        # segundo usuario que solo estaba creando su salida al mismo tiempo.
+        original_no_documento = str(validated_data.get("no_documento") or "").strip()
+        for attempt in range(max_attempts):
+            try:
+                with transaction.atomic():
+                    return super().create(validated_data)
+            except IntegrityError as exc:
+                is_document_conflict = "no_documento" in str(exc).lower()
+                if not is_document_conflict or not original_no_documento or attempt == max_attempts - 1:
+                    raise
+                base_token = re.sub(r"-\d+$", "", original_no_documento.upper()).strip("-")
+                with transaction.atomic():
+                    validated_data["no_documento"] = _next_incremental_document_number(
+                        model=MovimientoInventario,
+                        base=base_token,
+                        filters={"tipo_movimiento": validated_data.get("tipo_movimiento")},
+                    )
+        raise IntegrityError("No se pudo generar un numero de documento unico.")
+
     def create(self, validated_data):
         detalles_data = validated_data.pop("detalles", [])
         pagos_data = validated_data.pop("pagos", [])
@@ -1381,22 +1418,31 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 )
             validated_data["no_documento"] = solicitud_document_number
 
-        if tipo_name.startswith("ent"):
-            validated_data["no_documento"] = generate_entry_document_number(
-                tipo_movimiento=validated_data.get("tipo_movimiento"),
-                subtipo_key=subtipo_key,
-                sucursal=validated_data.get("sucursal"),
-                sucursal_objetivo=validated_data.get("sucursal_objetivo"),
-            )
-
         if is_transfer_approval:
             detalles_data = self._build_detalles_from_solicitud(solicitud_traslado)
             pagos_data = []
 
         if "iva_rate" not in validated_data or validated_data["iva_rate"] is None:
             validated_data["iva_rate"] = ConfiguracionSistema.get_solo().iva_rate
+        # Solo la salida "libre" (venta, garantia, etc. -- no atada a una
+        # solicitud de traslado) usa un no_documento elegido por el cliente
+        # y necesita el reintento; entradas y traslados ya se generan bajo
+        # lock arriba/en generate_transfer_request_document_number.
+        is_plain_salida = tipo_name.startswith("sal") and not is_transfer_approval and not is_direct_transfer
         with transaction.atomic():
-            movimiento = super().create(validated_data)
+            if tipo_name.startswith("ent"):
+                # Generado dentro del atomic() que hace el INSERT que lo
+                # reserva -- ver acquire_sequence_lock.
+                validated_data["no_documento"] = generate_entry_document_number(
+                    tipo_movimiento=validated_data.get("tipo_movimiento"),
+                    subtipo_key=subtipo_key,
+                    sucursal=validated_data.get("sucursal"),
+                    sucursal_objetivo=validated_data.get("sucursal_objetivo"),
+                )
+            if is_plain_salida:
+                movimiento = self._create_movimiento_with_document_retry(validated_data, tipo_name)
+            else:
+                movimiento = super().create(validated_data)
             self._replace_detalles(movimiento, detalles_data)
             if tipo_name.startswith("ent") and subtipo_key == "compra_local":
                 self._sync_producto_pricing_from_compra_local(detalles_data)

@@ -1,8 +1,10 @@
+import threading
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.db.models import Sum
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
@@ -183,6 +185,142 @@ class MovimientoInventarioStockRulesTests(TestCase):
         after = self._stock_total(self.sucursal)
 
         self.assertEqual(after, before - 3)
+
+
+class DocumentNumberConcurrencyTests(TransactionTestCase):
+    """
+    Dos usuarios creando entradas/salidas al mismo tiempo terminaban
+    recibiendo el mismo no_documento (calculado como MAX+1 sin lock) y a
+    uno le fallaba el INSERT por la restriccion unique. Estos tests usan
+    threads con conexiones de BD reales (por eso TransactionTestCase, no
+    TestCase) para reproducir esa concurrencia y confirmar que ya no pasa.
+    """
+
+    def setUp(self):
+        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="Principal")
+
+        tipo_division, _ = TipoDivision.objects.get_or_create(nombre="General")
+        bodega = Bodega.objects.create(sucursal=self.sucursal, nombre="Bodega A")
+        division = Division.objects.create(bodega=bodega, tipo_division=tipo_division, nombre="Division A")
+        self.subdivision = SubDivision.objects.create(division=division, nombre="Subdivision A")
+
+        self.tipo_entrada, _ = TipoMovimiento.objects.get_or_create(nombre="Entrada")
+        self.tipo_salida, _ = TipoMovimiento.objects.get_or_create(nombre="Salida")
+        self.subtipo_compra_local, _ = SubTipoMovimiento.objects.get_or_create(
+            tipo_movimiento=self.tipo_entrada,
+            nombre="Compra Local",
+        )
+        self.subtipo_venta, _ = SubTipoMovimiento.objects.get_or_create(
+            tipo_movimiento=self.tipo_salida,
+            nombre="Venta",
+        )
+        self.estado_recibido, _ = EstadoMovimiento.objects.get_or_create(nombre="Recibido")
+        self.estado_vendido, _ = EstadoMovimiento.objects.get_or_create(nombre="Vendido")
+        self.estado_producto, _ = EstadoProducto.objects.get_or_create(nombre="Disponible")
+
+        self.producto, _ = Producto.objects.get_or_create(
+            codigo="PR-CONC-001",
+            defaults={"nombre": "Producto Concurrencia", "precio": Decimal("10.00")},
+        )
+        Inventario.objects.create(
+            producto=self.producto,
+            subdivision=self.subdivision,
+            referencia="",
+            cantidad=100,
+        )
+
+    def _run_concurrently(self, target, count):
+        results = []
+        errors = []
+        barrier = threading.Barrier(count)
+
+        def wrapped(index):
+            try:
+                barrier.wait(timeout=10)
+                results.append(target(index))
+            except Exception as exc:  # noqa: BLE001 - se reporta en el assert
+                errors.append(exc)
+            finally:
+                connection.close()
+
+        threads = [threading.Thread(target=wrapped, args=(i,)) for i in range(count)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+        return results, errors
+
+    def test_entradas_concurrentes_no_chocan_de_codigo(self):
+        def create_entrada(_index):
+            payload = {
+                "sucursal_id": self.sucursal.id,
+                "tipo_movimiento_id": self.tipo_entrada.id,
+                "sub_tipo_movimiento_id": self.subtipo_compra_local.id,
+                "estado_movimiento_id": self.estado_recibido.id,
+                "no_documento": "IGNORADO",
+                "factura_referencia": "FAC-CONC-1",
+                "descripcion": "Ingreso concurrente",
+                "fecha": "2026-03-11",
+                "detalles": [
+                    {
+                        "producto_id": self.producto.id,
+                        "cantidad": 1,
+                        "estado_producto_id": self.estado_producto.id,
+                        "valor": "10.00",
+                        "valor_total": "10.00",
+                        "costo": "5.00",
+                    }
+                ],
+            }
+            serializer = MovimientoInventarioSerializer(data=payload)
+            assert serializer.is_valid(), serializer.errors
+            return serializer.save().no_documento
+
+        results, errors = self._run_concurrently(create_entrada, count=5)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 5)
+        self.assertEqual(len(set(results)), 5, f"Numeros duplicados: {results}")
+
+    def test_salidas_concurrentes_con_mismo_no_documento_sugerido_no_chocan(self):
+        # Simula el caso real: dos usuarios piden el "siguiente numero" casi
+        # al mismo tiempo, ambos reciben el mismo valor sugerido, y los dos
+        # lo mandan tal cual al crear la salida.
+        shared_suggested_no_documento = "SAL-CONC-1"
+
+        def create_salida(_index):
+            payload = {
+                "sucursal_id": self.sucursal.id,
+                "tipo_movimiento_id": self.tipo_salida.id,
+                "sub_tipo_movimiento_id": self.subtipo_venta.id,
+                "estado_movimiento_id": self.estado_vendido.id,
+                "no_documento": shared_suggested_no_documento,
+                "descripcion": "Salida concurrente",
+                "fecha": "2026-03-11",
+                "detalles": [
+                    {
+                        "producto_id": self.producto.id,
+                        "cantidad": 1,
+                        "estado_producto_id": self.estado_producto.id,
+                        "valor": "10.00",
+                        "valor_total": "10.00",
+                    }
+                ],
+            }
+            serializer = MovimientoInventarioSerializer(data=payload)
+            assert serializer.is_valid(), serializer.errors
+            return serializer.save().no_documento
+
+        # Solo 2: es el caso real (dos usuarios reciben la misma sugerencia
+        # de "siguiente numero" y la mandan tal cual). Con mas hilos, los
+        # que arrancan despues de que el primero ya hizo commit legitimamente
+        # ven el numero como ocupado en el chequeo previo (no es la carrera
+        # que este test busca reproducir).
+        results, errors = self._run_concurrently(create_salida, count=2)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 2)
+        self.assertEqual(len(set(results)), 2, f"Numeros duplicados: {results}")
 
 
 class MovimientoInventarioTablaTests(APITestCase):

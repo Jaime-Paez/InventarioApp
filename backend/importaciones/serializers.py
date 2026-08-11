@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from casa_comercial.models import CasaComercial
 from casa_comercial.serializers import CasaComercialSerializer
+from core.concurrency import acquire_sequence_lock
 from productos.models import OEM, OEMProducto, Producto
 from productos.serializers import ProductoSerializer
 from solicitudes.models import Solicitud
@@ -16,6 +17,10 @@ from .models import Importacion, ImportacionDetalle
 def generate_next_importacion_code(casa=None):
     casa_code = str(getattr(casa, "codigo", "") or "").strip().upper()
     prefix = f"IMP-{casa_code}-" if casa_code else "IMP-"
+    # Si se llama dentro de un transaction.atomic() que tambien crea la
+    # Importacion (el caso que importa), serializa a dos requests generando
+    # un codigo para el mismo prefijo -- ver acquire_sequence_lock.
+    acquire_sequence_lock(Importacion._meta.label, prefix)
     last_codes = Importacion.objects.filter(codigo__startswith=prefix).values_list("codigo", flat=True)
     max_number = 0
     pattern = re.compile(r"^" + re.escape(prefix) + r"(\d+)$")

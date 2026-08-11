@@ -2,8 +2,10 @@ import random
 import string
 import unicodedata
 
+from django.db import transaction
 from rest_framework import serializers
 
+from core.concurrency import acquire_sequence_lock
 from tipos.models import Pais
 from tipos.serializers import PaisSerializer
 
@@ -119,7 +121,12 @@ class MarcaSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop("codigo", None)
-        validated_data["codigo"] = generate_unique_marca_code(
-            validated_data.get("nombre")
-        )
-        return super().create(validated_data)
+        with transaction.atomic():
+            # Codigo random de 3 letras, no un contador incremental por
+            # prefijo, asi que se serializa contra si mismo en general (ver
+            # acquire_sequence_lock) en vez de por un prefijo especifico.
+            acquire_sequence_lock(Marca._meta.label, "codigo")
+            validated_data["codigo"] = generate_unique_marca_code(
+                validated_data.get("nombre")
+            )
+            return super().create(validated_data)
