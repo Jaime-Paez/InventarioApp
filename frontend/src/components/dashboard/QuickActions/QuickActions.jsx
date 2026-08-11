@@ -2689,11 +2689,6 @@ function QuickActions({
           const next = (Array.isArray(prev) ? prev : []).map((reminder) => {
             if (!isResolvedTransferResponseReminder(reminder)) return reminder
             if (!isReminderForCurrentUser(reminder, currentUserIds)) return reminder
-            const isRejectedCorrectionReminder = (
-              getReminderDecisionStatus(reminder) === 'rechazada' &&
-              isReminderCreatedByCurrentUser(reminder, currentUserIds, currentUserName)
-            )
-            if (isRejectedCorrectionReminder) return reminder
 
             const completedBySet = new Set(reminderCompletedByIds(reminder))
             let reminderChanged = false
