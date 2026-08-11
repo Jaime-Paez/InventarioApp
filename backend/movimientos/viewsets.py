@@ -14,6 +14,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from core.search_utils import apply_token_search, get_search_tokens
 from core.table_filters import apply_column_filters, parse_column_filters
 from app.models import ReminderState
 from app.views import (
@@ -4654,15 +4655,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         if len(query) < 2:
             return Response({"results": []}, status=status.HTTP_200_OK)
 
-        tokens = [token for token in query.split() if token]
-        search_q = Q(cedula_ruc__icontains=query)
-        if tokens:
-            for token in tokens:
-                search_q |= Q(nombres__icontains=token) | Q(apellidos__icontains=token)
-        else:
-            search_q |= Q(nombres__icontains=query) | Q(apellidos__icontains=query)
-
-        clientes_qs = Cliente.objects.filter(search_q).order_by("nombres", "apellidos").distinct()[:10]
+        # Antes esto comparaba con icontains crudo, que es sensible a
+        # acentos -- un cliente guardado como "Jose Peña" no aparecia si
+        # buscabas "Jose Pena" (sin ñ), que es como la mayoria escribe.
+        # apply_token_search normaliza acentos y exige que cada palabra
+        # buscada aparezca en algun campo, igual que el buscador de productos.
+        tokens = get_search_tokens(query)
+        clientes_qs = apply_token_search(
+            Cliente.objects.all(),
+            tokens,
+            ["cedula_ruc", "nombres", "apellidos"],
+        ).order_by("nombres", "apellidos").distinct()[:10]
         payload = []
         for cliente in clientes_qs:
             nombres = str(getattr(cliente, "nombres", "") or "").strip()

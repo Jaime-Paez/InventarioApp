@@ -11,6 +11,7 @@ from rest_framework.test import APITestCase
 from app.models import ReminderState, UsuarioPreferencia
 from inventario.models import Bodega, Division, Inventario, SubDivision, Sucursal
 from productos.models import Producto
+from solicitudes.models import Cliente
 from tipos.models import (
     EstadoMovimiento,
     EstadoProducto,
@@ -425,6 +426,40 @@ class SolicitudTrasladoReminderRecipientsTests(APITestCase):
         self.assertEqual(assigned_ids, {str(self.checked_user.id)})
         self.assertNotIn(str(self.unchecked_user_a.id), assigned_ids)
         self.assertNotIn(str(self.unchecked_user_b.id), assigned_ids)
+
+
+class BuscarClienteSearchTests(APITestCase):
+    """
+    Un cliente guardado con acentos ("José Peña") no aparecia si se
+    buscaba sin ellos ("jose pena"), que es como la mayoria escribe --
+    icontains es sensible a acentos. Ahora usa la extension unaccent de
+    Postgres (ver app/migrations/0012_unaccent_extension.py).
+    """
+
+    def setUp(self):
+        user_model = get_user_model()
+        self.actor = user_model.objects.create_user(
+            username="buscador_cliente",
+            email="buscador_cliente@example.com",
+            password="test12345",
+        )
+        UsuarioPreferencia.objects.get_or_create(usuario=self.actor, defaults={"es_administrador": True})
+        self.client.force_authenticate(user=self.actor)
+
+        self.cliente = Cliente.objects.create(
+            nombres="José",
+            apellidos="Peña",
+            cedula_ruc="1712345678",
+        )
+
+    def test_encuentra_cliente_con_acentos_buscando_sin_acentos(self):
+        response = self.client.get(
+            reverse("movimientos-movimiento-inventario-buscar-cliente"),
+            {"q": "jose pena"},
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        result_ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.cliente.id, result_ids)
 
 
 class MovimientoInventarioTablaTests(APITestCase):

@@ -28,6 +28,12 @@ def apply_token_search(queryset, tokens: list[str], fields: list[str]):
     """
     Filter queryset so ALL tokens appear in at least one field via icontains.
     Returns the filtered queryset (call .distinct() after if needed).
+
+    Uses the Postgres "unaccent" lookup (not just Python-side strip_accents
+    on the typed term) so a value stored WITH accents, like "Jose Peña",
+    still matches a search typed WITHOUT them, like "jose pena" -- the
+    common case, since most people don't bother typing tildes/eñes.
+    icontains alone is byte-exact and would silently miss that match.
     """
     if not tokens or not fields:
         return queryset
@@ -35,7 +41,7 @@ def apply_token_search(queryset, tokens: list[str], fields: list[str]):
     for token in tokens:
         token_q = None
         for field in fields:
-            fq = Q(**{f"{field}__icontains": token})
+            fq = Q(**{f"{field}__unaccent__icontains": token})
             token_q = fq if token_q is None else token_q | fq
         if token_q:
             queryset = queryset.filter(token_q)
