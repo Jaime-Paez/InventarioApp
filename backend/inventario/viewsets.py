@@ -376,7 +376,7 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
     )
     serializer_class = SubDivisionSerializer
     permission_classes = [IsAuthenticated, BodegasDependentReadPermission]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [FuzzyTokenSearchFilter, filters.OrderingFilter]
     search_fields = ["nombre", "division__nombre", "division__bodega__nombre"]
     ordering_fields = ["nombre", "division__nombre"]
 

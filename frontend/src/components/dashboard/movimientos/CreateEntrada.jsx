@@ -1481,6 +1481,44 @@ function CreateEntrada({
     [token]
   )
 
+  // El fetch de arriba trae solo las primeras 500 subdivisiones de la
+  // sucursal (para que abrir el modal sea rapido). Si lo que el usuario
+  // busca no esta en ese lote (sucursales con miles de ubicaciones), el
+  // filtro local nunca lo iba a encontrar por mas que el texto fuera
+  // identico. Esto busca en el servidor y mezcla lo que encuentra al
+  // set local, asi el filtro de siempre despues si lo ve.
+  const searchSubdivisionsForLocationResolver = useCallback(
+    async (sucursalId, query, { bodegaId, divisionId } = {}) => {
+      const normalizedSucursalId = String(sucursalId || '').trim()
+      const term = String(query || '').trim()
+      if (!token || !normalizedSucursalId || term.length < 2) return []
+      try {
+        const params = new URLSearchParams({
+          page_size: '50',
+          sucursal_id: normalizedSucursalId,
+          modulo: 'movimientos_entradas',
+          search: term,
+        })
+        // Acota la busqueda a lo ya elegido en los pasos anteriores (bodega
+        // y/o division), asi no trae coincidencias de otra bodega que por
+        // casualidad tenga un nombre parecido.
+        if (bodegaId) params.set('bodega_id', bodegaId)
+        if (divisionId) params.set('division_id', divisionId)
+        const response = await authFetch(
+          `${API_URL}/inventario/subdivisiones/?${params.toString()}`,
+          {},
+          token
+        )
+        if (!response.ok) return []
+        const data = await response.json().catch(() => ({}))
+        return parseApiList(data)
+      } catch {
+        return []
+      }
+    },
+    [token]
+  )
+
   const checkMissingLocationsByProduct = useCallback(
     async (sucursalId, detailRows) => {
       const uniqueProductRows = []
@@ -1975,6 +2013,48 @@ function CreateEntrada({
     }, 260)
     return () => clearTimeout(handle)
   }, [locationDropdownField, locationDropdownProductId, locationQuery, open, showLocationResolver])
+
+  useEffect(() => {
+    if (!open || !showLocationResolver || !locationDropdownProductId || !locationDropdownField) return undefined
+    const term = locationQuery.trim()
+    if (term.length < 2 || !formData.sucursalId) return undefined
+
+    const assignment = normalizeLocationAssignment(locationAssignmentsByProduct?.[locationDropdownProductId])
+    const scope = {}
+    if (locationDropdownField === 'division' && assignment.bodegaId) scope.bodegaId = assignment.bodegaId
+    if (locationDropdownField === 'subdivision' && assignment.divisionId) scope.divisionId = assignment.divisionId
+
+    let cancelled = false
+    const handle = setTimeout(async () => {
+      const results = await searchSubdivisionsForLocationResolver(formData.sucursalId, term, scope)
+      if (cancelled || !results.length) return
+      setLocationResolverSubdivisions((prev) => {
+        const byId = new Map(prev.map((item) => [String(item?.id || '').trim(), item]))
+        let changed = false
+        results.forEach((item) => {
+          const id = String(item?.id || '').trim()
+          if (!id || byId.has(id)) return
+          byId.set(id, item)
+          changed = true
+        })
+        return changed ? Array.from(byId.values()) : prev
+      })
+    }, 320)
+
+    return () => {
+      cancelled = true
+      clearTimeout(handle)
+    }
+  }, [
+    formData.sucursalId,
+    locationAssignmentsByProduct,
+    locationDropdownField,
+    locationDropdownProductId,
+    locationQuery,
+    open,
+    searchSubdivisionsForLocationResolver,
+    showLocationResolver,
+  ])
 
   useEffect(() => {
     if (!open || !isVenta || !showClienteDropdown) return
