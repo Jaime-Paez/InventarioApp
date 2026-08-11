@@ -908,7 +908,7 @@
 
 .create-salida__products-table--compra-local .create-user__locations-row {
   grid-template-columns:
-    minmax(90px, 140px)
+    minmax(110px, 180px)
     minmax(90px, 160px)
     minmax(140px, 1fr)
     minmax(78px, 100px)

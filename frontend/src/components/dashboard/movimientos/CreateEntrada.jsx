@@ -56,6 +56,7 @@ const initialDetail = {
   valor: '',
   costo: '',
   descuentoPorcentaje: '',
+  productoReferencia: '',
 }
 
 const initialClienteForm = {
@@ -2614,6 +2615,7 @@ function CreateEntrada({
       costo: '',
       descuentoPorcentaje: '',
       cantidad: '',
+      productoReferencia: producto?.referencia ?? '',
     }))
     setProductos((prev) => {
       if (prev.some((item) => String(item.id) === String(producto.id))) return prev
@@ -2704,7 +2706,7 @@ function CreateEntrada({
         productoId,
         productoCodigo: producto?.codigo ?? '',
         productoNombre: producto?.nombre ?? '',
-        productoReferencia: producto?.referencia ?? '',
+        productoReferencia: String(detailDraft.productoReferencia ?? producto?.referencia ?? '').trim(),
         productoPrecioBD: resolveProductPrice(producto),
         estadoProductoId,
         estadoProductoNombre: estadoProducto?.nombre ?? '',
@@ -4113,7 +4115,13 @@ function CreateEntrada({
                               setShowProductDropdown((prev) => !prev)
                             }}
                           >
-                            <span>
+                            <span
+                              onMouseEnter={(e) =>
+                                selectedDraftProduct &&
+                                showHover(e, [formatProductoOptionLabel(selectedDraftProduct)].filter(Boolean), 'Código')
+                              }
+                              onMouseLeave={hideHover}
+                            >
                               {selectedDraftProduct
                                 ? formatProductoOptionLabel(selectedDraftProduct)
                                 : 'Selecciona un código'}
@@ -4230,13 +4238,17 @@ function CreateEntrada({
                         </div>
                       </span>
                       {isCompraEntrada && (
-                        <span
-                          onMouseEnter={(e) => showHover(e, [selectedDraftProduct?.referencia].filter(Boolean), 'Referencia')}
-                          onMouseLeave={hideHover}
-                        >
-                          <span className="create-salida__table-static-value">
-                            {selectedDraftProduct?.referencia || '-'}
-                          </span>
+                        <span>
+                          <input
+                            name="productoReferencia"
+                            type="text"
+                            className="create-salida__numeric-input"
+                            value={detailDraft.productoReferencia}
+                            onChange={handleDetailChange}
+                            onKeyDown={handleRowArrowKeyDown}
+                            disabled={loading || !selectedDraftProductId}
+                            placeholder="Referencia"
+                          />
                         </span>
                       )}
                       <span
