@@ -109,17 +109,7 @@ def _build_branch_token(branch, fallback="sucursal"):
     return "suc"
 
 
-def _next_incremental_document_number(model, base, filters=None):
-    base_token = str(base or "").strip().upper().strip("-")
-    if not base_token:
-        base_token = "DOC"
-
-    # Debe llamarse dentro del mismo transaction.atomic() que hace el INSERT
-    # que reserva el numero (ver acquire_sequence_lock): sin esto, dos
-    # entradas/salidas/traslados creados al mismo tiempo pueden calcular el
-    # mismo "siguiente numero" y chocar contra el unique de no_documento.
-    acquire_sequence_lock(model._meta.label, base_token)
-
+def _max_existing_document_number(model, base_token, filters=None):
     query_filters = dict(filters or {})
     query_filters["no_documento__istartswith"] = f"{base_token}-"
     existing_docs = model.objects.filter(**query_filters).values_list("no_documento", flat=True)
@@ -135,7 +125,37 @@ def _next_incremental_document_number(model, base, filters=None):
         except (TypeError, ValueError):
             continue
 
+    return max_number
+
+
+def _next_incremental_document_number(model, base, filters=None, extra_max_sources=None, lock_model_label=None):
+    base_token = str(base or "").strip().upper().strip("-")
+    if not base_token:
+        base_token = "DOC"
+
+    # Debe llamarse dentro del mismo transaction.atomic() que hace el INSERT
+    # que reserva el numero (ver acquire_sequence_lock): sin esto, dos
+    # entradas/salidas/traslados creados al mismo tiempo pueden calcular el
+    # mismo "siguiente numero" y chocar contra el unique de no_documento.
+    # Cuando el numero se comparte entre dos modelos (ver TRASLADO_SHARED_LOCK_LABEL
+    # mas abajo), ambos deben pedir el lock con la MISMA llave, si no cada uno
+    # se serializa contra si mismo pero no contra el otro.
+    acquire_sequence_lock(lock_model_label or model._meta.label, base_token)
+
+    max_number = _max_existing_document_number(model, base_token, filters)
+    for extra_model, extra_filters in extra_max_sources or []:
+        max_number = max(max_number, _max_existing_document_number(extra_model, base_token, extra_filters))
+
     return f"{base_token}-{max_number + 1}"
+
+
+# Un traslado directo (MovimientoInventario) y una solicitud de traslado
+# (SolicitudTraslado) comparten el mismo espacio de no_documento -- un
+# traslado directo crea de una vez su propia SolicitudTraslado "aprobada"
+# con el mismo numero (ver create() mas abajo, is_direct_transfer). Por eso
+# el numero para "tr-..." se calcula mirando las dos tablas, y las dos usan
+# esta misma llave de lock para serializarse entre si (no solo consigo mismas).
+TRASLADO_SHARED_LOCK_LABEL = "movimientos.TrasladoDocumento"
 
 
 def build_entry_document_base(
@@ -191,10 +211,13 @@ def generate_entry_document_number(
         prefix_map=prefix_map,
         cliente_identificacion=cliente_identificacion,
     )
+    is_traslado = str(subtipo_key or "").strip() == "traslado"
     return _next_incremental_document_number(
         model=MovimientoInventario,
         base=base,
         filters={"tipo_movimiento": tipo_movimiento},
+        extra_max_sources=[(SolicitudTraslado, None)] if is_traslado else None,
+        lock_model_label=TRASLADO_SHARED_LOCK_LABEL if is_traslado else None,
     )
 
 
@@ -207,6 +230,8 @@ def generate_transfer_request_document_number(sucursal_solicitante, sucursal_pro
     return _next_incremental_document_number(
         model=SolicitudTraslado,
         base=base,
+        extra_max_sources=[(MovimientoInventario, None)],
+        lock_model_label=TRASLADO_SHARED_LOCK_LABEL,
     )
 
 
