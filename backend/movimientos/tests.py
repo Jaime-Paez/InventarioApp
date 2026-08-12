@@ -593,4 +593,116 @@ class MovimientoInventarioTablaTests(APITestCase):
         row = response.data["results"][0]
         self.assertTrue(row["es_solicitud_traslado"])
         self.assertEqual(row["no_documento"], "TRA-TAB-001")
+
+
+class CancelPendingTransferRequestsTests(TestCase):
+    """
+    cancel_pending_transfer_requests corre automaticamente cuando se
+    registra una venta, para cancelar solicitudes de traslado que ya no se
+    pueden cumplir por falta de stock. El bug: no excluia las solicitudes
+    que ya se habian convertido en un envio real (movimiento_salida/
+    movimiento_entrada ya creados), asi que una venta posterior del mismo
+    producto cancelaba por error un traslado que ya habia salido de verdad
+    -- el stock "faltante" era de la venta, no de ese traslado (que ya
+    tomo el suyo al enviarse). Ver movimientos/transfer_helpers.py.
+    """
+
+    def setUp(self):
+        self.sucursal_proveedora = Sucursal.objects.create(nombre="Proveedora", direccion="Dir 1")
+        self.sucursal_solicitante = Sucursal.objects.create(nombre="Solicitante", direccion="Dir 2")
+
+        tipo_division, _ = TipoDivision.objects.get_or_create(nombre="General")
+        bodega = Bodega.objects.create(sucursal=self.sucursal_proveedora, nombre="Bodega Proveedora")
+        division = Division.objects.create(bodega=bodega, tipo_division=tipo_division, nombre="Division Proveedora")
+        subdivision = SubDivision.objects.create(division=division, nombre="Subdivision Proveedora")
+
+        self.producto, _ = Producto.objects.get_or_create(
+            codigo="PR-CANCEL-001",
+            defaults={"nombre": "Producto Cancelacion", "precio": Decimal("10.00")},
+        )
+        # Solo 2 unidades disponibles: no alcanza para ninguna de las dos
+        # solicitudes de 5 unidades de abajo, si se les vuelve a chequear.
+        Inventario.objects.create(
+            producto=self.producto,
+            subdivision=subdivision,
+            referencia="",
+            cantidad=2,
+        )
+
+        self.tipo_entrada, _ = TipoMovimiento.objects.get_or_create(nombre="Entrada")
+        self.tipo_salida, _ = TipoMovimiento.objects.get_or_create(nombre="Salida")
+        self.subtipo_traslado_salida, _ = SubTipoMovimiento.objects.get_or_create(
+            tipo_movimiento=self.tipo_salida,
+            nombre="Traslado",
+        )
+        self.subtipo_traslado_entrada, _ = SubTipoMovimiento.objects.get_or_create(
+            tipo_movimiento=self.tipo_entrada,
+            nombre="Traslado",
+        )
+        self.estado_enviado, _ = EstadoMovimiento.objects.get_or_create(nombre="Enviado")
+
+    def _create_solicitud(self, no_documento, *, with_shipment):
+        solicitud = SolicitudTraslado.objects.create(
+            sucursal_solicitante=self.sucursal_solicitante,
+            sucursal_proveedora=self.sucursal_proveedora,
+            fecha="2026-03-11",
+            no_documento=no_documento,
+            estado=SolicitudTraslado.Estados.APROBADA,
+        )
+        SolicitudTrasladoDetalle.objects.create(
+            solicitud=solicitud,
+            producto=self.producto,
+            cantidad=5,
+            valor=Decimal("10.00"),
+        )
+        if with_shipment:
+            movimiento_salida = MovimientoInventario.objects.create(
+                sucursal=self.sucursal_proveedora,
+                sucursal_objetivo=self.sucursal_solicitante,
+                tipo_movimiento=self.tipo_salida,
+                sub_tipo_movimiento=self.subtipo_traslado_salida,
+                estado_movimiento=self.estado_enviado,
+                fecha="2026-03-11",
+                no_documento=no_documento,
+            )
+            movimiento_entrada = MovimientoInventario.objects.create(
+                sucursal=self.sucursal_solicitante,
+                sucursal_objetivo=self.sucursal_proveedora,
+                tipo_movimiento=self.tipo_entrada,
+                sub_tipo_movimiento=self.subtipo_traslado_entrada,
+                estado_movimiento=self.estado_enviado,
+                fecha="2026-03-11",
+                no_documento=no_documento,
+            )
+            solicitud.movimiento_salida = movimiento_salida
+            solicitud.movimiento_entrada = movimiento_entrada
+            solicitud.save(update_fields=["movimiento_salida", "movimiento_entrada"])
+        return solicitud
+
+    def test_no_cancela_solicitud_que_ya_se_envio(self):
+        from .transfer_helpers import cancel_pending_transfer_requests
+
+        ya_enviada = self._create_solicitud("TR-CANCEL-ENVIADA", with_shipment=True)
+        aun_pendiente = self._create_solicitud("TR-CANCEL-PENDIENTE", with_shipment=False)
+
+        changed = cancel_pending_transfer_requests(
+            branch_id=self.sucursal_proveedora.id,
+            product_ids=[self.producto.id],
+        )
+
+        self.assertTrue(changed)
+
+        ya_enviada.refresh_from_db()
+        aun_pendiente.refresh_from_db()
+
+        self.assertEqual(
+            ya_enviada.estado,
+            SolicitudTraslado.Estados.APROBADA,
+            "una solicitud ya enviada no debe cancelarse por stock de otra venta",
+        )
+        self.assertEqual(
+            aun_pendiente.estado,
+            SolicitudTraslado.Estados.CANCELADA,
+            "una solicitud todavia pendiente si debe cancelarse si ya no hay stock",
+        )
         self.assertEqual(row["detalles"][0]["producto_codigo"], "PR-TAB-001")

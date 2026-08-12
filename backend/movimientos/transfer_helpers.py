@@ -68,6 +68,12 @@ def cancel_pending_transfer_requests(
             SolicitudTraslado.Estados.PENDIENTE,
             SolicitudTraslado.Estados.APROBADA,
         ],
+        # Una solicitud ya convertida en envio real (salida/entrada creadas)
+        # ya tomo su stock -- no vuelve a competir por el disponible actual,
+        # asi que revisarla de nuevo aqui solo la cancela por error (el stock
+        # "faltante" es de otra venta, no de esta).
+        movimiento_salida__isnull=True,
+        movimiento_entrada__isnull=True,
         detalles__producto_id__in=normalized_ids,
     ).values_list("id", flat=True)
     pending_ids = sorted(
