@@ -252,7 +252,16 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             return "Solicitud aceptada"
         return estado.capitalize() if estado else "-"
 
-    def _serialize_solicitud_table_rows(self, solicitudes):
+    def _serialize_solicitud_table_rows(self, solicitudes, perspective="entrada"):
+        # "sucursal_nombre" siempre es "mi sucursal" y "sucursal_objetivo_nombre"
+        # la otra punta, igual que en un movimiento normal -- pero cual es
+        # cual depende de si esta fila se esta mostrando en Entradas (yo soy
+        # la solicitante) o en Salidas (yo soy la proveedora).
+        own_side, other_side = (
+            ("sucursal_proveedora", "sucursal_solicitante")
+            if perspective == "salida"
+            else ("sucursal_solicitante", "sucursal_proveedora")
+        )
         payload = []
         for solicitud in solicitudes:
             solicitud_id = int(getattr(solicitud, "id", 0) or 0)
@@ -273,13 +282,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "factura_referencia": "",
                     "fecha": getattr(solicitud, "fecha", None),
                     "sucursal_nombre": (
-                        getattr(getattr(solicitud, "sucursal_solicitante", None), "nombre", "")
+                        getattr(getattr(solicitud, own_side, None), "nombre", "")
                         or "-"
                     ),
                     "sub_tipo_nombre": "Traslado (Solicitud)",
                     "estado_nombre": estado_label,
                     "sucursal_objetivo_nombre": (
-                        getattr(getattr(solicitud, "sucursal_proveedora", None), "nombre", "")
+                        getattr(getattr(solicitud, other_side, None), "nombre", "")
                         or "-"
                     ),
                     "funcional": False,
@@ -579,6 +588,106 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         return self._serialize_solicitud_table_rows(queryset)
 
+    def _get_solicitudes_for_salida_table(self):
+        """
+        Traslados directos guardados como borrador desde el lado que envia
+        (Salidas) -- ver _get_solicitudes_for_entrada_table para el
+        equivalente del lado que pide (Entradas). A diferencia de ese, solo
+        se incluye el estado GUARDADO: pendiente/aprobada/rechazada de un
+        traslado directo no tienen sentido (un traslado directo no pasa por
+        aprobacion, se envia de una vez), y las solicitudes normales
+        (pedido a sucursal) que estan pendientes de una decision ya se ven
+        en otro lado (el recordatorio/bola urgente), no en esta tabla.
+        """
+        params = self.request.query_params
+        subtipo_short = str(params.get("subtipo") or "").strip().lower()
+        if subtipo_short and subtipo_short != "traslado":
+            return []
+
+        sub_tipo_text = str(params.get("sub_tipo") or "").strip().lower()
+        if sub_tipo_text and "trasl" not in sub_tipo_text:
+            return []
+
+        if self._resolve_funcional_value(params.get("funcional")) is False:
+            return []
+
+        detail_total_expr = ExpressionWrapper(
+            F("detalles__cantidad") * F("detalles__valor"),
+            output_field=DecimalField(max_digits=14, decimal_places=2),
+        )
+        queryset = (
+            SolicitudTraslado.objects.select_related(
+                "sucursal_solicitante",
+                "sucursal_proveedora",
+            )
+            .prefetch_related("detalles__producto")
+            .annotate(
+                total_monto=Coalesce(
+                    Sum(detail_total_expr),
+                    Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
+                )
+            )
+            .filter(
+                estado=SolicitudTraslado.Estados.GUARDADO,
+                movimiento_salida_id__isnull=True,
+                movimiento_entrada_id__isnull=True,
+            )
+            .order_by("-fecha", "-id")
+        )
+
+        if not is_app_admin(self.request.user):
+            allowed = get_readable_sucursal_ids(
+                self.request.user,
+                RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+            )
+            if allowed is not None:
+                if not allowed:
+                    return []
+                queryset = queryset.filter(sucursal_proveedora_id__in=sorted(allowed))
+
+        no_documento = (params.get("no_documento") or "").strip()
+        if no_documento:
+            queryset = queryset.filter(no_documento__icontains=no_documento)
+
+        fecha_desde = parse_date((params.get("fecha_desde") or "").strip())
+        if fecha_desde:
+            queryset = queryset.filter(fecha__gte=fecha_desde)
+
+        fecha_hasta = parse_date((params.get("fecha_hasta") or "").strip())
+        if fecha_hasta:
+            queryset = queryset.filter(fecha__lte=fecha_hasta)
+
+        sucursal_id_raw = (params.get("sucursal_id") or "").strip()
+        if sucursal_id_raw:
+            if not sucursal_id_raw.isdigit():
+                return []
+            queryset = queryset.filter(sucursal_proveedora_id=int(sucursal_id_raw))
+
+        sucursal_text = (params.get("sucursal") or "").strip()
+        if sucursal_text:
+            queryset = queryset.filter(sucursal_proveedora__nombre__icontains=sucursal_text)
+
+        sucursal_objetivo_text = (params.get("sucursal_objetivo") or "").strip()
+        if sucursal_objetivo_text:
+            queryset = queryset.filter(
+                sucursal_solicitante__nombre__icontains=sucursal_objetivo_text
+            )
+
+        search_term = (params.get("search") or "").strip()
+        if search_term:
+            matching_solicitud_ids = SolicitudTrasladoDetalle.objects.filter(
+                Q(producto__codigo__icontains=search_term)
+                | Q(producto__nombre__icontains=search_term)
+            ).values_list("solicitud_id", flat=True)
+            queryset = queryset.filter(
+                Q(no_documento__icontains=search_term)
+                | Q(sucursal_solicitante__nombre__icontains=search_term)
+                | Q(sucursal_proveedora__nombre__icontains=search_term)
+                | Q(pk__in=matching_solicitud_ids)
+            )
+
+        return self._serialize_solicitud_table_rows(queryset, perspective="salida")
+
     def _resolve_tipo_param(self):
         raw = (self.request.query_params.get("tipo") or "").strip().lower()
         if raw in {"salida", "salidas", "sal"}:
@@ -820,7 +929,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
 
         tipo_param = self._resolve_tipo_param()
-        if tipo_param != "entrada":
+        if tipo_param not in {"entrada", "salida"}:
             page = self.paginate_queryset(queryset)
             if page is not None:
                 serialized = self._serialize_table_rows(page)
@@ -832,7 +941,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             return Response(self._strip_internal_table_fields(serialized))
 
         serialized_movimientos = self._serialize_table_rows(queryset)
-        serialized_solicitudes = self._get_solicitudes_for_entrada_table()
+        serialized_solicitudes = (
+            self._get_solicitudes_for_entrada_table()
+            if tipo_param == "entrada"
+            else self._get_solicitudes_for_salida_table()
+        )
         combined_rows = self._sort_table_payload(
             [*serialized_movimientos, *serialized_solicitudes]
         )
@@ -2637,6 +2750,41 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         inventory_row.cantidad = max(0, int(inventory_row.cantidad or 0) - qty)
         inventory_row.save(update_fields=["cantidad"])
 
+    def _ensure_solicitud_traslado_write_access(
+        self,
+        *,
+        sucursal_solicitante_id,
+        sucursal_proveedora_id,
+        action_key,
+    ):
+        """
+        Una solicitud de traslado la puede crear/editar/eliminar quien tenga
+        permiso de escritura sobre CUALQUIERA de las dos sucursales
+        involucradas: el lado solicitante (Entradas, el flujo original de
+        "Pedido a sucursal") o el lado proveedor (Salidas, los traslados
+        directos que ahora tambien se pueden guardar como borrador). Se
+        intenta el lado solicitante primero -- es el caso mas comun -- y
+        solo se propaga el error si tampoco pasa por el lado proveedor.
+        """
+        try:
+            ensure_sucursal_allowed_for_modules(
+                self.request.user,
+                [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+                sucursal_solicitante_id,
+                field_label="sucursal solicitante",
+                action_key=action_key,
+            )
+            return
+        except PermissionDenied:
+            pass
+        ensure_sucursal_allowed_for_modules(
+            self.request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+            sucursal_proveedora_id,
+            field_label="sucursal proveedora",
+            action_key=action_key,
+        )
+
     @action(detail=False, methods=["get", "post"], url_path="solicitudes-traslado")
     def solicitudes_traslado(self, request):
         if request.method.lower() == "post":
@@ -2649,11 +2797,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             reminder_recipient_ids = serializer.validated_data.get("recordatorio_destinatario_ids") or []
 
             sucursal_solicitante = serializer.validated_data.get("sucursal_solicitante")
-            ensure_sucursal_allowed_for_modules(
-                request.user,
-                [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
-                getattr(sucursal_solicitante, "id", None),
-                field_label="sucursal solicitante",
+            sucursal_proveedora = serializer.validated_data.get("sucursal_proveedora")
+            self._ensure_solicitud_traslado_write_access(
+                sucursal_solicitante_id=getattr(sucursal_solicitante, "id", None),
+                sucursal_proveedora_id=getattr(sucursal_proveedora, "id", None),
                 action_key="puede_crear",
             )
 
@@ -2776,11 +2923,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             serializer = SolicitudTrasladoSerializer(instance=solicitud)
             return Response(serializer.data, status=status.HTTP_200_OK)
 
-        ensure_sucursal_allowed_for_modules(
-            request.user,
-            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
-            solicitud.sucursal_solicitante_id,
-            field_label="sucursal solicitante",
+        self._ensure_solicitud_traslado_write_access(
+            sucursal_solicitante_id=solicitud.sucursal_solicitante_id,
+            sucursal_proveedora_id=solicitud.sucursal_proveedora_id,
             action_key="puede_actualizar",
         )
 
@@ -2812,11 +2957,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         solicitud_token = str(solicitud.id or "")
         if request.method.upper() == "DELETE":
-            ensure_sucursal_allowed_for_modules(
-                request.user,
-                [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
-                solicitud.sucursal_solicitante_id,
-                field_label="sucursal solicitante",
+            self._ensure_solicitud_traslado_write_access(
+                sucursal_solicitante_id=solicitud.sucursal_solicitante_id,
+                sucursal_proveedora_id=solicitud.sucursal_proveedora_id,
                 action_key="puede_eliminar",
             )
             if solicitud.estado not in {

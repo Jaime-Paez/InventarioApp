@@ -367,6 +367,7 @@ function CreateSalida({
   preloadedSubTipos = [],
   prefilledSucursalId = '',
   prefillTransferRequest = null,
+  prefillGuardadoTraslado = null,
 }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
@@ -425,6 +426,7 @@ function CreateSalida({
   const [transferCancelReasonError, setTransferCancelReasonError] = useState('')
   const [transferCancelSubmitting, setTransferCancelSubmitting] = useState(false)
   const [isTransferWithoutRequest, setIsTransferWithoutRequest] = useState(false)
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [reminderUsers, setReminderUsers] = useState([])
   const [reminderUsersLoading, setReminderUsersLoading] = useState(false)
   const [reminderUsersError, setReminderUsersError] = useState('')
@@ -453,6 +455,7 @@ function CreateSalida({
   const modalPositionRef = useRef(modalPosition)
   const modalRestoreRef = useRef(null)
   const appliedPrefillRequestKeyRef = useRef('')
+  const appliedGuardadoPrefillIdRef = useRef('')
   const documentRequestSeqRef = useRef(0)
   const stockByProductRef = useRef({})
   const loadedStockBranchIdRef = useRef('')
@@ -711,7 +714,11 @@ function CreateSalida({
   )
 
   useEffect(() => {
-    if (!open || isPrefilledTransfer) return
+    // Al retomar un traslado directo guardado como borrador, el
+    // no_documento ya existe (se genero cuando se guardo por primera vez)
+    // -- no hay que regenerarlo, igual que con isPrefilledTransfer.
+    const isResumingGuardadoDraft = isTraslado && isTransferWithoutRequest && Boolean(formData.solicitudTrasladoId)
+    if (!open || isPrefilledTransfer || isResumingGuardadoDraft) return
 
     const subTipoId = String(formData.subTipoId || '').trim()
     const sucursalId = String(formData.sucursalId || '').trim()
@@ -771,11 +778,13 @@ function CreateSalida({
     }
   }, [
     fetchNextDocumentNumber,
+    formData.solicitudTrasladoId,
     formData.subTipoId,
     formData.sucursalId,
     formData.sucursalObjetivoId,
     isPrefilledTransfer,
     isTraslado,
+    isTransferWithoutRequest,
     isVenta,
     selectedCliente?.id,
     selectedCliente?.cedula_ruc,
@@ -1227,6 +1236,11 @@ function CreateSalida({
   ])
   const isManualTransferMode = isTraslado && isTransferWithoutRequest
   const transferRequiresRequest = isTraslado && !isTransferWithoutRequest
+  // Solo se llega a esta combinacion precargando un traslado directo que
+  // se habia guardado como borrador (ver prefillGuardadoTraslado) -- el
+  // otro flujo que setea solicitudTrasladoId (aceptar una solicitud ya
+  // aprobada) usa transferRequiresRequest, no isManualTransferMode.
+  const isEditingGuardadoDraft = isManualTransferMode && Boolean(formData.solicitudTrasladoId)
 
   const selectedReminderTargetBranchId = String(formData.sucursalObjetivoId || '').trim()
   const hasSelectedReminderTargetBranch = Boolean(selectedReminderTargetBranchId)
@@ -1932,6 +1946,7 @@ function CreateSalida({
     }
     documentCheckSequenceRef.current = 0
     appliedPrefillRequestKeyRef.current = ''
+    appliedGuardadoPrefillIdRef.current = ''
     setFormData({
       ...initialForm,
       fecha: todayISO(),
@@ -2029,6 +2044,60 @@ function CreateSalida({
     prefillTransferRequest,
     prefillTransferRequestKey,
     prefillTransferSolicitudId,
+    subTiposSalida,
+  ])
+
+  useEffect(() => {
+    if (!open) return
+    const guardadoId = String(prefillGuardadoTraslado?.solicitud_traslado_id || prefillGuardadoTraslado?.id || '').trim()
+    if (!guardadoId) return
+    if (appliedGuardadoPrefillIdRef.current === guardadoId) return
+    if (!subTiposSalida.length) return
+
+    const trasladoSubTipo = subTiposSalida.find((subTipo) =>
+      normalizeValue(subTipo?.nombre).includes('trasl')
+    )
+    if (!trasladoSubTipo?.id) return
+
+    const estadoProductoId = String(defaultEstadoProductoId || '').trim()
+    const estadoProducto = estadosProducto.find((item) => String(item.id) === estadoProductoId)
+    const prefilledDetails = (
+      Array.isArray(prefillGuardadoTraslado?.detalles) ? prefillGuardadoTraslado.detalles : []
+    ).map((detalle) => {
+      const cantidad = Number(detalle?.cantidad) || 0
+      const valor = Number(detalle?.valor) || 0
+      return {
+        uid: `det-guardado-${detalle?.id ?? guardadoId}-${detalle?.producto_id ?? ''}`,
+        productoId: String(detalle?.producto_id || ''),
+        productoCodigo: String(detalle?.producto_codigo || ''),
+        productoNombre: String(detalle?.producto_nombre || ''),
+        estadoProductoId,
+        estadoProductoNombre: estadoProducto?.nombre ?? '',
+        cantidad,
+        valor,
+        valor_total: cantidad * valor,
+      }
+    })
+
+    setIsTransferWithoutRequest(true)
+    setFormData((prev) => ({
+      ...prev,
+      subTipoId: String(trasladoSubTipo.id),
+      solicitudTrasladoId: guardadoId,
+      sucursalId: String(prefillGuardadoTraslado?.sucursal_proveedora_id || '').trim(),
+      sucursalObjetivoId: String(prefillGuardadoTraslado?.sucursal_solicitante_id || '').trim(),
+      fecha: String(prefillGuardadoTraslado?.fecha || prev.fecha || ''),
+      descripcion: String(prefillGuardadoTraslado?.descripcion || ''),
+      no_documento: String(prefillGuardadoTraslado?.no_documento || '').trim(),
+    }))
+    setDetails(prefilledDetails)
+    setActiveTab('general')
+    appliedGuardadoPrefillIdRef.current = guardadoId
+  }, [
+    defaultEstadoProductoId,
+    estadosProducto,
+    open,
+    prefillGuardadoTraslado,
     subTiposSalida,
   ])
 
@@ -3059,10 +3128,87 @@ function CreateSalida({
     )
   }
 
-  const submitSalida = async ({ skipTransferConfirmation = false } = {}) => {
+  const submitSalida = async ({ skipTransferConfirmation = false, guardarBorrador = false } = {}) => {
     setError('')
-    const estadoMovimientoId = String(formData.estadoId || resolvedEstadoMovimientoId || '').trim()
     const solicitudIdValue = String(formData.solicitudTrasladoId || '').trim()
+
+    // Traslado directo guardado como borrador: a diferencia del resto de
+    // salidas, esto NO crea un MovimientoInventario (no toca stock todavia)
+    // -- solo guarda/actualiza la SolicitudTraslado en estado GUARDADO, el
+    // mismo mecanismo que ya usa "Pedido a sucursal" en Entradas. Por eso
+    // se resuelve aparte, antes de las validaciones de mas abajo que son
+    // especificas de crear un movimiento real (no_documento, factura,
+    // estado_movimiento, etc. no aplican a un borrador a medio llenar).
+    if (guardarBorrador && isManualTransferMode) {
+      if (!formData.sucursalId) {
+        notifyError('Selecciona la sucursal.')
+        return false
+      }
+      if (!formData.sucursalObjetivoId) {
+        notifyError('Selecciona la sucursal destino.')
+        return false
+      }
+      if (String(formData.sucursalId) === String(formData.sucursalObjetivoId)) {
+        notifyError('La sucursal destino debe ser diferente a la sucursal principal.')
+        return false
+      }
+      if (!formData.fecha) {
+        notifyError('No se pudo resolver la fecha del movimiento.')
+        return false
+      }
+
+      setLoading(true)
+      try {
+        const reminderRecipientIds = [
+          ...adminReminderRecipients.map((r) => normalizeReminderId(r?.id)).filter(Boolean).map(Number).filter(Boolean),
+          ...selectedReminderUserIds.map(Number).filter(Boolean),
+        ].filter((id, index, arr) => arr.indexOf(id) === index)
+
+        const payload = {
+          fecha: formData.fecha,
+          descripcion: String(formData.descripcion || '').trim(),
+          sucursal_solicitante_id: Number(formData.sucursalObjetivoId),
+          sucursal_proveedora_id: Number(formData.sucursalId),
+          recordatorio_destinatario_ids: reminderRecipientIds,
+          detalles: details
+            .filter((detail) => detail.productoId)
+            .map((detail) => ({
+              producto_id: Number(detail.productoId),
+              cantidad: Number(detail.cantidad) || 0,
+              valor: Math.max(0, parseNumber(detail.valor) ?? 0),
+            })),
+          guardar_borrador: true,
+        }
+
+        const isUpdatingDraft = Boolean(solicitudIdValue)
+        const response = await authFetch(
+          isUpdatingDraft
+            ? `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudIdValue)}/`
+            : `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/`,
+          {
+            method: isUpdatingDraft ? 'PUT' : 'POST',
+            body: JSON.stringify(payload),
+          },
+          token
+        )
+
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) {
+          const detail = resolveApiErrorMessage(data, 'No se pudo guardar el traslado.')
+          throw new Error(detail)
+        }
+
+        onCreated?.(data)
+        return true
+      } catch (err) {
+        notifyError(err.message || 'Ocurrió un error al guardar el traslado.')
+        return false
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    const estadoMovimientoId = String(formData.estadoId || resolvedEstadoMovimientoId || '').trim()
 
     if (!salidaTipoId) {
       notifyError('No se encontró el tipo de movimiento de salida.')
@@ -3324,6 +3470,23 @@ function CreateSalida({
         await fetchRemindersFromBackend(token)
       }
 
+      if (isManualTransferMode && solicitudIdValue) {
+        // Se estaba terminando (enviando de verdad) un traslado directo que
+        // veniamos editando desde un borrador guardado. El envio real crea
+        // su propia SolicitudTraslado (ya aprobada) -- hay que borrar la
+        // vieja en GUARDADO para no dejarla duplicada y huerfana.
+        try {
+          await authFetch(
+            `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudIdValue)}/`,
+            { method: 'DELETE' },
+            token
+          )
+        } catch {
+          // No bloquea la creacion si esto falla; la salida real ya se
+          // creo correctamente, solo quedaria el borrador viejo huerfano.
+        }
+      }
+
       onCreated?.(data)
       return true
     } catch (err) {
@@ -3334,10 +3497,32 @@ function CreateSalida({
     }
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = (event, options = {}) => {
     event.preventDefault()
     setFormSubmitted(true)
-    void submitSalida()
+    void submitSalida(options)
+  }
+
+  const hasUnsavedProgress = isManualTransferMode && (
+    details.length > 0 ||
+    Boolean(String(formData.sucursalObjetivoId || '').trim()) ||
+    Boolean(String(formData.descripcion || '').trim()) ||
+    selectedReminderUserIds.length > 0
+  )
+
+  const closeAllDropdowns = () => {
+    setShowProductDropdown(false)
+    setShowClienteDropdown(false)
+  }
+
+  const attemptClose = () => {
+    if (loading) return
+    if (hasUnsavedProgress) {
+      closeAllDropdowns()
+      setShowCloseConfirm(true)
+      return
+    }
+    onClose?.()
   }
 
   const handleConfirmTransferSend = () => {
@@ -3476,7 +3661,7 @@ function CreateSalida({
               type="button"
               className="create-user__icon-button"
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={onClose}
+              onClick={attemptClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />
@@ -4509,11 +4694,11 @@ function CreateSalida({
           )}
 
           <div className="create-user__footer">
-            <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={loading}>
+            <button type="button" className="create-user__action create-user__action--cancel" onClick={attemptClose} disabled={loading}>
               Cancelar
             </button>
             <div className="create-salida__footer-actions">
-              {formData.subTipoId && isTraslado && formData.solicitudTrasladoId && (
+              {formData.subTipoId && isTraslado && formData.solicitudTrasladoId && !isEditingGuardadoDraft && (
                 <button
                   type="button"
                   className="create-user__action create-user__action--secondary create-salida__action--danger"
@@ -4521,6 +4706,16 @@ function CreateSalida({
                   disabled={loading || transferCancelSubmitting}
                 >
                   Cancelar envío
+                </button>
+              )}
+              {formData.subTipoId && isManualTransferMode && (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--info"
+                  disabled={loading || !hasUnsavedProgress}
+                  onClick={(event) => handleSubmit(event, { guardarBorrador: true })}
+                >
+                  {loading ? 'Guardando...' : 'Guardar'}
                 </button>
               )}
               {formData.subTipoId && (
@@ -4535,6 +4730,50 @@ function CreateSalida({
             </div>
           </div>
         </form>
+
+        {showCloseConfirm && (
+          <div
+            className="create-salida__confirm-overlay"
+            onMouseDown={() => { if (!loading) setShowCloseConfirm(false) }}
+          >
+            <div className="create-salida__confirm-card" onMouseDown={(event) => event.stopPropagation()}>
+              <h4>¿Guardar cambios?</h4>
+              <p>¿Quieres guardar los cambios antes de cerrar?</p>
+              <div className="create-salida__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--cancel"
+                  onClick={() => setShowCloseConfirm(false)}
+                  disabled={loading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={() => {
+                    setShowCloseConfirm(false)
+                    onClose?.()
+                  }}
+                  disabled={loading}
+                >
+                  No guardar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--info"
+                  onClick={() => {
+                    setShowCloseConfirm(false)
+                    handleSubmit({ preventDefault: () => {} }, { guardarBorrador: true })
+                  }}
+                  disabled={loading}
+                >
+                  {loading ? 'Guardando...' : 'Guardar traslado y cerrar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {autoConfirmData && (
           <div

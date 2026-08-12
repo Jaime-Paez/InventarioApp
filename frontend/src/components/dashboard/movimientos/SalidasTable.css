@@ -235,6 +235,54 @@
   color: #fed7aa !important;
 }
 
+/* Traslado directo guardado como borrador -- gris/slate a proposito, para
+   no repetir el naranja de "partial" (que ya significa otra cosa aca:
+   recepcion parcial) ni el color que usa "guardado" en Entradas. */
+.users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado > td {
+  background: color-mix(in srgb, #64748b 20%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #475569 36%, transparent) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado:hover > td {
+  background: color-mix(in srgb, #64748b 30%, var(--table-color-hover)) !important;
+}
+
+.users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado.selected-row-shadow > td,
+.users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado.selected-row-shadow:hover > td {
+  background: color-mix(in srgb, #64748b 34%, var(--table-color-selected)) !important;
+}
+
+.salidas-guardado-state-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #64748b 34%, transparent);
+  color: #334155 !important;
+  font-weight: 700;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado > td {
+  background: color-mix(in srgb, #64748b 24%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #64748b 42%, var(--color-border-dark)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado:hover > td {
+  background: color-mix(in srgb, #64748b 30%, var(--table-color-dark-hover)) !important;
+}
+
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado.selected-row-shadow > td,
+.dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado.selected-row-shadow:hover > td {
+  background: color-mix(in srgb, #64748b 36%, var(--table-color-selected-dark)) !important;
+}
+
+.dashboard-shell.dark .salidas-guardado-state-chip {
+  background: color-mix(in srgb, #94a3b8 36%, transparent);
+  color: #f1f5f9 !important;
+}
+
 @media (max-width: 900px) {
   .salidas-type-filter__btn.p-button {
     min-width: 84px;

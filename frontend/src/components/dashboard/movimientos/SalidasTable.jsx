@@ -212,6 +212,7 @@ function SalidasTable({
   const [prefetchedSubTiposSalida, setPrefetchedSubTiposSalida] = useState([])
   const [salidaCatalogsPreloaded, setSalidaCatalogsPreloaded] = useState(false)
   const [createPrefillTransferRequest, setCreatePrefillTransferRequest] = useState(null)
+  const [createPrefillGuardadoTraslado, setCreatePrefillGuardadoTraslado] = useState(null)
   const [subtypeFilter, setSubtypeFilter] = useState('all')
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
   const [showSearchModal, setShowSearchModal] = useState(false)
@@ -887,6 +888,7 @@ function SalidasTable({
       (normalizedEstado.includes('llego') && normalizedEstado.includes('inconven')) ||
       normalizedEstado.includes('parcial')
     )
+    const isGuardadoSolicitud = Boolean(rowData?.es_solicitud_traslado) && normalizedEstado.includes('guardad')
     const estadoGarantia = field === 'estado_nombre' ? String(rowData?.estado_garantia || '').trim() : ''
     const isGarantiaSolicitada = estadoGarantia === 'solicitada'
     const isLegado = Boolean(rowData?.es_legado)
@@ -894,6 +896,7 @@ function SalidasTable({
       'cell-tooltip',
       field === 'estado_nombre' && isSentTransfer ? 'salidas-sent-state-chip' : '',
       field === 'estado_nombre' && isPartialSalida ? 'salidas-partial-state-chip' : '',
+      field === 'estado_nombre' && isGuardadoSolicitud ? 'salidas-guardado-state-chip' : '',
       isGarantiaSolicitada ? 'salidas-garantia-pendiente-chip' : '',
     ]
       .filter(Boolean)
@@ -1032,6 +1035,12 @@ function SalidasTable({
     if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
     const rowData = event?.data
     if (!rowData) return
+    const normalizedEstado = normalizeValue(rowData?.estado_nombre)
+    const isGuardadoSolicitud = Boolean(rowData?.es_solicitud_traslado) && normalizedEstado.includes('guardad')
+    if (isGuardadoSolicitud) {
+      openGuardadoTrasladoDraft(rowData)
+      return
+    }
     selectSalidaRow(rowData)
     setShowDetailsModal(true)
   }
@@ -1048,6 +1057,7 @@ function SalidasTable({
 
   const handleCreated = () => {
     setCreatePrefillTransferRequest(null)
+    setCreatePrefillGuardadoTraslado(null)
     setShowCreateModal(false)
     setSelectedRows([])
     refreshData({ page: 1 })
@@ -1056,6 +1066,7 @@ function SalidasTable({
 
   const handleTransferCancelled = () => {
     setCreatePrefillTransferRequest(null)
+    setCreatePrefillGuardadoTraslado(null)
     setShowCreateModal(false)
     setSelectedRows([])
     refreshData({ page: 1 })
@@ -1079,6 +1090,18 @@ function SalidasTable({
     toast.current?.show({ severity: 'success', summary: 'Eliminado', detail: 'Salida eliminada', life: 2500 })
   }
 
+  const openGuardadoTrasladoDraft = async (rowData) => {
+    if (!canCreate) return
+    try {
+      await preloadSalidaCatalogs()
+    } catch {
+      // Si falla la precarga, el modal se abre y carga sus catalogos como respaldo.
+    }
+    setCreatePrefillTransferRequest(null)
+    setCreatePrefillGuardadoTraslado(rowData)
+    setShowCreateModal(true)
+  }
+
   const handleOpenCreateModal = async () => {
     if (!canCreate) return
     if (!hasSpecificCreateBranch) {
@@ -1096,6 +1119,7 @@ function SalidasTable({
       // Si falla la precarga, el modal se abre y carga sus catalogos como respaldo.
     }
     setCreatePrefillTransferRequest(null)
+    setCreatePrefillGuardadoTraslado(null)
     setShowCreateModal(true)
   }
 
@@ -1163,6 +1187,7 @@ function SalidasTable({
       }
       if (cancelled) return
 
+      setCreatePrefillGuardadoTraslado(null)
       setCreatePrefillTransferRequest({
         requestKey,
         solicitudId: String(request?.solicitudId || '').trim(),
@@ -1607,6 +1632,9 @@ function SalidasTable({
             )) {
               classes.push('salidas-row--partial-traslado')
             }
+            if (Boolean(rowData?.es_solicitud_traslado) && normalizedEstado.includes('guardad')) {
+              classes.push('salidas-row--guardado-traslado')
+            }
             return classes.join(' ')
           }}
           selectionMode="multiple"
@@ -1725,6 +1753,7 @@ function SalidasTable({
         onClose={() => {
           setShowCreateModal(false)
           setCreatePrefillTransferRequest(null)
+          setCreatePrefillGuardadoTraslado(null)
         }}
         onCreated={handleCreated}
         onTransferCancelled={handleTransferCancelled}
@@ -1736,6 +1765,7 @@ function SalidasTable({
         preloadedSubTipos={prefetchedSubTiposSalida}
         prefilledSucursalId={hasSpecificCreateBranch ? normalizedCreateBranchId : ''}
         prefillTransferRequest={createPrefillTransferRequest}
+        prefillGuardadoTraslado={createPrefillGuardadoTraslado}
       />
 
       <SalidaDetails
