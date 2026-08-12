@@ -1,7 +1,10 @@
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APITestCase
 
+from app.models import UsuarioPreferencia
 from productos.models import Producto
 from tipos.models import TipoDivision
 
@@ -192,3 +195,43 @@ class InventarioTableLocationPayloadTests(TestCase):
             ],
             8,
         )
+
+
+class SubDivisionPageSizeTests(APITestCase):
+    """
+    Varias pantallas (recepcion de envios, resolver ubicaciones faltantes)
+    piden un solo fetch con un page_size grande asumiendo que van a recibir
+    todo, sin paginar. Antes, DRF recortaba en silencio cualquier page_size
+    pedido a un maximo de 500 (StandardResultsSetPagination.max_page_size),
+    asi que una sucursal con mas de 500 subdivisiones (la mas grande hoy
+    tiene 775) perdia ubicaciones sin ningun error visible.
+    """
+
+    def setUp(self):
+        user_model = get_user_model()
+        self.user = user_model.objects.create_user(
+            username="page_size_tester",
+            email="page_size_tester@example.com",
+            password="test12345",
+        )
+        UsuarioPreferencia.objects.get_or_create(usuario=self.user, defaults={"es_administrador": True})
+        self.client.force_authenticate(user=self.user)
+
+        tipo_division, _ = TipoDivision.objects.get_or_create(nombre="General")
+        sucursal = Sucursal.objects.create(nombre="Sucursal Grande", direccion="Test")
+        bodega = Bodega.objects.create(sucursal=sucursal, nombre="Bodega Grande")
+        division = Division.objects.create(bodega=bodega, tipo_division=tipo_division, nombre="Division Grande")
+
+        # Mas que el limite viejo (500) para probar que ya no se recorta ahi.
+        SubDivision.objects.bulk_create(
+            [SubDivision(division=division, nombre=f"Sub-{i}") for i in range(520)]
+        )
+        self.sucursal_id = sucursal.id
+
+    def test_page_size_grande_no_se_recorta_a_500(self):
+        response = self.client.get(
+            f"/inventario/subdivisiones/?page_size=2000&sucursal_id={self.sucursal_id}"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["count"], 520)
+        self.assertEqual(len(response.data["results"]), 520)
