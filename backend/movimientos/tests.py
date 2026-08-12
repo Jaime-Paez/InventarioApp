@@ -593,6 +593,7 @@ class MovimientoInventarioTablaTests(APITestCase):
         row = response.data["results"][0]
         self.assertTrue(row["es_solicitud_traslado"])
         self.assertEqual(row["no_documento"], "TRA-TAB-001")
+        self.assertEqual(row["detalles"][0]["producto_codigo"], "PR-TAB-001")
 
 
 class CancelPendingTransferRequestsTests(TestCase):
@@ -705,4 +706,3 @@ class CancelPendingTransferRequestsTests(TestCase):
             SolicitudTraslado.Estados.CANCELADA,
             "una solicitud todavia pendiente si debe cancelarse si ya no hay stock",
         )
-        self.assertEqual(row["detalles"][0]["producto_codigo"], "PR-TAB-001")
