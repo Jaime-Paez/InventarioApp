@@ -48,6 +48,7 @@ from .models import (
 from .serializers import (
     MovimientoInventarioSerializer,
     SolicitudTrasladoSerializer,
+    format_actor_display_name,
     generate_entry_document_number,
     generate_transfer_request_document_number,
     normalize_name,
@@ -314,6 +315,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "movimiento_entrada_id": getattr(
                         solicitud, "movimiento_entrada_id", None
                     ),
+                    "creado_por_nombre": format_actor_display_name(getattr(solicitud, "creado_por", None)),
+                    "enviado_por_nombre": format_actor_display_name(getattr(solicitud, "enviado_por", None)),
+                    "recibido_por_nombre": format_actor_display_name(getattr(solicitud, "recibido_por", None)),
                     "_sort_created_at": (
                         getattr(solicitud, "created_at", None).isoformat()
                         if getattr(getattr(solicitud, "created_at", None), "isoformat", None)
@@ -483,6 +487,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             SolicitudTraslado.objects.select_related(
                 "sucursal_solicitante",
                 "sucursal_proveedora",
+                "creado_por",
+                "enviado_por",
+                "recibido_por",
             )
             .prefetch_related("detalles__producto")
             .annotate(
@@ -629,6 +636,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             SolicitudTraslado.objects.select_related(
                 "sucursal_solicitante",
                 "sucursal_proveedora",
+                "creado_por",
+                "enviado_por",
+                "recibido_por",
             )
             .prefetch_related("detalles__producto")
             .annotate(
@@ -1183,7 +1193,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             serializer.validated_data["garantia_pendiente"] = True
             serializer.validated_data["estado_garantia"] = MovimientoInventario.EstadoGarantia.SOLICITADA
 
-        movement = serializer.save()
+        movement = serializer.save(creado_por=self.request.user)
         reminder_added = False
         if solicitud_traslado:
             reminder_added = self._append_transfer_shipment_reminder(
@@ -4636,7 +4646,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     inconvenientes_payload.append(self._serialize_inconveniente(inconveniente))
 
             solicitud_locked.borrador_recepcion = {}
-            solicitud_locked.save(update_fields=["borrador_recepcion", "updated_at"])
+            solicitud_locked.recibido_por = request.user
+            solicitud_locked.save(update_fields=["borrador_recepcion", "recibido_por", "updated_at"])
             solicitud_output = SolicitudTrasladoSerializer(instance=solicitud_locked).data
 
         reception_result = "completo" if total_faltante <= 0 else "incompleto"

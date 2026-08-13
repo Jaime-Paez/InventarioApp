@@ -379,6 +379,15 @@ class SolicitudTrasladoDetalleSerializer(serializers.ModelSerializer):
         return data
 
 
+def format_actor_display_name(user):
+    if user is None:
+        return ""
+    full_name = str(getattr(user, "get_full_name", lambda: "")() or "").strip()
+    if full_name:
+        return full_name
+    return str(getattr(user, "email", "") or "").strip()
+
+
 class SolicitudTrasladoSerializer(serializers.ModelSerializer):
     """Serializa solicitudes de traslado A -> B."""
 
@@ -397,6 +406,9 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
     movimiento_entrada_id = serializers.IntegerField(source="movimiento_entrada.id", read_only=True)
     estado_label = serializers.SerializerMethodField(read_only=True)
     rechazada_por_nombre = serializers.SerializerMethodField(read_only=True)
+    creado_por_nombre = serializers.SerializerMethodField(read_only=True)
+    enviado_por_nombre = serializers.SerializerMethodField(read_only=True)
+    recibido_por_nombre = serializers.SerializerMethodField(read_only=True)
     factura_referencia = serializers.SerializerMethodField(read_only=True)
     recordatorio_destinatario_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
@@ -428,6 +440,12 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "rechazada_por",
             "rechazada_por_nombre",
             "rechazada_en",
+            "creado_por",
+            "creado_por_nombre",
+            "enviado_por",
+            "enviado_por_nombre",
+            "recibido_por",
+            "recibido_por_nombre",
             "detalles",
             "recordatorio_destinatario_ids",
             "created_at",
@@ -442,6 +460,12 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "rechazada_por",
             "rechazada_por_nombre",
             "rechazada_en",
+            "creado_por",
+            "creado_por_nombre",
+            "enviado_por",
+            "enviado_por_nombre",
+            "recibido_por",
+            "recibido_por_nombre",
             "movimiento_salida_id",
             "movimiento_entrada_id",
             "factura_referencia",
@@ -455,15 +479,16 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
         return str(getattr(movimiento_salida, "factura_referencia", "") or "").strip()
 
     def get_rechazada_por_nombre(self, obj):
-        user = getattr(obj, "rechazada_por", None)
-        if user is None:
-            return ""
+        return format_actor_display_name(getattr(obj, "rechazada_por", None))
 
-        full_name = str(getattr(user, "get_full_name", lambda: "")() or "").strip()
-        if full_name:
-            return full_name
+    def get_creado_por_nombre(self, obj):
+        return format_actor_display_name(getattr(obj, "creado_por", None))
 
-        return str(getattr(user, "email", "") or "").strip()
+    def get_enviado_por_nombre(self, obj):
+        return format_actor_display_name(getattr(obj, "enviado_por", None))
+
+    def get_recibido_por_nombre(self, obj):
+        return format_actor_display_name(getattr(obj, "recibido_por", None))
 
     def get_estado_label(self, obj):
         estado = str(getattr(obj, "estado", "") or "").strip().lower()
@@ -655,6 +680,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         queryset=EstadoMovimiento.objects.all(),
         write_only=True,
     )
+    creado_por_nombre = serializers.SerializerMethodField(read_only=True)
     solicitud_traslado = serializers.SerializerMethodField(read_only=True)
     solicitud_traslado_id = serializers.PrimaryKeyRelatedField(
         source="solicitud_traslado",
@@ -741,6 +767,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "nota_inconveniente",
             "nota_inconveniente_resolucion",
             "es_legado",
+            "creado_por",
+            "creado_por_nombre",
         ]
         extra_kwargs = {
             "no_documento": {
@@ -758,6 +786,9 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 "read_only": True,
             },
             "es_legado": {
+                "read_only": True,
+            },
+            "creado_por": {
                 "read_only": True,
             },
         }
@@ -817,16 +848,30 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
 
         return None
 
+    def get_creado_por_nombre(self, movimiento):
+        return format_actor_display_name(getattr(movimiento, "creado_por", None))
+
     def get_solicitud_traslado(self, movimiento):
         solicitud = self._get_linked_solicitud_traslado(movimiento)
         if solicitud is None:
             return None
+        # "Enviado por" es quien realmente creo el envio (el movimiento de
+        # salida), no solo quien acepto la solicitud -- pueden ser personas
+        # distintas. Si el movimiento de salida ya tiene su propio creador
+        # (campo nuevo, no existe en registros viejos), se usa ese; si no,
+        # se cae de vuelta a quien acepto la solicitud como mejor dato
+        # disponible.
+        movimiento_salida = getattr(solicitud, "movimiento_salida", None)
+        enviado_por = getattr(movimiento_salida, "creado_por", None) or getattr(solicitud, "enviado_por", None)
         return {
             "id": int(solicitud.id),
             "no_documento": str(solicitud.no_documento or "").strip(),
             "estado": str(solicitud.estado or "").strip(),
             "sucursal_solicitante_id": int(solicitud.sucursal_solicitante_id),
             "sucursal_proveedora_id": int(solicitud.sucursal_proveedora_id),
+            "creado_por_nombre": format_actor_display_name(getattr(solicitud, "creado_por", None)),
+            "enviado_por_nombre": format_actor_display_name(enviado_por),
+            "recibido_por_nombre": format_actor_display_name(getattr(solicitud, "recibido_por", None)),
         }
 
     def to_internal_value(self, data):

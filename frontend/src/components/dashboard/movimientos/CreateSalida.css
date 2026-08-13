@@ -2068,3 +2068,17 @@
   border-color: #388e3c;
   color: #fff;
 }
+
+.movimientos-details__creator-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+  color: var(--color-text-primary);
+  opacity: 0.65;
+}
+
+.dashboard-shell.dark .movimientos-details__creator-info {
+  color: var(--color-text-dark);
+}

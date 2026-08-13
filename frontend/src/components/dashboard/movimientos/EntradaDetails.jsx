@@ -415,6 +415,11 @@ function EntradaDetails({
   resubmittingTransfer = false,
 }) {
   const [formData, setFormData] = useState(emptyForm)
+  const [creatorInfo, setCreatorInfo] = useState({
+    creadoPorNombre: '',
+    enviadoPorNombre: '',
+    recibidoPorNombre: '',
+  })
   const [rawApiEstadoNombre, setRawApiEstadoNombre] = useState('')
   const [originalData, setOriginalData] = useState(null)
   const [loadingData, setLoadingData] = useState(false)
@@ -785,7 +790,18 @@ function EntradaDetails({
     }
     return String(formData.sucursalId || '').trim()
   }, [formData.sucursalId, formData.sucursalObjetivoId, isTraslado])
-  const showProveedorStockInfo = isTraslado && Boolean(stockBranchId)
+  // El chequeo de "stock disponible en la sucursal proveedora" solo tiene
+  // sentido mientras el traslado sigue siendo una solicitud (todavia se
+  // puede editar la cantidad). Una vez que ya se envio o se recibio, ese
+  // stock "actual" ya no tiene relacion con lo que se envio en su momento
+  // -- mostrarlo como advertencia ahi es enganoso, no un error real.
+  const normalizedRawApiEstado = normalizeValue(rawApiEstadoNombre)
+  const isAlreadyShippedMovement = Boolean(rawApiEstadoNombre) && (
+    normalizedRawApiEstado.includes('enviado') ||
+    normalizedRawApiEstado.includes('recib') ||
+    normalizedRawApiEstado.includes('llego')
+  )
+  const showProveedorStockInfo = isTraslado && Boolean(stockBranchId) && !isAlreadyShippedMovement
 
   const devolucionEstadoOptions = useMemo(
     () =>
@@ -1405,6 +1421,11 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
 
     setStockByProduct({})
     setTransferSolicitudId(requestId)
+    setCreatorInfo({
+      creadoPorNombre: String(preview?.creado_por_nombre || '').trim(),
+      enviadoPorNombre: String(preview?.enviado_por_nombre || '').trim(),
+      recibidoPorNombre: String(preview?.recibido_por_nombre || '').trim(),
+    })
 
     const nextForm = {
       sucursalId: solicitanteId,
@@ -1523,6 +1544,11 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
 
       const linkedSolicitud = salidaData?.solicitud_traslado || null
       setTransferSolicitudId(String(linkedSolicitud?.id || '').trim())
+      setCreatorInfo({
+        creadoPorNombre: String(salidaData?.creado_por_nombre || linkedSolicitud?.creado_por_nombre || '').trim(),
+        enviadoPorNombre: String(linkedSolicitud?.enviado_por_nombre || '').trim(),
+        recibidoPorNombre: String(linkedSolicitud?.recibido_por_nombre || '').trim(),
+      })
       const resolvedBranches = [...branchesList]
       const existingBranchIds = new Set(
         resolvedBranches.map((branch) => String(branch?.id || '').trim()).filter(Boolean)
@@ -3515,6 +3541,18 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                         <p>{formData.notaInconvenienteResolucion}</p>
                       </div>
                     </div>
+                  )}
+
+                  {(creatorInfo.creadoPorNombre || creatorInfo.enviadoPorNombre || creatorInfo.recibidoPorNombre) && (
+                    <p className="movimientos-details__creator-info">
+                      {creatorInfo.creadoPorNombre && <span>Creado por: {creatorInfo.creadoPorNombre}</span>}
+                      {isTraslado && creatorInfo.enviadoPorNombre && (
+                        <span>Enviado por: {creatorInfo.enviadoPorNombre}</span>
+                      )}
+                      {isTraslado && creatorInfo.recibidoPorNombre && (
+                        <span>Recibido por: {creatorInfo.recibidoPorNombre}</span>
+                      )}
+                    </p>
                   )}
                 </section>
                   </>

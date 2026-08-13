@@ -97,6 +97,14 @@ class MovimientoInventario(models.Model):
         default=None,
         help_text="Datos crudos del sistema anterior sin equivalente directo (auditoria/soporte).",
     )
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="movimientos_creados",
+        null=True,
+        blank=True,
+        help_text="Usuario que registro este movimiento. Null en registros previos a este campo.",
+    )
 
     class Meta:
         ordering = ["-fecha", "-id"]
@@ -171,6 +179,14 @@ class SolicitudTraslado(models.Model):
         blank=True,
     )
     rechazada_en = models.DateTimeField(null=True, blank=True)
+    recibido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="solicitudes_traslado_recibidas_por",
+        null=True,
+        blank=True,
+        help_text="Usuario que confirmo la recepcion del traslado.",
+    )
     movimiento_salida = models.OneToOneField(
         "movimientos.MovimientoInventario",
         on_delete=models.SET_NULL,

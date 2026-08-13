@@ -277,6 +277,11 @@ function SalidaDetails({
   allowDelete = true,
 }) {
   const [formData, setFormData] = useState(emptyForm)
+  const [creatorInfo, setCreatorInfo] = useState({
+    creadoPorNombre: '',
+    enviadoPorNombre: '',
+    recibidoPorNombre: '',
+  })
   const [originalData, setOriginalData] = useState(null)
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -911,6 +916,11 @@ function SalidaDetails({
       setProductos(productosList)
       setEstadosProducto(estadosProductoList)
       setTransferSolicitudId(String(linkedSolicitud?.id || '').trim())
+      setCreatorInfo({
+        creadoPorNombre: String(salidaData?.creado_por_nombre || linkedSolicitud?.creado_por_nombre || '').trim(),
+        enviadoPorNombre: String(linkedSolicitud?.enviado_por_nombre || '').trim(),
+        recibidoPorNombre: String(linkedSolicitud?.recibido_por_nombre || '').trim(),
+      })
       const normalized = buildFormData(salidaData, {
         branchesList: resolvedBranches,
         subTiposList,
@@ -2245,6 +2255,18 @@ function SalidaDetails({
                         <p>{formData.notaInconvenienteResolucion}</p>
                       </div>
                     </div>
+                  )}
+
+                  {(creatorInfo.creadoPorNombre || creatorInfo.enviadoPorNombre || creatorInfo.recibidoPorNombre) && (
+                    <p className="movimientos-details__creator-info">
+                      {creatorInfo.creadoPorNombre && <span>Creado por: {creatorInfo.creadoPorNombre}</span>}
+                      {isTraslado && creatorInfo.enviadoPorNombre && (
+                        <span>Enviado por: {creatorInfo.enviadoPorNombre}</span>
+                      )}
+                      {isTraslado && creatorInfo.recibidoPorNombre && (
+                        <span>Recibido por: {creatorInfo.recibidoPorNombre}</span>
+                      )}
+                    </p>
                   )}
                 </section>
                   </>
