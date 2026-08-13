@@ -103,6 +103,18 @@ class MovimientoInventario(models.Model):
         verbose_name = "Movimiento de inventario"
         verbose_name_plural = "Movimientos de inventario"
         unique_together = ("tipo_movimiento", "no_documento")
+        indexes = [
+            # Cubre el filtro por tipo (entrada/salida) + el orden por
+            # defecto de la tabla (fecha, id descendente). Sin este indice,
+            # Postgres tenia que traer TODAS las filas de ese tipo y
+            # ordenarlas en memoria/disco antes de poder cortar la pagina
+            # pedida -- con decenas de miles de movimientos eso dominaba
+            # el tiempo de carga de la tabla.
+            models.Index(
+                fields=["tipo_movimiento", "-fecha", "-id"],
+                name="mov_tipo_fecha_id_idx",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.tipo_movimiento.nombre} #{self.no_documento}"

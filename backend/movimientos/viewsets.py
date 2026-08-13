@@ -3,7 +3,7 @@ from uuid import uuid4
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum, Value
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
@@ -745,20 +745,53 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             return queryset
         return queryset.filter(query)
 
+    def _resolve_tipo_movimiento_ids(self, prefix):
+        cache = getattr(self, "_tipo_movimiento_ids_cache", None)
+        if cache is None:
+            cache = {}
+            self._tipo_movimiento_ids_cache = cache
+        if prefix not in cache:
+            cache[prefix] = list(
+                TipoMovimiento.objects.filter(nombre__istartswith=prefix).values_list("id", flat=True)
+            )
+        return cache[prefix]
+
     def get_queryset(self):
+        # total_monto se calcula con una subconsulta correlacionada (no con
+        # un Sum() por JOIN) a proposito: combinar select_related (que ya
+        # trae sucursal/tipo/subtipo/estado/casa_comercial por JOIN) con un
+        # Sum() sobre detalles obliga a Postgres a agrupar por TODAS esas
+        # columnas juntas -- con miles de movimientos eso vuelve un simple
+        # "traeme los ultimos 25" en un join+GROUP BY sobre toda la tabla
+        # (decenas de segundos). La subconsulta evita el JOIN/GROUP BY por
+        # completo: se resuelve solo para las filas que finalmente se piden.
+        detalle_totals = DetalleMovimiento.objects.filter(
+            movimiento_inventario_id=OuterRef("pk")
+        ).values("movimiento_inventario_id").annotate(
+            total=Sum("valor_total")
+        ).values("total")
+
         queryset = super().get_queryset().annotate(
             total_monto=Coalesce(
-                Sum("detalles__valor_total"),
+                Subquery(detalle_totals, output_field=DecimalField(max_digits=14, decimal_places=2)),
                 Value(0, output_field=DecimalField(max_digits=14, decimal_places=2)),
             )
         ).exclude(estado_garantia=MovimientoInventario.EstadoGarantia.ELIMINADA)
         params = self.request.query_params
 
         tipo_param = self._resolve_tipo_param()
-        if tipo_param == "salida":
-            queryset = queryset.filter(tipo_movimiento__nombre__istartswith="sal")
-        elif tipo_param == "entrada":
-            queryset = queryset.filter(tipo_movimiento__nombre__istartswith="ent")
+        if tipo_param in {"salida", "entrada"}:
+            # Filtrar por tipo_movimiento_id directo (en vez de un JOIN via
+            # tipo_movimiento__nombre__istartswith) para que el planificador
+            # de Postgres pueda usar mov_tipo_fecha_id_idx y resolver
+            # "traeme la pagina pedida" con un index scan acotado, en vez de
+            # traer y ordenar la tabla entera -- con un JOIN dinamico el
+            # planificador no logra estimar bien cuantas filas van a
+            # calzar y descarta ese indice. La tabla TipoMovimiento tiene
+            # solo un puñado de filas, asi que resolver esto aparte es
+            # practicamente gratis.
+            prefix = "sal" if tipo_param == "salida" else "ent"
+            queryset = queryset.filter(tipo_movimiento_id__in=self._resolve_tipo_movimiento_ids(prefix))
 
         queryset = self._apply_subtipo_filter(queryset)
 
@@ -913,7 +946,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 )
 
             module_filters.append(
-                Q(tipo_movimiento__nombre__istartswith=prefix) & branch_filter
+                Q(tipo_movimiento_id__in=self._resolve_tipo_movimiento_ids(prefix)) & branch_filter
             )
 
         if not module_filters:
@@ -923,6 +956,55 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         for extra_filter in module_filters:
             combined |= extra_filter
         return queryset.filter(combined)
+
+    # Traduce cada token de _resolve_tabla_ordering_tokens() a un campo real
+    # del modelo, para poder ordenar en la base de datos en vez de traer
+    # todo y ordenar en Python. "_sort_created_at" no es un campo real -- en
+    # un movimiento normal (a diferencia de una solicitud) equivale a fecha.
+    _TABLA_ORDER_FIELD_MAP = {
+        "_sort_created_at": "fecha",
+        "id": "id",
+        "no_documento": "no_documento",
+        "fecha": "fecha",
+        "sucursal__nombre": "sucursal__nombre",
+        "sub_tipo_movimiento__nombre": "sub_tipo_movimiento__nombre",
+        "estado_movimiento__nombre": "estado_movimiento__nombre",
+        "sucursal_objetivo__nombre": "sucursal_objetivo__nombre",
+        "funcional": "funcional",
+        "total_monto": "total_monto",
+    }
+
+    def _resolve_tabla_db_order_by(self):
+        order_by_fields = []
+        for token in self._resolve_tabla_ordering_tokens():
+            descending = token.startswith("-")
+            key = token[1:] if descending else token
+            field = self._TABLA_ORDER_FIELD_MAP.get(key)
+            if not field:
+                continue
+            order_by_fields.append(f"-{field}" if descending else field)
+        if not order_by_fields:
+            order_by_fields = ["-fecha"]
+        # Desempate estable: sin esto, filas con el mismo valor de orden
+        # pueden repetirse o saltarse al pasar de una pagina a otra.
+        order_by_fields.append("-id")
+        return order_by_fields
+
+    def _resolve_tabla_pagination_window(self):
+        try:
+            page_size = int(self.request.query_params.get("page_size") or 20)
+        except (TypeError, ValueError):
+            page_size = 20
+        page_size = max(1, min(page_size, 2000))
+
+        try:
+            page_number = int(self.request.query_params.get("page") or 1)
+        except (TypeError, ValueError):
+            page_number = 1
+        page_number = max(1, page_number)
+
+        offset = (page_number - 1) * page_size
+        return offset, page_size
 
     @action(detail=False, methods=["get"], url_path="tabla")
     def tabla(self, request, *args, **kwargs):
@@ -940,21 +1022,47 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             serialized = self._serialize_table_rows(queryset)
             return Response(self._strip_internal_table_fields(serialized))
 
-        serialized_movimientos = self._serialize_table_rows(queryset)
+        # Esta tabla combina movimientos reales (pueden ser decenas de
+        # miles) con solicitudes de traslado pendientes/guardadas (un
+        # puñado). Antes se traian y serializaban TODOS los movimientos
+        # -- con sus detalles, sucursales, etc. -- y recien al final se
+        # ordenaba en Python y se cortaba la pagina pedida; con una tabla
+        # grande eso tardaba decenas de segundos. Ahora se ordena en la
+        # base de datos y solo se trae lo que alcanza para cubrir la
+        # pagina pedida (offset + page_size), mas un margen por la
+        # cantidad de solicitudes que se van a intercalar -- eso siempre
+        # alcanza porque las solicitudes nunca desplazan mas posiciones
+        # que su propia cantidad.
         serialized_solicitudes = (
             self._get_solicitudes_for_entrada_table()
             if tipo_param == "entrada"
             else self._get_solicitudes_for_salida_table()
         )
+        offset, page_size = self._resolve_tabla_pagination_window()
+        needed_count = offset + page_size + len(serialized_solicitudes)
+        bounded_queryset = queryset.order_by(*self._resolve_tabla_db_order_by())[:needed_count]
+        serialized_movimientos = self._serialize_table_rows(bounded_queryset)
+
         combined_rows = self._sort_table_payload(
             [*serialized_movimientos, *serialized_solicitudes]
         )
 
-        page = self.paginate_queryset(combined_rows)
-        if page is not None:
-            return self.get_paginated_response(self._strip_internal_table_fields(page))
-
-        return Response(self._strip_internal_table_fields(combined_rows))
+        # No se usa self.paginate_queryset()/get_paginated_response() aqui:
+        # combined_rows solo contiene la ventana acotada (needed_count), no
+        # la tabla completa, asi que el paginador de DRF reportaria un
+        # "count" (total de resultados) incorrecto si contara sobre esta
+        # lista recortada. El total real se calcula aparte con un COUNT en
+        # la base de datos (barato, no trae filas) mas las solicitudes.
+        total_count = queryset.count() + len(serialized_solicitudes)
+        page_slice = combined_rows[offset:offset + page_size]
+        return Response(
+            {
+                "count": total_count,
+                "next": None,
+                "previous": None,
+                "results": self._strip_internal_table_fields(page_slice),
+            }
+        )
 
     def _resolve_target_modules(self):
         permission_checker = MovimientoInventarioModulePermission()

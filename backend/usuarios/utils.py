@@ -30,12 +30,23 @@ def is_app_admin(user):
         return False
     if getattr(user, "is_superuser", False):
         return True
+    # Se llama muchas veces por request (permisos, filtros de queryset,
+    # etc.) -- sin cachear en el propio objeto user, cada llamada repetia
+    # la misma consulta a UsuarioPreferencia.
+    cached = getattr(user, "_is_app_admin_cache", None)
+    if cached is not None:
+        return cached
     try:
         from app.models import UsuarioPreferencia
         pref = UsuarioPreferencia.objects.get(usuario=user)
-        return bool(pref.es_administrador)
+        result = bool(pref.es_administrador)
     except Exception:
-        return False
+        result = False
+    try:
+        user._is_app_admin_cache = result
+    except Exception:
+        pass
+    return result
 
 
 def normalize_scope_action_flags(source):
