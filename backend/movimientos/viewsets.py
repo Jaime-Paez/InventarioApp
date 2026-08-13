@@ -3311,6 +3311,177 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    def _find_pending_transfer_decisions_for_user(self, usuario_id):
+        usuario_token = str(usuario_id or "").strip()
+        if not usuario_token:
+            return []
+        store = ReminderState.get_global()
+        payload = store.payload if isinstance(store.payload, list) else []
+        solicitud_ids = []
+        for reminder in payload:
+            if not isinstance(reminder, dict):
+                continue
+            context = reminder.get("context") if isinstance(reminder.get("context"), dict) else {}
+            if self._normalize_reminder_context_type(context.get("type")) != "solicitud_traslado":
+                continue
+            decision = reminder.get("decision") if isinstance(reminder.get("decision"), dict) else {}
+            if str(decision.get("status") or "").strip().lower() != "pendiente":
+                continue
+            assigned = decision.get("assignedRecipients")
+            assigned = assigned if isinstance(assigned, list) else []
+            assigned_ids = {
+                str((r or {}).get("id") or "").strip() for r in assigned if isinstance(r, dict)
+            }
+            if usuario_token not in assigned_ids:
+                continue
+            solicitud_id_raw = str(context.get("id") or "").strip()
+            if solicitud_id_raw.isdigit():
+                solicitud_ids.append(int(solicitud_id_raw))
+        return solicitud_ids
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="solicitudes-traslado/decisiones-pendientes-usuario",
+    )
+    def decisiones_pendientes_usuario(self, request):
+        # Solo para el panel de administracion de usuarios: al admin le
+        # interesa saber si, antes de quitarle un permiso a alguien, esa
+        # persona tiene decisiones de traslado pendientes que se quedarian
+        # sin poder resolver.
+        if not is_app_admin(request.user):
+            raise PermissionDenied("Solo un administrador puede consultar esto.")
+
+        usuario_id = request.query_params.get("usuario_id")
+        solicitud_ids = self._find_pending_transfer_decisions_for_user(usuario_id)
+        if not solicitud_ids:
+            return Response([])
+
+        solicitudes = SolicitudTraslado.objects.filter(id__in=solicitud_ids).select_related(
+            "sucursal_solicitante", "sucursal_proveedora"
+        )
+        output = [
+            {
+                "solicitud_id": solicitud.id,
+                "no_documento": solicitud.no_documento,
+                "sucursal_proveedora_id": solicitud.sucursal_proveedora_id,
+                "sucursal_proveedora_nombre": solicitud.sucursal_proveedora.nombre,
+                "sucursal_solicitante_nombre": solicitud.sucursal_solicitante.nombre,
+            }
+            for solicitud in solicitudes
+        ]
+        return Response(output)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/reasignar-destinatario",
+    )
+    def reasignar_destinatario_traslado(self, request, solicitud_id=None):
+        # Reemplaza a un usuario por otro como responsable de decidir una
+        # solicitud de traslado puntual -- se usa desde el panel de usuarios
+        # cuando a alguien se le va a quitar un permiso y tiene decisiones
+        # pendientes ahi, para no dejarlo en un recordatorio sin salida.
+        if not is_app_admin(request.user):
+            raise PermissionDenied("Solo un administrador puede reasignar destinatarios.")
+
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        from_usuario_id = str(request.data.get("from_usuario_id") or "").strip()
+        to_usuario_id = str(request.data.get("to_usuario_id") or "").strip()
+        if not from_usuario_id or not to_usuario_id:
+            return Response(
+                {"detail": "Debes indicar from_usuario_id y to_usuario_id."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        User = get_user_model()
+        to_user = User.objects.filter(pk=to_usuario_id, is_active=True).first()
+        if to_user is None:
+            return Response(
+                {"detail": "El usuario de reemplazo no existe o esta inactivo."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            ensure_sucursal_allowed_for_modules(
+                to_user,
+                [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+                solicitud.sucursal_proveedora_id,
+                field_label="sucursal proveedora",
+                action_key="puede_actualizar",
+            )
+        except PermissionDenied:
+            return Response(
+                {
+                    "detail": (
+                        "El usuario de reemplazo no tiene permiso de Salidas en la "
+                        "sucursal proveedora de esta solicitud."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        to_recipient = self._normalize_reminder_recipient(to_user)
+        solicitud_token = str(solicitud.id)
+        changed = False
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+            payload = store.payload if isinstance(store.payload, list) else []
+            for reminder in payload:
+                if not isinstance(reminder, dict):
+                    continue
+                context = reminder.get("context") if isinstance(reminder.get("context"), dict) else {}
+                if self._normalize_reminder_context_type(context.get("type")) != "solicitud_traslado":
+                    continue
+                if str(context.get("id") or "").strip() != solicitud_token:
+                    continue
+
+                recipients = reminder.get("recipients") if isinstance(reminder.get("recipients"), list) else []
+                recipients = [
+                    r for r in recipients if str((r or {}).get("id") or "").strip() != from_usuario_id
+                ]
+                if to_recipient and not any(
+                    str((r or {}).get("id") or "").strip() == to_usuario_id for r in recipients
+                ):
+                    recipients.append(to_recipient)
+                reminder["recipients"] = recipients
+
+                decision = reminder.get("decision") if isinstance(reminder.get("decision"), dict) else {}
+                assigned = decision.get("assignedRecipients")
+                assigned = assigned if isinstance(assigned, list) else []
+                had_from = any(
+                    str((r or {}).get("id") or "").strip() == from_usuario_id for r in assigned
+                )
+                assigned = [
+                    r for r in assigned if str((r or {}).get("id") or "").strip() != from_usuario_id
+                ]
+                if had_from and to_recipient and not any(
+                    str((r or {}).get("id") or "").strip() == to_usuario_id for r in assigned
+                ):
+                    assigned.append(to_recipient)
+                decision["assignedRecipients"] = assigned
+                reminder["decision"] = decision
+                changed = True
+
+            if changed:
+                store.payload = payload
+                store.save(update_fields=["payload", "updated_at"])
+
+        if not changed:
+            return Response(
+                {"detail": "No se encontro un recordatorio de decision para esta solicitud."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response({"detail": "Destinatario reasignado correctamente."}, status=status.HTTP_200_OK)
+
     @action(
         detail=False,
         methods=["patch"],
