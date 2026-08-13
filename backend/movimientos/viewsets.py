@@ -3360,16 +3360,26 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         solicitudes = SolicitudTraslado.objects.filter(id__in=solicitud_ids).select_related(
             "sucursal_solicitante", "sucursal_proveedora"
         )
-        output = [
-            {
-                "solicitud_id": solicitud.id,
-                "no_documento": solicitud.no_documento,
-                "sucursal_proveedora_id": solicitud.sucursal_proveedora_id,
-                "sucursal_proveedora_nombre": solicitud.sucursal_proveedora.nombre,
-                "sucursal_solicitante_nombre": solicitud.sucursal_solicitante.nombre,
-            }
-            for solicitud in solicitudes
-        ]
+        candidatos_por_sucursal = {}
+        output = []
+        for solicitud in solicitudes:
+            proveedora_id = solicitud.sucursal_proveedora_id
+            if proveedora_id not in candidatos_por_sucursal:
+                candidatos_por_sucursal[proveedora_id] = [
+                    candidate
+                    for candidate in self._resolve_transfer_provider_recipients(proveedora_id)
+                    if str(candidate.get("id") or "").strip() != str(usuario_id or "").strip()
+                ]
+            output.append(
+                {
+                    "solicitud_id": solicitud.id,
+                    "no_documento": solicitud.no_documento,
+                    "sucursal_proveedora_id": proveedora_id,
+                    "sucursal_proveedora_nombre": solicitud.sucursal_proveedora.nombre,
+                    "sucursal_solicitante_nombre": solicitud.sucursal_solicitante.nombre,
+                    "candidatos": candidatos_por_sucursal[proveedora_id],
+                }
+            )
         return Response(output)
 
     @action(

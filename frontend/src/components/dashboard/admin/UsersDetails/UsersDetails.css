@@ -324,3 +324,31 @@
 .dashboard-shell.dark .producto-details__alterno-note {
   color: var(--color-text-dark);
 }
+
+.user-details__transfer-conflict-dialog {
+  display: block;
+  max-width: 560px;
+  text-align: left;
+}
+
+.user-details__transfer-conflict-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.user-details__transfer-conflict-row select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: #ffffff;
+  color: inherit;
+}
+
+.dashboard-shell.dark .user-details__transfer-conflict-row select {
+  background: #0f172a;
+  border-color: rgba(148, 163, 184, 0.3);
+}

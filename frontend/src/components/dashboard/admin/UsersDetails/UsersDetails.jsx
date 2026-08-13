@@ -346,6 +346,10 @@ function UsersDetails({
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [transferConflicts, setTransferConflicts] = useState([])
+  const [transferReassignments, setTransferReassignments] = useState({})
+  const [checkingTransferConflicts, setCheckingTransferConflicts] = useState(false)
+  const [resolvingTransferConflicts, setResolvingTransferConflicts] = useState(false)
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   const [selectedBranchId, setSelectedBranchId] = useState(null)
@@ -1038,10 +1042,84 @@ function UsersDetails({
     [permissionsMatrix, moduleBranchMatrix, branchScopedModules]
   )
 
+  // Ramas de "Movimientos - Salidas" que el usuario tenia ANTES de este
+  // edit (comparado contra el matrix actual) -- si alguna se esta quitando,
+  // hay que revisar si el usuario tiene decisiones de traslado pendientes
+  // ahi antes de guardar, para no dejarlas sin nadie que pueda resolverlas.
+  const getRemovedSalidasBranchIds = () => {
+    const originalScope = (originalData.sucursales_por_modulo || []).find(
+      (scope) => normalizeModuleKey(scope?.modulo) === SALIDAS_MODULE_KEY
+    )
+    const originalBranchIds = new Set(
+      (originalScope?.sucursales_ids || []).map((id) => String(id))
+    )
+    const currentBranchIds = new Set(Object.keys(moduleBranchMatrix[SALIDAS_MODULE_KEY] || {}))
+    return Array.from(originalBranchIds).filter((id) => !currentBranchIds.has(id))
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (!isEditing || loadingData) return
     setSubmitAttempted(true)
+
+    const removedBranchIds = userId ? getRemovedSalidasBranchIds() : []
+    if (!removedBranchIds.length) {
+      await performSave()
+      return
+    }
+
+    setCheckingTransferConflicts(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/decisiones-pendientes-usuario/?usuario_id=${userId}`,
+        {},
+        token
+      )
+      const data = await response.json().catch(() => [])
+      const conflicts = (response.ok && Array.isArray(data) ? data : []).filter((item) =>
+        removedBranchIds.includes(String(item?.sucursal_proveedora_id))
+      )
+      if (!conflicts.length) {
+        await performSave()
+        return
+      }
+      setTransferConflicts(conflicts)
+      setTransferReassignments({})
+    } catch {
+      // Si la verificacion falla, no bloqueamos el guardado -- el admin
+      // puede seguir editando permisos con normalidad.
+      await performSave()
+    } finally {
+      setCheckingTransferConflicts(false)
+    }
+  }
+
+  const handleConfirmTransferReassignments = async () => {
+    setResolvingTransferConflicts(true)
+    try {
+      for (const conflict of transferConflicts) {
+        const toUsuarioId = transferReassignments[conflict.solicitud_id]
+        if (!toUsuarioId) continue
+        await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${conflict.solicitud_id}/reasignar-destinatario/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ from_usuario_id: userId, to_usuario_id: toUsuarioId }),
+          },
+          token
+        )
+      }
+      setTransferConflicts([])
+      setTransferReassignments({})
+      await performSave()
+    } catch {
+      notifyError('No se pudieron reasignar todas las decisiones pendientes. Intenta nuevamente.')
+    } finally {
+      setResolvingTransferConflicts(false)
+    }
+  }
+
+  const performSave = async () => {
     setSaving(true)
 
     const payload = {
@@ -1572,9 +1650,9 @@ function UsersDetails({
                   <button
                     type="submit"
                     className="create-user__action create-user__action--primary"
-                    disabled={saving || loadingData}
+                    disabled={saving || loadingData || checkingTransferConflicts}
                   >
-                    {saving ? 'Guardando...' : 'Guardar'}
+                    {checkingTransferConflicts ? 'Verificando...' : saving ? 'Guardando...' : 'Guardar'}
                   </button>
                 </>
               )}
@@ -1718,6 +1796,72 @@ function UsersDetails({
           </div>
         </div>,
         getAppPortalRoot()
+      )}
+
+      {transferConflicts.length > 0 && (
+        <div
+          className="user-details__confirm-overlay"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Decisiones de traslado pendientes"
+        >
+          <div className="user-details__confirm-dialog user-details__transfer-conflict-dialog">
+            <div className="user-details__confirm-content">
+              <h4>Este usuario tiene decisiones pendientes</h4>
+              <p>
+                Le estás quitando el permiso de Salidas en una sucursal donde tiene traslados
+                pendientes por aceptar o rechazar. Elige quién se hace responsable de cada uno
+                (opcional) antes de guardar.
+              </p>
+              {transferConflicts.map((conflict) => (
+                <div key={conflict.solicitud_id} className="user-details__transfer-conflict-row">
+                  <strong>#{conflict.no_documento}</strong>
+                  <span className="muted">
+                    {' '}
+                    — {conflict.sucursal_solicitante_nombre} pide a {conflict.sucursal_proveedora_nombre}
+                  </span>
+                  <select
+                    value={transferReassignments[conflict.solicitud_id] || ''}
+                    onChange={(event) =>
+                      setTransferReassignments((prev) => ({
+                        ...prev,
+                        [conflict.solicitud_id]: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">No reasignar (queda solo con los demás destinatarios)</option>
+                    {(conflict.candidatos || []).map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div className="user-details__confirm-actions">
+              <button
+                type="button"
+                className="create-user__ghost create-user__cancel"
+                onClick={() => {
+                  setTransferConflicts([])
+                  setTransferReassignments({})
+                }}
+                disabled={resolvingTransferConflicts}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="user-details__confirm-danger"
+                onClick={handleConfirmTransferReassignments}
+                disabled={resolvingTransferConflicts}
+              >
+                {resolvingTransferConflicts ? 'Guardando...' : 'Confirmar y guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {allowDelete && showDeleteDialog && (
