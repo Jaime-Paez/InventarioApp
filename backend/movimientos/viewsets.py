@@ -360,8 +360,16 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         cliente = Cliente.objects.filter(id=cliente_id).first() if cliente_id else None
         # El cliente puede aun no existir en la BD (se esta creando junto con la
         # salida), asi que se acepta la identificacion tal cual la escribio el
-        # usuario cuando no hay un cliente_id resuelto todavia.
-        cliente_identificacion = getattr(cliente, "cedula_ruc", None) or cliente_identificacion_param
+        # usuario cuando no hay un cliente_id resuelto todavia. Y si el cliente
+        # SI existe pero le falta cedula/RUC (la gran mayoria de los migrados
+        # del sistema anterior -- 8604 de 8731 clientes hoy), se usa su id
+        # interno como identificador unico de respaldo en vez de bloquear la
+        # venta por un dato que nunca se capturo en la migracion.
+        cliente_identificacion = (
+            getattr(cliente, "cedula_ruc", None)
+            or cliente_identificacion_param
+            or (f"CLI{cliente.id}" if cliente is not None else "")
+        )
 
         if not tipo_movimiento or not sub_tipo_movimiento or not sucursal:
             return Response(

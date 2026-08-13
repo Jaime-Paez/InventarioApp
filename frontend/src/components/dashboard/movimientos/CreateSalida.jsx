@@ -405,6 +405,9 @@ function CreateSalida({
   const [selectedClienteAutos, setSelectedClienteAutos] = useState([])
   const [autoConfirmData, setAutoConfirmData] = useState(null)
   const [savingAuto, setSavingAuto] = useState(false)
+  const [showCedulaPrompt, setShowCedulaPrompt] = useState(false)
+  const [cedulaPromptValue, setCedulaPromptValue] = useState('')
+  const [savingCedulaPrompt, setSavingCedulaPrompt] = useState(false)
   const [pendingClienteAutoDraft, setPendingClienteAutoDraft] = useState({ placa: '', modelo: '', anio: '', marca: '' })
   const [fetchingClienteAutos, setFetchingClienteAutos] = useState(false)
   const [showClienteDropdown, setShowClienteDropdown] = useState(false)
@@ -3128,7 +3131,7 @@ function CreateSalida({
     )
   }
 
-  const submitSalida = async ({ skipTransferConfirmation = false, guardarBorrador = false } = {}) => {
+  const submitSalida = async ({ skipTransferConfirmation = false, guardarBorrador = false, skipCedulaPrompt = false } = {}) => {
     setError('')
     const solicitudIdValue = String(formData.solicitudTrasladoId || '').trim()
 
@@ -3334,6 +3337,22 @@ function CreateSalida({
       return false
     }
 
+    // Muchos clientes migrados del sistema anterior no tienen cedula/RUC
+    // guardada -- el backend ya no bloquea la venta por eso, pero antes de
+    // crearla se le pregunta al usuario si quiere aprovechar y completarla
+    // ahora (opcional). Solo se pregunta una vez por intento de envio.
+    if (
+      isVenta &&
+      useExistingCliente &&
+      selectedCliente?.id &&
+      !String(selectedCliente?.cedula_ruc || '').trim() &&
+      !skipCedulaPrompt
+    ) {
+      setCedulaPromptValue('')
+      setShowCedulaPrompt(true)
+      return false
+    }
+
     setLoading(true)
     try {
       let ventaCliente = selectedCliente
@@ -3529,6 +3548,39 @@ function CreateSalida({
     if (loading) return
     setIsTransferSendConfirmOpen(false)
     void submitSalida({ skipTransferConfirmation: true })
+  }
+
+  const handleSkipCedulaPrompt = () => {
+    if (savingCedulaPrompt) return
+    setShowCedulaPrompt(false)
+    void submitSalida({ skipCedulaPrompt: true })
+  }
+
+  const handleSaveCedulaAndContinue = async () => {
+    const cedula = cedulaPromptValue.trim()
+    if (!cedula || !selectedCliente?.id) {
+      handleSkipCedulaPrompt()
+      return
+    }
+    setSavingCedulaPrompt(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/solicitudes/clientes/${selectedCliente.id}/`,
+        { method: 'PATCH', body: JSON.stringify({ cedula_ruc: cedula }) },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(resolveApiErrorMessage(data, 'No se pudo guardar la cédula/RUC.'))
+      }
+      setSelectedCliente(data)
+      setShowCedulaPrompt(false)
+      void submitSalida({ skipCedulaPrompt: true })
+    } catch (err) {
+      notifyError(err?.message || 'No se pudo guardar la cédula/RUC.')
+    } finally {
+      setSavingCedulaPrompt(false)
+    }
   }
 
   const openTransferCancelModal = () => {
@@ -4850,6 +4902,53 @@ function CreateSalida({
                   disabled={loading}
                 >
                   {loading ? 'Enviando...' : 'Confirmar envío'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCedulaPrompt && (
+          <div
+            className="create-salida__confirm-overlay"
+            onMouseDown={() => {
+              if (savingCedulaPrompt) return
+              handleSkipCedulaPrompt()
+            }}
+          >
+            <div className="create-salida__confirm-card" onMouseDown={(event) => event.stopPropagation()}>
+              <h4>Cédula/RUC del cliente</h4>
+              <p>
+                <strong>{selectedClienteLabel || 'Este cliente'}</strong> no tiene cédula o RUC registrada
+                (frecuente en clientes migrados del sistema anterior). Es opcional, pero si la tienes a
+                mano puedes agregarla ahora.
+              </p>
+              <label className="create-user__field create-user__field--full">
+                <span>Cédula/RUC (opcional)</span>
+                <input
+                  type="text"
+                  value={cedulaPromptValue}
+                  onChange={(event) => setCedulaPromptValue(event.target.value)}
+                  disabled={savingCedulaPrompt}
+                  autoFocus
+                />
+              </label>
+              <div className="create-salida__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={handleSkipCedulaPrompt}
+                  disabled={savingCedulaPrompt}
+                >
+                  Continuar sin agregar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleSaveCedulaAndContinue}
+                  disabled={savingCedulaPrompt || !cedulaPromptValue.trim()}
+                >
+                  {savingCedulaPrompt ? 'Guardando...' : 'Guardar y continuar'}
                 </button>
               </div>
             </div>
