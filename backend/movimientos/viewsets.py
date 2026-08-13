@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
@@ -5,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value
 from django.db.models.deletion import ProtectedError
+from django.db.models.expressions import RawSQL
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
 from django.utils import timezone
@@ -414,12 +416,27 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         tokens = [token.strip() for token in raw.split(",") if token.strip()]
         return tokens or ["-_sort_created_at", "-fecha", "-id"]
 
+    # Mismo criterio que _NO_DOCUMENTO_SORT_KEY_SQL (natural sort), pero en
+    # Python -- esto ordena las filas de solicitudes de traslado (que no
+    # existen en la base de datos como movimiento todavia) junto con las
+    # ya traidas de la base de datos, y ambos lados deben quedar en el
+    # mismo orden relativo.
+    _NO_DOCUMENTO_SUFFIX_RE = re.compile(r"^(.*?)(\d+)$")
+
     def _normalize_table_sort_value(self, value, field):
         if field in {"total", "_sort_id"}:
             try:
                 return Decimal(str(value))
             except (InvalidOperation, TypeError, ValueError):
                 return Decimal("0")
+
+        if field == "no_documento":
+            text = str(value or "").strip().lower()
+            match = self._NO_DOCUMENTO_SUFFIX_RE.match(text)
+            if match:
+                prefix, digits = match.groups()
+                return (prefix, int(digits))
+            return (text, -1)
 
         if value is None:
             return ""
@@ -992,7 +1009,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     _TABLA_ORDER_FIELD_MAP = {
         "_sort_created_at": "fecha",
         "id": "id",
-        "no_documento": "no_documento",
+        "no_documento": "no_documento_sort_key",
         "fecha": "fecha",
         "sucursal__nombre": "sucursal__nombre",
         "sub_tipo_movimiento__nombre": "sub_tipo_movimiento__nombre",
@@ -1001,6 +1018,28 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         "funcional": "funcional",
         "total_monto": "total_monto",
     }
+
+    # no_documento es texto ("CL-9OCT-...-10", "...-2") -- ordenado como
+    # texto plano, "-10" cae justo despues de "-1" (antes de "-2".."-9"),
+    # porque compara caracter por caracter. Esto separa el prefijo del
+    # numero final y rellena el numero con ceros a la izquierda para que
+    # la comparacion de texto de el mismo resultado que una comparacion
+    # numerica real.
+    _NO_DOCUMENTO_SORT_KEY_SQL = r"""
+        regexp_replace(no_documento, '\d+$', '')
+        || lpad(
+            coalesce(
+                nullif(regexp_replace(no_documento, '^.*?(\d+)$', '\1'), no_documento),
+                '0'
+            ),
+            12, '0'
+        )
+    """
+
+    def _annotate_no_documento_sort_key(self, queryset):
+        return queryset.annotate(
+            no_documento_sort_key=RawSQL(self._NO_DOCUMENTO_SORT_KEY_SQL, ())
+        )
 
     def _resolve_tabla_db_order_by(self):
         order_by_fields = []
@@ -1068,6 +1107,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         )
         offset, page_size = self._resolve_tabla_pagination_window()
         needed_count = offset + page_size + len(serialized_solicitudes)
+        ordering_tokens = self._resolve_tabla_ordering_tokens()
+        if any(token.lstrip("-") == "no_documento" for token in ordering_tokens):
+            queryset = self._annotate_no_documento_sort_key(queryset)
         bounded_queryset = queryset.order_by(*self._resolve_tabla_db_order_by())[:needed_count]
         serialized_movimientos = self._serialize_table_rows(bounded_queryset)
 
