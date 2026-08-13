@@ -91,6 +91,17 @@ def cancel_pending_transfer_requests(
         )
 
         for solicitud in queryset:
+            # pending_ids se calculo ANTES de tomar el lock de esta fila --
+            # si justo en ese intervalo la solicitud termino de convertirse
+            # en un envio real (alguien la acepto y creo la salida), select_
+            # for_update espera a que esa transaccion termine y aqui ya la
+            # vemos con movimiento_salida/entrada puestos. Sin este segundo
+            # chequeo (ya no basta con haberlo filtrado al armar pending_ids)
+            # se cancelaba por error un traslado que en realidad ya se envio,
+            # justo en la ventana entre "aceptar" y "crear la salida".
+            if solicitud.movimiento_salida_id or solicitud.movimiento_entrada_id:
+                continue
+
             shortage = _find_stock_shortage(solicitud, available_map)
             if shortage is None:
                 continue
