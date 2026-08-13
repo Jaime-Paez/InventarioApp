@@ -43,19 +43,22 @@ const getDivisionBodegaId = (division) => String(division?.bodega?.id ?? divisio
 const getSubdivisionDivisionId = (subdivision) => String(subdivision?.division?.id ?? subdivision?.division_id ?? '')
 const getSubdivisionBodegaId = (subdivision) =>
   String(subdivision?.division?.bodega?.id ?? subdivision?.division?.bodega_id ?? '')
-const normalizeScopeModuleKey = (value) => String(value ?? '').trim().toLowerCase()
 const normalizeScopeBranchId = (value) => String(value ?? '').trim()
-const getModuleScopeBranchIdSet = (rawScopes, moduleKey) => {
-  const normalizedModuleKey = normalizeScopeModuleKey(moduleKey)
-  if (!normalizedModuleKey) return null
-  const moduleScope = (Array.isArray(rawScopes) ? rawScopes : []).find(
-    (scope) => normalizeScopeModuleKey(scope?.modulo) === normalizedModuleKey
-  )
-  if (!moduleScope) return null
-  const ids = (Array.isArray(moduleScope?.sucursales_ids) ? moduleScope.sucursales_ids : [])
-    .map((branchId) => normalizeScopeBranchId(branchId))
-    .filter(Boolean)
-  return new Set(ids)
+// Igual que en ProductoDetails: mover/editar una ubicacion ya no exige el
+// modulo Productos especificamente -- cualquier modulo asignado en una
+// sucursal ya implica poder ver su inventario, asi que tambien alcanza
+// para manejar sus ubicaciones.
+const getAnyModuleScopeBranchIdSet = (rawScopes) => {
+  if (!Array.isArray(rawScopes) || !rawScopes.length) return null
+  const ids = new Set()
+  rawScopes.forEach((scope) => {
+    const branchIds = Array.isArray(scope?.sucursales_ids) ? scope.sucursales_ids : []
+    branchIds.forEach((branchId) => {
+      const normalized = normalizeScopeBranchId(branchId)
+      if (normalized) ids.add(normalized)
+    })
+  })
+  return ids
 }
 
 function CreateProducto({
@@ -277,7 +280,7 @@ function CreateProducto({
     [locationDraft.subdivisionId, subdivisionById]
   )
   const scopedProductBranchIds = useMemo(
-    () => getModuleScopeBranchIdSet(currentUser?.sucursales_por_modulo, 'productos'),
+    () => getAnyModuleScopeBranchIdSet(currentUser?.sucursales_por_modulo),
     [currentUser]
   )
   const canManageLocationBranch = useCallback(

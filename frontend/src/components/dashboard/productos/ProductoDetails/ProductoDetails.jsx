@@ -73,17 +73,22 @@ const parseProductCode = (label) => {
 }
 const normalizeScopeModuleKey = (value) => String(value ?? '').trim().toLowerCase()
 const normalizeScopeBranchId = (value) => String(value ?? '').trim()
-const getModuleScopeBranchIdSet = (rawScopes, moduleKey) => {
-  const normalizedModuleKey = normalizeScopeModuleKey(moduleKey)
-  if (!normalizedModuleKey) return null
-  const moduleScope = (Array.isArray(rawScopes) ? rawScopes : []).find(
-    (scope) => normalizeScopeModuleKey(scope?.modulo) === normalizedModuleKey
-  )
-  if (!moduleScope) return null
-  const ids = (Array.isArray(moduleScope?.sucursales_ids) ? moduleScope.sucursales_ids : [])
-    .map((branchId) => normalizeScopeBranchId(branchId))
-    .filter(Boolean)
-  return new Set(ids)
+// Mover (o editar/eliminar) una ubicacion de inventario ya no exige el
+// modulo Productos especificamente: si el usuario tiene CUALQUIER modulo
+// asignado en una sucursal (entradas, salidas, bodegas, solicitudes...) ya
+// puede ver el inventario de esa sucursal, asi que tambien deberia poder
+// mover cosas entre sus propias ubicaciones ahi.
+const getAnyModuleScopeBranchIdSet = (rawScopes) => {
+  if (!Array.isArray(rawScopes) || !rawScopes.length) return null
+  const ids = new Set()
+  rawScopes.forEach((scope) => {
+    const branchIds = Array.isArray(scope?.sucursales_ids) ? scope.sucursales_ids : []
+    branchIds.forEach((branchId) => {
+      const normalized = normalizeScopeBranchId(branchId)
+      if (normalized) ids.add(normalized)
+    })
+  })
+  return ids
 }
 const getFullPermissionBranchIdSet = (rawScopes, moduleKey) => {
   const normalizedModuleKey = normalizeScopeModuleKey(moduleKey)
@@ -256,7 +261,7 @@ function ProductoDetails({
     return suppliers
   }, [suppliers, casaSearch])
   const editableProductBranchIds = useMemo(
-    () => getModuleScopeBranchIdSet(currentUser?.sucursales_por_modulo, 'productos'),
+    () => getAnyModuleScopeBranchIdSet(currentUser?.sucursales_por_modulo),
     [currentUser]
   )
   const fullyEditableProductBranchIds = useMemo(
