@@ -235,21 +235,20 @@
   color: #fed7aa !important;
 }
 
-/* Traslado directo guardado como borrador -- gris/slate a proposito, para
-   no repetir el naranja de "partial" (que ya significa otra cosa aca:
-   recepcion parcial) ni el color que usa "guardado" en Entradas. */
+/* Traslado directo guardado como borrador -- mismo naranja que "guardado"
+   en Entradas, para que el mismo estado se vea igual en ambas tablas. */
 .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado > td {
-  background: color-mix(in srgb, #64748b 20%, var(--table-color)) !important;
-  border-bottom-color: color-mix(in srgb, #475569 36%, transparent) !important;
+  background: color-mix(in srgb, #f97316 20%, var(--table-color)) !important;
+  border-bottom-color: color-mix(in srgb, #c2410c 36%, transparent) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado:hover > td {
-  background: color-mix(in srgb, #64748b 30%, var(--table-color-hover)) !important;
+  background: color-mix(in srgb, #f97316 30%, var(--table-color-hover)) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado.selected-row-shadow > td,
 .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado.selected-row-shadow:hover > td {
-  background: color-mix(in srgb, #64748b 34%, var(--table-color-selected)) !important;
+  background: color-mix(in srgb, #f97316 34%, var(--table-color-selected)) !important;
 }
 
 .salidas-guardado-state-chip {
@@ -259,28 +258,28 @@
   min-width: 84px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, #64748b 34%, transparent);
-  color: #334155 !important;
+  background: color-mix(in srgb, #f97316 34%, transparent);
+  color: #9a3412 !important;
   font-weight: 700;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado > td {
-  background: color-mix(in srgb, #64748b 24%, var(--table-color-dark)) !important;
-  border-bottom-color: color-mix(in srgb, #64748b 42%, var(--color-border-dark)) !important;
+  background: color-mix(in srgb, #f97316 24%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #f97316 46%, var(--color-border-dark)) !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado:hover > td {
-  background: color-mix(in srgb, #64748b 30%, var(--table-color-dark-hover)) !important;
+  background: color-mix(in srgb, #f97316 30%, var(--table-color-dark-hover)) !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado.selected-row-shadow > td,
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.salidas-row--guardado-traslado.selected-row-shadow:hover > td {
-  background: color-mix(in srgb, #64748b 36%, var(--table-color-selected-dark)) !important;
+  background: color-mix(in srgb, #f97316 36%, var(--table-color-selected-dark)) !important;
 }
 
 .dashboard-shell.dark .salidas-guardado-state-chip {
-  background: color-mix(in srgb, #94a3b8 36%, transparent);
-  color: #f1f5f9 !important;
+  background: color-mix(in srgb, #f97316 40%, transparent);
+  color: #fed7aa !important;
 }
 
 @media (max-width: 900px) {
