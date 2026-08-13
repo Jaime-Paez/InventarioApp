@@ -3421,13 +3421,7 @@ function CreateSalida({
         descripcion: buildDescripcion(ventaClienteLabel),
         factura_referencia: isVenta || isDevolucion || isTraslado ? String(formData.factura_referencia || '').trim() : '',
         funcional: true,
-        sucursal_objetivo_id: (() => {
-          if (requiresSucursalObjetivo) return Number(formData.sucursalObjetivoId)
-          if (isVenta && String(formData.sucursalObjetivoId || '').trim()) {
-            return Number(formData.sucursalObjetivoId)
-          }
-          return null
-        })(),
+        sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
         estado_movimiento_id: Number(estadoMovimientoId),
         descuento,
         fecha: formData.fecha,
@@ -3892,27 +3886,6 @@ function CreateSalida({
                                       disabled={loading}
                                       required
                                     />
-                                  </label>
-
-                                  <label className="create-user__field">
-                                    <span>Sucursal del pedido/cliente (opcional)</span>
-                                    <select
-                                      name="sucursalObjetivoId"
-                                      value={formData.sucursalObjetivoId}
-                                      onChange={handleChange}
-                                      disabled={loading}
-                                    >
-                                      <option value="">No aplica</option>
-                                      {branches.map((branch) => (
-                                        <option key={branch.id} value={branch.id}>
-                                          {branch.nombre || `Sucursal ${branch.id}`}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <small className="muted">
-                                      El producto sale del stock de la sucursal seleccionada arriba; esto solo
-                                      etiqueta a que sucursal pertenece el pedido/cliente, si es distinta.
-                                    </small>
                                   </label>
                                 </>
                               )}
