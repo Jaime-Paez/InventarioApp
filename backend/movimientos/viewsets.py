@@ -509,7 +509,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             if allowed is not None:
                 if not allowed:
                     return []
-                queryset = queryset.filter(sucursal_solicitante_id__in=sorted(allowed))
+                # Igual que con los movimientos reales (ver el filtro de
+                # permisos en get_queryset, que hace match por sucursal O
+                # sucursal_objetivo): una solicitud pendiente donde mi
+                # sucursal es la proveedora tambien debe verse aqui, no
+                # solo cuando ya se convirtio en un movimiento real. Sin
+                # esto, un traslado ya completado aparecia en la tabla
+                # pero la misma solicitud, mientras seguia pendiente, no.
+                queryset = queryset.filter(
+                    Q(sucursal_solicitante_id__in=allowed)
+                    | Q(sucursal_proveedora_id__in=allowed)
+                )
 
         raw_estado = (params.get("estado") or "").strip().lower()
         allowed_states = {choice[0] for choice in SolicitudTraslado.Estados.choices}
