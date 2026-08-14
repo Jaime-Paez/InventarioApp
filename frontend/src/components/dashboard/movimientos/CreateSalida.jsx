@@ -1800,13 +1800,13 @@ function CreateSalida({
   }, [notifyError, token])
 
   const fetchStockByBranch = useCallback(
-    async (sucursalId) => {
+    async (sucursalId, { force = false } = {}) => {
       const normalizedBranchId = String(sucursalId || '').trim()
       if (!token || !normalizedBranchId) {
         resetStockLookup()
         return {}
       }
-      if (loadedStockBranchIdRef.current === normalizedBranchId) {
+      if (!force && loadedStockBranchIdRef.current === normalizedBranchId) {
         return stockByProductRef.current
       }
       if (
@@ -4065,6 +4065,9 @@ function CreateSalida({
                                 setProductDropdownMaxHeight(null)
                                 setProductQuery('')
                                 setProductOptions([])
+                                if (requiresStockValidation && formData.sucursalId) {
+                                  fetchStockByBranch(formData.sucursalId, { force: true })
+                                }
                                 requestAnimationFrame(() => {
                                   updateProductDropdownPlacement()
                                 })
