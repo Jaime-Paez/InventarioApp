@@ -389,6 +389,7 @@ function CreateSalida({
   const [details, setDetails] = useState([])
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
+  const [duplicateProductConfirm, setDuplicateProductConfirm] = useState(null)
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   const [showProductDropdown, setShowProductDropdown] = useState(false)
   const [productDropdownMaxHeight, setProductDropdownMaxHeight] = useState(null)
@@ -987,6 +988,16 @@ function CreateSalida({
     () => String(selectedDraftProduct?.nombre || '').trim(),
     [selectedDraftProduct]
   )
+  const selectedDraftRemainingStock = useMemo(() => {
+    if (!selectedDraftProduct) return 0
+    const rawAvailable = Number(stockByProduct[String(selectedDraftProduct.id)] ?? 0)
+    const alreadyAddedQty = details.reduce((acc, detail) => {
+      if (String(detail.productoId) !== String(selectedDraftProduct.id)) return acc
+      const qty = parseIntValue(detail.cantidad)
+      return acc + (Number.isFinite(qty) ? qty : 0)
+    }, 0)
+    return Math.max((Number.isFinite(rawAvailable) ? rawAvailable : 0) - alreadyAddedQty, 0)
+  }, [selectedDraftProduct, stockByProduct, details])
   const detailProductIdSet = useMemo(
     () =>
       new Set(
@@ -2884,11 +2895,6 @@ function CreateSalida({
 
   const handleProductSelect = (producto) => {
     if (!producto?.id) return
-    const normalizedProductId = String(producto.id || '').trim()
-    if (detailProductIdSet.has(normalizedProductId)) {
-      setDetailError('Este producto ya fue agregado al detalle.')
-      return
-    }
     const productPrice = resolveProductPrice(producto)
     setDetailError('')
     setDetailDraft((prev) => ({
@@ -2926,10 +2932,6 @@ function CreateSalida({
       setDetailError('Selecciona un producto.')
       return
     }
-    if (detailProductIdSet.has(productoId)) {
-      setDetailError('Este producto ya fue agregado al detalle.')
-      return
-    }
     if (!Number.isFinite(cantidad) || cantidad <= 0) {
       setDetailError('Ingresa una cantidad valida.')
       return
@@ -2956,24 +2958,61 @@ function CreateSalida({
       return
     }
 
-    const valor_total = cantidad * valor
     const estadoProducto = estadosProducto.find((item) => String(item.id) === estadoProductoId)
 
-    setDetails((prev) => [
-      ...prev,
-      {
-        uid: `det-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    const existingDetail = details.find((detail) => String(detail.productoId) === productoId)
+    if (existingDetail) {
+      const existingQty = parseIntValue(existingDetail.cantidad)
+      setDuplicateProductConfirm({
         productoId,
-        productoCodigo: producto?.codigo ?? '',
-        productoNombre: producto?.nombre ?? '',
-        estadoProductoId,
-        estadoProductoNombre: estadoProducto?.nombre ?? '',
+        productoCodigo: producto?.codigo ?? existingDetail.productoCodigo ?? '',
+        productoNombre: producto?.nombre ?? existingDetail.productoNombre ?? '',
+        existingUid: existingDetail.uid,
+        existingQty: Number.isFinite(existingQty) ? existingQty : 0,
         cantidad,
-        valor,
-        valor_total,
-      },
-    ])
+      })
+      return
+    }
 
+    setDetails((prev) => [...prev, buildDetailRow(productoId, producto, estadoProductoId, estadoProducto, cantidad, valor)])
+
+    setDetailDraft(initialDetail)
+    setShowProductDropdown(false)
+    setProductQuery('')
+    setProductOptions([])
+  }
+
+  const buildDetailRow = (productoId, producto, estadoProductoId, estadoProducto, cantidad, valor) => ({
+    uid: `det-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    productoId,
+    productoCodigo: producto?.codigo ?? '',
+    productoNombre: producto?.nombre ?? '',
+    estadoProductoId,
+    estadoProductoNombre: estadoProducto?.nombre ?? '',
+    cantidad,
+    valor,
+    valor_total: cantidad * valor,
+  })
+
+  const handleCancelDuplicateProduct = () => {
+    setDuplicateProductConfirm(null)
+  }
+
+  const handleConfirmDuplicateProduct = () => {
+    if (!duplicateProductConfirm) return
+    const { existingUid, cantidad } = duplicateProductConfirm
+    setDetails((prev) =>
+      prev.map((detail) => {
+        if (detail.uid !== existingUid) return detail
+        const nuevaCantidad = parseIntValue(detail.cantidad) + cantidad
+        return {
+          ...detail,
+          cantidad: nuevaCantidad,
+          valor_total: nuevaCantidad * detail.valor,
+        }
+      })
+    )
+    setDuplicateProductConfirm(null)
     setDetailDraft(initialDetail)
     setShowProductDropdown(false)
     setProductQuery('')
@@ -4039,8 +4078,14 @@ function CreateSalida({
                                 : 'Selecciona un producto'}
                             </span>
                             {selectedDraftProduct && requiresStockValidation && (
-                              <span className="create-salida__trigger-stock">
-                                {Number.isFinite(Number(stockByProduct[String(selectedDraftProduct.id)])) ? Number(stockByProduct[String(selectedDraftProduct.id)] ?? 0) : 0}
+                              <span
+                                className={`create-salida__trigger-stock${
+                                  selectedDraftRemainingStock === 0 && detailProductIdSet.has(String(selectedDraftProduct.id))
+                                    ? ' is-depleted-added'
+                                    : ''
+                                }`}
+                              >
+                                {selectedDraftRemainingStock}
                               </span>
                             )}
                             <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
@@ -4110,29 +4155,53 @@ function CreateSalida({
                                   const normalizedProductId = String(producto.id || '').trim()
                                   const isSelected = normalizedProductId === String(detailDraft.productoId || '').trim()
                                   const isAlreadyAdded = detailProductIdSet.has(normalizedProductId)
+                                  const addedQtyRaw = isAlreadyAdded
+                                    ? parseIntValue(
+                                        details.find((detail) => String(detail.productoId) === normalizedProductId)?.cantidad
+                                      )
+                                    : 0
+                                  const addedQty = Number.isFinite(addedQtyRaw) ? addedQtyRaw : 0
                                   const available = Number(stockByProduct[String(producto.id)] ?? 0)
-                                  const isZeroStock = requiresStockValidation && available === 0
+                                  const remainingAvailable = requiresStockValidation
+                                    ? Math.max((Number.isFinite(available) ? available : 0) - addedQty, 0)
+                                    : available
+                                  const isZeroStock = requiresStockValidation && remainingAvailable === 0
                                   const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
                                   const nombre = String(producto?.nombre || '').trim()
                                   const dispLabel = requiresStockValidation
-                                    ? String(Number.isFinite(available) ? available : 0)
+                                    ? String(remainingAvailable)
                                     : String(Number(producto?.total_stock ?? 0))
                                   return (
                                     <button
                                       key={producto.id}
                                       type="button"
-                                      className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}${isZeroStock ? ' is-zero-stock' : ''}`}
+                                      className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}${isZeroStock ? ' is-zero-stock' : ''}${isZeroStock && isAlreadyAdded ? ' is-depleted-added' : ''}`}
                                       onMouseDown={(event) => event.preventDefault()}
                                       onClick={(event) => {
                                         event.preventDefault()
                                         event.stopPropagation()
-                                        if (isAlreadyAdded || isZeroStock) return
+                                        if (isZeroStock) return
                                         handleProductSelect(producto)
                                       }}
-                                      disabled={isAlreadyAdded || isZeroStock}
-                                      title={isZeroStock ? 'Sin stock disponible' : isAlreadyAdded ? 'Ya agregado' : undefined}
+                                      disabled={isZeroStock}
+                                      title={
+                                        isZeroStock
+                                          ? (isAlreadyAdded
+                                              ? `Ya agregaste todo el stock disponible (cantidad: ${addedQty})`
+                                              : 'Sin stock disponible')
+                                          : isAlreadyAdded
+                                            ? `Ya agregado (cantidad: ${addedQty})`
+                                            : undefined
+                                      }
                                     >
-                                      <span className="result-codigo">{codigo}</span>
+                                      <span className="result-codigo">
+                                        {codigo}
+                                        {isAlreadyAdded && (
+                                          <span className="create-salida__result-added-badge">
+                                            en esta salida: {Number.isFinite(addedQty) ? addedQty : 0}
+                                          </span>
+                                        )}
+                                      </span>
                                       <span className="result-nombre">{nombre || '-'}</span>
                                       <span className="result-stock">{dispLabel}</span>
                                     </button>
@@ -4949,6 +5018,44 @@ function CreateSalida({
                   disabled={savingCedulaPrompt || !cedulaPromptValue.trim()}
                 >
                   {savingCedulaPrompt ? 'Guardando...' : 'Guardar y continuar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {duplicateProductConfirm && (
+          <div
+            className="create-salida__confirm-overlay"
+            onMouseDown={handleCancelDuplicateProduct}
+          >
+            <div className="create-salida__confirm-card" onMouseDown={(event) => event.stopPropagation()}>
+              <h4>Producto ya agregado</h4>
+              <p>
+                <strong>
+                  {duplicateProductConfirm.productoCodigo}
+                  {duplicateProductConfirm.productoNombre ? ` - ${duplicateProductConfirm.productoNombre}` : ''}
+                </strong>{' '}
+                ya está en el detalle con <strong>{duplicateProductConfirm.existingQty}</strong> unidad(es).
+              </p>
+              <p>
+                ¿Deseas agregar <strong>{duplicateProductConfirm.cantidad}</strong> más? Quedarían{' '}
+                <strong>{duplicateProductConfirm.existingQty + duplicateProductConfirm.cantidad}</strong> en total.
+              </p>
+              <div className="create-salida__confirm-actions">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={handleCancelDuplicateProduct}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={handleConfirmDuplicateProduct}
+                >
+                  Sí, agregar
                 </button>
               </div>
             </div>
