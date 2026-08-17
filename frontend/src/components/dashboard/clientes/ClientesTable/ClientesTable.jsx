@@ -15,7 +15,7 @@ import '../../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
-import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
+import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import {
   buildPrimeColumnFiltersPayload,
@@ -63,6 +63,10 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
+
+  // Ajusta automaticamente el ancho de las columnas para llenar el espacio
+  // disponible en pantallas grandes, sin comprimir en pantallas chicas.
+  useEffect(() => attachAutoExpandColumns(tableWrapperRef.current), [])
   const widthHandlers = useMemo(() => makeWidthStateHandlers('clientes-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
@@ -86,6 +90,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   const [pageSize, setPageSize] = useState(25)
   const [loading, setLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isGlobalSearchPending, setIsGlobalSearchPending] = useState(false)
   const [error, setError] = useState(null)
   const [showBulkSelectConfirm, setShowBulkSelectConfirm] = useState(false)
   const [showBulkSelectProgress, setShowBulkSelectProgress] = useState(false)
@@ -156,7 +161,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
       setLoading(true)
       setError(null)
       try {
-        const tableFilters = options?.tableFilters ?? filters
+        const tableFilters = options?.tableFilters ?? null
         const tableSortField = options?.tableSortField ?? sortField
         const tableSortOrder = options?.tableSortOrder ?? sortOrder
         const url = buildClientsListUrl(criteria, {
@@ -189,7 +194,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
         setIsRefreshing(false)
       }
     },
-    [token, normalizeList, pageSize, buildClientsListUrl, filters, sortField, sortOrder]
+    [token, normalizeList, pageSize, buildClientsListUrl, sortField, sortOrder]
   )
 
   const fetchAllClients = useCallback(
@@ -269,7 +274,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
     }
     setIsRefreshing(true)
     const currentPage = Math.floor(pageFirst / pageSize) + 1
-    fetchClients(lastSearchRef.current, currentPage, pageSize)
+    fetchClients(lastSearchRef.current, currentPage, pageSize, { tableFilters: filters })
   }
 
   // ---------------- Filters ----------------
@@ -331,6 +336,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   const lastSearchRef = useRef({ ...initialSearchCriteria })
   const didInitialSearchRef = useRef(false)
   const globalSearchDebounceRef = useRef(null)
+  const globalSearchSeqRef = useRef(0)
   const [isSearchMaximized, setIsSearchMaximized] = useState(false)
   const [searchPosition, setSearchPosition] = useState({ x: 0, y: 0 })
   const [searchSize, setSearchSize] = useState({ width: 720, height: 520 })
@@ -675,7 +681,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
             className="search-input"
             placeholder="Buscar en tabla"
           />
-          <i className="pi pi-search search-input-icon" />
+          <i className={`pi ${isGlobalSearchPending ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
 
         <button className="rounded-icon-btn" type="button" onClick={refreshData} disabled={loading || isRefreshing} title="Recargar">
@@ -864,7 +870,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   }
 
 
-  async function handleGlobalFilterChange(event) {
+  function handleGlobalFilterChange(event) {
     const value = event.target.value
     const nextFilters = {
       ...(filters || {}),
@@ -872,17 +878,20 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
     }
     setFilters(nextFilters)
     setGlobalFilterValue(value)
-    setPageFirst(0)
     if (!lastSearchRef.current) return
     if (globalSearchDebounceRef.current) {
       clearTimeout(globalSearchDebounceRef.current)
     }
-    setIsRefreshing(true)
+    const seq = globalSearchSeqRef.current + 1
+    globalSearchSeqRef.current = seq
+    setIsGlobalSearchPending(true)
     globalSearchDebounceRef.current = setTimeout(() => {
       fetchClients(lastSearchRef.current, 1, pageSize, {
         tableFilters: nextFilters,
         tableSortField: sortField,
         tableSortOrder: sortOrder,
+      }).finally(() => {
+        if (globalSearchSeqRef.current === seq) setIsGlobalSearchPending(false)
       })
     }, 500)
   }
@@ -1109,7 +1118,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
           </div>
         ) : (
           <>
-        {(loading || isRefreshing) && (
+        {(loading || isRefreshing) && !isGlobalSearchPending && (
           <div className="spinner-container spinner-container--table">
             <div className="spinner" />
           </div>
@@ -1128,7 +1137,7 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
           value={clients}
           dataKey="id"
           header={header}
-          className={`users-datatable users-datatable--compact${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
+          className={`users-datatable users-datatable--compact${(loading || isRefreshing) && !isGlobalSearchPending ? ' users-datatable--loading-content' : ''}${isGlobalSearchPending ? ' users-datatable--search-pending' : ''}`}
           tableStyle={{ width: '100%' }}
           emptyMessage={emptyMessage}
           showGridlines

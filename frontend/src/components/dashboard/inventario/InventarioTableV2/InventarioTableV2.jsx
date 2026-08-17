@@ -26,7 +26,7 @@ import {
 } from '../../../../utils/primeTableQuery'
 import { getModuleActions, moduleHasAnyAction } from '../../menuConfig'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
-import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
+import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -136,6 +136,10 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
+
+  // Ajusta automaticamente el ancho de las columnas para llenar el espacio
+  // disponible en pantallas grandes, sin comprimir en pantallas chicas.
+  useEffect(() => attachAutoExpandColumns(tableWrapperRef.current), [])
   const locationHoverHideTimeoutRef = useRef(null)
   const oemHoverHideTimeoutRef = useRef(null)
   const fetchProductsSeqRef = useRef(0)

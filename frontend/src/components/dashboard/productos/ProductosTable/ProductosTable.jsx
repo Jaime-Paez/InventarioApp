@@ -24,7 +24,7 @@ import {
 } from '../../../../utils/primeTableQuery'
 import { moduleHasAnyAction } from '../../menuConfig'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
-import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
+import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -104,6 +104,10 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
+
+  // Ajusta automaticamente el ancho de las columnas para llenar el espacio
+  // disponible en pantallas grandes, sin comprimir en pantallas chicas.
+  useEffect(() => attachAutoExpandColumns(tableWrapperRef.current), [])
   const oemHoverHideTimeoutRef = useRef(null)
   const widthHandlers = useMemo(() => makeWidthStateHandlers('productos-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)

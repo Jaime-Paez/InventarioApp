@@ -10,7 +10,7 @@ import './AuditoriaTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
-import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
+import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildPrimeOrdering } from '../../../../utils/primeTableQuery'
 
 const ACCION_COLORS = {
@@ -60,6 +60,10 @@ function AuditoriaTable({ token }) {
   const toast = useRef(null)
   const opRef = useRef(null)
   const tableWrapperRef = useRef(null)
+
+  // Ajusta automaticamente el ancho de las columnas para llenar el espacio
+  // disponible en pantallas grandes, sin comprimir en pantallas chicas.
+  useEffect(() => attachAutoExpandColumns(tableWrapperRef.current), [])
   const widthHandlers = useMemo(() => makeWidthStateHandlers('auditoria-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
 

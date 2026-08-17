@@ -734,6 +734,43 @@
   display: none;
 }
 
+/* Busqueda rapida (debounced) en curso: a diferencia de --loading-content,
+   esto NO oculta el header (el input de busqueda sigue visible/editable) --
+   solo atenua las filas ya cargadas y muestra un spinner centrado mientras
+   llega el resultado nuevo. Mismo patron que .inventario-v2-datatable--pending. */
+.users-datatable.users-datatable--search-pending .p-datatable-scrollable-body {
+  position: relative;
+  pointer-events: none;
+}
+
+.users-datatable.users-datatable--search-pending .p-datatable-scrollable-body::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--table-color) 86%, transparent);
+  z-index: 2;
+}
+
+.dashboard-shell.dark .users-datatable.users-datatable--search-pending .p-datatable-scrollable-body::before {
+  background: color-mix(in srgb, var(--table-color-dark) 86%, transparent);
+}
+
+.users-datatable.users-datatable--search-pending .p-datatable-scrollable-body::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  margin-left: -16px;
+  border-radius: 50%;
+  border: 3px solid var(--color-text-dark);
+  border-top-color: var(--color-primary);
+  animation: spin 0.9s linear infinite;
+  z-index: 3;
+}
+
 .spinner {
   width: 32px;
   height: 32px;

@@ -101,23 +101,23 @@ export const clearSavedColumnWidths = (stateKey) => {
 }
 
 /**
- * Resets a DataTable to natural (browser auto-layout) column widths.
- * Clears PrimeReact's injected width CSS and removes the saved widths from the store.
+ * Clears PrimeReact's injected per-column width CSS and the table's own
+ * inline width/min-width, so the browser recomputes natural (table-layout:
+ * auto) widths on next paint. Pure DOM mutation -- never touches storage.
+ * Shared by autoFitTableColumns (manual, persistent reset) and
+ * attachAutoExpandColumns (automatic, visual-only fill-the-container check).
  *
- * @param {HTMLElement} wrapperEl - The div wrapping the DataTable (ref target)
- * @param {string|null} stateKey  - storage key used for column widths
+ * @returns {boolean} true if a DataTable was found and cleared
  */
-export const autoFitTableColumns = (wrapperEl, stateKey = null) => {
-  if (!wrapperEl || typeof window === 'undefined') return
-
+const _clearLiveColumnWidthStyles = (wrapperEl) => {
   const dtRoot = wrapperEl.querySelector('[data-pc-name="datatable"]')
-  if (!dtRoot) return
+  if (!dtRoot) return false
 
   // Find PrimeReact's unique attribute stamped on the root element (pr_id_N)
   const uniqueAttr = [...dtRoot.attributes]
     .map((a) => a.name)
     .find((name) => /^pr_id_\d+$/.test(name))
-  if (!uniqueAttr) return
+  if (!uniqueAttr) return false
 
   // Clear PrimeReact's injected column-width CSS rules
   ;[...document.querySelectorAll('style')].forEach((s) => {
@@ -132,7 +132,72 @@ export const autoFitTableColumns = (wrapperEl, stateKey = null) => {
     tableEl.style.width = ''
     tableEl.style.minWidth = ''
   }
+  return true
+}
+
+/**
+ * Resets a DataTable to natural (browser auto-layout) column widths.
+ * Clears PrimeReact's injected width CSS and removes the saved widths from the store.
+ *
+ * @param {HTMLElement} wrapperEl - The div wrapping the DataTable (ref target)
+ * @param {string|null} stateKey  - storage key used for column widths
+ */
+export const autoFitTableColumns = (wrapperEl, stateKey = null) => {
+  if (!wrapperEl || typeof window === 'undefined') return
+  if (!_clearLiveColumnWidthStyles(wrapperEl)) return
 
   // Clear saved widths so the next mount starts clean
   if (stateKey) clearSavedColumnWidths(stateKey)
+}
+
+/**
+ * Keeps a DataTable filling its wrapper on wide screens instead of leaving
+ * blank space to the right. PrimeReact persists resized columns as an
+ * absolute pixel table width (see makeWidthStateHandlers) -- restoring that
+ * on a wider viewport than it was saved on leaves the table narrower than
+ * its container. This watches the wrapper and, only when the table is
+ * currently narrower than the available space (never the other way --
+ * narrow screens keep their horizontal scroll untouched), clears the live
+ * width overrides so table-layout:auto naturally expands columns to fill
+ * it. Purely visual: it never touches the saved column widths, so a
+ * narrower screen (or a manual resize afterwards) still restores/persists
+ * normally.
+ *
+ * @param {HTMLElement} wrapperEl - the div wrapping the DataTable (ref target)
+ * @returns {() => void} cleanup function
+ */
+export const attachAutoExpandColumns = (wrapperEl) => {
+  if (!wrapperEl || typeof window === 'undefined' || typeof ResizeObserver === 'undefined') {
+    return () => {}
+  }
+
+  const EXPAND_TOLERANCE_PX = 2
+  let frame = null
+
+  const checkAndExpand = () => {
+    const dtRoot = wrapperEl.querySelector('[data-pc-name="datatable"]')
+    const tableEl = dtRoot?.querySelector('[data-pc-section="table"]')
+    if (!tableEl) return
+
+    const wrapperWidth = wrapperEl.clientWidth
+    const tableWidth = tableEl.getBoundingClientRect().width
+    if (!wrapperWidth || !tableWidth) return
+    if (tableWidth >= wrapperWidth - EXPAND_TOLERANCE_PX) return
+
+    _clearLiveColumnWidthStyles(wrapperEl)
+  }
+
+  const scheduleCheck = () => {
+    if (frame) cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(checkAndExpand)
+  }
+
+  scheduleCheck()
+  const observer = new ResizeObserver(scheduleCheck)
+  observer.observe(wrapperEl)
+
+  return () => {
+    observer.disconnect()
+    if (frame) cancelAnimationFrame(frame)
+  }
 }

@@ -4,7 +4,20 @@ from uuid import uuid4
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, OuterRef, Q, Subquery, Sum, Value
+from django.db.models import (
+    Case,
+    Count,
+    DecimalField,
+    ExpressionWrapper,
+    F,
+    IntegerField,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
 from django.db.models.deletion import ProtectedError
 from django.db.models.expressions import RawSQL
 from django.db.models.functions import Coalesce
@@ -70,6 +83,37 @@ ALLOWED_STOCK_MODULES = {
 }
 TRANSFER_ISSUE_REMINDER_KIND = "solicitud_traslado_inconveniente"
 TRANSFER_ISSUE_REMINDER_CONTEXT_TYPE = "traslado_inconveniente"
+
+
+# La descripcion de una venta empieza con "Cliente: <nombre>" (ver
+# buildDescripcion en CreateSalida.jsx) -- no existe un FK real a Cliente en
+# el movimiento, asi que este es el mismo criterio que ya usa el filtro
+# cliente_texto (descripcion__iregex=r"(?i)^cliente:") para reconocerlo.
+_CLIENTE_DESCRIPCION_RE = re.compile(r"(?i)^cliente:\s*(.*)")
+
+
+def _extract_cliente_label(descripcion):
+    text = str(descripcion or "").strip()
+    match = _CLIENTE_DESCRIPCION_RE.match(text)
+    if not match:
+        return ""
+    return match.group(1).split("\n", 1)[0].strip()
+
+
+# Orden por defecto de la tabla de movimientos (cuando no se pidio un orden
+# explicito): Guardado y Pendiente (solicitudes de traslado sin resolver) y
+# Enviado (traslado ya en camino) siempre primero y en ese orden fijo, para
+# que esos estados accionables salten a la vista de inmediato -- el resto
+# cae despues, ordenado por fecha como antes.
+def _resolve_estado_priority(estado_nombre):
+    normalized = str(estado_nombre or "").strip().lower()
+    if "guardado" in normalized:
+        return 0
+    if "pend" in normalized:
+        return 1
+    if "envi" in normalized:
+        return 2
+    return 3
 
 
 class MovimientoInventarioViewSet(viewsets.ModelViewSet):
@@ -184,6 +228,16 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 elif "recib" in estado_normalizado or "llego" in estado_normalizado:
                     estado_nombre = "Llego"
 
+            sucursal_objetivo_nombre = (
+                row.get("sucursal_objetivo__nombre")
+                if is_mapping
+                else getattr(getattr(row, "sucursal_objetivo", None), "nombre", "")
+            ) or ""
+            if tipo_nombre.startswith("sal") and "vent" in sub_tipo_nombre:
+                descripcion_value = row.get("descripcion") if is_mapping else getattr(row, "descripcion", "")
+                sucursal_objetivo_nombre = _extract_cliente_label(descripcion_value) or sucursal_objetivo_nombre
+            sucursal_objetivo_nombre = sucursal_objetivo_nombre or "-"
+
             payload.append(
                 {
                     "id": movement_id,
@@ -203,11 +257,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     ) or "-",
                     "sub_tipo_nombre": sub_tipo_raw or "-",
                     "estado_nombre": estado_nombre,
-                    "sucursal_objetivo_nombre": (
-                        row.get("sucursal_objetivo__nombre")
-                        if is_mapping
-                        else getattr(getattr(row, "sucursal_objetivo", None), "nombre", "")
-                    ) or "-",
+                    "sucursal_objetivo_nombre": sucursal_objetivo_nombre,
                     "casa_comercial_nombre": (
                         row.get("casa_comercial__nombre")
                         if is_mapping
@@ -236,6 +286,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         else str(fecha_value or "").strip()
                     ),
                     "_sort_id": movement_id,
+                    "_sort_estado_priority": _resolve_estado_priority(estado_nombre),
                 }
             )
         return payload
@@ -331,6 +382,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     ),
                     "_sort_id": solicitud_id,
                     "_sort_priority": 0 if is_guardado else 1,
+                    "_sort_estado_priority": _resolve_estado_priority(estado_label),
                 }
             )
         return payload
@@ -409,12 +461,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         return Response({"no_documento": document_number})
 
+    # Orden por defecto (sin orden explicito pedido por el usuario): estados
+    # accionables primero -- Guardado, Pendiente, Enviado, en ese orden fijo
+    # -- y dentro de cada grupo, fecha descendente como antes.
+    _DEFAULT_TABLA_ORDERING_TOKENS = ["_sort_estado_priority", "-_sort_created_at", "-fecha", "-id"]
+
     def _resolve_tabla_ordering_tokens(self):
         raw = (self.request.query_params.get("ordering") or "").strip()
         if not raw:
-            return ["-_sort_created_at", "-fecha", "-id"]
+            return list(self._DEFAULT_TABLA_ORDERING_TOKENS)
         tokens = [token.strip() for token in raw.split(",") if token.strip()]
-        return tokens or ["-_sort_created_at", "-fecha", "-id"]
+        return tokens or list(self._DEFAULT_TABLA_ORDERING_TOKENS)
 
     # Mismo criterio que _NO_DOCUMENTO_SORT_KEY_SQL (natural sort), pero en
     # Python -- esto ordena las filas de solicitudes de traslado (que no
@@ -429,6 +486,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 return Decimal(str(value))
             except (InvalidOperation, TypeError, ValueError):
                 return Decimal("0")
+
+        if field == "_sort_estado_priority":
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return 3
 
         if field == "no_documento":
             text = str(value or "").strip().lower()
@@ -448,9 +511,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
     def _sort_table_payload(self, rows):
         ordering_map = {
+            "_sort_estado_priority": "_sort_estado_priority",
             "_sort_created_at": "_sort_created_at",
             "id": "_sort_id",
             "no_documento": "no_documento",
+            "factura_referencia": "factura_referencia",
             "fecha": "fecha",
             "sucursal__nombre": "sucursal_nombre",
             "sub_tipo_movimiento__nombre": "sub_tipo_nombre",
@@ -1007,9 +1072,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     # todo y ordenar en Python. "_sort_created_at" no es un campo real -- en
     # un movimiento normal (a diferencia de una solicitud) equivale a fecha.
     _TABLA_ORDER_FIELD_MAP = {
+        "_sort_estado_priority": "estado_priority_sort_key",
         "_sort_created_at": "fecha",
         "id": "id",
         "no_documento": "no_documento_sort_key",
+        "factura_referencia": "factura_referencia",
         "fecha": "fecha",
         "sucursal__nombre": "sucursal__nombre",
         "sub_tipo_movimiento__nombre": "sub_tipo_movimiento__nombre",
@@ -1039,6 +1106,23 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     def _annotate_no_documento_sort_key(self, queryset):
         return queryset.annotate(
             no_documento_sort_key=RawSQL(self._NO_DOCUMENTO_SORT_KEY_SQL, ())
+        )
+
+    # Mismo criterio que _resolve_estado_priority(), pero calculado en la
+    # base de datos para poder ordenar/recortar la ventana de paginacion sin
+    # traer toda la tabla. Guardado y Pendiente son estados de solicitudes de
+    # traslado (no existen como estado_movimiento real), asi que en la
+    # practica esto solo distingue "Enviado" (2) del resto (3) -- los grupos
+    # 0 y 1 los aportan las solicitudes, que se combinan aparte en Python.
+    def _annotate_estado_priority_sort_key(self, queryset):
+        return queryset.annotate(
+            estado_priority_sort_key=Case(
+                When(estado_movimiento__nombre__icontains="guardado", then=Value(0)),
+                When(estado_movimiento__nombre__icontains="pend", then=Value(1)),
+                When(estado_movimiento__nombre__icontains="envi", then=Value(2)),
+                default=Value(3),
+                output_field=IntegerField(),
+            )
         )
 
     def _resolve_tabla_db_order_by(self):
@@ -1110,6 +1194,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         ordering_tokens = self._resolve_tabla_ordering_tokens()
         if any(token.lstrip("-") == "no_documento" for token in ordering_tokens):
             queryset = self._annotate_no_documento_sort_key(queryset)
+        if any(token.lstrip("-") == "_sort_estado_priority" for token in ordering_tokens):
+            queryset = self._annotate_estado_priority_sort_key(queryset)
         bounded_queryset = queryset.order_by(*self._resolve_tabla_db_order_by())[:needed_count]
         serialized_movimientos = self._serialize_table_rows(bounded_queryset)
 

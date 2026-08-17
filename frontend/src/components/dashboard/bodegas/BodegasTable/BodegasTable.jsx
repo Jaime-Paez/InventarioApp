@@ -15,7 +15,7 @@ import '../../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
-import { autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
+import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 
 const normId = (v) => (v == null ? null : String(v))
@@ -33,6 +33,10 @@ function BodegasTable({ token, onSelect, moduleActions }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
+
+  // Ajusta automaticamente el ancho de las columnas para llenar el espacio
+  // disponible en pantallas grandes, sin comprimir en pantallas chicas.
+  useEffect(() => attachAutoExpandColumns(tableWrapperRef.current), [])
   const widthHandlers = useMemo(() => makeWidthStateHandlers('bodegas-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true

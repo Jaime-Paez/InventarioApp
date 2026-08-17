@@ -10,7 +10,7 @@ import { Button } from 'primereact/button'
 import { Check, Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import { API_URL, authFetch } from '../../../utils/api'
-import { autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
+import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import { formatDate } from '../../../utils/dateFormat'
@@ -8234,6 +8234,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 function ImportacionesTable({ token, moduleActions, status: statusProp, isTabActive, onError, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled }) {
   const toast = useRef(null)
   const tableWrapperRef = useRef(null)
+
+  // Ajusta automaticamente el ancho de las columnas para llenar el espacio
+  // disponible en pantallas grandes, sin comprimir en pantallas chicas.
+  useEffect(() => attachAutoExpandColumns(tableWrapperRef.current), [])
   const widthHandlers = useMemo(() => makeWidthStateHandlers('importaciones-table-state-v2'), [])
 
   const [activeStatus, setActiveStatus] = useState('borrador')
