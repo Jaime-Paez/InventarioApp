@@ -679,10 +679,9 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
   const handleStartTransfer = (location) => {
     if (transferBusy) return
-    if (!canManageBranchLocation(location?.sucursalId)) {
-      setLocationError(SCOPE_EDIT_LOCATION_ERROR)
-      return
-    }
+    // Mover cantidad entre ubicaciones de la MISMA sucursal no exige el
+    // alcance de sucursal de canManageBranchLocation -- eso solo aplica a
+    // agregar/eliminar ubicaciones (que si cambian el total), no a mover.
     setTransferUid(location.uid)
     setTransferDraft({
       bodegaId: location.bodegaId,
@@ -718,10 +717,6 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     const moveQty = parseQuantity(transferDraft.cantidad)
     const sourceQty = Number(sourceLocation.cantidad) || 0
 
-    if (!canManageBranchLocation(sourceLocation.sucursalId)) {
-      setLocationError(SCOPE_EDIT_LOCATION_ERROR)
-      return
-    }
     if (!destBodegaId || !destDivisionId || !destSubdivisionId) {
       setLocationError('Selecciona bodega, division y subdivision de destino.')
       return
@@ -746,58 +741,43 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     const remaining = sourceQty - moveQty
 
     const sourceEntry = entryBySubdivision.get(String(sourceLocation.subdivisionId))
-    const destEntry = entryBySubdivision.get(String(destSubdivisionId))
 
     setTransferSaving(true)
     setLocationError('')
     try {
-      const calls = []
+      // Un solo endpoint dedicado (en vez de PUT/POST/DELETE crudos contra
+      // /inventario/inventario/) porque reposicionar cantidad ya existente
+      // entre ubicaciones de la MISMA sucursal no requiere permiso de
+      // escritura completo -- solo mover cantidades (nunca crearlas ni
+      // destruirlas), asi que el backend lo permite a cualquier usuario con
+      // algun modulo asignado en esa sucursal, no solo a quien puede editar
+      // productos/inventario directamente.
+      const response = await authFetch(
+        `${API_URL}/inventario/inventario/mover/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            producto_id: productId,
+            origen_subdivision_id: Number(sourceLocation.subdivisionId),
+            destino_subdivision_id: Number(destSubdivisionId),
+            referencia: sourceEntry?.referencia ?? '',
+            cantidad: moveQty,
+          }),
+        },
+        token
+      )
 
-      if (sourceEntry?.id) {
-        calls.push(
-          remaining > 0
-            ? authFetch(
-                `${API_URL}/inventario/inventario/${sourceEntry.id}/`,
-                { method: 'PUT', body: JSON.stringify({ producto_id: productId, subdivision_id: Number(sourceLocation.subdivisionId), referencia: sourceEntry.referencia ?? '', cantidad: remaining }) },
-                token
-              )
-            : authFetch(`${API_URL}/inventario/inventario/${sourceEntry.id}/`, { method: 'DELETE' }, token)
-        )
-      }
-
-      if (destEntry?.id) {
-        calls.push(
-          authFetch(
-            `${API_URL}/inventario/inventario/${destEntry.id}/`,
-            { method: 'PUT', body: JSON.stringify({ producto_id: productId, subdivision_id: Number(destSubdivisionId), referencia: destEntry.referencia ?? '', cantidad: (Number(destEntry.cantidad) || 0) + moveQty }) },
-            token
-          )
-        )
-      } else {
-        calls.push(
-          authFetch(
-            `${API_URL}/inventario/inventario/`,
-            { method: 'POST', body: JSON.stringify({ producto_id: productId, subdivision_id: Number(destSubdivisionId), referencia: '', cantidad: moveQty }) },
-            token
-          )
-        )
-      }
-
-      const responses = await Promise.all(calls)
-      const failed = responses.find((response) => !response.ok)
-      if (failed) {
-        const detailPayload = await failed.json().catch(() => ({}))
+      if (!response.ok) {
+        const detailPayload = await response.json().catch(() => ({}))
         const detailText = String(detailPayload?.detail || '').trim()
-        if (failed.status === 403 || normalizeErrorText(detailText).includes('no tienes acceso a la sucursal seleccionada')) {
+        if (response.status === 403 || normalizeErrorText(detailText).includes('no tienes acceso a la sucursal seleccionada')) {
           throw new Error(SCOPE_EDIT_LOCATION_ERROR)
         }
         throw new Error(detailText || 'No se pudo completar el traslado.')
       }
 
-      const payloads = await Promise.all(
-        responses.map((response) => response.clone().json().catch(() => ({})))
-      )
-      if (payloads.some((payload) => Boolean(payload?.reminders_sync_required))) {
+      const movePayload = await response.json().catch(() => ({}))
+      if (movePayload?.reminders_sync_required) {
         emitRemindersSync()
       }
 
@@ -1397,7 +1377,10 @@ const InventarioEditor = forwardRef(function InventarioEditor(
             }
 
             const isTransferring = transferUid === location.uid
-            const canTransferRow = canManageRow
+            // A diferencia de canManageRow (agregar/eliminar, que cambia el
+            // total), mover cantidad entre ubicaciones de la misma sucursal
+            // no exige el alcance de sucursal -- lo puede hacer cualquiera.
+            const canTransferRow = true
             const transferBodegas = bodegasBySucursal.get(location.sucursalId) || []
             const transferDivisions = divisionsByBodega.get(transferDraft.bodegaId) || []
             const transferSubdivisions = (subdivisionsByDivision.get(transferDraft.divisionId) || [])

@@ -1,6 +1,7 @@
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 
+from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.db.models import (
     Case,
@@ -502,6 +503,101 @@ class InventarioViewSet(viewsets.ModelViewSet):
         response_data = dict(serializer.data)
 
         if self._cancel_pending_transfers_due_to_inventory_change(serializer.instance):
+            response_data[REMINDERS_SYNC_FLAG] = True
+
+        return Response(response_data)
+
+    def get_permissions(self):
+        # "mover" traslada cantidad ya existente entre ubicaciones de una MISMA
+        # sucursal (no crea ni destruye stock, solo lo reposiciona), asi que no
+        # exige ningun permiso de modulo -- cualquier usuario autenticado puede
+        # hacerlo en cualquier sucursal. Solo se valida que origen y destino
+        # sean de la misma sucursal (mas abajo) y que la cantidad total no
+        # cambie (se revalida en el servidor, no se confia en el cliente).
+        if getattr(self, "action", None) == "mover":
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
+    @action(detail=False, methods=["post"], url_path="mover")
+    def mover(self, request, *args, **kwargs):
+        producto_id = request.data.get("producto_id")
+        origen_subdivision_id = request.data.get("origen_subdivision_id")
+        destino_subdivision_id = request.data.get("destino_subdivision_id")
+        referencia = str(request.data.get("referencia") or "").strip()
+
+        try:
+            cantidad = int(request.data.get("cantidad"))
+        except (TypeError, ValueError):
+            return Response({"detail": "Ingresa una cantidad valida."}, status=status.HTTP_400_BAD_REQUEST)
+        if cantidad <= 0:
+            return Response({"detail": "Ingresa una cantidad valida."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not producto_id or not origen_subdivision_id or not destino_subdivision_id:
+            return Response(
+                {"detail": "Faltan datos para completar el traslado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if str(origen_subdivision_id) == str(destino_subdivision_id):
+            return Response(
+                {"detail": "Elige una ubicacion distinta a la actual."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        origen_subdivision = SubDivision.objects.select_related(
+            "division__bodega__sucursal"
+        ).filter(id=origen_subdivision_id).first()
+        destino_subdivision = SubDivision.objects.select_related(
+            "division__bodega__sucursal"
+        ).filter(id=destino_subdivision_id).first()
+        if not origen_subdivision or not destino_subdivision:
+            return Response({"detail": "Ubicacion no encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        origen_sucursal_id = origen_subdivision.division.bodega.sucursal_id
+        destino_sucursal_id = destino_subdivision.division.bodega.sucursal_id
+        if origen_sucursal_id != destino_sucursal_id:
+            return Response(
+                {"detail": "Solo puedes trasladar entre ubicaciones de la misma sucursal."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            origen = (
+                Inventario.objects.select_for_update()
+                .filter(
+                    producto_id=producto_id,
+                    subdivision_id=origen_subdivision_id,
+                    referencia=referencia,
+                )
+                .first()
+            )
+            if not origen or origen.cantidad < cantidad:
+                return Response(
+                    {"detail": "No hay suficiente cantidad disponible en la ubicacion de origen."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            remaining = origen.cantidad - cantidad
+            if remaining > 0:
+                origen.cantidad = remaining
+                origen.save(update_fields=["cantidad"])
+            else:
+                origen.delete()
+                origen = None
+
+            destino, _ = Inventario.objects.select_for_update().get_or_create(
+                producto_id=producto_id,
+                subdivision_id=destino_subdivision_id,
+                referencia=referencia,
+                defaults={"cantidad": 0},
+            )
+            destino.cantidad = destino.cantidad + cantidad
+            destino.save(update_fields=["cantidad"])
+
+        response_data = {
+            "origen": InventarioSerializer(origen).data if origen is not None else None,
+            "destino": InventarioSerializer(destino).data,
+        }
+        if self._cancel_pending_transfers_due_to_inventory_change(destino):
             response_data[REMINDERS_SYNC_FLAG] = True
 
         return Response(response_data)
