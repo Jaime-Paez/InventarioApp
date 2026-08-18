@@ -1141,6 +1141,13 @@ function RecordatoriosPopup({
       return 'critical'
     }
 
+    // Cualquier otro recordatorio que se muestre con la etiqueta amarilla
+    // "Pendiente" (traslados por decidir, etc.) tambien marca el dia/flecha,
+    // igual que ya pasa con los rojos -- solo en amarillo en vez de rojo.
+    if (displayStatus.className === 'pending') {
+      return 'warning'
+    }
+
     return 'default'
   }, [
     currentUserIdSet,
