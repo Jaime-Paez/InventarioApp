@@ -1043,6 +1043,17 @@ function RecordatoriosPopup({
 
   const getTimelineDaySeverityForReminder = useCallback((reminder) => {
     if (isGarantiaResultReminder(reminder)) return 'default'
+    // Un traslado rechazado/cancelado sella completedBy con TODOS los
+    // destinatarios apenas se resuelve (para que no siga inflando la bola de
+    // pendientes), sin que nadie lo haya abierto todavia -- pero el dia
+    // seguia pintandose rojo/amarillo para siempre porque esta funcion nunca
+    // revisaba ese sello. Si el usuario actual ya quedo marcado ahi, el
+    // recordatorio ya no necesita su atencion: no debe seguir marcando el
+    // dia/flecha, aunque la tarjeta en si (dentro del dia) siga mostrando
+    // "Rechazada" para conservar el historial.
+    if (reminderCompletedByIds(reminder).some((id) => currentUserIdSet.has(id))) {
+      return 'default'
+    }
     const baseStatus = buildReminderStatusForUser(reminder, currentUserIdSet)
     const isTransferIssue = isTransferIssueReminder(reminder)
     const isTransferContextReminder =
