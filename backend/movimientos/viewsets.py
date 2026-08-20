@@ -4202,7 +4202,20 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 )
             queryset = queryset.filter(sucursal_solicitante_id=int(sucursal_solicitante_raw))
 
-        queryset = queryset.filter(creado_por=request.user)
+        # Antes se filtraba por creado_por=request.user (solo quien creo el
+        # pedido lo veia aqui para confirmar su recepcion). El problema: los
+        # permisos de una sucursal cambian de responsable con el tiempo, y
+        # quien tiene hoy el modulo Entradas ahi debe poder ver y gestionar
+        # estos envios aunque no los haya creado el -- no solo el creador
+        # original. Se filtra por alcance de sucursal, igual que el resto de
+        # acciones de esta solicitud (ver confirmar_recepcion_traslado).
+        allowed_branch_ids = get_readable_sucursal_ids(
+            request.user, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS
+        )
+        if allowed_branch_ids is not None:
+            if not allowed_branch_ids:
+                return Response([], status=status.HTTP_200_OK)
+            queryset = queryset.filter(sucursal_solicitante_id__in=sorted(allowed_branch_ids))
 
         pending_issue_count_by_solicitud = {
             int(row["solicitud_id"]): int(row["count"] or 0)
