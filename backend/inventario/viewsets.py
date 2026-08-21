@@ -704,17 +704,35 @@ class InventarioViewSet(viewsets.ModelViewSet):
         if not tokens:
             return product_queryset.distinct()
 
+        # Coincidencias por casa comercial, OEM o ubicacion se resuelven con
+        # una subconsulta (id__in=...) en vez de un join directo sobre
+        # product_queryset. Antes cada palabra buscada se resolvia con un
+        # .filter() encadenado que unia esas relaciones multivaluadas
+        # directamente -- Django no reutiliza esos joins entre llamadas de
+        # .filter(), asi que cada palabra multiplicaba las filas intermedias
+        # sobre las anteriores. Con una busqueda de 4 palabras eso tardaba
+        # mas de 13 minutos y encima devolvia 0 resultados (el join
+        # explotaba antes de llegar al distinct() final). Una subconsulta
+        # independiente por relacion y por palabra no infla las filas del
+        # queryset principal, y el significado no cambia: por palabra,
+        # "algun" registro relacionado que calce sigue bastando.
         for token in tokens:
+            matching_casa_ids = Producto.objects.filter(
+                casas_comerciales__nombre__icontains=token
+            ).values("id")
+            matching_oem_ids = Producto.objects.filter(
+                oem_productos__oem__codigo__icontains=token
+            ).values("id")
             product_query = (
                 Q(codigo__icontains=token)
                 | Q(nombre__icontains=token)
                 | Q(descripcion__icontains=token)
                 | Q(referencia__icontains=token)
-                | Q(casas_comerciales__nombre__icontains=token)
-                | Q(oem_productos__oem__codigo__icontains=token)
+                | Q(id__in=matching_casa_ids)
+                | Q(id__in=matching_oem_ids)
             )
             if allowed_branch_ids:
-                location_query = (
+                matching_location_ids = Producto.objects.filter(
                     Q(
                         inventarios__subdivision__division__bodega__sucursal_id__in=allowed_branch_ids
                     )
@@ -729,8 +747,8 @@ class InventarioViewSet(viewsets.ModelViewSet):
                         )
                         | Q(inventarios__referencia__icontains=token)
                     )
-                )
-                product_query |= location_query
+                ).values("id")
+                product_query |= Q(id__in=matching_location_ids)
             product_queryset = product_queryset.filter(product_query)
 
         return product_queryset.distinct()
