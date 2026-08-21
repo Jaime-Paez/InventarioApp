@@ -13,6 +13,13 @@ import useModalAnimation from '../../common/useModalAnimation'
 import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
+import {
+  readRemindersFromStorage,
+  writeRemindersToStorage,
+  emitRemindersSync,
+  isReminderForContext,
+  reminderCompletedByIds,
+} from '../../common/reminders/remindersStorage'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -1157,6 +1164,34 @@ function SolicitudDetails({
     }
   }
 
+  // El recordatorio de "Nueva solicitud" (creado al momento de crearla, ver
+  // CreateSolicitud.jsx) nunca se marcaba resuelto -- quedaba "Pendiente"
+  // para siempre en Recordatorios aunque la solicitud ya se hubiera
+  // revisado o archivado, porque ese flujo no tiene el sistema rico de
+  // "decision"/transferHistory que sí usan los traslados. Se sella
+  // completedBy con todos los destinatarios actuales, igual que se hace
+  // para un traslado ya resuelto, para que deje de figurar como pendiente.
+  const resolveSolicitudReminder = (solicitudId) => {
+    const id = String(solicitudId ?? '').trim()
+    if (!id) return
+    const existing = readRemindersFromStorage()
+    let changed = false
+    const next = existing.map((reminder) => {
+      if (!isReminderForContext(reminder, { type: 'solicitud', id })) return reminder
+      const recipientIds = (Array.isArray(reminder?.recipients) ? reminder.recipients : [])
+        .map((recipient) => String(recipient?.id ?? '').trim())
+        .filter(Boolean)
+      const completedBy = new Set(reminderCompletedByIds(reminder))
+      recipientIds.forEach((recipientId) => completedBy.add(recipientId))
+      changed = true
+      return { ...reminder, completedBy: Array.from(completedBy) }
+    })
+    if (changed) {
+      writeRemindersToStorage(next)
+      emitRemindersSync()
+    }
+  }
+
   const handleRevisado = (updatedSolicitud) => {
     setIsRevisarModalOpen(false)
     setRevisarTarget(null)
@@ -1178,6 +1213,7 @@ function SolicitudDetails({
             : item
         )
       )
+      resolveSolicitudReminder(updatedSolicitud.id)
     }
     onUpdated?.()
   }
@@ -1402,6 +1438,7 @@ function SolicitudDetails({
             : item
         )
       )
+      resolveSolicitudReminder(updatedSolicitud.id)
     }
     onUpdated?.()
   }
