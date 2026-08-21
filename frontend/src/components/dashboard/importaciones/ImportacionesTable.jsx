@@ -3837,12 +3837,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   }
 
   const handleCreate = async () => {
-    if (!allConflictsResolved || !allPricesSet || !allDescripcionesSet) {
+    if (!allConflictsResolved || !allPricesSet || !allDescripcionesSet || duplicateProductGroups.length > 0) {
       setSubmitAttempted(true)
       const reasons = []
       if (!allDescripcionesSet) reasons.push(`falta la descripción de ${pendingDescripcionCount} producto${pendingDescripcionCount !== 1 ? 's' : ''} nuevo${pendingDescripcionCount !== 1 ? 's' : ''}`)
       if (!allPricesSet) reasons.push(`falta el precio de ${pendingPriceCount} producto${pendingPriceCount !== 1 ? 's' : ''} nuevo${pendingPriceCount !== 1 ? 's' : ''}`)
       if (!allConflictsResolved) reasons.push('hay conflictos de referencia sin resolver')
+      if (duplicateProductGroups.length > 0) reasons.push('hay productos repetidos dentro del mismo Excel')
       toastRef.current?.show({
         severity: 'warn',
         summary: 'Faltan datos',
@@ -3920,6 +3921,21 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // código) solo queda como detalle de la sugerencia, se completa después.
   const pendingDescripcionCount = validRows.filter(r => r.codigo_sugerido && !String(r.descripcion || '').trim()).length
   const allDescripcionesSet = pendingDescripcionCount === 0
+  // El backend rechaza toda la importacion si el mismo producto del catalogo
+  // aparece en mas de una fila (validate_detalles), pero recien al crear —
+  // despues de que el usuario ya resolvio conflictos de referencia y precios.
+  // Se detecta aca antes, para bloquear el paso 3 de una vez, igual que
+  // incompleteRows.
+  const duplicateProductGroups = (() => {
+    const byProductId = new Map()
+    validRows.forEach((row) => {
+      if (!row.matched_producto_id) return
+      const key = String(row.matched_producto_id)
+      if (!byProductId.has(key)) byProductId.set(key, [])
+      byProductId.get(key).push(row)
+    })
+    return [...byProductId.values()].filter((rows) => rows.length > 1)
+  })()
 
   const selectAllDecision = (decision) => {
     const updates = {}
@@ -4253,6 +4269,30 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       Todo producto debe tener referencia. Si ya existe en el catálogo, también necesita una cantidad real a importar. La descripción y el PVP de un producto nuevo se pueden completar en el siguiente paso. Corrige esos datos en el Excel y vuelve a subirlo.
                     </p>
                   </div>
+                ) : duplicateProductGroups.length > 0 ? (
+                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="pi pi-exclamation-triangle" style={{ color: '#dc2626', fontSize: 'var(--font-size-base)' }} />
+                      <strong style={{ fontSize: 'var(--font-size-sm)', color: '#7f1d1d' }}>
+                        {duplicateProductGroups.length} producto{duplicateProductGroups.length !== 1 ? 's' : ''} repetido{duplicateProductGroups.length !== 1 ? 's' : ''} dentro del mismo Excel
+                      </strong>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {duplicateProductGroups.map((rows, gi) => (
+                        <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)', padding: '4px 6px', background: '#fee2e2', borderRadius: 4, flexWrap: 'wrap' }}>
+                          <span style={{ color: '#7f1d1d', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            Filas {rows.map((r) => r.fila_excel).join(', ')}
+                          </span>
+                          <span style={{ color: '#7f1d1d', minWidth: 160 }}>
+                            {rows[0]?.matched_producto_codigo || rows[0]?.codigo || '—'} — {rows[0]?.matched_producto_nombre || rows[0]?.descripcion || ''}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#7f1d1d' }}>
+                      No puedes importar el mismo producto dos veces en el mismo Excel. Combina esas filas en una sola (sumando la cantidad) o elimina la repetida, y vuelve a subirlo.
+                    </p>
+                  </div>
                 ) : (
                   <>
                     {conflictoRows.length > 0 && (
@@ -4577,7 +4617,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
               {step === 2 && (
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setStep(1)} disabled={parsing}>Atrás</button>
               )}
-              {step === 3 && !incompleteRows.length && (
+              {step === 3 && !incompleteRows.length && !duplicateProductGroups.length && (
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
               )}
             </div>
@@ -4596,7 +4636,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 </button>
               )}
               {step === 3 && (
-                incompleteRows.length > 0 ? (
+                incompleteRows.length > 0 || duplicateProductGroups.length > 0 ? (
                   <button type="button" className="create-user__action create-user__action--primary" onClick={handleRetry}>Volver a intentar</button>
                 ) : (
                   <>
