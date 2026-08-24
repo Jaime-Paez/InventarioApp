@@ -1230,6 +1230,14 @@ export const getReminderActionSeverity = (reminder, {
   transferLifecycleBySolicitudId = {},
 } = {}) => {
   if (isGarantiaResultReminder(reminder)) return 'default'
+  // Mismo motivo que en getTimelineDaySeverityForReminder (RecordatoriosPopup):
+  // un traslado rechazado/cancelado sella completedBy con todos los
+  // destinatarios apenas se resuelve, sin que nadie lo haya abierto. Si el
+  // usuario actual ya esta ahi, el recordatorio ya no necesita su atencion
+  // y no deberia seguir prendiendo el punto de la campana.
+  if (reminderCompletedByIds(reminder).some((id) => currentUserIdSet?.has?.(id))) {
+    return 'default'
+  }
 
   const baseStatus = buildReminderStatusForUser(reminder, currentUserIdSet)
   const isTransferIssue = isTransferIssueReminder(reminder)
