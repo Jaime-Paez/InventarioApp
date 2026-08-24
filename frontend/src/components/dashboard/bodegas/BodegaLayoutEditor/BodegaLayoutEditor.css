@@ -24,7 +24,14 @@
   padding: 12px;
   background: var(--color-surface);
   width: 100%;
-  overflow-x: hidden;
+  /* "overflow-x: hidden" solo (sin overflow-y) hace que el navegador calcule
+     overflow-y como "auto" -- eso hacia que findScrollParent() en
+     BodegaLayoutEditor.jsx confundiera este wrapper con el contenedor real
+     con scroll de la pagina/modal, y "Ver en mapa" scrolleaba el wrapper
+     (que nunca necesita scroll propio, crece con su contenido) en vez de
+     subir la vista hasta el mapa. Mismo valor en los dos ejes evita que el
+     navegador fuerce el otro a "auto". */
+  overflow: hidden;
 }
 
 .bodega-layout__plan-row {
