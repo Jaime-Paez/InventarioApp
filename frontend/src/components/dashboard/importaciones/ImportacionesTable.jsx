@@ -4428,6 +4428,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             const conflict = hasReferenciaConflict(row)
                             const decision = referenciaDecisions[i]
                             const isSuggested = Boolean(row.codigo_sugerido)
+                            // Producto sin match en el catálogo pero con un código
+                            // ya escrito en el Excel (no autogenerado): también debe
+                            // poder editarse, no solo ocultarse como "Sin catálogo".
+                            const isEditableCodigo = isSuggested || (!row.matched_producto_id && Boolean(row.codigo))
                             return (
                               <tr
                                 key={i}
@@ -4441,16 +4445,18 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                 }}
                               >
                                 <td
-                                  style={{ padding: row.codigo_sugerido ? '4px 8px' : '7px 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                                  title={!row.matched_producto_id && !row.codigo_sugerido ? 'Sin catálogo' : undefined}
+                                  style={{ padding: isEditableCodigo ? '4px 8px' : '7px 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                                  title={!row.matched_producto_id && !isEditableCodigo ? 'Sin catálogo' : undefined}
                                 >
-                                  {row.codigo_sugerido ? (
+                                  {isEditableCodigo ? (
                                     <input
                                       type="text"
                                       className="imp-excel-review__codigo-input"
                                       value={row.codigo || ''}
                                       onChange={(e) => updateRowCodigo(row.fila_excel, e.target.value.toUpperCase())}
-                                      title="Código sugerido a partir de un producto con el mismo OEM en otra casa comercial. Puedes corregirlo."
+                                      title={row.codigo_sugerido
+                                        ? 'Código sugerido a partir de un producto con el mismo OEM en otra casa comercial. Puedes corregirlo.'
+                                        : 'Código nuevo tomado del Excel. Puedes corregirlo.'}
                                       style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
                                     />
                                   ) : row.matched_producto_id ? (
