@@ -310,6 +310,11 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
 
             parsed.append({
                 "fila_excel": fila_excel,
+                # Orden del producto en el Excel subido (1-based, sin contar
+                # el encabezado) -- se guarda sin mostrarse en ninguna tabla
+                # de la app, solo para poder exportarlo de vuelta como
+                # primera columna al descargar el Excel de una importacion.
+                "orden": i,
                 "codigo": codigo,
                 "referencia": referencia,
                 "oem": oem,

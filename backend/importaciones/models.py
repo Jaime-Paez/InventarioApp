@@ -103,6 +103,11 @@ class ImportacionDetalle(models.Model):
     oem = models.CharField(max_length=500, blank=True, default="")
     referencia = models.CharField(max_length=500, blank=True, default="")
     cantidad = models.PositiveIntegerField(default=1)
+    orden = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Fila del Excel original (subido) en la que estaba este producto -- solo para exportarlo de vuelta, no se muestra en ninguna tabla de la app.",
+    )
     precio_estimado = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     cantidad_aproximada = models.PositiveIntegerField(null=True, blank=True)
     precio_confirmado = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)

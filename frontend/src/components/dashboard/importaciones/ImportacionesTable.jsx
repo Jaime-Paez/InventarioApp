@@ -2465,6 +2465,10 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     const { sucursales, porProducto } = enviosDistribucion
     const detallesList = imp?.detalles || []
     const columns = [
+      // Orden en el Excel original subido para esta importación — no se
+      // muestra en ninguna tabla de la app, solo se guarda para poder
+      // devolverla como primera columna en esta descarga.
+      { key: 'orden', header: 'Orden' },
       { key: 'codigo', header: 'Código' },
       { key: 'nombre', header: 'Descripción' },
       { key: 'oem', header: 'OEM' },
@@ -2478,6 +2482,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       const productoId = d.producto?.id
       const envios = productoId != null ? (porProducto.get(productoId) || []) : []
       const row = {
+        orden: d.orden ?? '',
         codigo: d.producto?.codigo || d.codigo || '-',
         nombre: d.producto?.nombre || d.nombre || '-',
         oem: getProductoOem(d.producto) || d.oem || '-',
@@ -3651,7 +3656,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     try {
       const XLSXStyle = (await import('xlsx-js-style')).default
       const headers = [
-        'CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANTIDAD',
+        'ORDEN', 'CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANTIDAD',
         'PRECIO BASE (BD)', 'PRECIO NUEVO (EXCEL)', 'PVP APROX', 'CASA COMERCIAL', 'NOTA',
       ]
       const headerStyle = {
@@ -3676,11 +3681,18 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           : Number(row.precio_nuevo || 0) / 100
       )
 
-      // Mismo orden que la tabla en pantalla: los excluidos (en rojo) primero,
-      // luego los válidos.
-      const rows = [...conflictoRows, ...validRows].map((row) => {
+      // Se ordena por la fila que tenia cada producto en el Excel ORIGINAL
+      // subido (row.orden), no por el orden en que se muestran en pantalla
+      // (que agrupa sugeridos/vinculados/sin-catalogo y separa los
+      // excluidos) -- asi el Excel descargado sale en el mismo orden en que
+      // se subio, con esa columna para poder reordenar a mano si hace falta.
+      const rows = [...conflictoRows, ...validRows]
+        .slice()
+        .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
+        .map((row) => {
         const isConflict = Boolean(row.conflicto_casa)
         return {
+          orden: row.orden ?? '',
           codigo: row.codigo || '',
           referencia: row.referencia || '',
           oem: row.oem || '',
@@ -3701,7 +3713,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       const aoa = [
         headers,
         ...rows.map((r) => [
-          r.codigo, r.referencia, r.oem, r.descripcion, r.cantidad,
+          r.orden, r.codigo, r.referencia, r.oem, r.descripcion, r.cantidad,
           r.precioBase, r.precioNuevo, r.pvpAprox, r.casa, r.nota,
         ]),
       ]
@@ -3722,12 +3734,12 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           }
         }
         if (r.isSuggested && !r.isConflict) {
-          const codigoRef = XLSXStyle.utils.encode_cell({ r: ri, c: 0 })
+          const codigoRef = XLSXStyle.utils.encode_cell({ r: ri, c: 1 })
           worksheet[codigoRef].s = { ...worksheet[codigoRef].s, fill: yellowFill }
         }
       })
       worksheet['!cols'] = [
-        { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 11 },
+        { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 11 },
         { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 20 }, { wch: 34 },
       ]
       worksheet['!rows'] = [{ hpt: 22 }]
@@ -3861,6 +3873,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
               producto_id: row.matched_producto_id,
               referencia: row.referencia,
               cantidad: row.cantidad,
+              // Fila que tenia este producto en el Excel subido -- se guarda
+              // sin mostrarse en ninguna tabla, solo para exportarla de
+              // vuelta como primera columna al descargar el Excel despues.
+              orden: row.orden,
               ...(hasReferenciaConflict(row) && referenciaDecisions[i] === 'excel'
                 ? { update_referencia: true, nueva_referencia: row.referencia }
                 : {}),
@@ -3869,7 +3885,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           // catálogo): se crea como pendiente, sin vincular todavía a un
           // Producto real, pero con la cantidad que trae el Excel — se
           // vincula al catálogo y se confirma la llegada más tarde.
-          : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad, precio_estimado: (parseInt(row.precio_nuevo || '0', 10) / 100).toFixed(2) }
+          : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad, precio_estimado: (parseInt(row.precio_nuevo || '0', 10) / 100).toFixed(2), orden: row.orden }
       )
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/`,
