@@ -809,6 +809,10 @@ function RecordatoriosPopup({
   const [rejectionReason, setRejectionReason] = useState('')
   const [isRejectReasonModalOpen, setIsRejectReasonModalOpen] = useState(false)
   const [rejectReasonError, setRejectReasonError] = useState('')
+  const [isEditingSolicitud, setIsEditingSolicitud] = useState(false)
+  const [editDetalles, setEditDetalles] = useState([])
+  const [editSubmitting, setEditSubmitting] = useState(false)
+  const [editError, setEditError] = useState('')
   const [selectedTimelineDate, setSelectedTimelineDate] = useState(() => getTodayWorkingDateKey())
   const [openingTransferReminderId, setOpeningTransferReminderId] = useState('')
   const [openingInspectionReminderId, setOpeningInspectionReminderId] = useState('')
@@ -1552,6 +1556,10 @@ function RecordatoriosPopup({
     setRejectionReason('')
     setIsRejectReasonModalOpen(false)
     setRejectReasonError('')
+    setIsEditingSolicitud(false)
+    setEditDetalles([])
+    setEditSubmitting(false)
+    setEditError('')
   }, [])
 
   const loadDecisionDetail = useCallback(
@@ -1601,6 +1609,9 @@ function RecordatoriosPopup({
       setRejectionReason('')
       setIsRejectReasonModalOpen(false)
       setRejectReasonError('')
+      setIsEditingSolicitud(false)
+      setEditDetalles([])
+      setEditError('')
       loadDecisionDetail(reminder)
     },
     [loadDecisionDetail]
@@ -1867,6 +1878,7 @@ function RecordatoriosPopup({
   const activeDecisionStatus = getReminderDecisionStatus(activeDecisionReminder)
   const canSubmitDecision = activeDecisionStatus === 'pendiente'
   const activeDecisionIsGarantia = isGarantiaApprovalReminder(activeDecisionReminder)
+  const isCurrentUserAdmin = Boolean(currentUser?.es_administrador)
   const decisionDetalles = (() => {
     const raw = Array.isArray(decisionDetail?.detalles) ? decisionDetail.detalles : []
     if (!activeDecisionIsGarantia) return raw
@@ -1944,6 +1956,85 @@ function RecordatoriosPopup({
       : await handleTransferDecision('rechazar')
     if (resolved) {
       setIsRejectReasonModalOpen(false)
+    }
+  }
+
+  const handleStartEditSolicitud = () => {
+    if (!canSubmitDecision || activeDecisionIsGarantia || decisionSubmitting) return
+    setEditDetalles(
+      decisionDetalles.map((detalle) => ({
+        id: detalle.id,
+        producto_id: detalle.producto_id,
+        producto_codigo: detalle.producto_codigo,
+        producto_nombre: detalle.producto_nombre,
+        cantidad: String(detalle.cantidad ?? ''),
+        valor: detalle.valor ?? 0,
+      }))
+    )
+    setEditError('')
+    setDecisionError('')
+    setIsEditingSolicitud(true)
+  }
+
+  const handleCancelEditSolicitud = () => {
+    if (editSubmitting) return
+    setIsEditingSolicitud(false)
+    setEditDetalles([])
+    setEditError('')
+  }
+
+  const handleEditCantidadChange = (detalleId, value) => {
+    const digitsOnly = value.replace(/[^\d]/g, '')
+    setEditDetalles((prev) => prev.map((row) => (row.id === detalleId ? { ...row, cantidad: digitsOnly } : row)))
+  }
+
+  const handleRemoveEditDetalle = (detalleId) => {
+    setEditDetalles((prev) => prev.filter((row) => row.id !== detalleId))
+  }
+
+  const handleSaveEditSolicitud = async () => {
+    const solicitudId = normalizeId(activeDecisionReminder?.context?.id)
+    if (!solicitudId || !token || editSubmitting) return
+
+    if (!editDetalles.length) {
+      setEditError('La solicitud debe tener al menos un producto.')
+      return
+    }
+    if (editDetalles.some((row) => !(Number(row.cantidad) > 0))) {
+      setEditError('Todos los productos deben tener una cantidad mayor a 0.')
+      return
+    }
+
+    setEditSubmitting(true)
+    setEditError('')
+    try {
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            detalles: editDetalles.map((row) => ({
+              producto_id: row.producto_id,
+              cantidad: Number(row.cantidad) || 0,
+              valor: row.valor ?? 0,
+            })),
+          }),
+        },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail =
+          String(data?.detail || data?.detalles || '').trim() || 'No se pudo actualizar la solicitud.'
+        throw new Error(detail)
+      }
+      setDecisionDetail(data)
+      setIsEditingSolicitud(false)
+      setEditDetalles([])
+    } catch (error) {
+      setEditError(error?.message || 'No se pudo actualizar la solicitud.')
+    } finally {
+      setEditSubmitting(false)
     }
   }
 
@@ -3418,7 +3509,7 @@ function RecordatoriosPopup({
                             <th>Código</th>
                             <th>Producto</th>
                             <th className="recordatorios-popup__decision-cell--center">Cantidad</th>
-                            {!activeDecisionIsGarantia && (
+                            {!activeDecisionIsGarantia && !isEditingSolicitud && (
                               <>
                                 <th className="recordatorios-popup__decision-cell--center">Bodega</th>
                                 <th className="recordatorios-popup__decision-cell--center">División</th>
@@ -3427,52 +3518,92 @@ function RecordatoriosPopup({
                                 <th className="recordatorios-popup__decision-cell--center">Separado</th>
                               </>
                             )}
+                            {isEditingSolicitud && <th className="recordatorios-popup__decision-cell--center">Quitar</th>}
                           </tr>
                         </thead>
                         <tbody>
-                          {!decisionDetalles.length && (
-                            <tr>
-                              <td colSpan={activeDecisionIsGarantia ? 3 : 8}>Sin productos en esta solicitud.</td>
-                            </tr>
-                          )}
-                          {decisionDetalles.map((detalle) => (
-                            <tr key={detalle.id || `${detalle.producto_id}-${detalle.cantidad}`}>
-                              <td>{detalle?.producto_codigo || '-'}</td>
-                              <td>{detalle?.producto_nombre || '-'}</td>
-                              <td className="recordatorios-popup__decision-cell--center">
-                                <strong>{detalle?.cantidad || '-'}</strong>
-                              </td>
-                              {!activeDecisionIsGarantia && (
-                                <>
-                                  <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_bodega || '-'}</td>
-                                  <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_division || '-'}</td>
-                                  <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_subdivision || '-'}</td>
-                                  <td className="recordatorios-popup__decision-cell--center">
-                                    {detalle?.ubicacion_bodega_layout ? (
-                                      <BodegaLocationPreview
-                                        bodega={detalle.ubicacion_bodega_layout}
-                                        divisionName={detalle.ubicacion_division}
-                                        subdivisionName={detalle.ubicacion_subdivision}
-                                        darkMode={darkMode}
-                                      />
-                                    ) : (
-                                      '-'
-                                    )}
-                                  </td>
+                          {isEditingSolicitud ? (
+                            <>
+                              {!editDetalles.length && (
+                                <tr>
+                                  <td colSpan={4}>Sin productos en esta solicitud.</td>
+                                </tr>
+                              )}
+                              {editDetalles.map((detalle) => (
+                                <tr key={detalle.id}>
+                                  <td>{detalle?.producto_codigo || '-'}</td>
+                                  <td>{detalle?.producto_nombre || '-'}</td>
                                   <td className="recordatorios-popup__decision-cell--center">
                                     <input
-                                      type="checkbox"
-                                      className="recordatorios-popup__decision-checkbox"
-                                      checked={Boolean(detalle?.verificado)}
-                                      disabled={!canSubmitDecision || decisionSubmitting || verificandoDetalleId === normalizeId(detalle?.id)}
-                                      onChange={() => handleToggleDetalleVerificado(detalle)}
-                                      aria-label={`Marcar ${detalle?.producto_codigo || 'producto'} como separado`}
+                                      type="text"
+                                      inputMode="numeric"
+                                      className="recordatorios-popup__decision-cantidad-input"
+                                      value={detalle.cantidad}
+                                      onChange={(event) => handleEditCantidadChange(detalle.id, event.target.value)}
+                                      disabled={editSubmitting}
                                     />
                                   </td>
-                                </>
+                                  <td className="recordatorios-popup__decision-cell--center">
+                                    <button
+                                      type="button"
+                                      className="recordatorios-popup__icon-button"
+                                      onClick={() => handleRemoveEditDetalle(detalle.id)}
+                                      disabled={editSubmitting}
+                                      aria-label={`Quitar ${detalle?.producto_codigo || 'producto'} de la solicitud`}
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </>
+                          ) : (
+                            <>
+                              {!decisionDetalles.length && (
+                                <tr>
+                                  <td colSpan={activeDecisionIsGarantia ? 3 : 8}>Sin productos en esta solicitud.</td>
+                                </tr>
                               )}
-                            </tr>
-                          ))}
+                              {decisionDetalles.map((detalle) => (
+                                <tr key={detalle.id || `${detalle.producto_id}-${detalle.cantidad}`}>
+                                  <td>{detalle?.producto_codigo || '-'}</td>
+                                  <td>{detalle?.producto_nombre || '-'}</td>
+                                  <td className="recordatorios-popup__decision-cell--center">
+                                    <strong>{detalle?.cantidad || '-'}</strong>
+                                  </td>
+                                  {!activeDecisionIsGarantia && (
+                                    <>
+                                      <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_bodega || '-'}</td>
+                                      <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_division || '-'}</td>
+                                      <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_subdivision || '-'}</td>
+                                      <td className="recordatorios-popup__decision-cell--center">
+                                        {detalle?.ubicacion_bodega_layout ? (
+                                          <BodegaLocationPreview
+                                            bodega={detalle.ubicacion_bodega_layout}
+                                            divisionName={detalle.ubicacion_division}
+                                            subdivisionName={detalle.ubicacion_subdivision}
+                                            darkMode={darkMode}
+                                          />
+                                        ) : (
+                                          '-'
+                                        )}
+                                      </td>
+                                      <td className="recordatorios-popup__decision-cell--center">
+                                        <input
+                                          type="checkbox"
+                                          className="recordatorios-popup__decision-checkbox"
+                                          checked={Boolean(detalle?.verificado)}
+                                          disabled={!canSubmitDecision || decisionSubmitting || verificandoDetalleId === normalizeId(detalle?.id)}
+                                          onChange={() => handleToggleDetalleVerificado(detalle)}
+                                          aria-label={`Marcar ${detalle?.producto_codigo || 'producto'} como separado`}
+                                        />
+                                      </td>
+                                    </>
+                                  )}
+                                </tr>
+                              ))}
+                            </>
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -3485,34 +3616,68 @@ function RecordatoriosPopup({
                 )}
 
                 {decisionError && <p className="recordatorios-popup__error">{decisionError}</p>}
+                {isEditingSolicitud && editError && <p className="recordatorios-popup__error">{editError}</p>}
               </div>
 
               <div className="recordatorios-popup__decision-actions">
-                {canSubmitDecision && !activeDecisionIsGarantia && !allDetallesVerificados && (
-                  <p className="recordatorios-popup__decision-hint">
-                    *Marca todos los productos como separados para poder aceptar la solicitud.
-                  </p>
-                )}
-                {canSubmitDecision && (
+                {isEditingSolicitud ? (
                   <div className="recordatorios-popup__decision-actions-row">
                     <button
                       type="button"
-                      className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--reject"
-                      onClick={handleRejectButtonClick}
-                      disabled={decisionSubmitting || decisionLoading}
+                      className="recordatorios-popup__button recordatorios-popup__button--ghost"
+                      onClick={handleCancelEditSolicitud}
+                      disabled={editSubmitting}
                     >
-                      {decisionSubmittingAction === 'rechazar' ? 'Rechazando...' : 'Rechazar'}
+                      Cancelar
                     </button>
                     <button
                       type="button"
                       className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--accept"
-                      onClick={() => activeDecisionIsGarantia ? handleGarantiaDecision('aceptar') : handleTransferDecision('aceptar')}
-                      disabled={decisionSubmitting || decisionLoading || !allDetallesVerificados}
-                      title={allDetallesVerificados ? undefined : 'Marca todos los productos como separados antes de aceptar.'}
+                      onClick={handleSaveEditSolicitud}
+                      disabled={editSubmitting}
                     >
-                      {decisionSubmittingAction === 'aceptar' ? 'Aceptando...' : 'Aceptar'}
+                      {editSubmitting ? 'Guardando...' : 'Guardar cambios'}
                     </button>
                   </div>
+                ) : (
+                  <>
+                    {canSubmitDecision && !activeDecisionIsGarantia && !allDetallesVerificados && (
+                      <p className="recordatorios-popup__decision-hint">
+                        *Marca todos los productos como separados para poder aceptar la solicitud.
+                      </p>
+                    )}
+                    {canSubmitDecision && (
+                      <div className="recordatorios-popup__decision-actions-row">
+                        <button
+                          type="button"
+                          className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--reject"
+                          onClick={handleRejectButtonClick}
+                          disabled={decisionSubmitting || decisionLoading}
+                        >
+                          {decisionSubmittingAction === 'rechazar' ? 'Rechazando...' : 'Rechazar'}
+                        </button>
+                        {isCurrentUserAdmin && !activeDecisionIsGarantia && (
+                          <button
+                            type="button"
+                            className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--edit"
+                            onClick={handleStartEditSolicitud}
+                            disabled={decisionSubmitting || decisionLoading}
+                          >
+                            Editar solicitud
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--accept"
+                          onClick={() => activeDecisionIsGarantia ? handleGarantiaDecision('aceptar') : handleTransferDecision('aceptar')}
+                          disabled={decisionSubmitting || decisionLoading || !allDetallesVerificados}
+                          title={allDetallesVerificados ? undefined : 'Marca todos los productos como separados antes de aceptar.'}
+                        >
+                          {decisionSubmittingAction === 'aceptar' ? 'Aceptando...' : 'Aceptar'}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

@@ -2112,6 +2112,76 @@
   background: #ef4444;
 }
 
+.recordatorios-popup__decision-button--edit {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+.recordatorios-popup__decision-button--edit:hover {
+  background: #1d4ed8;
+}
+
+.recordatorios-popup__decision-button--edit:disabled,
+.recordatorios-popup__decision-button--edit:disabled:hover {
+  background: #2563eb;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-button--edit {
+  background: #3b82f6;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-button--edit:hover {
+  background: #2563eb;
+}
+
+.recordatorios-popup__decision-cantidad-input {
+  width: 72px;
+  text-align: center;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--modal-color, #fff);
+  color: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.recordatorios-popup__decision-cantidad-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-cantidad-input {
+  background: #171b21;
+  border-color: #313943;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.recordatorios-popup__icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-error-text, #dc2626);
+  cursor: pointer;
+}
+
+.recordatorios-popup__icon-button:hover {
+  background: color-mix(in srgb, var(--color-error-text, #dc2626) 12%, transparent);
+}
+
+.recordatorios-popup__icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .recordatorios-popup__decision-close-link {
   border: none;
   background: transparent;
