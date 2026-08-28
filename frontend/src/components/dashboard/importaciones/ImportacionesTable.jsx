@@ -3711,10 +3711,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
 
       // Se ordena por la fila que tenia cada producto en el Excel ORIGINAL
       // subido (row.orden), no por el orden en que se muestran en pantalla
-      // (que agrupa sugeridos/vinculados/sin-catalogo y separa los
-      // excluidos) -- asi el Excel descargado sale en el mismo orden en que
-      // se subio, con esa columna para poder reordenar a mano si hace falta.
-      const rows = [...conflictoRows, ...validRows]
+      // (que agrupa por revisión pendiente/sugeridos/vinculados/sin-catalogo)
+      // -- asi el Excel descargado sale en el mismo orden en que se subio,
+      // con esa columna para poder reordenar a mano si hace falta.
+      const rows = [...validRows]
         .slice()
         .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
         .map((row) => {
@@ -3729,9 +3729,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           precioBase: row.matched_producto_precio != null ? Number(row.matched_producto_precio) : '',
           precioNuevo: resolvePrecioNuevo(row),
           pvpAprox: Number(row.pvp) > 0 ? Number(row.pvp) : '',
-          casa: isConflict ? (row.conflicto_casa_nombre || '') : (selectedCasa?.nombre || ''),
+          casa: selectedCasa?.nombre || '',
           nota: isConflict
-            ? `Excluido — pertenece a ${row.conflicto_casa_nombre || 'otra casa'}`
+            ? `Ya existe en ${row.conflicto_casa_nombre || 'otra casa'} — se creará como nuevo`
             : (row.codigo_sugerido ? 'Sugerido (nuevo)' : ''),
           isConflict,
           isSuggested: Boolean(row.codigo_sugerido),
@@ -3942,17 +3942,22 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   }
 
   const canProcess = Boolean(selectedFile && selectedCasa)
+  // Un código/referencia que ya pertenece a otra casa comercial ya NO excluye
+  // la fila: puede pasar legítimamente que el mismo código/referencia exista
+  // como productos distintos en más de una casa, así que se incluye igual
+  // (como producto nuevo para la casa actual) mostrando una advertencia en
+  // vez de bloquearla. conflictoRows queda solo para el contador del aviso.
   const conflictoRows = parsedRows.filter(r => r.conflicto_casa)
   const incompleteRows = parsedRows.filter(r => !r.conflicto_casa && (r.faltan_datos || []).length > 0)
-  // Orden (debajo de los conflictos en rojo, que van aparte en conflictoRows):
-  // 1) código sugerido (amarillo, necesitan confirmar el código nuevo),
-  // 2) ya vinculados al catálogo, 3) el resto (sin catálogo). sort es
-  // estable, así que dentro de cada grupo se conserva el orden del Excel.
-  // Esto define el orden en pantalla, en el Excel descargado y en la
-  // sugerencia creada, ya que todos esos consumidores iteran validRows.
-  const rowSortRank = (row) => (row.codigo_sugerido ? 0 : row.matched_producto_id ? 1 : 2)
+  // Orden: 1) código/referencia en otra casa (necesitan revisión), 2) código
+  // sugerido (amarillo, necesitan confirmar el código nuevo), 3) ya
+  // vinculados al catálogo, 4) el resto (sin catálogo). sort es estable, así
+  // que dentro de cada grupo se conserva el orden del Excel. Esto define el
+  // orden en pantalla, en el Excel descargado y en la sugerencia creada, ya
+  // que todos esos consumidores iteran validRows.
+  const rowSortRank = (row) => (row.conflicto_casa ? 0 : row.codigo_sugerido ? 1 : row.matched_producto_id ? 2 : 3)
   const validRows = parsedRows
-    .filter(r => !r.conflicto_casa && (r.faltan_datos || []).length === 0)
+    .filter(r => (r.faltan_datos || []).length === 0)
     .sort((a, b) => rowSortRank(a) - rowSortRank(b))
   const matchedCount = validRows.filter(r => r.matched_producto_id).length
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
@@ -4340,10 +4345,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 ) : (
                   <>
                     {conflictoRows.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8 }}>
-                        <i className="pi pi-exclamation-triangle" style={{ color: '#dc2626', fontSize: 'var(--font-size-base)', flexShrink: 0 }} />
-                        <span style={{ fontSize: 'var(--font-size-sm)', color: '#7f1d1d' }}>
-                          {conflictoRows.length} producto{conflictoRows.length !== 1 ? 's' : ''} (en rojo en la tabla) no se incluirá{conflictoRows.length !== 1 ? 'n' : ''} en la sugerencia — pertenece{conflictoRows.length === 1 ? '' : 'n'} a otra casa comercial. Para agregarlos, primero asígnalos a <strong>{selectedCasa?.nombre}</strong> en el catálogo de productos.
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
+                        <i className="pi pi-exclamation-triangle" style={{ color: '#c2410c', fontSize: 'var(--font-size-base)', flexShrink: 0 }} />
+                        <span style={{ fontSize: 'var(--font-size-sm)', color: '#9a3412' }}>
+                          {conflictoRows.length} producto{conflictoRows.length !== 1 ? 's' : ''} (marcado{conflictoRows.length !== 1 ? 's' : ''} en naranja) ya tiene{conflictoRows.length !== 1 ? 'n' : ''} ese código/referencia en otra casa comercial. Se incluirán igual, creando un producto nuevo con la misma referencia para <strong>{selectedCasa?.nombre}</strong> — revisa que sea correcto antes de continuar.
                         </span>
                       </div>
                     )}
@@ -4412,50 +4417,11 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {conflictoRows.map((row, i) => (
-                            <tr
-                              key={`conflict-${i}`}
-                              style={{ borderBottom: '1px solid #fecaca', background: '#fef2f2' }}
-                            >
-                              <td style={{ padding: '7px 12px', color: '#dc2626', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {row.codigo || '—'}
-                              </td>
-                              <td style={{ padding: '7px 12px', color: '#7f1d1d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {row.referencia || '—'}
-                              </td>
-                              <td style={{ padding: '7px 12px' }}>
-                                {row.oem ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                                    <span
-                                      style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#7f1d1d' }}
-                                    >
-                                      {row.oem}
-                                    </span>
-                                    <Info
-                                      size={13}
-                                      style={{ flexShrink: 0, color: '#dc2626' }}
-                                      onMouseEnter={(e) => showCellHover(e, `Pertenece a ${row.conflicto_casa_nombre}, no se incluirá.`, 'Motivo de exclusión')}
-                                      onMouseLeave={hideCellHover}
-                                    />
-                                  </div>
-                                ) : '—'}
-                              </td>
-                              <td style={{ padding: '7px 12px', color: '#7f1d1d', fontStyle: 'italic' }}>
-                                {row.descripcion || '—'}
-                              </td>
-                              <td style={{ padding: '7px 12px', textAlign: 'center', color: '#7f1d1d', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                                {row.cantidad ?? '—'}
-                              </td>
-                              <td style={{ padding: '7px 12px', textAlign: 'right', color: '#7f1d1d' }}>—</td>
-                              <td style={{ padding: '7px 12px', textAlign: 'right', color: '#7f1d1d' }}>
-                                {Number(row.pvp) > 0 ? `$${Number(row.pvp).toFixed(2)}` : '—'}
-                              </td>
-                            </tr>
-                          ))}
                           {validRows.map((row, i) => {
                             const conflict = hasReferenciaConflict(row)
                             const decision = referenciaDecisions[i]
                             const isSuggested = Boolean(row.codigo_sugerido)
+                            const isCasaConflict = Boolean(row.conflicto_casa)
                             // Todo producto que no está vinculado a uno ya existente del
                             // catálogo (sugerido, con código propio del Excel, o
                             // completamente sin catálogo) debe permitir asignarle un
@@ -4466,33 +4432,45 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                 key={i}
                                 style={{
                                   borderBottom: '1px solid var(--color-border, #e2e8f0)',
-                                  background: isSuggested
-                                    ? '#fef08a'
-                                    : conflict && decision === undefined
-                                      ? '#fffbeb'
-                                      : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)',
+                                  background: isCasaConflict
+                                    ? '#ffedd5'
+                                    : isSuggested
+                                      ? '#fef08a'
+                                      : conflict && decision === undefined
+                                        ? '#fffbeb'
+                                        : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)',
                                 }}
                               >
                                 <td
                                   style={{ padding: isEditableCodigo ? '4px 8px' : '7px 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                                 >
-                                  {isEditableCodigo ? (
-                                    <input
-                                      type="text"
-                                      className="imp-excel-review__codigo-input"
-                                      value={row.codigo || ''}
-                                      onChange={(e) => updateRowCodigo(row.fila_excel, e.target.value.toUpperCase())}
-                                      placeholder="Sin catálogo"
-                                      title={row.codigo_sugerido
-                                        ? 'Código sugerido a partir de un producto con el mismo OEM en otra casa comercial. Puedes corregirlo.'
-                                        : row.codigo
-                                          ? 'Código nuevo tomado del Excel. Puedes corregirlo.'
-                                          : 'Este producto no tiene código en el catálogo. Puedes asignarle uno.'}
-                                      style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
-                                    />
-                                  ) : (
-                                    <span title={row.codigo || ''}>{row.codigo || '—'}</span>
-                                  )}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    {isEditableCodigo ? (
+                                      <input
+                                        type="text"
+                                        className="imp-excel-review__codigo-input"
+                                        value={row.codigo || ''}
+                                        onChange={(e) => updateRowCodigo(row.fila_excel, e.target.value.toUpperCase())}
+                                        placeholder="Sin catálogo"
+                                        title={row.codigo_sugerido
+                                          ? 'Código sugerido a partir de un producto con el mismo OEM en otra casa comercial. Puedes corregirlo.'
+                                          : row.codigo
+                                            ? 'Código nuevo tomado del Excel. Puedes corregirlo.'
+                                            : 'Este producto no tiene código en el catálogo. Puedes asignarle uno.'}
+                                        style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
+                                      />
+                                    ) : (
+                                      <span title={row.codigo || ''}>{row.codigo || '—'}</span>
+                                    )}
+                                    {isCasaConflict && (
+                                      <Info
+                                        size={13}
+                                        style={{ flexShrink: 0, color: '#c2410c' }}
+                                        onMouseEnter={(e) => showCellHover(e, `El código/referencia ya pertenece a ${row.conflicto_casa_nombre || 'otra casa comercial'}. Se creará un producto nuevo con esta misma referencia para ${selectedCasa?.nombre || 'esta casa'}.`, 'Ya existe en otra casa')}
+                                        onMouseLeave={hideCellHover}
+                                      />
+                                    )}
+                                  </div>
                                 </td>
                                 <td style={{ padding: '7px 12px' }}>
                                   {conflict ? (
@@ -4691,7 +4669,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                   <button type="button" className="create-user__action create-user__action--primary" onClick={handleRetry}>Volver a intentar</button>
                 ) : (
                   <>
-                    {(validRows.length > 0 || conflictoRows.length > 0) && (
+                    {validRows.length > 0 && (
                       <button
                         type="button"
                         className="create-user__action create-user__action--cancel"
@@ -4715,7 +4693,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           : undefined
                       }
                     >
-                      {submitting ? 'Creando sugerencia...' : `Crear sugerencia${validRows.length > 0 && conflictoRows.length > 0 ? ` (${validRows.length} productos)` : ''}`}
+                      {submitting ? 'Creando sugerencia...' : `Crear sugerencia${validRows.length > 0 ? ` (${validRows.length} productos)` : ''}`}
                     </button>
                   </>
                 )
