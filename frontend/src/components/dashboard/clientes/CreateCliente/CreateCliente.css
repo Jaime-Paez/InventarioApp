@@ -4,10 +4,11 @@
 
 .create-clientes__autos-table .create-user__locations-row {
   grid-template-columns:
-    minmax(80px, 1.4fr)
-    minmax(70px, 0.9fr)
+    minmax(80px, 1.2fr)
     minmax(70px, 0.9fr)
     minmax(54px, 0.6fr)
+    minmax(70px, 0.9fr)
+    minmax(70px, 0.9fr)
     minmax(50px, 0.5fr);
   min-width: 0;
   padding: 0;

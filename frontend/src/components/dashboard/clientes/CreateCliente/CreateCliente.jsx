@@ -18,10 +18,57 @@ const initialForm = {
 }
 
 const emptyAuto = {
-  vin: '',
+  placa: '',
   modelo: '',
-  motor: '',
   anio: '',
+  marca: '',
+  color: '',
+}
+
+const AUTO_FIELD_LABELS = {
+  placa: 'Placa',
+  modelo: 'Modelo',
+  anio: 'Año',
+  marca: 'Marca',
+  color: 'Color',
+}
+
+const CLIENTE_FIELD_LABELS = {
+  nombres: 'Nombres',
+  apellidos: 'Apellidos',
+  cedula_ruc: 'Cedula/RUC',
+  correo: 'Correo',
+  telefono: 'Teléfono',
+  direccion: 'Dirección',
+}
+
+const extractErrorMessage = (data) => {
+  if (!data || typeof data !== 'object') return ''
+  if (data.detail) return String(data.detail)
+
+  for (const [field, label] of Object.entries(CLIENTE_FIELD_LABELS)) {
+    const value = data[field]
+    if (Array.isArray(value) && value.length) return `${label}: ${value[0]}`
+  }
+
+  if (Array.isArray(data.autos)) {
+    for (let i = 0; i < data.autos.length; i += 1) {
+      const rowErrors = data.autos[i]
+      if (rowErrors && typeof rowErrors === 'object') {
+        const [field, messages] = Object.entries(rowErrors)[0] || []
+        if (field && Array.isArray(messages) && messages.length) {
+          const label = AUTO_FIELD_LABELS[field] || field
+          return `Auto #${i + 1} (${label}): ${messages[0]}`
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(data.non_field_errors) && data.non_field_errors.length) {
+    return String(data.non_field_errors[0])
+  }
+
+  return ''
 }
 
 function CreateCliente({ open, onClose, onCreated, token, onError }) {
@@ -103,13 +150,18 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
   }
 
   const addAutoRow = () => {
-    const { vin, modelo, motor, anio } = autoDraft
-    if (!vin.trim() && !modelo.trim() && !motor.trim() && !anio.trim()) return
+    const { placa, modelo, anio, marca, color } = autoDraft
+    if (!placa.trim() && !modelo.trim() && !anio.trim() && !marca.trim() && !color.trim()) return
+    if (!placa.trim() || !modelo.trim() || !anio.trim()) {
+      notifyError('Completa placa, modelo y año para agregar el auto.')
+      return
+    }
     setAutos((prev) => [...prev, {
-      vin: vin.trim(),
+      placa: placa.trim(),
       modelo: modelo.trim(),
-      motor: motor.trim(),
       anio: anio.trim(),
+      marca: marca.trim(),
+      color: color.trim(),
     }])
     setAutoDraft({ ...emptyAuto })
   }
@@ -133,10 +185,11 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
 
     if (autos.length) {
       payload.autos = autos.map((a) => ({
-        vin: a.vin,
+        placa: a.placa,
         modelo: a.modelo,
-        motor: a.motor,
         anio: a.anio ? Number(a.anio) : null,
+        marca: a.marca,
+        color: a.color,
       }))
     }
 
@@ -164,7 +217,7 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || data?.nombre?.[0] || 'No se pudo crear el cliente.'
+        const detail = extractErrorMessage(data) || 'No se pudo crear el cliente.'
         throw new Error(detail)
       }
 
@@ -474,10 +527,11 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
 
               <div className="create-user__locations-table create-clientes__autos-table">
                 <div className="create-user__locations-row create-user__locations-row--head">
-                  <span>VIN</span>
+                  <span>Placa</span>
                   <span>Modelo</span>
-                  <span>Motor</span>
                   <span>Año</span>
+                  <span>Marca</span>
+                  <span>Color</span>
                   <span>Acciones</span>
                 </div>
 
@@ -485,9 +539,9 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
                   <span>
                     <input
                       type="text"
-                      placeholder="VIN"
-                      value={autoDraft.vin}
-                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, vin: e.target.value }))}
+                      placeholder="Placa"
+                      value={autoDraft.placa}
+                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, placa: e.target.value }))}
                       disabled={loading}
                     />
                   </span>
@@ -503,18 +557,27 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
                   <span>
                     <input
                       type="text"
-                      placeholder="Motor"
-                      value={autoDraft.motor}
-                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, motor: e.target.value }))}
+                      placeholder="Año"
+                      value={autoDraft.anio}
+                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, anio: e.target.value }))}
                       disabled={loading}
                     />
                   </span>
                   <span>
                     <input
                       type="text"
-                      placeholder="Año"
-                      value={autoDraft.anio}
-                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, anio: e.target.value }))}
+                      placeholder="Marca"
+                      value={autoDraft.marca}
+                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, marca: e.target.value }))}
+                      disabled={loading}
+                    />
+                  </span>
+                  <span>
+                    <input
+                      type="text"
+                      placeholder="Color"
+                      value={autoDraft.color}
+                      onChange={(e) => setAutoDraft((prev) => ({ ...prev, color: e.target.value }))}
                       disabled={loading}
                     />
                   </span>
@@ -538,10 +601,11 @@ function CreateCliente({ open, onClose, onCreated, token, onError }) {
 
                 {autos.map((auto, index) => (
                   <div key={`auto-${index}`} className="create-user__locations-row">
-                    <span>{auto.vin || '-'}</span>
+                    <span>{auto.placa || '-'}</span>
                     <span>{auto.modelo || '-'}</span>
-                    <span>{auto.motor || '-'}</span>
                     <span>{auto.anio || '-'}</span>
+                    <span>{auto.marca || '-'}</span>
+                    <span>{auto.color || '-'}</span>
                     <span className="create-user__locations-cell create-user__locations-cell--action">
                       <button
                         type="button"

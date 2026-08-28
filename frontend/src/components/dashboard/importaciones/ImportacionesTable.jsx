@@ -808,6 +808,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     const cantidadesRecibidas = saved?.cantidadesRecibidas || {}
     return (imp.detalles || []).map(d => ({
       id: d.id,
+      orden: d.orden,
       productoId: d.producto?.id ?? null,
       codigo: d.producto?.codigo || d.codigo || '',
       nombre: d.producto?.nombre || d.nombre || '',
@@ -855,6 +856,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         const cantidadesRecibidas = saved?.cantidadesRecibidas || {}
         const freshRows = fresh.detalles.map(d => ({
           id: d.id,
+          orden: d.orden,
           productoId: d.producto?.id ?? null,
           codigo: d.producto?.codigo || d.codigo || '',
           nombre: d.producto?.nombre || d.nombre || '',
@@ -957,15 +959,20 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       const XLSXStyle = (await import('xlsx-js-style')).default
       const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
       const border = { top: bt, bottom: bt, left: bt, right: bt }
-      const RO = 6 // columnas de solo lectura antes de Cant. Recibida
-      const headers = ['Código', 'Descripción', 'Referencia', 'OEM', 'Precio', 'Cant. Esperada', 'Cant. Recibida', 'Revisado', '_key']
+      const RO = 7 // columnas de solo lectura antes de Cant. Recibida
+      const headers = ['Orden', 'Código', 'Descripción', 'Referencia', 'OEM', 'Precio', 'Cant. Esperada', 'Cant. Recibida', 'Revisado', '_key']
       const mkH = (fill, bot) => ({ font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: fill }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: bot } }, left: bt, right: bt } })
       const hdrS = headers.map((_, ci) => ci < RO ? mkH('1e3a5f', '2563EB') : ci < RO + 2 ? mkH('15803d', '166534') : { font: { sz: 8, color: { rgb: 'AAAAAA' } } })
 
-      const dataRows = rows.map((row) => {
+      // Se ordena por la posicion que tenia cada producto en el Excel
+      // original subido (row.orden), no por el orden en que quedaron
+      // guardados los detalles -- asi el Excel siempre sale en el mismo
+      // orden sin importar desde que paso de la importacion se descargue.
+      const sortedRows = [...rows].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
+      const dataRows = sortedRows.map((row) => {
         const precio = row.precio != null ? +Number(row.precio).toFixed(2) : null
         const cantRecibida = row.cantidadRecibida !== '' ? +Number(row.cantidadRecibida) : null
-        return [row.codigo || '', row.nombre || '', row.referencia || '', row.oem || '', precio, +Number(row.cantidad || 0), cantRecibida, row.checked ? 'SI' : 'NO', row.id]
+        return [row.orden ?? '', row.codigo || '', row.nombre || '', row.referencia || '', row.oem || '', precio, +Number(row.cantidad || 0), cantRecibida, row.checked ? 'SI' : 'NO', row.id]
       })
 
       const NROWS = dataRows.length; const NCOLS = headers.length
@@ -984,13 +991,13 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         row.forEach((val, ci) => {
           const isEditable = ci === RO || ci === RO + 1
           const bg = isEditable ? (isEven ? 'FFFFFF' : 'F9FAFB') : (isEven ? 'EFF6FF' : 'FFFFFF')
-          const numFmt = ci === 4 ? '0.00' : ci === 5 || ci === RO ? '0' : null
+          const numFmt = ci === 5 ? '0.00' : ci === 0 || ci === 6 || ci === RO ? '0' : null
           const s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(numFmt ? { numFmt } : {}) }
           setCell(ri + 1, ci, val, s)
         })
       })
 
-      worksheet['!cols'] = [{ wch: 14 }, { wch: 32 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 13 }, { wch: 13 }, { wch: 10 }, { wch: 0, hidden: true }]
+      worksheet['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 32 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 13 }, { wch: 13 }, { wch: 10 }, { wch: 0, hidden: true }]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
       XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Revisión')
@@ -1061,7 +1068,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       const keyIdx = fileHeaders.indexOf('_key')
       const cantIdx = fileHeaders.indexOf('Cant. Recibida')
       const revisadoIdx = fileHeaders.indexOf('Revisado')
-      if (keyIdx === -1 || cantIdx === -1) {
+      const ordenIdx = fileHeaders.indexOf('Orden')
+      if (keyIdx === -1 || cantIdx === -1 || ordenIdx === -1) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no corresponde a esta revisión. Descárgalo desde este modal.', life: 4500 })
         return
       }
@@ -1074,6 +1082,21 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       const missing = rows.filter(row => !keyToRow[String(row.id)])
       if (missing.length > 0) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: `El Excel no corresponde: faltan ${missing.length} producto(s). Descarga de nuevo desde este modal.`, life: 4500 })
+        return
+      }
+      // El orden de cada producto lo fija el Excel de sugerencia original y
+      // nunca debe cambiar en pasos posteriores -- si la columna "Orden" no
+      // coincide con la ya guardada, se rechaza todo el archivo en vez de
+      // aceptar un reordenamiento hecho a mano.
+      const ordenMismatch = rows.some(row => {
+        const fileRow = keyToRow[String(row.id)]
+        if (!fileRow) return false
+        const fileOrden = Number(fileRow[ordenIdx])
+        const storedOrden = Number(row.orden)
+        return !(Number.isFinite(fileOrden) && Number.isFinite(storedOrden) && fileOrden === storedOrden)
+      })
+      if (ordenMismatch) {
+        toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'La columna "Orden" no coincide con el orden original de esta importación. Descarga el Excel de nuevo desde este modal y no modifiques esa columna.', life: 5500 })
         return
       }
       const updatedRows = rows.map(row => {
@@ -2478,7 +2501,12 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       ...sucursales.map((s) => ({ key: `suc_${s.id}`, header: s.nombre })),
       { key: 'comentario', header: 'Comentario' },
     ]
-    const rows = detallesList.map((d) => {
+    // Se ordena por la posicion que tenia cada producto en el Excel
+    // original subido (d.orden), no por el orden en que quedaron guardados
+    // los detalles -- asi el Excel siempre sale en el mismo orden sin
+    // importar desde que paso de la importacion se descargue.
+    const sortedDetallesList = [...detallesList].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
+    const rows = sortedDetallesList.map((d) => {
       const productoId = d.producto?.id
       const envios = productoId != null ? (porProducto.get(productoId) || []) : []
       const row = {
@@ -4428,10 +4456,11 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             const conflict = hasReferenciaConflict(row)
                             const decision = referenciaDecisions[i]
                             const isSuggested = Boolean(row.codigo_sugerido)
-                            // Producto sin match en el catálogo pero con un código
-                            // ya escrito en el Excel (no autogenerado): también debe
-                            // poder editarse, no solo ocultarse como "Sin catálogo".
-                            const isEditableCodigo = isSuggested || (!row.matched_producto_id && Boolean(row.codigo))
+                            // Todo producto que no está vinculado a uno ya existente del
+                            // catálogo (sugerido, con código propio del Excel, o
+                            // completamente sin catálogo) debe permitir asignarle un
+                            // código a mano desde el inicio, no solo mostrar "Sin catálogo".
+                            const isEditableCodigo = !row.matched_producto_id
                             return (
                               <tr
                                 key={i}
@@ -4446,7 +4475,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                               >
                                 <td
                                   style={{ padding: isEditableCodigo ? '4px 8px' : '7px 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-                                  title={!row.matched_producto_id && !isEditableCodigo ? 'Sin catálogo' : undefined}
                                 >
                                   {isEditableCodigo ? (
                                     <input
@@ -4454,15 +4482,16 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                       className="imp-excel-review__codigo-input"
                                       value={row.codigo || ''}
                                       onChange={(e) => updateRowCodigo(row.fila_excel, e.target.value.toUpperCase())}
+                                      placeholder="Sin catálogo"
                                       title={row.codigo_sugerido
                                         ? 'Código sugerido a partir de un producto con el mismo OEM en otra casa comercial. Puedes corregirlo.'
-                                        : 'Código nuevo tomado del Excel. Puedes corregirlo.'}
+                                        : row.codigo
+                                          ? 'Código nuevo tomado del Excel. Puedes corregirlo.'
+                                          : 'Este producto no tiene código en el catálogo. Puedes asignarle uno.'}
                                       style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
                                     />
-                                  ) : row.matched_producto_id ? (
-                                    <span title={row.codigo || ''}>{row.codigo || '—'}</span>
                                   ) : (
-                                    <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Sin catálogo</span>
+                                    <span title={row.codigo || ''}>{row.codigo || '—'}</span>
                                   )}
                                 </td>
                                 <td style={{ padding: '7px 12px' }}>
@@ -6538,10 +6567,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '',
       }
       if (d.producto?.id) {
-        return { _key: String(d.producto.id), _detalleId: d.id ?? null, producto: d.producto, cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed }
+        return { _key: String(d.producto.id), _detalleId: d.id ?? null, orden: d.orden, producto: d.producto, cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed }
       }
       return {
-        _key: 'sc_' + (d.id ?? i), _detalleId: d.id ?? null, producto: null,
+        _key: 'sc_' + (d.id ?? i), _detalleId: d.id ?? null, orden: d.orden, producto: null,
         codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '', referencia: d.referencia || '',
         cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed,
       }
@@ -6825,14 +6854,19 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const XLSXStyle = (await import('xlsx-js-style')).default
       const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
       const border = { top: bt, bottom: bt, left: bt, right: bt }
-      const RO = 6; const ED = 3; const DIFF_CI = RO + ED
+      const RO = 7; const ED = 3; const DIFF_CI = RO + ED
       const precioEditLabel = isVerificar ? 'Precio est.' : 'Precio conf.'
       const cantEditLabel = isVerificar ? 'Cant. aprox.' : 'Cant. conf.'
-      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'Precio', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', '_key']
+      const headers = ['Orden', 'Código', 'Descripción', 'OEM', 'Referencia', 'Precio', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', '_key']
       const mkH = (fill, bot) => ({ font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: fill }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: bot } }, left: bt, right: bt } })
       const hdrS = headers.map((_, ci) => ci < RO ? mkH('1e3a5f', '2563EB') : ci < RO + ED ? mkH('15803d', '166534') : ci === DIFF_CI ? mkH('374151', '374151') : null)
 
-      const rows = details.map((item) => {
+      // Se ordena por la posicion que tenia cada producto en el Excel
+      // original subido (item.orden), no por el orden en que quedaron
+      // guardados los detalles -- asi el Excel siempre sale en el mismo
+      // orden sin importar desde que paso de la importacion se descargue.
+      const sortedDetails = [...details].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
+      const rows = sortedDetails.map((item) => {
         const codigo = item.producto?.codigo || item.codigo || 'SIN CATÁLOGO'
         const nombre = item.producto?.nombre || item.nombre || ''
         const oem = getProductoOem(item.producto) || item.oem || ''
@@ -6856,7 +6890,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         const diff = precioReal != null && precioConf != null ? +(precioReal - precioConf).toFixed(2) : null
         // precio in cell is always numeric: 0 for SIN CATÁLOGO so formula =E-G can always compute
         const precio = precioReal ?? 0
-        return [codigo, nombre, oem, referencia, precio, cantidad, precioConf, cantConf, item.comentario || '', diff, item._key]
+        return [item.orden ?? '', codigo, nombre, oem, referencia, precio, cantidad, precioConf, cantConf, item.comentario || '', diff, item._key]
       })
 
       // Build worksheet manually for precise type control
@@ -6886,14 +6920,14 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           else if (isDiff && !isEmpty) bg = val >= 0 ? 'dcfce7' : val >= -1 ? 'fef9c3' : 'fee2e2'
           else if (isDiff) bg = isEven ? 'f3f4f6' : 'f9fafb'
           else bg = isEven ? 'EFF6FF' : 'FFFFFF'
-          const numFmt = ci === 4 || ci === RO ? '0.00' : ci === 5 || ci === RO + 1 ? '0' : isDiff ? '0.00' : null
+          const numFmt = ci === 5 || ci === RO ? '0.00' : ci === 0 || ci === 6 || ci === RO + 1 ? '0' : isDiff ? '0.00' : null
           const s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(numFmt ? { numFmt } : {}) }
-          const formula = isDiff ? `IF(G${excelRow}="","",E${excelRow}-G${excelRow})` : undefined
+          const formula = isDiff ? `IF(H${excelRow}="","",F${excelRow}-H${excelRow})` : undefined
           setCell(ri + 1, ci, val, s, formula)
         })
       })
 
-      worksheet['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 12 }, { wch: 0, hidden: true }]
+      worksheet['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 12 }, { wch: 0, hidden: true }]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
       XLSXStyle.utils.book_append_sheet(workbook, worksheet, isVerificar ? 'Verificar' : 'Confirmacion')
@@ -6914,7 +6948,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       unzipped['xl/styles.xml'] = enc.encode(stylesXml)
 
       // Add conditional formatting rules to sheet1.xml
-      const eCol = XLSXStyle.utils.encode_col(4)         // E - Precio
+      const eCol = XLSXStyle.utils.encode_col(5)         // F - Precio
       const gCol = XLSXStyle.utils.encode_col(RO)        // G - Precio conf.
       const hCol = XLSXStyle.utils.encode_col(RO + 1)    // H - Cant. conf.
       const jCol = XLSXStyle.utils.encode_col(DIFF_CI)   // J - Diferencia
@@ -6986,7 +7020,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const precioIdx = fileHeaders.indexOf(isVerificar ? 'Precio est.' : 'Precio conf.')
       const cantIdx = fileHeaders.indexOf(isVerificar ? 'Cant. aprox.' : 'Cant. conf.')
       const comentIdx = fileHeaders.indexOf('Comentario')
-      if (keyIdx === -1 || precioIdx === -1 || cantIdx === -1) {
+      const ordenIdx = fileHeaders.indexOf('Orden')
+      if (keyIdx === -1 || precioIdx === -1 || cantIdx === -1 || ordenIdx === -1) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no corresponde a esta importación. Descarga el Excel desde este modal.', life: 4500 })
         return
       }
@@ -6999,6 +7034,21 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
       const missing = detailsRef.current.filter((item) => !keyToRow[item._key])
       if (missing.length > 0) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: `El Excel no corresponde: faltan ${missing.length} producto(s). Descarga de nuevo desde este modal.`, life: 4500 })
+        return
+      }
+      // El orden de cada producto lo fija el Excel de sugerencia original y
+      // nunca debe cambiar en pasos posteriores -- si la columna "Orden" no
+      // coincide con la ya guardada, se rechaza todo el archivo en vez de
+      // aceptar un reordenamiento hecho a mano.
+      const ordenMismatch = detailsRef.current.some((item) => {
+        const row = keyToRow[item._key]
+        if (!row) return false
+        const fileOrden = Number(row[ordenIdx])
+        const storedOrden = Number(item.orden)
+        return !(Number.isFinite(fileOrden) && Number.isFinite(storedOrden) && fileOrden === storedOrden)
+      })
+      if (ordenMismatch) {
+        toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'La columna "Orden" no coincide con el orden original de esta importación. Descarga el Excel de nuevo desde este modal y no modifiques esa columna.', life: 5500 })
         return
       }
       setDetails((prev) => prev.map((item) => {

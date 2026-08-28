@@ -19,7 +19,7 @@ from usuarios.permissions import ImportacionesModulePermission
 from usuarios.sucursal_scope import get_allowed_sucursal_ids, get_readable_sucursal_ids
 from usuarios.utils import is_app_admin
 
-from django.db.models import F, Q
+from django.db.models import F, Func, Q
 
 from app.models import ReminderState
 from configuracion.models import ConfiguracionSistema
@@ -36,6 +36,52 @@ from .models import (
     ImportacionInconvenienteHistorial,
 )
 from .serializers import ImportacionDetalleSerializer, ImportacionSerializer, generate_next_importacion_code
+
+
+class _StripLeadingZerosSQL(Func):
+    """Quita ceros a la izquierda de una referencia en la base (deja al menos
+    un caracter) para poder comparar '0042' con '42' como la misma referencia.
+    """
+
+    function = "REGEXP_REPLACE"
+    template = "%(function)s(%(expressions)s, '^0+(?=.)', '')"
+
+
+def _strip_leading_zeros(value):
+    text = str(value or "").strip()
+    return text.lstrip("0") or text
+
+
+def _pick_producto_match(candidates, casa_comercial_id):
+    """Cuando el mismo código/referencia existe en más de un producto (uno por
+    casa comercial), prioriza el que ya pertenece a la casa que se está
+    importando en vez de tomar el primero al azar -- así no se marca como
+    'conflicto de otra casa' un producto que en realidad sí calza.
+    """
+    if not candidates:
+        return None
+    if casa_comercial_id:
+        for candidate in candidates:
+            if candidate.casas_comerciales.filter(id=casa_comercial_id).exists():
+                return candidate
+    return candidates[0]
+
+
+def _resolve_producto_by_referencia(referencia, casa_comercial_id):
+    if not referencia:
+        return None
+    candidates = list(Producto.objects.filter(referencia__iexact=referencia))
+    if not candidates:
+        # Los ceros a la izquierda no distinguen la referencia ('0042' es lo
+        # mismo que '42'), sin importar de qué lado (Excel o catálogo) estén
+        # de más -- pero solo se usan para buscar el match, el valor tal cual
+        # vino del Excel se sigue guardando sin tocar.
+        stripped = _strip_leading_zeros(referencia)
+        candidates = list(
+            Producto.objects.annotate(referencia_sin_ceros=_StripLeadingZerosSQL("referencia"))
+            .filter(referencia_sin_ceros__iexact=stripped)
+        )
+    return _pick_producto_match(candidates, casa_comercial_id)
 
 
 def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
@@ -68,6 +114,11 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
         # Known columns can appear in any order; anything left over (after the
         # known ones) is treated as a per-sucursal quantity column.
         known_aliases = {
+            # Si el Excel ya trae una columna "Orden" (por ejemplo, porque es
+            # el mismo archivo descargado antes y se vuelve a subir), esa
+            # columna define el orden real de cada producto sin importar en
+            # qué fila haya quedado dentro del archivo -- ver más abajo.
+            "orden": ["ORDEN"],
             "codigo": ["CODIGO JP", "CODIGO"],
             "referencia": ["REFERENCIA"],
             "oem": ["OEM"],
@@ -211,6 +262,19 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
             descripcion = safe_str(cell(row, "descripcion"))
             cantidad = safe_int(cell(row, "cantidad"))
             pvp = safe_float(cell(row, "pvp"))
+            # Si el Excel ya traía su propia columna "Orden" (se descargó antes
+            # y se vuelve a subir), se respeta ese valor tal cual -- así el
+            # producto conserva su orden real aunque el usuario haya
+            # reordenado las filas en el archivo antes de volver a subirlo.
+            # Si no hay columna Orden (Excel nuevo), se usa la fila en la que
+            # cayó dentro de este archivo, como antes.
+            orden_cell = cell(row, "orden")
+            try:
+                orden = int(float(orden_cell)) if orden_cell not in (None, "") else 0
+            except (TypeError, ValueError):
+                orden = 0
+            if orden <= 0:
+                orden = i
             if not codigo and not referencia and not oem and not descripcion and cantidad <= 0 and pvp <= 0:
                 if i % 10 == 0 or i == total_data_rows:
                     set_progress(20 + (i / total_data_rows) * 75)
@@ -228,11 +292,13 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
             conflicto_casa = False
             conflicto_casa_nombre = ""
             if codigo:
-                matched = Producto.objects.filter(codigo__iexact=codigo).first()
+                matched = _pick_producto_match(
+                    list(Producto.objects.filter(codigo__iexact=codigo)), casa_comercial_id
+                )
                 if matched:
                     matched_via_identity = True
             if not matched and referencia:
-                matched = Producto.objects.filter(referencia__iexact=referencia).first()
+                matched = _resolve_producto_by_referencia(referencia, casa_comercial_id)
                 if matched:
                     matched_via_identity = True
 
@@ -310,11 +376,12 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
 
             parsed.append({
                 "fila_excel": fila_excel,
-                # Orden del producto en el Excel subido (1-based, sin contar
-                # el encabezado) -- se guarda sin mostrarse en ninguna tabla
-                # de la app, solo para poder exportarlo de vuelta como
-                # primera columna al descargar el Excel de una importacion.
-                "orden": i,
+                # Orden real del producto (de la columna "Orden" del Excel si
+                # ya la traía, o la fila del archivo si es la primera vez que
+                # se sube) -- se guarda sin mostrarse en ninguna tabla de la
+                # app, solo para poder exportarlo de vuelta como primera
+                # columna al descargar el Excel de una importacion.
+                "orden": orden,
                 "codigo": codigo,
                 "referencia": referencia,
                 "oem": oem,
