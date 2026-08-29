@@ -6795,7 +6795,10 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
         seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
       } : {}
-      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
+      // orden: la posición del producto en el Excel de sugerencia original --
+      // el backend borra y vuelve a crear todos los detalles al guardar, así
+      // que si no se reenvía aquí se pierde en cada "Guardar" (quedaba null).
+      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
       const manualPrecio = item.precio != null && item.precio !== '' ? Number(item.precio) : undefined
       return {
         codigo: item.codigo || '',
@@ -6804,6 +6807,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         referencia: item.referencia || '',
         cantidad: Number(item.cantidad || 0),
         comentario: item.comentario || '',
+        orden: item.orden,
         ...(manualPrecio != null && !isVerificarOrConfirmacion ? { precio_confirmado: manualPrecio } : {}),
         ...confirmedFields,
         ...solId,
@@ -7069,8 +7073,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     try {
       const normalizedDetails = details.map((item) => {
         const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...solId }
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...solId }
       })
       const saveResponse = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -7122,8 +7126,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           precio_confirmado: precioEstimadoVal,
           cantidad_confirmada: cantAproxVal,
         }
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...estimadoFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...estimadoFields, ...solId }
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
       })
       const saveResponse = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -7165,8 +7169,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
         }
         const detalleId = item._detalleId != null ? { detalle_id: item._detalleId } : {}
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId, ...detalleId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId, ...detalleId }
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
       })
       const selectedKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'check').map(([k]) => k)
       const xKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'x').map(([k]) => k)
@@ -7218,8 +7222,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
           cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
           seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
         } : {}
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', ...confirmedFields, ...solId }
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
       })
       const response = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
