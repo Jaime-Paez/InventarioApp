@@ -540,11 +540,23 @@
   border-left: none;
 }
 
+/* Header fijo (position:sticky) al hacer scroll con listas largas de
+   productos, igual que en .imp-details__productos-table. El fondo se pinta
+   por celda (no en la fila) por la misma razón: si esta tabla llega a
+   scrollear en horizontal, el fondo de la fila sticky puede dejar de
+   pintarse a partir de cierta columna en ese caso. */
 .imp-receive__productos-row.create-user__locations-row--head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: none;
+}
+
+.imp-receive__productos-row.create-user__locations-row--head > span {
   background: #dbe1e8;
 }
 
-.dashboard-shell.dark .imp-receive__productos-row.create-user__locations-row--head {
+.dashboard-shell.dark .imp-receive__productos-row.create-user__locations-row--head > span {
   background: color-mix(in srgb, var(--table-color-dark) 80%, white 20%);
 }
 
@@ -610,11 +622,23 @@
   border-left: none;
 }
 
+/* Header fijo (position:sticky) al hacer scroll con listas largas de
+   productos, igual que en .imp-details__productos-table. El fondo se pinta
+   por celda (no en la fila) por la misma razón: con muchas sucursales esta
+   tabla también puede desbordar y scrollear en horizontal, y el fondo de la
+   fila sticky puede dejar de pintarse a partir de cierta columna en ese caso. */
 .imp-distribucion__productos-row.create-user__locations-row--head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: none;
+}
+
+.imp-distribucion__productos-row.create-user__locations-row--head > span {
   background: #dbe1e8;
 }
 
-.dashboard-shell.dark .imp-distribucion__productos-row.create-user__locations-row--head {
+.dashboard-shell.dark .imp-distribucion__productos-row.create-user__locations-row--head > span {
   background: color-mix(in srgb, var(--table-color-dark) 80%, white 20%);
 }
 
@@ -713,14 +737,27 @@
 }
 
 /* Esta tabla es la única que scrollea en ambos ejes a la vez (columnas
-   dinámicas por sucursal + muchas filas). position: sticky en un contenedor
-   con overflow-x y overflow-y simultáneos calcula mal el ancho del header
-   sticky en algunos navegadores: el fondo deja de pintarse a partir de
-   cierta columna aunque el texto y los bordes de esas celdas sí se vean.
-   Se desactiva sticky solo aquí para evitar esa clase de bug; el resto de
-   tablas de este archivo (que solo scrollean en vertical) no lo necesitan. */
+   dinámicas por sucursal + muchas filas), y con listas largas (159+
+   productos) necesita el header fijo igual que el resto de tablas. En
+   algunos navegadores, position:sticky en un contenedor con overflow-x y
+   overflow-y simultáneos calcula mal el ancho del fondo DE LA FILA sticky:
+   deja de pintarse a partir de cierta columna aunque el texto y los bordes
+   de esas celdas sí se vean. Por eso el fondo no se pone en la fila (ver
+   más abajo) sino en cada celda por separado, que sí se pinta bien columna
+   por columna sin depender de ese cálculo. */
 .importaciones-modal__products-table.imp-details__productos-table .create-user__locations-row--head {
-  position: static;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: none;
+}
+
+.importaciones-modal__products-table.imp-details__productos-table .create-user__locations-row--head > span {
+  background: #dbe1e8;
+}
+
+.dashboard-shell.dark .importaciones-modal__products-table.imp-details__productos-table .create-user__locations-row--head > span {
+  background: color-mix(in srgb, var(--table-color-dark) 80%, white 20%);
 }
 
 .importaciones-modal__products-table .create-user__locations-row > span {
