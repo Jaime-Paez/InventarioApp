@@ -515,18 +515,32 @@
   border-color: var(--color-border-dark, #334155);
 }
 
-/* A diferencia de .imp-details__productos-table, esta tabla no tiene un alto
-   acotado propio (vive dentro de .quick-actions__receive-body, que scrollea
-   con overflow:auto en un layout de grid, no flex) -- el overflow-y:auto que
-   le da la regla genérica .importaciones-modal__products-table nunca llega a
-   activarse (su alto siempre es el del contenido), pero sigue contando como
-   "ancestro con overflow" para position:sticky, así que el header terminaba
-   pegándose a ESTA tabla (que nunca scrollea) en vez de al contenedor real
-   que sí scrollea -- por eso no se quedaba fijo. Quitando el overflow acá,
-   sticky encuentra el contenedor correcto.
-   (Verificado con una reproducción aislada en Playwright.) */
+/* El header sticky de esta tabla necesita que ELLA MISMA sea el contenedor
+   que de verdad scrollea (con un alto acotado), igual que
+   .imp-details__productos-table en el modal de Detalles -- si no, el
+   overflow-y:auto que le da la regla genérica .importaciones-modal__products-table
+   nunca se activa de verdad (su alto siempre termina siendo el del
+   contenido dentro de .quick-actions__receive-body, que es la que scrollea
+   todo el paso) y el header sticky no tiene contra qué quedarse fijo. Se le
+   da un alto acotado por flex (solo cuando esta tabla está presente, vía
+   :has(), para no afectar el resto de pasos del asistente). */
+.quick-actions__receive-body:has(.imp-receive__table) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.quick-actions__receive-body:has(.imp-receive__table) > .quick-actions__receive-step {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .imp-receive__table.importaciones-modal__products-table {
-  overflow: visible;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   max-height: none;
 }
 
@@ -624,12 +638,26 @@
   border-color: var(--color-border-dark, #334155);
 }
 
-/* Mismo motivo que .imp-receive__table: sin esto, position:sticky en el
-   header se pega a esta tabla (que nunca scrollea sola) en vez de al
-   contenedor real que sí scrollea (.quick-actions__receive-body), y el
-   header no se queda fijo al hacer scroll. */
+/* Mismo motivo que .imp-receive__table: el header sticky necesita que esta
+   tabla sea el contenedor que de verdad scrollea (alto acotado por flex),
+   no .quick-actions__receive-body. */
+.quick-actions__receive-body:has(.imp-distribucion__table) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.quick-actions__receive-body:has(.imp-distribucion__table) > .quick-actions__receive-step {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .imp-distribucion__table.importaciones-modal__products-table {
-  overflow: visible;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   max-height: none;
 }
 
