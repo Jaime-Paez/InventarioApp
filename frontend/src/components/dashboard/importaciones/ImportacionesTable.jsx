@@ -1183,6 +1183,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     Object.values(dupCheckTimersRef.current).forEach(clearTimeout)
     dupCheckTimersRef.current = {}
     setDupStatus({})
+    setShowLinkExistingConfirm(false)
   }
 
   const emptyKitItem = () => ({ _key: makeKitItemKey(), codigo: '', nombre: '', precio: '', referencia: '', oem: '', descripcion: '' })
@@ -1217,6 +1218,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [dupStatus, setDupStatus] = useState({})
   const dupCheckTimersRef = useRef({})
   const dupCheckSeqRef = useRef({})
+  const [showLinkExistingConfirm, setShowLinkExistingConfirm] = useState(false)
 
   const scheduleDupCheck = useCallback((key, field, value, siblingValues = []) => {
     if (dupCheckTimersRef.current[key]) clearTimeout(dupCheckTimersRef.current[key])
@@ -1241,8 +1243,11 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         if (!resp.ok) { setDupStatus(prev => ({ ...prev, [key]: { checking: false, error: '', checked: false } })); return }
         const data = await resp.json()
         const list = Array.isArray(data) ? data : data?.results || []
-        const exists = list.some(p => String(p?.[field] ?? '').trim().toLowerCase() === term.toLowerCase())
-        setDupStatus(prev => ({ ...prev, [key]: { checking: false, error: exists ? `Este ${fieldLabel} ya existe.` : '', checked: true } }))
+        const existingProduct = list.find(p => String(p?.[field] ?? '').trim().toLowerCase() === term.toLowerCase()) || null
+        setDupStatus(prev => ({
+          ...prev,
+          [key]: { checking: false, error: existingProduct ? `Este ${fieldLabel} ya existe.` : '', checked: true, existingProduct },
+        }))
       } catch {
         if (dupCheckSeqRef.current[key] !== seq) return
         setDupStatus(prev => ({ ...prev, [key]: { checking: false, error: '', checked: false } }))
@@ -1380,7 +1385,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     }
   }
 
-  const saveProductForm = async () => {
+  const saveProductForm = async (confirmedLinkExisting = false) => {
     const items = isKit ? kitForms : [form]
 
     const errsList = items.map(item => {
@@ -1396,10 +1401,19 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       else setFormErrors(errsList[0])
       return
     }
-    const dupKeys = isKit
-      ? items.flatMap(item => [`kit-${item._key}-codigo`, `kit-${item._key}-referencia`])
-      : ['single-codigo', 'single-referencia']
-    if (dupKeys.some(k => dupStatus[k]?.checking || dupStatus[k]?.error)) return
+    const codigoKeys = isKit ? items.map(item => `kit-${item._key}-codigo`) : ['single-codigo']
+    const referenciaKeys = isKit ? items.map(item => `kit-${item._key}-referencia`) : ['single-referencia']
+    if ([...codigoKeys, ...referenciaKeys].some(k => dupStatus[k]?.checking)) return
+    // La referencia repetida sigue bloqueando el envío. El código repetido ya
+    // no bloquea: en vez de fallar, se le pregunta al usuario si quiere
+    // vincular esta línea al producto existente (createOrLinkProduct ya sabe
+    // buscarlo y usarlo en vez de crear uno nuevo cuando el código ya existe).
+    if (referenciaKeys.some(k => dupStatus[k]?.error)) return
+    if (codigoKeys.some(k => dupStatus[k]?.error) && !confirmedLinkExisting) {
+      setShowLinkExistingConfirm(true)
+      return
+    }
+    setShowLinkExistingConfirm(false)
     const casaId = imp.casa_comercial?.id
     if (!casaId) { setFormErrors({ _general: 'La importación no tiene casa comercial asignada.' }); return }
 
@@ -2104,7 +2118,17 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         const dupCheckKeys = isKit
           ? kitForms.flatMap(item => [`kit-${item._key}-codigo`, `kit-${item._key}-referencia`])
           : ['single-codigo', 'single-referencia']
+        // Un código repetido ya no bloquea el envío: se le pregunta al usuario
+        // si quiere vincular esta línea al producto existente en vez de crear
+        // uno nuevo (ver saveProductForm/showLinkExistingConfirm). La
+        // referencia repetida sí sigue bloqueando, sin cambios.
+        const referenciaCheckKeys = dupCheckKeys.filter(k => k.endsWith('-referencia'))
+        const codigoCheckKeys = dupCheckKeys.filter(k => k.endsWith('-codigo'))
+        const codigoConflicts = codigoCheckKeys
+          .map(k => ({ key: k, status: dupStatus[k] }))
+          .filter(({ status }) => status?.error)
         return createPortal(
+          <>
           <div
             className={`quick-actions__receive-overlay ${mode}`}
             style={{ zIndex: 2200 }}
@@ -2277,12 +2301,66 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setEditingId(null)} disabled={formSaving}>
                   Cancelar
                 </button>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={saveProductForm} disabled={formSaving || dupCheckKeys.some(k => dupStatus[k]?.checking || dupStatus[k]?.error)}>
+                <button
+                  type="button"
+                  className="quick-actions__receive-btn quick-actions__receive-btn--primary"
+                  onClick={() => saveProductForm()}
+                  disabled={formSaving || dupCheckKeys.some(k => dupStatus[k]?.checking) || referenciaCheckKeys.some(k => dupStatus[k]?.error)}
+                >
                   {formSaving ? 'Guardando...' : (isKit ? `Crear ${kitForms.length} productos` : 'Crear producto')}
                 </button>
               </div>
             </div>
-          </div>,
+          </div>
+          {showLinkExistingConfirm && (
+            <div
+              className={`quick-actions__receive-overlay ${mode}`}
+              style={{ zIndex: 2400 }}
+              onMouseDown={(e) => { if (e.target === e.currentTarget) setShowLinkExistingConfirm(false) }}
+            >
+              <div
+                className={`quick-actions__receive-dialog ${mode}`}
+                style={{ width: 'min(440px, 90vw)', height: 'auto', gridTemplateRows: 'auto 1fr auto' }}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <header className="quick-actions__receive-head">
+                  <div>
+                    <h4>¿Vincular con producto existente?</h4>
+                  </div>
+                  <button type="button" className="quick-actions__receive-close" onClick={() => setShowLinkExistingConfirm(false)} disabled={formSaving}>
+                    <X size={16} />
+                  </button>
+                </header>
+                <div style={{ padding: '4px 20px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-text, inherit)' }}>
+                    {codigoConflicts.length === 1
+                      ? 'Este código ya pertenece a un producto existente:'
+                      : 'Estos códigos ya pertenecen a productos existentes:'}
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.9rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {codigoConflicts.map(({ key, status }) => (
+                      <li key={key}>
+                        <strong>{status.existingProduct?.codigo || '—'}</strong>
+                        {status.existingProduct?.nombre ? `: ${status.existingProduct.nombre}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                  <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-muted,#64748b)' }}>
+                    Si continúas, esta línea de la importación se vinculará al producto que ya existe en el catálogo (sin cambiar su nombre, precio ni referencia actuales) en vez de crear uno nuevo. ¿Estás seguro?
+                  </p>
+                </div>
+                <div className="quick-actions__receive-actions">
+                  <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setShowLinkExistingConfirm(false)} disabled={formSaving}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--primary" onClick={() => saveProductForm(true)} disabled={formSaving}>
+                    {formSaving ? 'Guardando...' : 'Sí, vincular'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          </>,
           getPortalRoot()
         )
       })()}
