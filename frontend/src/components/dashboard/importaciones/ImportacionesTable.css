@@ -515,6 +515,21 @@
   border-color: var(--color-border-dark, #334155);
 }
 
+/* A diferencia de .imp-details__productos-table, esta tabla no tiene un alto
+   acotado propio (vive dentro de .quick-actions__receive-body, que scrollea
+   con overflow:auto en un layout de grid, no flex) -- el overflow-y:auto que
+   le da la regla genérica .importaciones-modal__products-table nunca llega a
+   activarse (su alto siempre es el del contenido), pero sigue contando como
+   "ancestro con overflow" para position:sticky, así que el header terminaba
+   pegándose a ESTA tabla (que nunca scrollea) en vez de al contenedor real
+   que sí scrollea -- por eso no se quedaba fijo. Quitando el overflow acá,
+   sticky encuentra el contenedor correcto.
+   (Verificado con una reproducción aislada en Playwright.) */
+.imp-receive__table.importaciones-modal__products-table {
+  overflow: visible;
+  max-height: none;
+}
+
 .imp-receive__productos-row {
   grid-template-columns:
     minmax(90px, 0.85fr)
@@ -607,6 +622,15 @@
 
 .dashboard-shell.dark .imp-distribucion__table {
   border-color: var(--color-border-dark, #334155);
+}
+
+/* Mismo motivo que .imp-receive__table: sin esto, position:sticky en el
+   header se pega a esta tabla (que nunca scrollea sola) en vez de al
+   contenedor real que sí scrollea (.quick-actions__receive-body), y el
+   header no se queda fijo al hacer scroll. */
+.imp-distribucion__table.importaciones-modal__products-table {
+  overflow: visible;
+  max-height: none;
 }
 
 .imp-distribucion__productos-row:not(.create-user__locations-row--empty) > span {
