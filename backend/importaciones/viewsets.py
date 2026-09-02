@@ -24,7 +24,7 @@ from django.db.models import F, Func, Q
 from app.models import ReminderState
 from configuracion.models import ConfiguracionSistema
 from inventario.models import Inventario, SubDivision
-from productos.models import OEMProducto, Producto
+from productos.models import OEMProducto, Producto, add_producto_referencia
 
 from .models import (
     Importacion,
@@ -70,7 +70,10 @@ def _pick_producto_match(candidates, casa_comercial_id):
 def _resolve_producto_by_referencia(referencia, casa_comercial_id):
     if not referencia:
         return None
-    candidates = list(Producto.objects.filter(referencia__iexact=referencia))
+    # Un producto puede tener varias referencias (ProductoReferencia): hay
+    # que buscar en todas, no solo en Producto.referencia (que es nada más
+    # una copia de la primera, ver sync_producto_referencia_primary).
+    candidates = list(Producto.objects.filter(referencias__valor__iexact=referencia).distinct())
     if not candidates:
         # Los ceros a la izquierda no distinguen la referencia ('0042' es lo
         # mismo que '42'), sin importar de qué lado (Excel o catálogo) estén
@@ -78,8 +81,9 @@ def _resolve_producto_by_referencia(referencia, casa_comercial_id):
         # vino del Excel se sigue guardando sin tocar.
         stripped = _strip_leading_zeros(referencia)
         candidates = list(
-            Producto.objects.annotate(referencia_sin_ceros=_StripLeadingZerosSQL("referencia"))
+            Producto.objects.annotate(referencia_sin_ceros=_StripLeadingZerosSQL("referencias__valor"))
             .filter(referencia_sin_ceros__iexact=stripped)
+            .distinct()
         )
     return _pick_producto_match(candidates, casa_comercial_id)
 
@@ -392,6 +396,13 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                 "matched_producto_codigo": matched.codigo if matched else None,
                 "matched_producto_nombre": matched.nombre if matched else None,
                 "matched_producto_referencia": matched.referencia if matched else None,
+                # Lista completa (un producto puede tener varias referencias)
+                # -- se usa para no marcar "conflicto" cuando la referencia
+                # del Excel es una de las que el producto ya tiene, aunque no
+                # sea la primera/principal.
+                "matched_producto_referencias": (
+                    list(matched.referencias.values_list("valor", flat=True)) if matched else []
+                ),
                 "matched_producto_precio": float(matched.precio) if matched and matched.precio is not None else None,
                 "oem_matches": oem_matches,
                 "sucursal_quantities": suc_quantities,
@@ -523,8 +534,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     pass
         response = super().create(request, *args, **kwargs)
         if referencia_updates and response.status_code == status.HTTP_201_CREATED:
+            # Un producto puede tener varias referencias: la del Excel se
+            # agrega a la lista del producto sin borrar las que ya tenía
+            # (add_producto_referencia deduplica si ya la tiene).
             for pid, nueva_ref in referencia_updates.items():
-                Producto.objects.filter(pk=pid).update(referencia=nueva_ref)
+                producto = Producto.objects.filter(pk=pid).first()
+                if producto:
+                    add_producto_referencia(producto, nueva_ref)
         return response
 
     def get_queryset(self):

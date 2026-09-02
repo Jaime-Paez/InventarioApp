@@ -952,7 +952,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         products = (
             Producto.objects.filter(id__in=product_ids)
-            .prefetch_related("casas_comerciales", "oem_productos__oem")
+            .prefetch_related("casas_comerciales", "oem_productos__oem", "referencias")
         )
         product_meta = {}
         for product in products:
@@ -966,11 +966,13 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 codigo = getattr(getattr(rel, "oem", None), "codigo", None)
                 if codigo:
                     oem_codes.append(codigo)
+            referencias_list = [ref.valor for ref in product.referencias.all() if ref.valor]
             product_meta[int(product.id)] = {
                 "casas_comerciales_nombres": ", ".join(casas),
                 "casa_comercial_nombre": (casas[0] if casas else "") or "",
                 "oem_codes": ", ".join(oem_codes),
                 "oem_codes_list": oem_codes,
+                "referencias_list": referencias_list,
             }
 
         serialized = []
@@ -986,6 +988,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "nombre": row.get("nombre") or "",
                 "descripcion": row.get("descripcion") or "",
                 "referencia": row.get("referencia") or "",
+                "referencias_list": meta.get("referencias_list") or [],
                 "casa_comercial_nombre": meta.get("casa_comercial_nombre") or "",
                 "casas_comerciales_nombres": meta.get("casas_comerciales_nombres") or "",
                 "costo_minimo": row.get("costo_minimo"),

@@ -142,6 +142,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   useEffect(() => attachAutoExpandColumns(tableWrapperRef.current), [])
   const locationHoverHideTimeoutRef = useRef(null)
   const oemHoverHideTimeoutRef = useRef(null)
+  const referenciaHoverHideTimeoutRef = useRef(null)
   const fetchProductsSeqRef = useRef(0)
   const widthHandlers = useMemo(() => makeWidthStateHandlers(INVENTARIO_TABLE_LAYOUT_STATE_KEY), [])
   const [tableResetKey, setTableResetKey] = useState(0)
@@ -202,6 +203,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const [isCodigoColumnFrozen, setIsCodigoColumnFrozen] = useState(false)
   const [locationHoverCard, setLocationHoverCard] = useState(null)
   const [oemHoverCard, setOemHoverCard] = useState(null)
+  const [referenciaHoverCard, setReferenciaHoverCard] = useState(null)
 
   // Branch state
   const [branches, setBranches] = useState([])
@@ -216,6 +218,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         const oemCodes = Array.isArray(product?.oem_codes_list)
           ? product.oem_codes_list.filter(Boolean)
           : (product?.oem_codes ? String(product.oem_codes).split(',').map((s) => s.trim()).filter(Boolean) : [])
+        const referenciasList = Array.isArray(product?.referencias_list)
+          ? product.referencias_list.filter(Boolean)
+          : (product?.referencia ? [String(product.referencia)] : [])
         const firstHouseName =
           houses.map((house) => house?.nombre).find(Boolean) ??
           product?.casa_comercial_nombre ??
@@ -233,6 +238,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             : null,
           oem_codes: oemCodes.join(', '),
           oem_codes_list: oemCodes,
+          referencia: referenciasList.join(', '),
+          referencias_list: referenciasList,
           total_general: normalizeNumber(product?.total_general),
         }
         branches.forEach((branch) => {
@@ -950,6 +957,70 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     return () => window.removeEventListener('scroll', handleScroll, true)
   }, [hideOemHoverCard])
 
+  // Hover con el resto de referencias de un producto -- igual que OEM: un
+  // producto puede tener varias, la celda solo muestra las primeras.
+  const clearReferenciaHoverHideTimer = useCallback(() => {
+    if (!referenciaHoverHideTimeoutRef.current) return
+    clearTimeout(referenciaHoverHideTimeoutRef.current)
+    referenciaHoverHideTimeoutRef.current = null
+  }, [])
+
+  const hideReferenciaHoverCard = useCallback(() => {
+    clearReferenciaHoverHideTimer()
+    setReferenciaHoverCard(null)
+  }, [clearReferenciaHoverHideTimer])
+
+  const scheduleHideReferenciaHoverCard = useCallback(() => {
+    clearReferenciaHoverHideTimer()
+    referenciaHoverHideTimeoutRef.current = setTimeout(() => {
+      referenciaHoverHideTimeoutRef.current = null
+      setReferenciaHoverCard(null)
+    }, 120)
+  }, [clearReferenciaHoverHideTimer])
+
+  const showReferenciaHoverCard = useCallback(
+    (event, codes) => {
+      if (!codes.length) {
+        hideReferenciaHoverCard()
+        return
+      }
+      clearReferenciaHoverHideTimer()
+      const rect = event?.currentTarget?.getBoundingClientRect?.()
+      if (!rect) return
+
+      let left = rect.right + 10
+      if (left + OEM_HOVER_CARD_WIDTH > window.innerWidth - OEM_HOVER_CARD_MARGIN) {
+        left = Math.max(OEM_HOVER_CARD_MARGIN, rect.left - OEM_HOVER_CARD_WIDTH - 10)
+      }
+
+      const estimatedHeight = Math.min(
+        80 + codes.length * 29,
+        window.innerHeight - 2 * OEM_HOVER_CARD_MARGIN
+      )
+      let top = rect.top - 8
+      if (top + estimatedHeight > window.innerHeight - OEM_HOVER_CARD_MARGIN) {
+        top = window.innerHeight - OEM_HOVER_CARD_MARGIN - estimatedHeight
+      }
+      top = Math.max(OEM_HOVER_CARD_MARGIN, top)
+
+      setReferenciaHoverCard({ left, top, codes })
+    },
+    [clearReferenciaHoverHideTimer, hideReferenciaHoverCard]
+  )
+
+  useEffect(
+    () => () => {
+      clearReferenciaHoverHideTimer()
+    },
+    [clearReferenciaHoverHideTimer]
+  )
+
+  useEffect(() => {
+    const handleScroll = () => hideReferenciaHoverCard()
+    window.addEventListener('scroll', handleScroll, true)
+    return () => window.removeEventListener('scroll', handleScroll, true)
+  }, [hideReferenciaHoverCard])
+
   // ---------------- quantityBody helper ----------------
   const [permittedBranchIds, setPermittedBranchIds] = useState(null)
 
@@ -1090,6 +1161,38 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       )
     },
     [scheduleHideOemHoverCard, showOemHoverCard]
+  )
+
+  const referenciaBodyTemplate = useCallback(
+    (rowData) => {
+      const codes = Array.isArray(rowData?.referencias_list) ? rowData.referencias_list : []
+      if (!codes.length) {
+        return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
+      }
+      const allLabel = codes.join(', ')
+      const displayLabel = codes.length > 2 ? codes.slice(0, 2).join(', ') + '...' : allLabel
+      return (
+        <div className="inventario-v2__location-cell">
+          <span className="cell-tooltip inventario-v2__location-main" title={allLabel}>{displayLabel}</span>
+          {codes.length > 2 ? (
+            <button
+              type="button"
+              className="inventario-v2__location-eye"
+              aria-label="Ver todas las referencias"
+              onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+              onMouseDown={(event) => event.stopPropagation()}
+              onMouseEnter={(event) => showReferenciaHoverCard(event, codes)}
+              onMouseLeave={scheduleHideReferenciaHoverCard}
+              onFocus={(event) => showReferenciaHoverCard(event, codes)}
+              onBlur={scheduleHideReferenciaHoverCard}
+            >
+              <i className="pi pi-eye" />
+            </button>
+          ) : null}
+        </div>
+      )
+    },
+    [scheduleHideReferenciaHoverCard, showReferenciaHoverCard]
   )
 
   function resolveSelectedColumnConfig(column) {
@@ -2199,6 +2302,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
               case 'oem_codes':
                 bodyTemplate = (rowData) => oemBodyTemplate(rowData)
                 break
+              case 'referencia':
+                bodyTemplate = (rowData) => referenciaBodyTemplate(rowData)
+                break
               default:
                 bodyTemplate = (rowData) => cellWithTooltip(rowData, column.nombrevar)
                 break
@@ -2328,6 +2434,32 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
               <tbody>
                 {oemHoverCard.codes.map((code, index) => (
                   <tr key={`oem-hover-${index}`}>
+                    <td title={code}>{code}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {Array.isArray(referenciaHoverCard?.codes) && referenciaHoverCard.codes.length > 0 && (
+          <div
+            className="movimientos-table__product-hover-card inventario-v2__oem-hover-card"
+            role="tooltip"
+            style={{ top: referenciaHoverCard.top, left: referenciaHoverCard.left }}
+            onMouseEnter={clearReferenciaHoverHideTimer}
+            onMouseLeave={scheduleHideReferenciaHoverCard}
+          >
+            <div className="movimientos-table__product-hover-title">Referencias</div>
+            <table className="movimientos-table__product-hover-table">
+              <thead>
+                <tr>
+                  <th>Referencia</th>
+                </tr>
+              </thead>
+              <tbody>
+                {referenciaHoverCard.codes.map((code, index) => (
+                  <tr key={`referencia-hover-${index}`}>
                     <td title={code}>{code}</td>
                   </tr>
                 ))}

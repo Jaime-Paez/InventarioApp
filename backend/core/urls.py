@@ -17,6 +17,7 @@ from productos.viewsets import (
     OEMProductoViewSet,
     OEMViewSet,
     ProductoAlternoViewSet,
+    ProductoReferenciaViewSet,
     ProductoViewSet,
 )
 from tipos.viewsets import (
@@ -71,6 +72,7 @@ router.register(r"casa-comercial/casas", CasaComercialViewSet, basename="casa-co
 router.register(r"productos/listado", ProductoViewSet, basename="productos-listado")
 router.register(r"productos/oem", OEMViewSet, basename="productos-oem")
 router.register(r"productos/oem-producto", OEMProductoViewSet, basename="productos-oem-producto")
+router.register(r"productos/referencia-producto", ProductoReferenciaViewSet, basename="productos-referencia-producto")
 router.register(r"productos/alternos", ProductoAlternoViewSet, basename="productos-alternos")
 
 # Inventarios

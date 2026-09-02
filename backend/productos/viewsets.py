@@ -24,13 +24,14 @@ from usuarios.sucursal_scope import get_any_permitted_sucursal_ids
 
 from inventario.models import Inventario, Sucursal
 
-from .models import OEM, OEMProducto, Producto, ProductoAlterno
+from .models import OEM, OEMProducto, Producto, ProductoAlterno, ProductoReferencia, sync_producto_referencia_primary
 from .serializers import (
     OEMProductoSerializer,
     OEMSerializer,
     ProductoCalificacionSerializer,
     ProductoDetailSerializer,
     ProductoAlternoSerializer,
+    ProductoReferenciaSerializer,
     ProductoSerializer,
     build_producto_rating_summary,
 )
@@ -62,7 +63,7 @@ def get_alterno_group_ids(producto_id):
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = (
         Producto.objects.prefetch_related(
-            "casas_comerciales__pais", "oem_productos__oem", "alternativas__alterno"
+            "casas_comerciales__pais", "oem_productos__oem", "alternativas__alterno", "referencias"
         )
         .all()
         .order_by("-creado_en", "-id")
@@ -75,6 +76,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
         "nombre",
         "descripcion",
         "referencia",
+        "referencias__valor",
         "casas_comerciales__nombre",
         "oem_productos__oem__codigo",
     ]
@@ -221,7 +223,10 @@ class ProductoViewSet(viewsets.ModelViewSet):
 
         referencia = (params.get("referencia") or "").strip()
         if referencia:
-            queryset = queryset.filter(referencia__icontains=referencia)
+            # Un producto puede tener varias referencias -- se busca en todas
+            # (Producto.referencia es solo una copia de la primera, ver
+            # sync_producto_referencia_primary, así que ya queda incluida).
+            queryset = queryset.filter(referencias__valor__icontains=referencia).distinct()
 
         nombre = (params.get("nombre") or "").strip()
         if nombre:
@@ -268,7 +273,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 "costo_minimo": {"lookup": "costo_minimo", "type": "number"},
                 "precio": {"lookup": "precio", "type": "number"},
                 "precio_con_iva": {"lookup": "precio_con_iva_backend", "type": "number"},
-                "referencia": "referencia",
+                "referencia": "referencias__valor",
                 "oem_codes": "oem_productos__oem__codigo",
                 "casa_comercial_nombre": "casas_comerciales__nombre",
             },
@@ -491,6 +496,23 @@ class OEMProductoViewSet(viewsets.ModelViewSet):
         group_ids = get_alterno_group_ids(instance.producto_id)
         instance.delete()
         OEMProducto.objects.filter(producto_id__in=group_ids, oem=oem).delete()
+
+
+class ProductoReferenciaViewSet(viewsets.ModelViewSet):
+    queryset = ProductoReferencia.objects.select_related("producto").all().order_by("-id")
+    serializer_class = ProductoReferenciaSerializer
+    permission_classes = [IsAuthenticated, ProductosModulePermission]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["producto__codigo", "producto__nombre", "valor"]
+    ordering_fields = ["producto__nombre", "valor"]
+
+    def perform_destroy(self, instance):
+        # A diferencia del OEM, la referencia no se comparte entre productos
+        # -- borrar solo afecta a este producto -- pero sí hay que
+        # re-sincronizar Producto.referencia por si se borró la primera.
+        producto = instance.producto
+        instance.delete()
+        sync_producto_referencia_primary(producto)
 
 
 class ProductoAlternoViewSet(viewsets.ModelViewSet):

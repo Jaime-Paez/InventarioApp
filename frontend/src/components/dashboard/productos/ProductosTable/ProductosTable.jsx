@@ -109,6 +109,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   // disponible en pantallas grandes, sin comprimir en pantallas chicas.
   useEffect(() => attachAutoExpandColumns(tableWrapperRef.current), [])
   const oemHoverHideTimeoutRef = useRef(null)
+  const referenciaHoverHideTimeoutRef = useRef(null)
   const widthHandlers = useMemo(() => makeWidthStateHandlers('productos-table-state-v2'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const canCreate = moduleActions?.puede_crear ?? true
@@ -162,6 +163,7 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [isCodigoColumnFrozen, setIsCodigoColumnFrozen] = useState(false)
   const [oemHoverCard, setOemHoverCard] = useState(null)
+  const [referenciaHoverCard, setReferenciaHoverCard] = useState(null)
   const [branches, setBranches] = useState([])
 
   const normalizeList = useCallback(
@@ -172,6 +174,8 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
         const oemCodes = oems
           .map((item) => item?.oem?.codigo ?? item?.oem_codigo ?? item?.codigo)
           .filter(Boolean)
+        const referencias = Array.isArray(product?.referencias) ? product.referencias : []
+        const referenciasList = referencias.map((item) => item?.valor).filter(Boolean)
         const firstHouseName = houses.map((house) => house?.nombre).find(Boolean) ?? '-'
         const normalized = {
           ...product,
@@ -182,6 +186,8 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
             : null,
           oem_codes: oemCodes.join(', '),
           oem_codes_list: oemCodes,
+          referencia: referenciasList.join(', '),
+          referencias_list: referenciasList,
         }
         const stockByBranch = product?.stock_por_sucursal || {}
         activeBranches.forEach((branch) => {
@@ -972,6 +978,80 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
     [scheduleHideOemHoverCard, showOemHoverCard]
   )
 
+  // ---------------- Referencia hover card (un producto puede tener varias) ----------------
+  const clearReferenciaHoverHideTimer = useCallback(() => {
+    if (!referenciaHoverHideTimeoutRef.current) return
+    clearTimeout(referenciaHoverHideTimeoutRef.current)
+    referenciaHoverHideTimeoutRef.current = null
+  }, [])
+
+  const hideReferenciaHoverCard = useCallback(() => {
+    clearReferenciaHoverHideTimer()
+    setReferenciaHoverCard(null)
+  }, [clearReferenciaHoverHideTimer])
+
+  const scheduleHideReferenciaHoverCard = useCallback(() => {
+    clearReferenciaHoverHideTimer()
+    referenciaHoverHideTimeoutRef.current = setTimeout(() => {
+      referenciaHoverHideTimeoutRef.current = null
+      setReferenciaHoverCard(null)
+    }, 120)
+  }, [clearReferenciaHoverHideTimer])
+
+  const showReferenciaHoverCard = useCallback(
+    (event, codes) => {
+      if (!codes.length) { hideReferenciaHoverCard(); return }
+      clearReferenciaHoverHideTimer()
+      const rect = event?.currentTarget?.getBoundingClientRect?.()
+      if (!rect) return
+      const cardWidth = 220
+      let left = rect.right + 10
+      if (left + cardWidth > window.innerWidth - 12) {
+        left = Math.max(12, rect.left - cardWidth - 10)
+      }
+      const top = Math.min(Math.max(rect.top - 8, 12), Math.max(window.innerHeight - 260, 12))
+      setReferenciaHoverCard({ left, top, codes })
+    },
+    [clearReferenciaHoverHideTimer, hideReferenciaHoverCard]
+  )
+
+  useEffect(() => () => { clearReferenciaHoverHideTimer() }, [clearReferenciaHoverHideTimer])
+
+  useEffect(() => {
+    const handleScroll = () => hideReferenciaHoverCard()
+    window.addEventListener('scroll', handleScroll, true)
+    return () => window.removeEventListener('scroll', handleScroll, true)
+  }, [hideReferenciaHoverCard])
+
+  const referenciaBodyTemplate = useCallback(
+    (rowData) => {
+      const codes = Array.isArray(rowData?.referencias_list) ? rowData.referencias_list : []
+      if (!codes.length) return <span className="cell-tooltip" style={{ color: '#9ca3af' }}>-</span>
+      const label = codes.join(', ')
+      return (
+        <div className="inventario-v2__location-cell">
+          <span className="cell-tooltip inventario-v2__location-main" title={label}>{label}</span>
+          {codes.length > 1 && (
+            <button
+              type="button"
+              className="inventario-v2__location-eye"
+              aria-label="Ver todas las referencias"
+              onClick={(event) => { event.preventDefault(); event.stopPropagation() }}
+              onMouseDown={(event) => event.stopPropagation()}
+              onMouseEnter={(event) => showReferenciaHoverCard(event, codes)}
+              onMouseLeave={scheduleHideReferenciaHoverCard}
+              onFocus={(event) => showReferenciaHoverCard(event, codes)}
+              onBlur={scheduleHideReferenciaHoverCard}
+            >
+              <i className="pi pi-eye" />
+            </button>
+          )}
+        </div>
+      )
+    },
+    [scheduleHideReferenciaHoverCard, showReferenciaHoverCard]
+  )
+
   // ---------------- Row click -> detalles ----------------
   const clickTimerRef = useRef(null)
 
@@ -1644,6 +1724,9 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
               case 'oem_codes':
                 bodyTemplate = (rowData) => oemBodyTemplate(rowData)
                 break
+              case 'referencia':
+                bodyTemplate = (rowData) => referenciaBodyTemplate(rowData)
+                break
               default:
                 if (column.isBranchQuantity || column.nombrevar.startsWith('sucursal_')) {
                   bodyTemplate = (rowData) => quantityBody(rowData, column.nombrevar)
@@ -1688,6 +1771,30 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
               <tbody>
                 {oemHoverCard.codes.map((code, index) => (
                   <tr key={`oem-hover-${index}`}>
+                    <td title={code}>{code}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {Array.isArray(referenciaHoverCard?.codes) && referenciaHoverCard.codes.length > 0 && (
+          <div
+            className="movimientos-table__product-hover-card inventario-v2__oem-hover-card"
+            role="tooltip"
+            style={{ top: referenciaHoverCard.top, left: referenciaHoverCard.left }}
+            onMouseEnter={clearReferenciaHoverHideTimer}
+            onMouseLeave={scheduleHideReferenciaHoverCard}
+          >
+            <div className="movimientos-table__product-hover-title">Referencias</div>
+            <table className="movimientos-table__product-hover-table">
+              <thead>
+                <tr><th>Referencia</th></tr>
+              </thead>
+              <tbody>
+                {referenciaHoverCard.codes.map((code, index) => (
+                  <tr key={`referencia-hover-${index}`}>
                     <td title={code}>{code}</td>
                   </tr>
                 ))}

@@ -144,6 +144,10 @@ function ProductoDetails({
   const [originalOemItems, setOriginalOemItems] = useState([])
   const [oemDraft, setOemDraft] = useState({ codigo: '' })
   const [oemError, setOemError] = useState('')
+  const [referenciaItems, setReferenciaItems] = useState([])
+  const [originalReferenciaItems, setOriginalReferenciaItems] = useState([])
+  const [referenciaDraft, setReferenciaDraft] = useState({ valor: '' })
+  const [referenciaError, setReferenciaError] = useState('')
   const [alternoQuery, setAlternoQuery] = useState('')
   const [alternoOptions, setAlternoOptions] = useState([])
   const [alternoLoading, setAlternoLoading] = useState(false)
@@ -244,6 +248,11 @@ function ProductoDetails({
   }, [notifyError, oemError])
 
   useEffect(() => {
+    if (!referenciaError) return
+    notifyError(referenciaError)
+  }, [notifyError, referenciaError])
+
+  useEffect(() => {
     if (!alternoError) return
     notifyError(alternoError)
   }, [alternoError, notifyError])
@@ -279,7 +288,6 @@ function ProductoDetails({
     codigo: data?.codigo ?? '',
     nombre: data?.nombre ?? '',
     descripcion: data?.descripcion ?? '',
-    referencia: data?.referencia ?? '',
     costo_minimo: formatMoneyFromValue(data?.costo_minimo),
     precio: formatMoneyFromValue(data?.precio),
     casasIds: Array.isArray(data?.casas_comerciales) ? data.casas_comerciales.map((casa) => String(casa.id)) : [],
@@ -411,6 +419,14 @@ function ProductoDetails({
       setOriginalOemItems(normalizedOems)
       setOemDraft({ codigo: '' })
       setOemError('')
+      const referenciasRaw = Array.isArray(data?.referencias) ? data.referencias : []
+      const normalizedReferencias = referenciasRaw
+        .map((item) => ({ relationId: item?.id ?? null, valor: item?.valor ?? '' }))
+        .filter((item) => item.valor)
+      setReferenciaItems(normalizedReferencias)
+      setOriginalReferenciaItems(normalizedReferencias)
+      setReferenciaDraft({ valor: '' })
+      setReferenciaError('')
       setAlternoQuery('')
       setAlternoOptions([])
       setAlternoLoading(false)
@@ -869,6 +885,45 @@ function ProductoDetails({
     setOemError('')
   }
 
+  // Un producto puede tener varias referencias (a diferencia del OEM, no se
+  // comparten entre productos).
+  const normalizeReferenciaValue = (value) => String(value ?? '').trim().toLowerCase()
+  const referenciaValueSet = useMemo(
+    () => new Set(referenciaItems.map((item) => normalizeReferenciaValue(item?.valor)).filter(Boolean)),
+    [referenciaItems]
+  )
+
+  const handleReferenciaDraftChange = (value) => {
+    if (!isEditing) return
+    setReferenciaDraft({ valor: value })
+    setReferenciaError('')
+  }
+
+  const handleAddReferencia = () => {
+    if (!isEditing) return
+    const valor = String(referenciaDraft.valor ?? '').trim()
+    if (!valor) {
+      setReferenciaError('Ingresa una referencia.')
+      return
+    }
+    const key = normalizeReferenciaValue(valor)
+    if (referenciaValueSet.has(key)) {
+      setReferenciaError('Esa referencia ya está en la tabla.')
+      return
+    }
+    setReferenciaItems((prev) => [...prev, { valor }])
+    setReferenciaDraft({ valor: '' })
+    setReferenciaError('')
+  }
+
+  const handleRemoveReferencia = (valor) => {
+    if (!isEditing) return
+    const key = normalizeReferenciaValue(valor)
+    if (!key) return
+    setReferenciaItems((prev) => prev.filter((item) => normalizeReferenciaValue(item?.valor) !== key))
+    setReferenciaError('')
+  }
+
   const ensureOemId = useCallback(
     async (item) => {
       const codigo = String(item?.codigo ?? '').trim()
@@ -1062,6 +1117,64 @@ function ProductoDetails({
     [ensureOemId, oemItems, token]
   )
 
+  const syncReferencias = useCallback(
+    async (productoIdValue, codigoProducto) => {
+      if (!productoIdValue || !token) return
+      const codigo = String(codigoProducto || '').trim()
+      if (!codigo) return
+
+      const desiredValues = new Set(
+        referenciaItems.map((item) => normalizeReferenciaValue(item?.valor)).filter(Boolean)
+      )
+      const desiredItems = referenciaItems.filter((item) => normalizeReferenciaValue(item?.valor))
+
+      const response = await authFetch(
+        `${API_URL}/productos/referencia-producto/?search=${encodeURIComponent(codigo)}&page_size=200`,
+        {},
+        token
+      )
+      if (!response.ok) {
+        throw new Error('No se pudieron cargar las referencias actuales.')
+      }
+      const data = await response.json()
+      const relations = parseApiList(data)
+      const current = relations
+        .map((relation) => ({
+          ...relation,
+          productoCodigo: parseProductCode(relation?.producto),
+        }))
+        .filter((relation) => relation.productoCodigo === codigo && relation.valor)
+
+      const currentValues = new Set(current.map((relation) => normalizeReferenciaValue(relation.valor)))
+      const toRemove = current.filter((relation) => !desiredValues.has(normalizeReferenciaValue(relation.valor)))
+      const toAdd = desiredItems.filter((item) => !currentValues.has(normalizeReferenciaValue(item?.valor)))
+
+      const removeRequests = toRemove.map((relation) =>
+        authFetch(`${API_URL}/productos/referencia-producto/${relation.id}/`, { method: 'DELETE' }, token)
+      )
+      const addRequests = toAdd.map((item) =>
+        authFetch(
+          `${API_URL}/productos/referencia-producto/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ producto_id: productoIdValue, valor: item.valor }),
+          },
+          token
+        )
+      )
+
+      if (!removeRequests.length && !addRequests.length) return
+
+      const responses = await Promise.all([...removeRequests, ...addRequests])
+      const failed = responses.find((res) => !res.ok && res.status !== 204)
+      if (failed) {
+        const detail = await failed.json().catch(() => ({}))
+        throw new Error(detail?.detail || 'No se pudieron actualizar las referencias.')
+      }
+    },
+    [referenciaItems, token]
+  )
+
   const handleSave = async () => {
     if (!allowEdit) return
     if (!isEditing || saving || !resolvedProductoId) return
@@ -1072,7 +1185,8 @@ function ProductoDetails({
       codigo: formData.codigo.trim(),
       nombre: formData.nombre.trim(),
       descripcion: formData.descripcion.trim(),
-      referencia: formData.referencia.trim(),
+      // referencia ya no se manda: es de solo lectura (copia de la primera
+      // de "referencias"), se administra con syncReferencias() más abajo.
       costo_minimo: parseNumber(formData.costo_minimo),
       precio: parseNumber(formData.precio),
       casas_comerciales_ids: (formData.casasIds || []).map((id) => Number(id)),
@@ -1140,6 +1254,11 @@ function ProductoDetails({
       setOriginalOemItems(nextOems)
       setOemDraft({ codigo: '' })
       setOemError('')
+      const nextReferencias = Array.isArray(referenciaItems) ? referenciaItems : []
+      setReferenciaItems(nextReferencias)
+      setOriginalReferenciaItems(nextReferencias)
+      setReferenciaDraft({ valor: '' })
+      setReferenciaError('')
       setShowCasaDropdown(false)
       setAlternoQuery('')
       setAlternoOptions([])
@@ -1159,6 +1278,11 @@ function ProductoDetails({
         await syncOems(resolvedProductoId, data?.codigo || payload.codigo)
       } catch (oemsError) {
         notifyError(oemsError?.message || 'No se pudieron actualizar los OEMs.')
+      }
+      try {
+        await syncReferencias(resolvedProductoId, data?.codigo || payload.codigo)
+      } catch (referenciasError) {
+        notifyError(referenciasError?.message || 'No se pudieron actualizar las referencias.')
       }
       setSubmitAttempted(false)
       setIsEditing(false)
@@ -1209,6 +1333,9 @@ function ProductoDetails({
     setOemItems(originalOemItems)
     setOemDraft({ codigo: '' })
     setOemError('')
+    setReferenciaItems(originalReferenciaItems)
+    setReferenciaDraft({ valor: '' })
+    setReferenciaError('')
     setAlternoQuery('')
     setAlternoOptions([])
     setShowAlternoDropdown(false)
@@ -1594,11 +1721,21 @@ function ProductoDetails({
                     <div className="create-user__grid create-user__grid--two">
                       <StaticFieldDisplay label="Descripción" value={formData.nombre} />
                       <StaticFieldDisplay label="Código" value={formData.codigo} />
-                      <StaticFieldDisplay label="Referencia" value={formData.referencia} />
                       <StaticFieldDisplay label="Casa comercial" value={selectedCasa?.nombre} />
                     </div>
                   </div>
                 </section>
+
+                {referenciaItems.length > 0 && (
+                  <section className="create-user__section">
+                    <div className="create-user__section-header"><h4>Referencias</h4></div>
+                    <div className="create-salida__field-group create-salida__field-group--defined">
+                      <div className="create-user__grid create-user__grid--two">
+                        <StaticFieldDisplay label="Referencias" value={referenciaItems.map((r) => r.valor).filter(Boolean).join(', ')} fullWidth />
+                      </div>
+                    </div>
+                  </section>
+                )}
 
                 {oemItems.length > 0 && (
                   <section className="create-user__section">
@@ -1671,18 +1808,6 @@ function ProductoDetails({
                       />
                     </label>
 
-                    <label className="create-user__field">
-                      <span>Referencia</span>
-                      <input
-                        name="referencia"
-                        type="text"
-                        placeholder="Referencia del producto"
-                        value={formData.referencia}
-                        onChange={handleChange}
-                        disabled={editorDisabled}
-                      />
-                    </label>
-
                     <label className="create-user__field create-user__field--required">
                       <span>Casa comercial</span>
                       <div
@@ -1745,6 +1870,66 @@ function ProductoDetails({
                       </div>
                     </label>
 
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <h4>Referencias</h4>
+                  </div>
+
+                  <div className="create-user__locations-table create-user__locations-table--oem">
+                    <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Referencia</span>
+                      <span>Acciones</span>
+                    </div>
+
+                    {isEditing && (
+                      <div className="create-user__locations-row create-user__locations-row--form">
+                        <span>
+                          <input
+                            type="text"
+                            placeholder="Referencia (ej: REF-001)"
+                            value={referenciaDraft.valor}
+                            onChange={(event) => handleReferenciaDraftChange(event.target.value)}
+                            disabled={editorDisabled}
+                          />
+                        </span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button
+                            type="button"
+                            className="create-user__ghost"
+                            onClick={handleAddReferencia}
+                            disabled={editorDisabled}
+                          >
+                            Agregar
+                          </button>
+                        </span>
+                      </div>
+                    )}
+
+                    {!referenciaItems.length && (
+                      <div className="create-user__locations-row create-user__locations-row--empty">
+                        <span>No hay referencias registradas.</span>
+                      </div>
+                    )}
+
+                    {referenciaItems.map((item, index) => (
+                      <div key={`${item.valor}-${index}`} className="create-user__locations-row">
+                        <span>{item.valor || '-'}</span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button
+                            type="button"
+                            className="create-user__locations-remove"
+                            onClick={() => handleRemoveReferencia(item.valor)}
+                            disabled={editorDisabled}
+                            aria-label="Eliminar referencia"
+                          >
+                            x
+                          </button>
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </section>
 

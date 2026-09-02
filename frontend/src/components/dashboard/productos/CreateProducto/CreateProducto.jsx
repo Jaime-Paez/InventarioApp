@@ -13,7 +13,6 @@ const initialForm = {
   codigo: '',
   nombre: '',
   descripcion: '',
-  referencia: '',
   costo_minimo: '',
   precio: '',
   casasIds: [],
@@ -85,6 +84,9 @@ function CreateProducto({
   const [oemItems, setOemItems] = useState([])
   const [oemDraft, setOemDraft] = useState({ codigo: '' })
   const [oemError, setOemError] = useState('')
+  const [referenciaItems, setReferenciaItems] = useState([])
+  const [referenciaDraft, setReferenciaDraft] = useState({ valor: '' })
+  const [referenciaError, setReferenciaError] = useState('')
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const [suppliers, setSuppliers] = useState([])
   const [branches, setBranches] = useState([])
@@ -182,6 +184,11 @@ function CreateProducto({
     if (!oemError) return
     notifyError(oemError)
   }, [notifyError, oemError])
+
+  useEffect(() => {
+    if (!referenciaError) return
+    notifyError(referenciaError)
+  }, [notifyError, referenciaError])
 
   useEffect(() => {
     if (!alternoError) return
@@ -534,13 +541,18 @@ function CreateProducto({
           .filter(Boolean)
           .map((codigo) => ({ codigo, descripcion: '' }))
       : []
+    // initialData sigue trayendo una sola referencia (string) desde quien
+    // llama a este modal (p. ej. SolicitudDetails) -- se precarga como la
+    // primera de la lista, igual que oemItems.
+    const nextReferenciaItems = Array.isArray(nextInitialData.referencias)
+      ? nextInitialData.referencias.map((item) => String(item || '').trim()).filter(Boolean).map((valor) => ({ valor }))
+      : (String(nextInitialData.referencia || '').trim() ? [{ valor: String(nextInitialData.referencia).trim() }] : [])
 
     setFormData({
       ...initialForm,
       codigo: nextCodigo,
       nombre: nextNombre,
       descripcion: nextDescripcion,
-      referencia: String(nextInitialData.referencia || '').trim(),
     })
     setCasaSearch('')
     setLoading(false)
@@ -555,6 +567,9 @@ function CreateProducto({
     setOemItems(nextOemItems)
     setOemDraft({ codigo: '' })
     setOemError('')
+    setReferenciaItems(nextReferenciaItems)
+    setReferenciaDraft({ valor: '' })
+    setReferenciaError('')
     setShowCasaDropdown(false)
     setIsMaximized(false)
     setSelectedCasa(null)
@@ -970,6 +985,43 @@ function CreateProducto({
     setOemError('')
   }
 
+  // Un producto puede tener varias referencias (a diferencia del OEM, no se
+  // comparten entre productos, así que no hace falta buscar/crear una
+  // entidad global antes de vincular).
+  const normalizeReferenciaValue = (value) => String(value ?? '').trim().toLowerCase()
+  const referenciaValueSet = useMemo(
+    () => new Set(referenciaItems.map((item) => normalizeReferenciaValue(item?.valor)).filter(Boolean)),
+    [referenciaItems]
+  )
+
+  const handleReferenciaDraftChange = (value) => {
+    setReferenciaDraft({ valor: value })
+    setReferenciaError('')
+  }
+
+  const handleAddReferencia = () => {
+    const valor = String(referenciaDraft.valor ?? '').trim()
+    if (!valor) {
+      setReferenciaError('Ingresa una referencia.')
+      return
+    }
+    const key = normalizeReferenciaValue(valor)
+    if (referenciaValueSet.has(key)) {
+      setReferenciaError('Esa referencia ya esta en la tabla.')
+      return
+    }
+    setReferenciaItems((prev) => [...prev, { valor }])
+    setReferenciaDraft({ valor: '' })
+    setReferenciaError('')
+  }
+
+  const handleRemoveReferencia = (valor) => {
+    const key = normalizeReferenciaValue(valor)
+    if (!key) return
+    setReferenciaItems((prev) => prev.filter((item) => normalizeReferenciaValue(item?.valor) !== key))
+    setReferenciaError('')
+  }
+
   const handleLocationSelect = (field, value) => {
     setLocationError('')
     if (field === 'sucursalId') {
@@ -1362,6 +1414,44 @@ function CreateProducto({
     return errors
   }
 
+  const saveReferencias = async (productId) => {
+    if (!productId || !referenciaItems.length) return []
+    const errors = []
+    const seen = new Set()
+    const unique = []
+    referenciaItems.forEach((item) => {
+      const key = normalizeReferenciaValue(item?.valor)
+      if (!key || seen.has(key)) return
+      seen.add(key)
+      unique.push(item)
+    })
+
+    for (const item of unique) {
+      try {
+        const relationResponse = await authFetch(
+          `${API_URL}/productos/referencia-producto/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              producto_id: productId,
+              valor: item.valor,
+            }),
+          },
+          token
+        )
+        if (!relationResponse.ok) {
+          const data = await relationResponse.json().catch(() => ({}))
+          const detail = data?.detail || data?.valor?.[0] || 'No se pudo registrar la referencia.'
+          throw new Error(detail)
+        }
+      } catch (err) {
+        errors.push(err?.message || 'No se pudo registrar la referencia.')
+      }
+    }
+
+    return errors
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault()
     setSubmitAttempted(true)
@@ -1380,7 +1470,9 @@ function CreateProducto({
       codigo: toUpperCode(formData.codigo).trim(),
       nombre: formData.nombre.trim(),
       descripcion: formData.descripcion.trim(),
-      referencia: formData.referencia.trim(),
+      // referencia ya no se manda: es de solo lectura (copia de la primera
+      // de "referencias"), se administra con saveReferencias() después de
+      // crear el producto.
       costo_minimo: parseNumber(formData.costo_minimo),
       precio: parseNumber(formData.precio),
       casas_comerciales_ids: (formData.casasIds || []).map((id) => Number(id)),
@@ -1463,6 +1555,13 @@ function CreateProducto({
         }
       }
 
+      if (data?.id && referenciaItems.length) {
+        const errors = await saveReferencias(data.id)
+        if (errors.length) {
+          notifyError(`Se creo el producto, pero fallaron ${errors.length} referencias.`)
+        }
+      }
+
       if (data?.id && locations.length) {
         const errors = await saveInventoryLocations(data.id)
         if (errors.length) {
@@ -1475,6 +1574,9 @@ function CreateProducto({
       setOemItems([])
       setOemDraft({ codigo: '' })
       setOemError('')
+      setReferenciaItems([])
+      setReferenciaDraft({ valor: '' })
+      setReferenciaError('')
       setLocations([])
       setLocationDraft({
         sucursalId: '',
@@ -1852,18 +1954,64 @@ function CreateProducto({
                       {casaInvalid && <small className="create-user__field-error">Selecciona una casa comercial.</small>}
                     </label>
 
-                    <label className="create-user__field">
-                      <span>Referencia</span>
-                      <input
-                        name="referencia"
-                        type="text"
-                        placeholder="Referencia del producto (ej: REF-001)"
-                        value={formData.referencia}
-                        onChange={handleChange}
-                        disabled={loading}
-                      />
-                    </label>
+                  </div>
+                </section>
 
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <h4>Referencias</h4>
+                  </div>
+
+                  <div className="create-user__locations-table create-user__locations-table--oem">
+                    <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Referencia</span>
+                      <span>Acciones</span>
+                    </div>
+
+                    <div className="create-user__locations-row create-user__locations-row--form">
+                      <span>
+                        <input
+                          type="text"
+                          placeholder="Referencia (ej: REF-001)"
+                          value={referenciaDraft.valor}
+                          onChange={(event) => handleReferenciaDraftChange(event.target.value)}
+                          disabled={loading}
+                        />
+                      </span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={handleAddReferencia}
+                          disabled={loading}
+                        >
+                          Agregar
+                        </button>
+                      </span>
+                    </div>
+
+                    {!referenciaItems.length && (
+                      <div className="create-user__locations-row create-user__locations-row--empty">
+                        <span>Sin referencias registradas.</span>
+                      </div>
+                    )}
+
+                    {referenciaItems.map((item, index) => (
+                      <div key={`${item.valor}-${index}`} className="create-user__locations-row">
+                        <span>{item.valor || '-'}</span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button
+                            type="button"
+                            className="create-user__locations-remove"
+                            onClick={() => handleRemoveReferencia(item.valor)}
+                            disabled={loading}
+                            aria-label="Eliminar referencia"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </section>
 

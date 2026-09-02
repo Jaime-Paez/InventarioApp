@@ -7,7 +7,7 @@ from rest_framework import serializers
 from casa_comercial.models import CasaComercial
 from casa_comercial.serializers import CasaComercialSerializer
 from core.concurrency import acquire_sequence_lock
-from productos.models import OEM, OEMProducto, Producto
+from productos.models import OEM, OEMProducto, Producto, add_producto_referencia
 from productos.serializers import ProductoSerializer
 from solicitudes.models import Solicitud
 
@@ -214,10 +214,15 @@ class ImportacionSerializer(serializers.ModelSerializer):
             producto = Producto.objects.create(
                 codigo=codigo,
                 nombre=nombre,
-                referencia=referencia,
                 precio=precio_estimado,
                 creado_desde_importacion=importacion,
             )
+
+        # Un producto puede tener varias referencias -- si esta ya la tiene
+        # no se duplica, y si no la tiene se agrega sin borrar las demás (ver
+        # add_producto_referencia).
+        if referencia:
+            add_producto_referencia(producto, referencia)
 
         if casa_comercial and not producto.casas_comerciales.filter(pk=casa_comercial.pk).exists():
             producto.casas_comerciales.add(casa_comercial)

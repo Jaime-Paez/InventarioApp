@@ -3467,8 +3467,14 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const hasReferenciaConflict = (row) => {
     if (!row.matched_producto_id) return false
     const excelRef = (row.referencia || '').trim().toLowerCase()
-    const dbRef = (row.matched_producto_referencia || '').trim().toLowerCase()
-    return excelRef.length > 0 && excelRef !== dbRef
+    if (!excelRef) return false
+    // Un producto puede tener varias referencias: si la del Excel ya es una
+    // de las que el producto tiene (aunque no sea la principal), no hay
+    // conflicto que resolver.
+    const dbRefs = Array.isArray(row.matched_producto_referencias) && row.matched_producto_referencias.length
+      ? row.matched_producto_referencias
+      : [row.matched_producto_referencia]
+    return !dbRefs.some((ref) => (ref || '').trim().toLowerCase() === excelRef)
   }
 
   // Si el OEM de una fila sin catálogo ya está registrado en un producto que

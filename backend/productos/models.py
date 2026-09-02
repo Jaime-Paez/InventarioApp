@@ -62,6 +62,68 @@ class Producto(models.Model):
         return f"{self.nombre} ({self.codigo})"
 
 
+class ProductoReferencia(models.Model):
+    """Referencia (código de fabricante/proveedor) de un producto.
+
+    A diferencia del OEM, una referencia NO se comparte entre productos --
+    cada una pertenece a un único producto (unique_together por producto,
+    no global) -- pero un mismo producto puede tener varias.
+    """
+
+    producto = models.ForeignKey(
+        Producto,
+        on_delete=models.CASCADE,
+        related_name="referencias",
+    )
+    valor = models.CharField(max_length=200)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Referencia de producto"
+        verbose_name_plural = "Referencias de producto"
+        unique_together = ("producto", "valor")
+        indexes = [
+            GinIndex(OpClass(Upper("valor"), name="gin_trgm_ops"), name="productos_pref_valor_trgm"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - representación legible
+        return f"{self.producto.codigo} - {self.valor}"
+
+
+def sync_producto_referencia_primary(producto):
+    """Mantiene Producto.referencia como una copia de solo lectura de la
+    primera referencia agregada (por id) del producto -- para no romper a
+    los muchos lugares del código que todavía leen ese campo como si fuera
+    un solo valor (búsquedas, columnas, exportaciones, "compra local", etc.)
+    mientras la lista completa vive en ProductoReferencia. Nunca se debe
+    escribir Producto.referencia a mano en código nuevo; usar
+    add_producto_referencia() en su lugar.
+    """
+    primera = producto.referencias.order_by("id").first()
+    valor = primera.valor if primera else ""
+    if valor != (producto.referencia or ""):
+        producto.referencia = valor
+        producto.save(update_fields=["referencia"])
+
+
+def add_producto_referencia(producto, valor):
+    """Agrega `valor` a las referencias de `producto` si no la tiene ya
+    (comparación exacta sin distinguir mayúsculas/minúsculas), y mantiene
+    sincronizado Producto.referencia. No falla ni duplica si la referencia
+    ya existe -- solo la devuelve. Ignora valores vacíos.
+    """
+    valor = str(valor or "").strip()
+    if not valor:
+        return None
+    existing = producto.referencias.filter(valor__iexact=valor).first()
+    if existing:
+        return existing
+    referencia = ProductoReferencia.objects.create(producto=producto, valor=valor)
+    sync_producto_referencia_primary(producto)
+    return referencia
+
+
 class OEM(models.Model):
     """Identificador OEM provisto por el fabricante."""
 

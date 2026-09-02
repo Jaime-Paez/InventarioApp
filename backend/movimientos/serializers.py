@@ -10,7 +10,7 @@ from core.concurrency import acquire_sequence_lock
 from casa_comercial.models import CasaComercial
 from configuracion.models import ConfiguracionSistema
 from inventario.models import Inventario, SubDivision, Sucursal
-from productos.models import Producto
+from productos.models import Producto, add_producto_referencia
 from tipos.models import (
     EstadoMovimiento,
     EstadoProducto,
@@ -1859,14 +1859,14 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             if valor is not None:
                 producto.precio = valor
                 update_fields.append("precio")
-            referencia = detalle.get("producto_referencia")
-            if referencia is not None:
-                referencia_normalizada = str(referencia).strip()
-                if referencia_normalizada != str(producto.referencia or "").strip():
-                    producto.referencia = referencia_normalizada
-                    update_fields.append("referencia")
             if update_fields:
                 producto.save(update_fields=update_fields)
+            # Un producto puede tener varias referencias: la de esta compra
+            # se agrega a la lista sin borrar las que ya tenía
+            # (add_producto_referencia deduplica si ya la tiene).
+            referencia = detalle.get("producto_referencia")
+            if referencia is not None:
+                add_producto_referencia(producto, referencia)
 
     def _replace_pagos(self, movimiento, pagos_data):
         for pago in pagos_data:

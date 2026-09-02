@@ -13,7 +13,15 @@ from casa_comercial.serializers import CasaComercialSerializer
 from inventario.models import Bodega, SubDivision, Sucursal
 from movimientos.models import DetalleMovimiento
 
-from .models import OEM, OEMProducto, Producto, ProductoAlterno, ProductoCalificacion
+from .models import (
+    OEM,
+    OEMProducto,
+    Producto,
+    ProductoAlterno,
+    ProductoCalificacion,
+    ProductoReferencia,
+    add_producto_referencia,
+)
 
 NEGATIVE_STARS_THRESHOLD = 2
 DEFAULT_INITIAL_RATING = 3.0
@@ -282,6 +290,31 @@ class OEMProductoSerializer(serializers.ModelSerializer):
         fields = ["id", "producto", "producto_id", "oem", "oem_id"]
 
 
+class ProductoReferenciaSerializer(serializers.ModelSerializer):
+    producto_id = serializers.PrimaryKeyRelatedField(
+        source="producto",
+        queryset=Producto.objects.all(),
+        write_only=True,
+    )
+    producto = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = ProductoReferencia
+        fields = ["id", "producto", "producto_id", "valor"]
+
+    def validate_valor(self, value):
+        valor = str(value or "").strip()
+        if not valor:
+            raise serializers.ValidationError("La referencia no puede estar vacía.")
+        return valor
+
+    def create(self, validated_data):
+        # add_producto_referencia ya deduplica (sin distinguir mayúsculas de
+        # minúsculas) y mantiene sincronizado Producto.referencia -- no hace
+        # falta (ni se debe) crear el registro a mano acá.
+        return add_producto_referencia(validated_data["producto"], validated_data["valor"])
+
+
 class ProductoAlternoSerializer(serializers.ModelSerializer):
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
@@ -312,6 +345,7 @@ class ProductoSerializer(serializers.ModelSerializer):
         write_only=True,
     )
     oem_productos = OEMProductoSerializer(many=True, read_only=True)
+    referencias = ProductoReferenciaSerializer(many=True, read_only=True)
     alternativas = serializers.SerializerMethodField()
     total_stock = serializers.SerializerMethodField()
     stock_por_sucursal = serializers.SerializerMethodField()
@@ -347,6 +381,12 @@ class ProductoSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {
             "creado_desde_importacion": {"read_only": True},
+            # Referencia (singular) es una copia de solo lectura de la
+            # primera referencia de `referencias` (ver
+            # sync_producto_referencia_primary) -- se administra siempre a
+            # través de ProductoReferencia/add_producto_referencia, nunca
+            # escribiendo este campo directo.
+            "referencia": {"read_only": True},
             "codigo": {
                 "required": True,
                 "allow_blank": False,
