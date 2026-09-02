@@ -1970,13 +1970,19 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                             {sucursales.map(suc => {
                               const isMatriz = Boolean(matrizSucursal && suc.id === matrizSucursal.id)
                               return (
-                                <span key={suc.id}>
+                                <span
+                                  key={suc.id}
+                                  onMouseEnter={row.productoId != null ? (e) => showAlternosHover(e, row.productoId) : undefined}
+                                  onMouseLeave={row.productoId != null ? hideAlternosHover : undefined}
+                                >
                                   <input
                                     type="number" min="0" max={ceiling}
                                     value={rowDist[suc.id] ?? ''}
                                     disabled={isMatriz || submitting}
                                     readOnly={isMatriz}
                                     onChange={(e) => !isMatriz && updateDistribution(row, suc.id, e.target.value)}
+                                    onFocus={row.productoId != null ? (e) => showAlternosHover(e, row.productoId) : undefined}
+                                    onBlur={row.productoId != null ? hideAlternosHover : undefined}
                                     title={isMatriz ? 'Calculado automáticamente: total menos lo asignado a otras sucursales' : undefined}
                                     className={`imp-distribucion__cantidad-input${isMatriz ? ' imp-distribucion__cantidad-input--matriz' : ''}`}
                                   />
