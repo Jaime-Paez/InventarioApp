@@ -2469,9 +2469,23 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const toastRef = useRef(null)
 
   // Copia local que se actualiza al editar las fechas del seguimiento en camino,
-  // sin depender de que el padre vuelva a pedir la lista completa.
+  // sin depender de que el padre vuelva a pedir la lista completa. También se
+  // usa para traer los detalles frescos del servidor al abrir: impProp viene
+  // de la fila ya cargada en la lista de la tabla, que puede estar
+  // desactualizada (por ejemplo, si un guardado anterior cambió precios,
+  // cantidades u orden) -- igual que en EditImportacionModal/
+  // ImportacionReceiveModal, se reemplaza en cuanto llega la versión fresca.
   const [impOverride, setImpOverride] = useState(null)
   const imp = impOverride && impProp && impOverride.id === impProp.id ? impOverride : impProp
+  useEffect(() => {
+    if (!impProp?.id || !token) return
+    let cancelled = false
+    authFetch(`${API_URL}/importaciones/importaciones/${impProp.id}/`, {}, token)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((fresh) => { if (!cancelled && fresh) setImpOverride(fresh) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [impProp?.id, token])
   const [trackerEditingField, setTrackerEditingField] = useState(null)
   const [trackerDateDraft, setTrackerDateDraft] = useState('')
   const [trackerMinDate, setTrackerMinDate] = useState(null)
@@ -6612,11 +6626,12 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
   useEffect(() => {
     if (!open || !imp) return
+    let cancelled = false
     const toCentavos = (val) => {
       if (val == null || val === '') return ''
       return String(Math.round(parseFloat(val) * 100))
     }
-    const loaded = (imp.detalles || []).map((d, i) => {
+    const buildDetails = (impData) => (impData.detalles || []).map((d, i) => {
       const solId = d.solicitud_id ? String(d.solicitud_id) : null
       const confirmed = {
         precio_estimado: toCentavos(d.precio_estimado), cantidad_aproximada: d.cantidad_aproximada != null ? String(d.cantidad_aproximada) : '',
@@ -6631,13 +6646,33 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed,
       }
     })
-    setDetails(loaded)
-    initialDetailsRef.current = loaded
-    const hydratedCheckStates = Object.fromEntries(
-      loaded.filter((item) => item.seleccionado === true || item.seleccionado === false).map((item) => [item._key, item.seleccionado ? 'check' : 'x'])
-    )
-    setItemCheckStates(hydratedCheckStates)
-    initialItemCheckStatesRef.current = hydratedCheckStates
+    const applyDetails = (impData) => {
+      if (cancelled) return
+      const loaded = buildDetails(impData)
+      setDetails(loaded)
+      initialDetailsRef.current = loaded
+      const hydratedCheckStates = Object.fromEntries(
+        loaded.filter((item) => item.seleccionado === true || item.seleccionado === false).map((item) => [item._key, item.seleccionado ? 'check' : 'x'])
+      )
+      setItemCheckStates(hydratedCheckStates)
+      initialItemCheckStatesRef.current = hydratedCheckStates
+    }
+    // Se carga primero con lo que ya se tiene (la fila puede venir de la lista
+    // en memoria de la tabla) para que el modal no se abra vacío, pero esa
+    // fila puede estar desactualizada -- por ejemplo, si un guardado anterior
+    // (Guardar/Confirmar/Importar) cambió precios, cantidades o el orden y la
+    // lista de la tabla no se refrescó a tiempo. Igual que
+    // ImportacionReceiveModal, se pide la importación fresca al servidor y se
+    // reemplaza con esos datos en cuanto llegan, para no operar sobre
+    // detalles viejos (esto causaba, por ejemplo, que un precio confirmado
+    // ya guardado se revirtiera al reabrir el modal más tarde).
+    applyDetails(imp)
+    if (imp.id) {
+      authFetch(`${API_URL}/importaciones/importaciones/${imp.id}/`, {}, token)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((fresh) => { if (fresh?.detalles) applyDetails(fresh) })
+        .catch(() => {})
+    }
     setDetailDraft({ producto: null, cantidad: '', comentario: '' })
     setActiveTab('general')
     setInvalidQtyKeys(new Set())
@@ -6647,7 +6682,8 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     setAceptadosSearch('')
     setIsMaximized(false)
     modalRestoreRef.current = null
-  }, [open, imp])
+    return () => { cancelled = true }
+  }, [open, imp, token])
 
   useEffect(() => {
     if (!open) return undefined
