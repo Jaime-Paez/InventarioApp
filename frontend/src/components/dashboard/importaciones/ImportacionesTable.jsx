@@ -2477,13 +2477,16 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   // ImportacionReceiveModal, se reemplaza en cuanto llega la versión fresca.
   const [impOverride, setImpOverride] = useState(null)
   const imp = impOverride && impProp && impOverride.id === impProp.id ? impOverride : impProp
+  const [loadingImp, setLoadingImp] = useState(true)
   useEffect(() => {
-    if (!impProp?.id || !token) return
+    if (!impProp?.id || !token) { setLoadingImp(false); return }
     let cancelled = false
+    setLoadingImp(true)
     authFetch(`${API_URL}/importaciones/importaciones/${impProp.id}/`, {}, token)
       .then((r) => (r.ok ? r.json() : null))
       .then((fresh) => { if (!cancelled && fresh) setImpOverride(fresh) })
       .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingImp(false) })
     return () => { cancelled = true }
   }, [impProp?.id, token])
   const [trackerEditingField, setTrackerEditingField] = useState(null)
@@ -2824,6 +2827,16 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
               </button>
             </div>
           </header>
+
+          {/* Igual que en EditImportacionModal: mientras se confirma la
+              versión más reciente de la importación (fetch al abrir, arriba),
+              se tapa el contenido para no mostrar precios/cantidades
+              potencialmente desactualizados de la fila que ya tenía la tabla. */}
+          {loadingImp && (
+            <div className="spinner-container spinner-container--table" style={{ position: 'absolute', inset: 0, zIndex: 20 }}>
+              <div className="spinner" />
+            </div>
+          )}
 
           <div className="create-user__tabs create-salida__tabs" role="tablist">
             <button type="button" className={`create-user__tab${activeTab === 'general' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('general')}>
@@ -6366,10 +6379,33 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   )
 }
 
-function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions }) {
+function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions }) {
   const canEdit = moduleActions?.puede_actualizar !== false
   const canDelete = moduleActions?.puede_eliminar !== false
   const canImportar = moduleActions?.puede_importar === true
+  // impProp es la fila que ya tenía cargada la lista de la tabla, que puede
+  // estar desactualizada (por ejemplo, si un guardado anterior --Guardar,
+  // Confirmar, Importar-- cambió precios, cantidades u orden y la lista no
+  // se refrescó a tiempo todavía). Al abrir se pide la importación completa
+  // y fresca al servidor y se usa esa en cuanto llega -- de ahí en más TODO
+  // el modal (no solo `details`) lee de `imp`, que siempre es la versión más
+  // reciente conocida. Esto es lo que evita que, p. ej., un precio
+  // confirmado ya guardado se revierta al reabrir el modal más tarde.
+  const [freshImp, setFreshImp] = useState(null)
+  const imp = freshImp && impProp && freshImp.id === impProp.id ? freshImp : impProp
+  const [loadingImp, setLoadingImp] = useState(true)
+  useEffect(() => {
+    if (!open || !impProp?.id) { setLoadingImp(false); return }
+    let cancelled = false
+    setFreshImp(null)
+    setLoadingImp(true)
+    authFetch(`${API_URL}/importaciones/importaciones/${impProp.id}/`, {}, token)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((fresh) => { if (!cancelled && fresh) setFreshImp(fresh) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoadingImp(false) })
+    return () => { cancelled = true }
+  }, [open, impProp?.id, token])
   const [activeTab, setActiveTab] = useState('general')
   const [detailDraft, setDetailDraft] = useState({ producto: null, cantidad: '', comentario: '' })
   const [productQuery, setProductQuery] = useState('')
@@ -6626,12 +6662,11 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
 
   useEffect(() => {
     if (!open || !imp) return
-    let cancelled = false
     const toCentavos = (val) => {
       if (val == null || val === '') return ''
       return String(Math.round(parseFloat(val) * 100))
     }
-    const buildDetails = (impData) => (impData.detalles || []).map((d, i) => {
+    const loaded = (imp.detalles || []).map((d, i) => {
       const solId = d.solicitud_id ? String(d.solicitud_id) : null
       const confirmed = {
         precio_estimado: toCentavos(d.precio_estimado), cantidad_aproximada: d.cantidad_aproximada != null ? String(d.cantidad_aproximada) : '',
@@ -6646,33 +6681,13 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
         cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed,
       }
     })
-    const applyDetails = (impData) => {
-      if (cancelled) return
-      const loaded = buildDetails(impData)
-      setDetails(loaded)
-      initialDetailsRef.current = loaded
-      const hydratedCheckStates = Object.fromEntries(
-        loaded.filter((item) => item.seleccionado === true || item.seleccionado === false).map((item) => [item._key, item.seleccionado ? 'check' : 'x'])
-      )
-      setItemCheckStates(hydratedCheckStates)
-      initialItemCheckStatesRef.current = hydratedCheckStates
-    }
-    // Se carga primero con lo que ya se tiene (la fila puede venir de la lista
-    // en memoria de la tabla) para que el modal no se abra vacío, pero esa
-    // fila puede estar desactualizada -- por ejemplo, si un guardado anterior
-    // (Guardar/Confirmar/Importar) cambió precios, cantidades o el orden y la
-    // lista de la tabla no se refrescó a tiempo. Igual que
-    // ImportacionReceiveModal, se pide la importación fresca al servidor y se
-    // reemplaza con esos datos en cuanto llegan, para no operar sobre
-    // detalles viejos (esto causaba, por ejemplo, que un precio confirmado
-    // ya guardado se revirtiera al reabrir el modal más tarde).
-    applyDetails(imp)
-    if (imp.id) {
-      authFetch(`${API_URL}/importaciones/importaciones/${imp.id}/`, {}, token)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((fresh) => { if (fresh?.detalles) applyDetails(fresh) })
-        .catch(() => {})
-    }
+    setDetails(loaded)
+    initialDetailsRef.current = loaded
+    const hydratedCheckStates = Object.fromEntries(
+      loaded.filter((item) => item.seleccionado === true || item.seleccionado === false).map((item) => [item._key, item.seleccionado ? 'check' : 'x'])
+    )
+    setItemCheckStates(hydratedCheckStates)
+    initialItemCheckStatesRef.current = hydratedCheckStates
     setDetailDraft({ producto: null, cantidad: '', comentario: '' })
     setActiveTab('general')
     setInvalidQtyKeys(new Set())
@@ -6682,8 +6697,7 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
     setAceptadosSearch('')
     setIsMaximized(false)
     modalRestoreRef.current = null
-    return () => { cancelled = true }
-  }, [open, imp, token])
+  }, [open, imp])
 
   useEffect(() => {
     if (!open) return undefined
@@ -7502,6 +7516,17 @@ function EditImportacionModal({ open, imp, token, onClose, onSaved, onOpenBorrad
               </button>
             </div>
           </header>
+
+          {/* Mientras se confirma que imp/details son la versión más reciente
+              del servidor (ver el fetch al abrir, arriba), se bloquea toda
+              interacción con un overlay -- así nunca se alcanza a editar ni
+              guardar sobre datos potencialmente desactualizados (precios,
+              cantidades, orden) que luego pisarían lo ya guardado. */}
+          {loadingImp && (
+            <div className="spinner-container spinner-container--table" style={{ position: 'absolute', inset: 0, zIndex: 20 }}>
+              <div className="spinner" />
+            </div>
+          )}
 
           <form className="create-user__form" noValidate onSubmit={(e) => { e.preventDefault(); handleSubmit() }}>
             <div className="create-user__tabs create-salida__tabs" role="tablist">
