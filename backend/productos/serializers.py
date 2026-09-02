@@ -367,6 +367,7 @@ class ProductoSerializer(serializers.ModelSerializer):
             "nombre",
             "descripcion",
             "referencia",
+            "referencias",
             "costo_minimo",
             "precio",
             "total_stock",
