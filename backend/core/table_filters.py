@@ -103,6 +103,8 @@ def apply_column_filters(
     if not column_filters:
         return queryset
 
+    model = queryset.model
+
     for field_name, meta in column_filters.items():
         if not isinstance(meta, Mapping):
             continue
@@ -121,14 +123,14 @@ def apply_column_filters(
         if not lookup_path:
             continue
 
-        filter_q = _build_field_q(lookup_path, meta, value_type=value_type)
+        filter_q = _build_field_q(lookup_path, meta, value_type=value_type, model=model)
         if filter_q is not None:
             queryset = queryset.filter(filter_q)
 
     return queryset
 
 
-def _build_field_q(lookup_path: str, meta: Mapping[str, Any], value_type: str = "text"):
+def _build_field_q(lookup_path: str, meta: Mapping[str, Any], value_type: str = "text", model=None):
     operator = str(meta.get("operator") or "AND").upper()
     constraints = meta.get("constraints")
     if not isinstance(constraints, list):
@@ -143,6 +145,7 @@ def _build_field_q(lookup_path: str, meta: Mapping[str, Any], value_type: str = 
             value=constraint.get("value"),
             match_mode=constraint.get("match_mode"),
             value_type=value_type,
+            model=model,
         )
         if constraint_q is None:
             continue
@@ -156,33 +159,48 @@ def _build_field_q(lookup_path: str, meta: Mapping[str, Any], value_type: str = 
     return compound_q
 
 
-def _build_constraint_q(lookup_path: str, value: Any, match_mode: Any, value_type: str = "text"):
+def _build_constraint_q(lookup_path: str, value: Any, match_mode: Any, value_type: str = "text", model=None):
     mode = str(match_mode or "contains").strip().lower()
 
     if value_type == "number":
-        return _build_number_q(lookup_path, value, mode)
+        return _build_number_q(lookup_path, value, mode, model=model)
     if value_type == "date":
-        return _build_date_q(lookup_path, value, mode)
-    return _build_text_q(lookup_path, value, mode)
+        return _build_date_q(lookup_path, value, mode, model=model)
+    return _build_text_q(lookup_path, value, mode, model=model)
 
 
-def _build_text_q(lookup_path: str, value: Any, mode: str):
+def _negate(query: Q, mode: str, model):
+    """Niega `query` de forma segura para relaciones multivaluadas (por ejemplo
+    ProductoReferencia u OEM, donde un producto puede tener varias filas
+    relacionadas). Un simple `~Q(relacion__campo=valor)` NO excluye
+    correctamente un registro que tiene alguna fila que matchea y otra que no
+    -- por eso la negacion se resuelve como "no esta en el conjunto de pks que
+    SI matchean" via subconsulta sobre el modelo raiz, lo cual es correcto
+    tanto para campos simples como para relaciones reversas/multivaluadas."""
+    if mode not in NEGATED_MODES:
+        return query
+    if model is None:
+        return ~query
+    return ~Q(pk__in=model.objects.filter(query).values("pk"))
+
+
+def _build_text_q(lookup_path: str, value: Any, mode: str, model=None):
     if mode == "in":
         values = _normalize_iterable(value, cast_as_string=True)
         if not values:
             return None
         query = Q(**{f"{lookup_path}__in": values})
-        return ~query if mode in NEGATED_MODES else query
+        return _negate(query, mode, model)
 
     lookup = TEXT_LOOKUPS.get(mode, "icontains")
     text_value = str(value).strip()
     if not text_value:
         return None
     query = Q(**{f"{lookup_path}__{lookup}": text_value})
-    return ~query if mode in NEGATED_MODES else query
+    return _negate(query, mode, model)
 
 
-def _build_number_q(lookup_path: str, value: Any, mode: str):
+def _build_number_q(lookup_path: str, value: Any, mode: str, model=None):
     if mode == "between":
         values = _normalize_iterable(value, cast_as_decimal=True)
         if len(values) < 2:
@@ -202,10 +220,10 @@ def _build_number_q(lookup_path: str, value: Any, mode: str):
     if decimal_value is None:
         return None
     query = Q(**{f"{lookup_path}__{lookup}": decimal_value})
-    return ~query if mode in NEGATED_MODES else query
+    return _negate(query, mode, model)
 
 
-def _build_date_q(lookup_path: str, value: Any, mode: str):
+def _build_date_q(lookup_path: str, value: Any, mode: str, model=None):
     if mode == "between":
         values = _normalize_iterable(value, cast_as_date=True)
         if len(values) < 2:
@@ -225,7 +243,7 @@ def _build_date_q(lookup_path: str, value: Any, mode: str):
     if parsed_date is None:
         return None
     query = Q(**{f"{lookup_path}__{lookup}": parsed_date})
-    return ~query if mode in NEGATED_MODES else query
+    return _negate(query, mode, model)
 
 
 def _normalize_filter_value(value: Any):

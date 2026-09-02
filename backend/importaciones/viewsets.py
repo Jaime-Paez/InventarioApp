@@ -580,12 +580,14 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             Importacion.objects.select_related("casa_comercial")
             .prefetch_related(
                 "detalles__producto__oem_productos__oem",
+                "detalles__producto__referencias",
             )
             .filter(
                 Q(codigo__icontains=term)
                 | Q(detalles__producto__codigo__icontains=term)
                 | Q(detalles__producto__nombre__icontains=term)
                 | Q(detalles__producto__referencia__icontains=term)
+                | Q(detalles__producto__referencias__valor__icontains=term)
                 | Q(detalles__producto__oem_productos__oem__codigo__icontains=term)
                 | Q(detalles__codigo__icontains=term)
                 | Q(detalles__nombre__icontains=term)
@@ -605,6 +607,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 candidates.extend([producto.codigo, producto.nombre, producto.referencia])
                 candidates.extend(
                     op.oem.codigo for op in producto.oem_productos.all() if op.oem_id
+                )
+                candidates.extend(
+                    ref.valor for ref in producto.referencias.all() if ref.valor
                 )
             return any(term_lower in str(candidate or "").lower() for candidate in candidates)
 

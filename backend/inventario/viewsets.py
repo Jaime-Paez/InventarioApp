@@ -452,6 +452,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
         "producto__nombre",
         "producto__descripcion",
         "producto__referencia",
+        "producto__referencias__valor",
         "producto__casas_comerciales__nombre",
         "producto__oem_productos__oem__codigo",
         "subdivision__nombre",
@@ -723,6 +724,13 @@ class InventarioViewSet(viewsets.ModelViewSet):
             matching_oem_ids = Producto.objects.filter(
                 oem_productos__oem__codigo__icontains=token
             ).values("id")
+            # Un producto puede tener varias referencias (ProductoReferencia)
+            # -- se busca en todas con la misma subconsulta independiente que
+            # casa/OEM, no con un .filter() encadenado directo (mismo motivo
+            # del comentario de arriba: evitar el fan-out de joins).
+            matching_referencia_ids = Producto.objects.filter(
+                referencias__valor__icontains=token
+            ).values("id")
             product_query = (
                 Q(codigo__icontains=token)
                 | Q(nombre__icontains=token)
@@ -730,6 +738,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 | Q(referencia__icontains=token)
                 | Q(id__in=matching_casa_ids)
                 | Q(id__in=matching_oem_ids)
+                | Q(id__in=matching_referencia_ids)
             )
             if allowed_branch_ids:
                 matching_location_ids = Producto.objects.filter(
