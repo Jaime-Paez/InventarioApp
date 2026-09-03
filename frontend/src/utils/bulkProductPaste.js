@@ -13,22 +13,40 @@ export function isBulkProductPasteText(text) {
   return nonEmptyLines.length >= 1
 }
 
+// Ademas de las filas validas, devuelve las lineas con contenido que se
+// descartaron (sin codigo en la columna esperada, o con una cantidad no
+// numerica/cero) -- asi el caller puede decir exactamente cual linea pegada
+// quedo afuera, en vez de solo agregar menos productos de los pegados sin
+// ninguna explicacion.
 export function parseBulkProductPasteText(text) {
   const lines = String(text ?? '').split(/\r?\n/)
   const entries = []
+  const invalidLines = []
 
-  for (const line of lines) {
-    if (!line.trim()) continue
+  lines.forEach((line, index) => {
+    if (!line.trim()) return
     const cells = line.split('\t')
     const codigo = String(cells[CODIGO_COLUMN] ?? '').trim()
-    if (!codigo) continue
+    if (!codigo) {
+      invalidLines.push({ numeroFila: index + 1, codigo: '', motivo: 'sin codigo' })
+      return
+    }
 
     const cantidadRaw = String(cells[CANTIDAD_COLUMN] ?? '').trim().replace(',', '.')
     const cantidad = Math.trunc(Number(cantidadRaw))
-    if (!Number.isFinite(cantidad) || cantidad <= 0) continue
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      invalidLines.push({ numeroFila: index + 1, codigo, motivo: 'cantidad invalida' })
+      return
+    }
 
     entries.push({ codigo, cantidad })
-  }
+  })
 
-  return entries
+  return { entries, invalidLines }
+}
+
+export function formatInvalidBulkPasteLines(invalidLines) {
+  return (invalidLines || [])
+    .map((item) => (item.codigo ? `${item.codigo} (${item.motivo})` : `fila ${item.numeroFila} (${item.motivo})`))
+    .join(', ')
 }

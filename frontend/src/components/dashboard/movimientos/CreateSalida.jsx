@@ -6,7 +6,7 @@ import '../clientes/CreateCliente/CreateCliente.css'
 import { Loader2 } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
-import { isBulkProductPasteText, parseBulkProductPasteText } from '../../../utils/bulkProductPaste'
+import { isBulkProductPasteText, parseBulkProductPasteText, formatInvalidBulkPasteLines } from '../../../utils/bulkProductPaste'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
 import { useCloseDropdownsOnTabSwitch } from '../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../common/useModalAnimation'
@@ -3021,9 +3021,10 @@ function CreateSalida({
 
   const handleBulkAddProducts = useCallback(
     async (text) => {
-      const entries = parseBulkProductPasteText(text)
+      const { entries, invalidLines } = parseBulkProductPasteText(text)
       if (!entries.length) {
-        setDetailError('No se encontraron filas validas para pegar. Se espera codigo y cantidad separados por tabulaciones.')
+        const detalle = invalidLines.length ? ` No se pudo leer: ${formatInvalidBulkPasteLines(invalidLines)}.` : ''
+        setDetailError(`No se encontraron filas validas para pegar. Se espera codigo y cantidad separados por tabulaciones.${detalle}`)
         return
       }
       if (transferRequiresRequest) {
@@ -3114,6 +3115,7 @@ function CreateSalida({
         const issues = []
         if (notFound.length) issues.push(`No encontrados: ${notFound.join(', ')}.`)
         if (skipped.length) issues.push(`Omitidos: ${skipped.join(', ')}.`)
+        if (invalidLines.length) issues.push(`No se pudo leer: ${formatInvalidBulkPasteLines(invalidLines)}.`)
 
         if (newRows.length && !issues.length) {
           notifySuccess(`Se agregaron ${newRows.length} producto(s).`)
