@@ -6,6 +6,18 @@
 const CODIGO_COLUMN = 0
 const CANTIDAD_COLUMN = 3
 
+// El sistema de origen (Koinor) a veces mezcla, dentro del mismo detalle de
+// factura, lineas que no son productos de inventario sino cuentas contables
+// (por ejemplo un cargo de "LOGISTICA" con codigo "\4.01.02.01.01.17"). Esas
+// lineas nunca van a existir en el catalogo de productos, asi que se ignoran
+// en silencio en vez de reportarlas como "no encontrado" -- eso sugeriria un
+// error real cuando en realidad es un dato esperado del archivo de origen.
+const ACCOUNTING_CODE_PATTERN = /^\\?\d+(?:\.\d+)+$/
+
+function isAccountingCode(codigo) {
+  return ACCOUNTING_CODE_PATTERN.test(codigo)
+}
+
 export function isBulkProductPasteText(text) {
   const value = String(text ?? '')
   if (!value.includes('\t')) return false
@@ -31,6 +43,7 @@ export function parseBulkProductPasteText(text) {
       invalidLines.push({ numeroFila: index + 1, codigo: '', motivo: 'sin codigo' })
       return
     }
+    if (isAccountingCode(codigo)) return
 
     const cantidadRaw = String(cells[CANTIDAD_COLUMN] ?? '').trim().replace(',', '.')
     const cantidad = Math.trunc(Number(cantidadRaw))
