@@ -4,6 +4,15 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../Configuracion/Configuracion.css'
 import './SolicitudesWeb.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import {
+  readRemindersFromStorage,
+  writeRemindersToStorage,
+  emitRemindersSync,
+  reminderCompletedByIds,
+  isSolicitudWebReminder,
+  buildUserIdSet,
+  normalizeId,
+} from '../../common/reminders/remindersStorage'
 
 const POLL_MS = 20000
 const PAGE_SIZE = 15
@@ -16,12 +25,13 @@ function formatFecha(iso) {
   return `${fecha} ${hora}`
 }
 
-function SolicitudesWeb({ token, pendingOpenSolicitudWebId, onPendingOpenSolicitudWebHandled }) {
+function SolicitudesWeb({ token, user, pendingOpenSolicitudWebId, onPendingOpenSolicitudWebHandled }) {
   const [solicitudes, setSolicitudes] = useState([])
   const [count, setCount] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(false)
   const [seleccionada, setSeleccionada] = useState(null)
+  const [savingContacto, setSavingContacto] = useState(false)
   const toast = useRef(null)
 
   const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE))
@@ -73,9 +83,61 @@ function SolicitudesWeb({ token, pendingOpenSolicitudWebId, onPendingOpenSolicit
     }
   }
 
+  // El recordatorio de "Pagina web" en Recordatorios/QuickActions vive en un
+  // arreglo aparte (localStorage + snapshot en el backend), no en esta tabla
+  // -- por eso abrir la solicitud aqui (o desde el propio recordatorio) tiene
+  // que marcarlo visto explicitamente ademas de guardar `leido` en la
+  // solicitud, para que desaparezca de pendientes al instante sin importar
+  // desde donde se abrio.
+  const markSolicitudWebReminderSeen = useCallback(
+    (solicitudId) => {
+      const normalizedId = normalizeId(solicitudId)
+      const userIdSet = buildUserIdSet(user)
+      if (!normalizedId || !userIdSet.size) return
+
+      let changed = false
+      const next = readRemindersFromStorage().map((reminder) => {
+        if (!isSolicitudWebReminder(reminder)) return reminder
+        if (normalizeId(reminder?.context?.id) !== normalizedId) return reminder
+
+        const completedBySet = new Set(reminderCompletedByIds(reminder))
+        let reminderChanged = false
+        userIdSet.forEach((id) => {
+          if (!completedBySet.has(id)) {
+            completedBySet.add(id)
+            reminderChanged = true
+          }
+        })
+        if (!reminderChanged) return reminder
+        changed = true
+        return { ...reminder, completedBy: Array.from(completedBySet) }
+      })
+
+      if (changed) {
+        writeRemindersToStorage(next)
+        emitRemindersSync()
+      }
+    },
+    [user]
+  )
+
   const abrirSolicitud = (solicitud) => {
     setSeleccionada(solicitud)
+    markSolicitudWebReminderSeen(solicitud.id)
     if (!solicitud.leido) patchSolicitud(solicitud.id, { leido: true })
+  }
+
+  // El check de "contactado" es de una sola via a proposito: una vez marcado
+  // no se puede desmarcar desde aqui (evita que alguien lo revierta sin
+  // querer), por eso es un boton de accion en vez de un checkbox editable.
+  const handleMarkContacted = async () => {
+    if (!seleccionada || seleccionada.contactado || savingContacto) return
+    setSavingContacto(true)
+    try {
+      await patchSolicitud(seleccionada.id, { contactado: true })
+    } finally {
+      setSavingContacto(false)
+    }
   }
 
   useEffect(() => {
@@ -152,7 +214,13 @@ function SolicitudesWeb({ token, pendingOpenSolicitudWebId, onPendingOpenSolicit
             {solicitudes.map((s) => (
               <tr
                 key={s.id}
-                className={s.leido ? 'solicitudes-web__row' : 'solicitudes-web__row solicitudes-web__row--unread'}
+                className={[
+                  'solicitudes-web__row',
+                  !s.leido && 'solicitudes-web__row--unread',
+                  !s.contactado && 'solicitudes-web__row--not-contacted',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 onClick={() => abrirSolicitud(s)}
               >
                 <td>{formatFecha(s.creado_en)}</td>
@@ -208,7 +276,13 @@ function SolicitudesWeb({ token, pendingOpenSolicitudWebId, onPendingOpenSolicit
         <div className="solicitudes-web__modal-overlay" onClick={() => setSeleccionada(null)}>
           <div className="solicitudes-web__modal" onClick={(e) => e.stopPropagation()}>
             <div className="solicitudes-web__modal-header">
-              <h4>{seleccionada.nombre}</h4>
+              <div className="solicitudes-web__modal-heading">
+                <span className="solicitudes-web__modal-eyebrow">Solicitud del sitio web</span>
+                <h4>{seleccionada.nombre}</h4>
+                <span className="solicitudes-web__modal-date">
+                  <i className="pi pi-calendar" /> {formatFecha(seleccionada.creado_en)}
+                </span>
+              </div>
               <button
                 type="button"
                 className="solicitudes-web__modal-close"
@@ -219,37 +293,61 @@ function SolicitudesWeb({ token, pendingOpenSolicitudWebId, onPendingOpenSolicit
               </button>
             </div>
 
-            <dl className="solicitudes-web__modal-body">
-              <dt>Fecha</dt>
-              <dd>{formatFecha(seleccionada.creado_en)}</dd>
+            <div className="solicitudes-web__modal-grid">
+              <div className="solicitudes-web__modal-field">
+                <span className="solicitudes-web__modal-label">
+                  <i className="pi pi-phone" /> Celular
+                </span>
+                <span className="solicitudes-web__modal-value">{seleccionada.celular || '-'}</span>
+              </div>
+              <div className="solicitudes-web__modal-field">
+                <span className="solicitudes-web__modal-label">
+                  <i className="pi pi-car" /> Marca / Modelo
+                </span>
+                <span className="solicitudes-web__modal-value">
+                  {seleccionada.marca || '-'} {seleccionada.modelo}
+                </span>
+              </div>
+              <div className="solicitudes-web__modal-field">
+                <span className="solicitudes-web__modal-label">Año</span>
+                <span className="solicitudes-web__modal-value">{seleccionada.anio || '-'}</span>
+              </div>
+              <div className="solicitudes-web__modal-field">
+                <span className="solicitudes-web__modal-label">N° de chasis</span>
+                <span className="solicitudes-web__modal-value">{seleccionada.chasis || '-'}</span>
+              </div>
+            </div>
 
-              <dt>Celular</dt>
-              <dd>{seleccionada.celular}</dd>
+            <div className="solicitudes-web__modal-detalle-box">
+              <span className="solicitudes-web__modal-label">Solicitud</span>
+              <p>{seleccionada.detalle}</p>
+            </div>
 
-              <dt>Marca</dt>
-              <dd>{seleccionada.marca || '-'}</dd>
-
-              <dt>Modelo</dt>
-              <dd>{seleccionada.modelo}</dd>
-
-              <dt>Año</dt>
-              <dd>{seleccionada.anio || '-'}</dd>
-
-              <dt>N° de chasis</dt>
-              <dd>{seleccionada.chasis || '-'}</dd>
-
-              <dt>Solicitud</dt>
-              <dd className="solicitudes-web__modal-detalle">{seleccionada.detalle}</dd>
-            </dl>
-
-            <label className="solicitudes-web__modal-checkbox">
-              <input
-                type="checkbox"
-                checked={Boolean(seleccionada.contactado)}
-                onChange={(e) => patchSolicitud(seleccionada.id, { contactado: e.target.checked })}
-              />
-              <span>¿Contactaste al interesado?</span>
-            </label>
+            <div className="solicitudes-web__modal-footer">
+              {seleccionada.contactado ? (
+                <div className="solicitudes-web__contact-status solicitudes-web__contact-status--done">
+                  <i className="pi pi-check-circle" />
+                  Contactado
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="solicitudes-web__contact-button"
+                  onClick={handleMarkContacted}
+                  disabled={savingContacto}
+                >
+                  {savingContacto ? (
+                    <>
+                      <i className="pi pi-spinner pi-spin" /> Guardando…
+                    </>
+                  ) : (
+                    <>
+                      <i className="pi pi-check" /> Marcar como contactado
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

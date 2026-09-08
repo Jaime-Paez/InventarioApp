@@ -158,6 +158,7 @@ function Configuracion({ token, user, pendingOpenSolicitudWebId, onPendingOpenSo
 
       <SolicitudesWeb
         token={token}
+        user={user}
         pendingOpenSolicitudWebId={pendingOpenSolicitudWebId}
         onPendingOpenSolicitudWebHandled={onPendingOpenSolicitudWebHandled}
       />

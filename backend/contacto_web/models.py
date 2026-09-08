@@ -19,7 +19,10 @@ class SolicitudWeb(models.Model):
     contactado = models.BooleanField("¿Contactaste al interesado?", default=False)
 
     class Meta:
-        ordering = ["-creado_en"]
+        # Las no contactadas primero (False < True), y entre ellas las mas
+        # recientes primero -- asi el equipo ve de una vez lo que falta
+        # atender sin tener que revisar pagina por pagina.
+        ordering = ["contactado", "-creado_en"]
         verbose_name = "Solicitud web"
         verbose_name_plural = "Solicitudes web"
 
