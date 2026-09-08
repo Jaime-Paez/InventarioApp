@@ -787,6 +787,17 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if detalles_to_delete:
             ImportacionDetalle.objects.filter(id__in=detalles_to_delete).delete()
 
+        # El precio se aplica al catalogo apenas se acepta la importacion (aqui
+        # mismo), no cuando llega ni cuando una sucursal confirma su envio --
+        # eso ya quedo muy tarde. Solo se toca una vez, en este momento.
+        precio_by_producto = {
+            d.producto_id: d.precio_confirmado
+            for d in instance.detalles.filter(precio_confirmado__isnull=False)
+            if d.producto_id
+        }
+        for product_id, nuevo_precio in precio_by_producto.items():
+            Producto.objects.filter(pk=product_id).update(precio=nuevo_precio)
+
         # 2. Transition this same importación into en_camino instead of spawning
         # a separate record for it.
         instance.estado = Importacion.ESTADO_EN_CAMINO
@@ -1475,14 +1486,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             envio_locked.recibido_por = request.user
             envio_locked.save(update_fields=["estado", "fecha_recepcion", "recibido_por"])
 
-            # Update product prices from precio_confirmado on the importacion detalles
-            precio_by_producto = {
-                d.producto_id: d.precio_confirmado
-                for d in envio_locked.importacion.detalles.filter(precio_confirmado__isnull=False)
-                if d.producto_id
-            }
-            for product_id, nuevo_precio in precio_by_producto.items():
-                Producto.objects.filter(pk=product_id).update(precio=nuevo_precio)
+            # El precio ya se aplico al catalogo al aceptar la importacion (ver
+            # ImportacionViewSet.importar) -- no se vuelve a tocar aqui para no
+            # pisar un ajuste manual de precio hecho despues de aceptarla y
+            # antes de que la sucursal confirme su envio.
 
         User = get_user_model()
         admin_ids = [u.pk for u in User.objects.filter(is_active=True) if is_app_admin(u)]
