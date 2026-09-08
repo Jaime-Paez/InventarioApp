@@ -13,6 +13,7 @@ export const RANDOM_INSPECTION_KIND = 'inspeccion_aleatoria_diaria'
 export const RANDOM_INSPECTION_VERIFY_KIND = 'inspeccion_aleatoria_verificacion'
 export const RANDOM_INSPECTION_ADMIN_SUMMARY_KIND = 'inspeccion_aleatoria_resumen_admin'
 export const RANDOM_INSPECTION_CONTEXT_TYPE = 'inspeccion_aleatoria'
+export const SOLICITUD_WEB_KIND = 'solicitud_web_no_leida'
 export const REMINDERS_BACKEND_ENDPOINT = `${API_URL}/recordatorios/estado/`
 
 export const normalizeId = (value) => (value == null ? '' : String(value).trim())
@@ -593,6 +594,9 @@ export const isRandomInspectionReminder = (reminder) =>
   isRandomInspectionVerifyReminder(reminder) ||
   isRandomInspectionAdminSummaryReminder(reminder)
 
+export const isSolicitudWebReminder = (reminder) =>
+  normalizeId(reminder?.kind) === SOLICITUD_WEB_KIND
+
 const normalizeComparableText = (value) =>
   String(value || '')
     .normalize('NFD')
@@ -894,6 +898,80 @@ export const upsertTransferReminder = (reminders, transferReminder) => {
   )
 
   return [merged, ...remainder]
+}
+
+const buildSolicitudWebReminderDateTime = (isoValue) => {
+  const timestamp = Date.parse(String(isoValue || '').trim())
+  const date = Number.isFinite(timestamp) ? new Date(timestamp) : new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return { date: `${year}-${month}-${day}`, time: `${hours}:${minutes}` }
+}
+
+// Reconstruye el subconjunto "solicitud web" del arreglo de recordatorios a partir
+// del poll de /contacto-web/solicitudes/?leido=false — no de un evento local, ya
+// que estas solicitudes las crea el sitio publico, no un actor dentro de esta app.
+// Por eso se resincroniza entero en cada poll (una solicitud ya marcada "leida"
+// en Kava simplemente deja de aparecer aqui, sin necesidad de completedBy).
+export const syncSolicitudWebReminders = (reminders, unreadRows, currentUser) => {
+  const source = Array.isArray(reminders) ? reminders : []
+  const others = source.filter((reminder) => !isSolicitudWebReminder(reminder))
+  const existingById = new Map()
+  source.filter(isSolicitudWebReminder).forEach((reminder) => {
+    existingById.set(normalizeId(reminder?.context?.id), reminder)
+  })
+
+  const selfRecipient = sanitizeRecipient({
+    id: extractUserId(currentUser),
+    name: formatCurrentUserName(currentUser),
+  })
+
+  const fresh = (Array.isArray(unreadRows) ? unreadRows : [])
+    .map((row) => {
+      const solicitudId = normalizeId(row?.id)
+      if (!solicitudId) return null
+
+      const existing = existingById.get(solicitudId)
+      const { date, time } = buildSolicitudWebReminderDateTime(row?.creado_en)
+      const marcaModelo = [row?.marca, row?.modelo]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+        .join(' ')
+      const detalle = String(row?.detalle || '').trim()
+      const celular = String(row?.celular || '').trim()
+      const description = (
+        [marcaModelo, celular ? `Cel: ${celular}` : ''].filter(Boolean).join(' · ') +
+        (detalle ? ` — ${detalle}` : '')
+      ).trim()
+
+      return sanitizeReminder({
+        id: normalizeId(existing?.id) || `solicitud-web-${solicitudId}`,
+        date,
+        time,
+        description,
+        creator: existing?.creator || { id: '', name: 'Sitio web' },
+        recipients: [
+          ...(Array.isArray(existing?.recipients) ? existing.recipients : []),
+          ...(selfRecipient ? [selfRecipient] : []),
+        ].filter(
+          (recipient, index, list) =>
+            list.findIndex((item) => normalizeId(item?.id) === normalizeId(recipient?.id)) === index
+        ),
+        context: {
+          type: 'solicitud_web',
+          id: solicitudId,
+          label: String(row?.nombre || '').trim(),
+        },
+        kind: SOLICITUD_WEB_KIND,
+        createdAt: row?.creado_en,
+      })
+    })
+    .filter(Boolean)
+
+  return [...fresh, ...others]
 }
 
 export const isSpecialReminderResolved = (reminder) => {

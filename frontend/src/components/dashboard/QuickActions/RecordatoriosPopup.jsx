@@ -20,6 +20,7 @@ import {
   isRandomInspectionVerifyReminder,
   isRandomInspectionAdminSummaryReminder,
   isReminderForContext,
+  isSolicitudWebReminder,
   isTransferIssueReminder,
   reminderCompletedByIds,
   isTransferDecisionAllowedForUser,
@@ -72,6 +73,9 @@ const getTransferContextPresentation = (reminder) => {
 const formatReminderContext = (reminder) => {
   if (normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado') {
     return getTransferContextPresentation(reminder).fullLabel
+  }
+  if (normalizeReminderContextType(reminder?.context?.type) === 'solicitud_web') {
+    return 'Página web'
   }
 
   const label = String(reminder?.context?.label || '').trim()
@@ -509,6 +513,9 @@ const getTimelineReminderContextReference = (reminder) => {
   if (isTransferIssueReminder(reminder) || contextType === 'solicitud_traslado') {
     return getTransferContextPresentation(reminder).reference
   }
+  if (contextType === 'solicitud_web') {
+    return String(reminder?.context?.label || '').trim()
+  }
   return ''
 }
 
@@ -797,6 +804,7 @@ function RecordatoriosPopup({
   onOpenTransferIssuesSection,
   onOpenUserInspectionConfig,
   onOpenSolicitudCliente,
+  onOpenSolicitudWeb,
 }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
   const [activeDecisionReminderId, setActiveDecisionReminderId] = useState('')
@@ -3068,6 +3076,7 @@ function RecordatoriosPopup({
                         })
                         const isSolicitudClienteReminder = normalizeReminderContextType(reminder?.context?.type) === 'solicitud'
                         const solicitudClienteId = isSolicitudClienteReminder ? normalizeId(reminder?.context?.id) : null
+                        const isSolicitudWebReminderRow = isSolicitudWebReminder(reminder)
                         const solicitudClienteEstado = solicitudClienteId ? (solicitudClienteEstados[solicitudClienteId] || '') : ''
                         const isSolicitudClienteReviewed = ['revisado', 'archivado'].includes(solicitudClienteEstado)
 
@@ -3413,6 +3422,17 @@ function RecordatoriosPopup({
                                     }}
                                   >
                                     {isSolicitudClienteReviewed ? 'Ver solicitud' : 'Revisar solicitud'}
+                                  </button>
+                                ) : isSolicitudWebReminderRow && typeof onOpenSolicitudWeb === 'function' ? (
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                                    onClick={() => {
+                                      onOpenSolicitudWeb(normalizeId(reminder?.context?.id))
+                                      onClose?.()
+                                    }}
+                                  >
+                                    Ver solicitud
                                   </button>
                                 ) : status.canMarkSeen && !isGarantiaApprovalReminder(reminder) && !isGarantiaResultReminder(reminder) ? (
                                   <button

@@ -16,7 +16,7 @@ function formatFecha(iso) {
   return `${fecha} ${hora}`
 }
 
-function SolicitudesWeb({ token }) {
+function SolicitudesWeb({ token, pendingOpenSolicitudWebId, onPendingOpenSolicitudWebHandled }) {
   const [solicitudes, setSolicitudes] = useState([])
   const [count, setCount] = useState(0)
   const [page, setPage] = useState(1)
@@ -78,6 +78,31 @@ function SolicitudesWeb({ token }) {
     if (!solicitud.leido) patchSolicitud(solicitud.id, { leido: true })
   }
 
+  useEffect(() => {
+    if (!pendingOpenSolicitudWebId || !token) return undefined
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await authFetch(
+          `${API_URL}/contacto-web/solicitudes/${pendingOpenSolicitudWebId}/`,
+          {},
+          token,
+        )
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data?.detail || 'No se pudo abrir la solicitud.')
+        if (!cancelled) abrirSolicitud(data)
+      } catch (err) {
+        if (!cancelled) notify('warn', 'Aviso', err.message || 'No se pudo abrir la solicitud.')
+      } finally {
+        if (!cancelled) onPendingOpenSolicitudWebHandled?.()
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingOpenSolicitudWebId, token])
+
   const unreadCount = solicitudes.filter((s) => !s.leido).length
 
   return (
@@ -90,8 +115,7 @@ function SolicitudesWeb({ token }) {
             {unreadCount > 0 && <span className="solicitudes-web__badge">{unreadCount}</span>}
           </h4>
           <p className="create-user__hint">
-            Formulario de contacto de peugeotjpaez.com. Se guardan aquí aunque el correo de aviso falle. Haz clic en
-            una fila para ver el detalle completo.
+            Formulario de contacto de peugeotjpaez.com. Haz clic en una fila para ver el detalle completo.
           </p>
         </div>
         <button

@@ -16,7 +16,7 @@ const parsePercent = (value) => {
 }
 
 
-function Configuracion({ token, user }) {
+function Configuracion({ token, user, pendingOpenSolicitudWebId, onPendingOpenSolicitudWebHandled }) {
   const [ivaPercent, setIvaPercent] = useState(String(DEFAULT_IVA))
   const [configId, setConfigId] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -156,7 +156,11 @@ function Configuracion({ token, user }) {
         </div>
       </section>
 
-      <SolicitudesWeb token={token} />
+      <SolicitudesWeb
+        token={token}
+        pendingOpenSolicitudWebId={pendingOpenSolicitudWebId}
+        onPendingOpenSolicitudWebHandled={onPendingOpenSolicitudWebHandled}
+      />
     </div>
   )
 }

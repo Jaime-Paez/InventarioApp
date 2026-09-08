@@ -47,6 +47,7 @@ import {
   reminderCompletedByIds,
   sanitizeRecipient,
   sortRemindersForCurrentUser,
+  syncSolicitudWebReminders,
   upsertTransferReminder,
   writeRemindersToStorage,
 } from '../common/reminders/remindersStorage'
@@ -426,6 +427,7 @@ function QuickActions({
   onOpenInventoryReviewSection,
   onOpenTransferIssuesSection,
   onOpenSolicitudCliente,
+  onOpenSolicitudWeb,
   allowUrgentShield = true,
 }) {
   const wrapRef = useRef(null)
@@ -459,6 +461,7 @@ function QuickActions({
   const seenRandomInspectionReminderIdsRef = useRef(new Set())
   const didInitSolicitudWebSnapshotRef = useRef(false)
   const seenSolicitudWebIdsRef = useRef(new Set())
+  const lastSyncedSolicitudWebSignatureRef = useRef('')
   const solicitudWebPollInFlightRef = useRef(false)
   const didPlayInitialPendingToneRef = useRef(false)
   const didRequestSystemNotificationPermissionRef = useRef(false)
@@ -1194,6 +1197,7 @@ function QuickActions({
     didInitTransferResponseSnapshotRef.current = false
     seenSolicitudWebIdsRef.current = new Set()
     didInitSolicitudWebSnapshotRef.current = false
+    lastSyncedSolicitudWebSignatureRef.current = ''
     didPlayInitialPendingToneRef.current = false
     setUrgentVisualProgressById({})
   }, [canDecideTransferRequest, token, currentPrimaryUserId, suppressAdminAlerts])
@@ -1656,29 +1660,43 @@ function QuickActions({
       playInitialPendingToneIfNeeded(nextIds, {
         type: 'solicitud_web_no_leida',
       }, { allowAdminTone: true })
-      return
+    } else {
+      const seenIds = seenSolicitudWebIdsRef.current
+      const newIds = []
+      nextIds.forEach((id) => {
+        if (!seenIds.has(id)) newIds.push(id)
+      })
+      seenSolicitudWebIdsRef.current = nextIds
+
+      if (newIds.length) {
+        playNotificationTone({ forceForAdmin: true })
+        void showSystemNotification({
+          title: newIds.length > 1
+            ? `Tienes ${newIds.length} solicitudes nuevas del sitio web.`
+            : 'Tienes una solicitud nueva del sitio web.',
+          body: 'Revisa el formulario de contacto en Configuración.',
+          tag: 'inventario-solicitud-web',
+          url: '/',
+          requireInteraction: true,
+        })
+      }
     }
 
-    const seenIds = seenSolicitudWebIdsRef.current
-    const newIds = []
-    nextIds.forEach((id) => {
-      if (!seenIds.has(id)) newIds.push(id)
-    })
-    seenSolicitudWebIdsRef.current = nextIds
-
-    if (newIds.length) {
-      playNotificationTone({ forceForAdmin: true })
-      void showSystemNotification({
-        title: newIds.length > 1
-          ? `Tienes ${newIds.length} solicitudes nuevas del sitio web.`
-          : 'Tienes una solicitud nueva del sitio web.',
-        body: 'Revisa el formulario de contacto en Configuración.',
-        tag: 'inventario-solicitud-web',
-        url: '/',
-        requireInteraction: true,
+    // Ademas del sonido/badge, refleja estas solicitudes como tarjetas reales
+    // dentro del popup de Recordatorios — solo cuando el conjunto de ids
+    // realmente cambio, para no forzar un PUT al backend en cada poll.
+    const signature = Array.from(nextIds).sort().join(',')
+    if (signature !== lastSyncedSolicitudWebSignatureRef.current) {
+      lastSyncedSolicitudWebSignatureRef.current = signature
+      setReminders((prev) => {
+        const source = Array.isArray(prev) ? prev : []
+        const next = syncSolicitudWebReminders(source, unreadSolicitudesWeb, user)
+        const normalized = writeRemindersToStorage(next)
+        emitRemindersSync()
+        return normalized
       })
     }
-  }, [unreadSolicitudesWeb, playInitialPendingToneIfNeeded, playNotificationTone])
+  }, [unreadSolicitudesWeb, playInitialPendingToneIfNeeded, playNotificationTone, user])
 
   const pendingTransferResponseReminders = useMemo(
     () =>
@@ -4637,6 +4655,7 @@ function QuickActions({
         onOpenRandomInspection={handleOpenRandomInspectionFromReminder}
         onOpenTransferIssuesSection={onOpenTransferIssuesSection}
         onOpenSolicitudCliente={onOpenSolicitudCliente}
+        onOpenSolicitudWeb={onOpenSolicitudWeb}
       />
 
       {isRandomInspectionModalOpen && (

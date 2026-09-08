@@ -112,6 +112,7 @@ function Workspace({
   const [pendingTransferEntradaRequest, setPendingTransferEntradaRequest] = useState(null)
   const [pendingOpenIssueId, setPendingOpenIssueId] = useState(null)
   const [pendingOpenClienteSolicitudId, setPendingOpenClienteSolicitudId] = useState(null)
+  const [pendingOpenSolicitudWebId, setPendingOpenSolicitudWebId] = useState(null)
   const [pendingOpenBorradorData, setPendingOpenBorradorData] = useState(null)
   const [pendingOpenBorradorTab, setPendingOpenBorradorTab] = useState(null)
   const [pendingOpenDetailsId, setPendingOpenDetailsId] = useState(null)
@@ -386,6 +387,16 @@ function Workspace({
     setPendingOpenClienteSolicitudId(null)
   }, [])
 
+  const handleOpenSolicitudWeb = useCallback((solicitudId) => {
+    if (!solicitudId) return
+    setPendingOpenSolicitudWebId(String(solicitudId))
+    onSelectTab?.('Configuraciones')
+  }, [onSelectTab])
+
+  const handlePendingOpenSolicitudWebHandled = useCallback(() => {
+    setPendingOpenSolicitudWebId(null)
+  }, [])
+
   const handleTransferEntradaRequestHandled = useCallback(() => {
     setPendingTransferEntradaRequest(null)
   }, [])
@@ -475,7 +486,14 @@ function Workspace({
           </p>
         )
       }
-      return <TabComponent token={token} user={user} />
+      return (
+        <TabComponent
+          token={token}
+          user={user}
+          pendingOpenSolicitudWebId={tab === 'Configuraciones' ? pendingOpenSolicitudWebId : undefined}
+          onPendingOpenSolicitudWebHandled={tab === 'Configuraciones' ? handlePendingOpenSolicitudWebHandled : undefined}
+        />
+      )
     }
 
     const createBranchId = tab === 'Entradas'
@@ -636,6 +654,7 @@ function Workspace({
           onOpenInventoryReviewSection={handleOpenInventoryReviewSection}
           onOpenTransferIssuesSection={handleOpenTransferIssuesSection}
           onOpenSolicitudCliente={handleOpenSolicitudCliente}
+          onOpenSolicitudWeb={handleOpenSolicitudWeb}
         />
       </div>
 
