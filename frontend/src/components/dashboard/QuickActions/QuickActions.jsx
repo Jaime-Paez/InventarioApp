@@ -463,6 +463,7 @@ function QuickActions({
   const seenSolicitudWebIdsRef = useRef(new Set())
   const lastSyncedSolicitudWebSignatureRef = useRef('')
   const solicitudWebPollInFlightRef = useRef(false)
+  const unreadSolicitudesWebRef = useRef([])
   const didPlayInitialPendingToneRef = useRef(false)
   const didRequestSystemNotificationPermissionRef = useRef(false)
   const toast = useRef(null)
@@ -1650,6 +1651,10 @@ function QuickActions({
   ])
 
   useEffect(() => {
+    unreadSolicitudesWebRef.current = unreadSolicitudesWeb
+  }, [unreadSolicitudesWeb])
+
+  useEffect(() => {
     const nextIds = new Set(
       unreadSolicitudesWeb.map((row) => normalizeId(row?.id)).filter(Boolean)
     )
@@ -2685,7 +2690,17 @@ function QuickActions({
       try {
         const remote = await fetchRemindersFromBackend(token)
         if (cancelled) return
-        setReminders(remote)
+        // `remote` es un snapshot compartido (guardado por cualquier sesion
+        // que haya escrito antes) -- puede traer tarjetas de "solicitud web"
+        // que ya se resolvieron desde entonces (la solicitud ya se marco
+        // leida, o se elimino) pero que nadie volvio a re-subir sin ellas
+        // todavia. Se reconcilian aqui mismo, contra lo que esta sesion sabe
+        // ahora mismo de /contacto-web/solicitudes/?leido=false, para que
+        // este poll de cada 4s nunca reviva una tarjeta zombie encima del
+        // pruning que hace el otro efecto (el de unreadSolicitudesWeb, que
+        // solo corre cada 30s).
+        const reconciled = syncSolicitudWebReminders(remote, unreadSolicitudesWebRef.current, user)
+        setReminders(reconciled)
       } finally {
         remindersPollInFlightRef.current = false
       }
@@ -2712,7 +2727,7 @@ function QuickActions({
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleFocus)
     }
-  }, [token])
+  }, [token, user])
 
   useEffect(() => {
     didPlayLoginToneRef.current = false
