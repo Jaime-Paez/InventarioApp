@@ -19,6 +19,13 @@ class SolicitudWebViewSet(viewsets.ModelViewSet):
     permission_classes = [ConfiguracionModulePermission]
     http_method_names = ["get", "patch", "head", "options"]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        leido = self.request.query_params.get("leido")
+        if leido is not None:
+            queryset = queryset.filter(leido=leido.strip().lower() in ("1", "true", "si", "sí"))
+        return queryset
+
     @action(detail=False, methods=["get"], url_path="no-leidas")
     def no_leidas(self, request):
         count = self.get_queryset().filter(leido=False).count()

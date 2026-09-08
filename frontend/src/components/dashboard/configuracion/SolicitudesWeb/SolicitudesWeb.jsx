@@ -114,7 +114,6 @@ function SolicitudesWeb({ token }) {
               <th>Celular</th>
               <th>Marca / Modelo</th>
               <th>Detalle</th>
-              <th>Correo</th>
               <th>Contactado</th>
             </tr>
           </thead>
@@ -141,13 +140,6 @@ function SolicitudesWeb({ token }) {
                 </td>
                 <td className="solicitudes-web__detalle" title={s.detalle}>
                   {s.detalle}
-                </td>
-                <td>
-                  <i
-                    className={`pi ${s.correo_enviado ? 'pi-check-circle' : 'pi-times-circle'}`}
-                    style={{ color: s.correo_enviado ? '#22c55e' : '#9ca3af' }}
-                    title={s.correo_enviado ? 'Correo enviado' : 'Correo no enviado'}
-                  />
                 </td>
                 <td>
                   <i
@@ -224,9 +216,6 @@ function SolicitudesWeb({ token }) {
 
               <dt>Solicitud</dt>
               <dd className="solicitudes-web__modal-detalle">{seleccionada.detalle}</dd>
-
-              <dt>Correo de aviso</dt>
-              <dd>{seleccionada.correo_enviado ? 'Enviado' : 'No se pudo enviar'}</dd>
             </dl>
 
             <label className="solicitudes-web__modal-checkbox">

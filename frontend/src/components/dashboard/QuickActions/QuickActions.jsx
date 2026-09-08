@@ -73,6 +73,7 @@ const TRANSFER_SALIDA_MODAL_STATE_EVENT = 'inventario-transfer-salida-modal-stat
 const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
 const RANDOM_INSPECTION_DETAIL_ENDPOINT = `${API_URL}/recordatorios/inspeccion-aleatoria`
 const RANDOM_INSPECTION_VERIFY_ITEM_ENDPOINT = `${API_URL}/recordatorios/inspeccion-aleatoria/items`
+const SOLICITUD_WEB_POLL_MS = 30000
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const clamp01 = (value) => Math.max(0, Math.min(1, Number(value) || 0))
@@ -456,6 +457,9 @@ function QuickActions({
   const seenTransferResponseReminderIdsRef = useRef(new Set())
   const didInitRandomInspectionSnapshotRef = useRef(false)
   const seenRandomInspectionReminderIdsRef = useRef(new Set())
+  const didInitSolicitudWebSnapshotRef = useRef(false)
+  const seenSolicitudWebIdsRef = useRef(new Set())
+  const solicitudWebPollInFlightRef = useRef(false)
   const didPlayInitialPendingToneRef = useRef(false)
   const didRequestSystemNotificationPermissionRef = useRef(false)
   const toast = useRef(null)
@@ -473,6 +477,7 @@ function QuickActions({
   const [inTransitShipments, setInTransitShipments] = useState([])
   const [pendingShipmentsLoading, setPendingShipmentsLoading] = useState(false)
   const [inTransitShipmentsLoading, setInTransitShipmentsLoading] = useState(false)
+  const [unreadSolicitudesWeb, setUnreadSolicitudesWeb] = useState([])
   const [openingPendingShipmentId, setOpeningPendingShipmentId] = useState('')
   const [openingInTransitShipmentId, setOpeningInTransitShipmentId] = useState('')
   const [activeInTransitShipment, setActiveInTransitShipment] = useState(null)
@@ -732,6 +737,33 @@ function QuickActions({
       if (!silent) setInTransitShipmentsLoading(false)
     }
   }, [canViewInTransitShipments, showErrorToast, shouldIncludeInTransitShipment, token])
+
+  const fetchUnreadSolicitudesWeb = useCallback(async ({ silent = false } = {}) => {
+    if (!token || !isAdministrator) {
+      setUnreadSolicitudesWeb([])
+      return []
+    }
+
+    if (solicitudWebPollInFlightRef.current) return []
+    solicitudWebPollInFlightRef.current = true
+    try {
+      const response = await authFetch(
+        `${API_URL}/contacto-web/solicitudes/?leido=false&page_size=200`,
+        {},
+        token
+      )
+      if (!response.ok) throw new Error('No se pudieron cargar las solicitudes web.')
+      const payload = await response.json().catch(() => ({}))
+      const rows = parseApiList(payload)
+      setUnreadSolicitudesWeb(rows)
+      return rows
+    } catch {
+      if (!silent) setUnreadSolicitudesWeb([])
+      return []
+    } finally {
+      solicitudWebPollInFlightRef.current = false
+    }
+  }, [isAdministrator, token])
 
   const fetchPreferredReceiveSubdivisions = useCallback(
     async ({ sucursalSolicitanteId, productIds }) => {
@@ -1160,6 +1192,8 @@ function QuickActions({
     didInitPendingShipmentUrgentSnapshotRef.current = false
     seenTransferResponseReminderIdsRef.current = new Set()
     didInitTransferResponseSnapshotRef.current = false
+    seenSolicitudWebIdsRef.current = new Set()
+    didInitSolicitudWebSnapshotRef.current = false
     didPlayInitialPendingToneRef.current = false
     setUrgentVisualProgressById({})
   }, [canDecideTransferRequest, token, currentPrimaryUserId, suppressAdminAlerts])
@@ -1285,6 +1319,42 @@ function QuickActions({
       window.removeEventListener('focus', handleFocus)
     }
   }, [canViewInTransitShipments, fetchInTransitTransferShipments, token])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    if (!token || !isAdministrator) {
+      setUnreadSolicitudesWeb([])
+      return undefined
+    }
+
+    let cancelled = false
+
+    const syncSolicitudesWeb = async () => {
+      if (cancelled) return
+      await fetchUnreadSolicitudesWeb({ silent: true })
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return
+      void syncSolicitudesWeb()
+    }
+
+    const handleFocus = () => {
+      void syncSolicitudesWeb()
+    }
+
+    void fetchUnreadSolicitudesWeb()
+    const intervalId = window.setInterval(syncSolicitudesWeb, SOLICITUD_WEB_POLL_MS)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [fetchUnreadSolicitudesWeb, isAdministrator, token])
 
   useEffect(() => {
     if (hasPendingShipments) return
@@ -1574,6 +1644,41 @@ function QuickActions({
     playNotificationTone,
     pushSystemTransferNotification,
   ])
+
+  useEffect(() => {
+    const nextIds = new Set(
+      unreadSolicitudesWeb.map((row) => normalizeId(row?.id)).filter(Boolean)
+    )
+
+    if (!didInitSolicitudWebSnapshotRef.current) {
+      seenSolicitudWebIdsRef.current = nextIds
+      didInitSolicitudWebSnapshotRef.current = true
+      playInitialPendingToneIfNeeded(nextIds, {
+        type: 'solicitud_web_no_leida',
+      }, { allowAdminTone: true })
+      return
+    }
+
+    const seenIds = seenSolicitudWebIdsRef.current
+    const newIds = []
+    nextIds.forEach((id) => {
+      if (!seenIds.has(id)) newIds.push(id)
+    })
+    seenSolicitudWebIdsRef.current = nextIds
+
+    if (newIds.length) {
+      playNotificationTone({ forceForAdmin: true })
+      void showSystemNotification({
+        title: newIds.length > 1
+          ? `Tienes ${newIds.length} solicitudes nuevas del sitio web.`
+          : 'Tienes una solicitud nueva del sitio web.',
+        body: 'Revisa el formulario de contacto en Configuración.',
+        tag: 'inventario-solicitud-web',
+        url: '/',
+        requireInteraction: true,
+      })
+    }
+  }, [unreadSolicitudesWeb, playInitialPendingToneIfNeeded, playNotificationTone])
 
   const pendingTransferResponseReminders = useMemo(
     () =>
@@ -4488,7 +4593,7 @@ function QuickActions({
                 {mobileShipmentCount > 9 ? '9+' : mobileShipmentCount}
               </span>
             )}
-            {hasPendingReminder && (
+            {(hasPendingReminder || unreadSolicitudesWeb.length > 0) && (
               <span className="quick-actions__pending-dots" aria-hidden="true">
                 <span className="quick-actions__pending-dot quick-actions__pending-dot--1" />
               </span>

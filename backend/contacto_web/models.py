@@ -3,8 +3,8 @@ from django.db import models
 
 class SolicitudWeb(models.Model):
     """Solicitud enviada desde el formulario de contacto del sitio público
-    (JaimePaezWebPage, un proyecto aparte). Se guarda siempre, aunque el envío
-    del correo de notificación falle — así la solicitud no se pierde.
+    (JaimePaezWebPage, un proyecto aparte). Se guarda siempre, y queda
+    visible en Kava — no se envía ningún correo de notificación.
     """
 
     nombre = models.CharField(max_length=255)
@@ -16,7 +16,6 @@ class SolicitudWeb(models.Model):
     detalle = models.TextField()
     creado_en = models.DateTimeField(auto_now_add=True)
     leido = models.BooleanField(default=False)
-    correo_enviado = models.BooleanField(default=False)
     contactado = models.BooleanField("¿Contactaste al interesado?", default=False)
 
     class Meta:

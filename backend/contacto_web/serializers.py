@@ -17,7 +17,6 @@ class SolicitudWebSerializer(serializers.ModelSerializer):
             "detalle",
             "creado_en",
             "leido",
-            "correo_enviado",
             "contactado",
         ]
         read_only_fields = [
@@ -30,5 +29,4 @@ class SolicitudWebSerializer(serializers.ModelSerializer):
             "chasis",
             "detalle",
             "creado_en",
-            "correo_enviado",
         ]
