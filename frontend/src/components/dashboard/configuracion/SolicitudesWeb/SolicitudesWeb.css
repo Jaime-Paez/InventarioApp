@@ -1,0 +1,75 @@
+.solicitudes-web__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.solicitudes-web__table-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.solicitudes-web__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-base);
+}
+
+.solicitudes-web__table th,
+.solicitudes-web__table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.solicitudes-web__table th {
+  color: var(--color-text-primary);
+  opacity: 0.6;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.solicitudes-web__detalle {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.solicitudes-web__empty {
+  text-align: center;
+  opacity: 0.6;
+  white-space: normal;
+}
+
+.solicitudes-web__row--unread {
+  font-weight: 700;
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+}
+
+.solicitudes-web__mark-read {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 4px 10px;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.solicitudes-web__mark-read:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}

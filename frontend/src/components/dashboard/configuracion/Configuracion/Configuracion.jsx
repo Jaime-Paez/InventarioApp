@@ -4,6 +4,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import './Configuracion.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { emitIvaUpdated } from '../../../../utils/configEvents'
+import SolicitudesWeb from '../SolicitudesWeb/SolicitudesWeb'
 
 const DEFAULT_IVA = 15
 
@@ -154,6 +155,8 @@ function Configuracion({ token, user }) {
           </button>
         </div>
       </section>
+
+      <SolicitudesWeb token={token} />
     </div>
   )
 }

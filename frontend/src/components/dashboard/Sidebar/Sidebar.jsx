@@ -9,6 +9,7 @@ import kavaDark from '../../../assets/login/kava(dark).png'
 import jpaezDark from '../../../assets/login/jpaez(dark).png'
 
 const INCONVENIENTES_POLL_MS = 30000
+const SOLICITUDES_WEB_POLL_MS = 30000
 
 function Sidebar({
   activeItem,
@@ -110,6 +111,32 @@ function Sidebar({
     const intervalId = window.setInterval(checkPendingInconvenientes, INCONVENIENTES_POLL_MS)
     return () => window.clearInterval(intervalId)
   }, [canSeeInconvenientes, token, checkPendingInconvenientes])
+
+  // Solicitudes sin leer del formulario de contacto del sitio público — solo
+  // se avisa a administradores (mismo grupo que puede entrar a Configuración).
+  const [solicitudesWebSinLeer, setSolicitudesWebSinLeer] = useState(0)
+
+  const checkSolicitudesWeb = useCallback(async () => {
+    if (!token) return
+    try {
+      const res = await authFetch(`${API_URL}/contacto-web/solicitudes/no-leidas/`, {}, token)
+      if (!res.ok) return
+      const data = await res.json().catch(() => ({}))
+      setSolicitudesWebSinLeer(Number(data?.no_leidas) || 0)
+    } catch {
+      // Silencioso: si falla la verificación, simplemente no se muestra el aviso.
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (!canAccessConfiguration || !token) {
+      setSolicitudesWebSinLeer(0)
+      return undefined
+    }
+    void checkSolicitudesWeb()
+    const intervalId = window.setInterval(checkSolicitudesWeb, SOLICITUDES_WEB_POLL_MS)
+    return () => window.clearInterval(intervalId)
+  }, [canAccessConfiguration, token, checkSolicitudesWeb])
 
   const toggleGroup = (label) => {
     setOpenGroups((prev) => {
@@ -221,9 +248,19 @@ function Sidebar({
               type="button"
               className="sidebar__action ghost"
               onClick={() => onSelect('Configuraciones')}
+              title={
+                solicitudesWebSinLeer > 0
+                  ? `${solicitudesWebSinLeer} solicitud(es) nueva(s) del sitio web`
+                  : undefined
+              }
             >
               <Settings />
               Configuración
+              {solicitudesWebSinLeer > 0 && (
+                <span className="sidebar__action-badge" aria-hidden>
+                  {solicitudesWebSinLeer > 9 ? '9+' : solicitudesWebSinLeer}
+                </span>
+              )}
             </button>
           ) : null}
         </div>

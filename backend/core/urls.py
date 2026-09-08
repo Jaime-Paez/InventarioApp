@@ -3,6 +3,7 @@ from django.urls import include, path
 
 from app.routers import CustomRouter
 from contacto_web.views import ContactoWebAPIView
+from contacto_web.viewsets import SolicitudWebViewSet
 from movimientos.viewsets import MovimientoInventarioViewSet
 from inventario.viewsets import (
     BodegaViewSet,
@@ -110,6 +111,9 @@ router.register(r"solicitudes/solicitudes", SolicitudViewSet, basename="solicitu
 
 # Configuracion
 router.register(r"configuracion/sistema", ConfiguracionSistemaViewSet, basename="configuracion-sistema")
+
+# Contacto web (solicitudes recibidas desde el formulario del sitio público)
+router.register(r"contacto-web/solicitudes", SolicitudWebViewSet, basename="contacto-web-solicitudes")
 
 urlpatterns = [
     path("admin/", admin.site.urls),

@@ -120,6 +120,7 @@ INSTALLED_APPS = [
     "app",
     "auditoria",
     "configuracion",
+    "contacto_web",
 ]
 
 
@@ -284,6 +285,10 @@ if SERVE_FRONTEND:
 RENDER_FRONTEND_ORIGINS = [
     "https://kavajaimepaez.onrender.com",
     "https://kava.peugeotjpaez.com",
+    # Sitio público de Jaime Páez (JaimePaezWebPage, proyecto aparte) — consume
+    # solo /contacto-web/enviar/ de este backend.
+    "https://www.peugeotjpaez.com",
+    "https://peugeotjpaez.com",
 ]
 LOCAL_FRONTEND_ORIGINS = [
     "http://localhost:5173",

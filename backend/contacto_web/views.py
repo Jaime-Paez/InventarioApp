@@ -1,6 +1,9 @@
 """Endpoint publico para el formulario de contacto del sitio de Jaime Paez
-(JaimePaezWebPage, un proyecto separado). No requiere autenticacion ni modelos:
-solo valida los datos y envia un correo de notificacion via Django.
+(JaimePaezWebPage, un proyecto separado). No requiere autenticacion.
+
+La solicitud siempre se guarda en SolicitudWeb (así queda visible en Kava,
+en Configuración) y luego se intenta enviar un correo de notificación — si el
+correo falla, la solicitud igual queda registrada y la respuesta es exitosa.
 """
 
 from django.conf import settings
@@ -9,6 +12,8 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from .models import SolicitudWeb
 
 
 class ContactoWebAPIView(APIView):
@@ -30,39 +35,44 @@ class ContactoWebAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        destinatarios = list(getattr(settings, "CONTACTO_WEB_DESTINATARIOS", []) or [])
-        if not destinatarios or not settings.EMAIL_HOST_USER:
-            return Response(
-                {"detail": "El envío de correo no está configurado."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        asunto = f"Nueva solicitud: {nombre} - {marca or 'Marca no indicada'} - {modelo}"
-        cuerpo = "\n".join(
-            [
-                "Solicitud desde la página web — Jaime Páez",
-                f"Nombre: {nombre}",
-                f"Celular: {celular}",
-                f"Marca: {marca or '-'}",
-                f"Modelo: {modelo}",
-                f"Año: {anio or '-'}",
-                f"N° de chasis: {chasis or '-'}",
-                f"Solicitud: {detalle}",
-            ]
+        solicitud = SolicitudWeb.objects.create(
+            nombre=nombre,
+            celular=celular,
+            marca=marca,
+            modelo=modelo,
+            anio=anio,
+            chasis=chasis,
+            detalle=detalle,
         )
 
-        try:
-            send_mail(
-                subject=asunto,
-                message=cuerpo,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=destinatarios,
-                fail_silently=False,
+        destinatarios = list(getattr(settings, "CONTACTO_WEB_DESTINATARIOS", []) or [])
+        if destinatarios and settings.EMAIL_HOST_USER:
+            asunto = f"Nueva solicitud: {nombre} - {marca or 'Marca no indicada'} - {modelo}"
+            cuerpo = "\n".join(
+                [
+                    "Solicitud desde la página web — Jaime Páez",
+                    f"Nombre: {nombre}",
+                    f"Celular: {celular}",
+                    f"Marca: {marca or '-'}",
+                    f"Modelo: {modelo}",
+                    f"Año: {anio or '-'}",
+                    f"N° de chasis: {chasis or '-'}",
+                    f"Solicitud: {detalle}",
+                ]
             )
-        except Exception:
-            return Response(
-                {"detail": "No se pudo enviar el correo. Intenta más tarde."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            try:
+                send_mail(
+                    subject=asunto,
+                    message=cuerpo,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=destinatarios,
+                    fail_silently=False,
+                )
+                solicitud.correo_enviado = True
+                solicitud.save(update_fields=["correo_enviado"])
+            except Exception:
+                # La solicitud ya quedó guardada (y visible en Kava) aunque el
+                # correo falle — no se le informa error al usuario del sitio.
+                pass
 
         return Response({"ok": True})
