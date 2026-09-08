@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 
 from app.routers import CustomRouter
+from contacto_web.views import ContactoWebAPIView
 from movimientos.viewsets import MovimientoInventarioViewSet
 from inventario.viewsets import (
     BodegaViewSet,
@@ -113,6 +114,7 @@ router.register(r"configuracion/sistema", ConfiguracionSistemaViewSet, basename=
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", include("app.urls")),
+    path("contacto-web/enviar/", ContactoWebAPIView.as_view(), name="contacto-web-enviar"),
     path("auth/register/", RegistroAPIView.as_view(), name="auth-register"),
     path("auth/login/", LoginAPIView.as_view(), name="auth-login"),
     path("auth/me/", PerfilAPIView.as_view(), name="auth-profile"),

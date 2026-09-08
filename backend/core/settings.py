@@ -314,6 +314,23 @@ CSRF_TRUSTED_ORIGINS = merge_unique_lists(
 
 
 # ============================================================
+# CORREO (usado solo por contacto_web, el formulario del sitio publico
+# JaimePaezWebPage — un proyecto aparte que consume este backend por API)
+# ============================================================
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv("GMAIL_EMAIL", "")
+EMAIL_HOST_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+CONTACTO_WEB_DESTINATARIOS = env_list(
+    "CONTACTO_WEB_DESTINATARIOS",
+    default=["cfleon1991@gmail.com", "frobalino2001@gmail.com"],
+)
+
+
+# ============================================================
 # SECURITY (PROD HARDENING)
 # ============================================================
 if not DEBUG:
