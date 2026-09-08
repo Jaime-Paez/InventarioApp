@@ -18,6 +18,7 @@ class SolicitudWebSerializer(serializers.ModelSerializer):
             "creado_en",
             "leido",
             "correo_enviado",
+            "contactado",
         ]
         read_only_fields = [
             "id",

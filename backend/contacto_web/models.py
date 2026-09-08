@@ -17,6 +17,7 @@ class SolicitudWeb(models.Model):
     creado_en = models.DateTimeField(auto_now_add=True)
     leido = models.BooleanField(default=False)
     correo_enviado = models.BooleanField(default=False)
+    contactado = models.BooleanField("¿Contactaste al interesado?", default=False)
 
     class Meta:
         ordering = ["-creado_en"]
