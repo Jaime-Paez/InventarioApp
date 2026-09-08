@@ -3428,6 +3428,16 @@ function RecordatoriosPopup({
                                     type="button"
                                     className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
                                     onClick={() => {
+                                      // El PATCH que marca `leido=true` en el backend lo hace
+                                      // SolicitudesWeb.jsx al montar/abrir la solicitud, pero
+                                      // ese cambio solo se refleja aqui hasta el siguiente poll
+                                      // de /contacto-web/solicitudes/?leido=false (hasta 30s, y
+                                      // sin recargar si el usuario no vuelve a esta pestana). Se
+                                      // marca como visto de una vez para que la tarjeta deje de
+                                      // verse "Pendiente" apenas se hace clic, sin esperar ese
+                                      // poll -- cuando el poll real llegue, la tarjeta ya no
+                                      // estara en las solicitudes no leidas y desaparecera sola.
+                                      onMarkReminderSeen?.(reminder.id)
                                       onOpenSolicitudWeb(normalizeId(reminder?.context?.id))
                                       onClose?.()
                                     }}
