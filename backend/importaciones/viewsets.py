@@ -787,16 +787,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if detalles_to_delete:
             ImportacionDetalle.objects.filter(id__in=detalles_to_delete).delete()
 
-        # El precio se aplica al catalogo apenas se acepta la importacion (aqui
-        # mismo), no cuando llega ni cuando una sucursal confirma su envio --
-        # eso ya quedo muy tarde. Solo se toca una vez, en este momento.
-        precio_by_producto = {
-            d.producto_id: d.precio_confirmado
-            for d in instance.detalles.filter(precio_confirmado__isnull=False)
-            if d.producto_id
-        }
-        for product_id, nuevo_precio in precio_by_producto.items():
-            Producto.objects.filter(pk=product_id).update(precio=nuevo_precio)
+        # El precio se actualiza al marcar llegada (ver marcar_llegada), que es
+        # cuando se reparten las cantidades a las sucursales -- no aqui.
 
         # 2. Transition this same importación into en_camino instead of spawning
         # a separate record for it.
@@ -967,6 +959,18 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 )
                 for item in items
             ])
+
+        # El precio se aplica al catalogo justo aqui -- el mismo momento en que
+        # se reparten las cantidades a las sucursales -- no antes (al aceptar,
+        # cuando el precio todavia puede ajustarse) ni despues (al confirmar
+        # recepcion en cada sucursal, que puede tardar dias/semanas).
+        precio_by_producto = {
+            d.producto_id: d.precio_confirmado
+            for d in instance.detalles.filter(precio_confirmado__isnull=False)
+            if d.producto_id
+        }
+        for product_id, nuevo_precio in precio_by_producto.items():
+            Producto.objects.filter(pk=product_id).update(precio=nuevo_precio)
 
         # Create reminders for selected recipients per sucursal
         for dest in request.data.get("destinatarios_por_sucursal", []):
