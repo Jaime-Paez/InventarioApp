@@ -2044,43 +2044,79 @@ class UserTableLayoutsAPIView(APIView):
         )
 
 
+_INSPECTION_CHECK_THROTTLE = timedelta(seconds=60)
+_last_inspection_check_by_user = {}
+
+
 class ReminderStateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        with transaction.atomic():
-            store = ReminderState.get_global(for_update=True)
-            current_payload = (
-                store.payload
-                if isinstance(store.payload, list)
-                else []
-            )
-            reminders = _normalize_reminder_list(current_payload)
-            reminders, transfer_history_changed = _hydrate_transfer_history_from_solicitudes(
-                reminders
-            )
-            reminders, urgente_changed = _hydrate_urgente_from_solicitudes(reminders)
-            payload_changed = reminders != current_payload or transfer_history_changed or urgente_changed
-            if payload_changed:
-                store.payload = reminders
+        # El frontend sondea este endpoint cada 4 segundos, por cada usuario
+        # conectado (ver REMINDERS_POLL_MS). Tomar select_for_update() sobre
+        # la unica fila global en cada uno de esos polls serializa a todos
+        # los usuarios entre si -- y si UNA sola consulta se cuelga (una
+        # conexion de red rota, por ejemplo), el resto se apila detras
+        # esperando el mismo bloqueo hasta tumbar el servicio (ver incidente
+        # de app_reminderstate). Por eso: una lectura normal, sin bloqueo,
+        # cubre el caso comun de "nada cambio"; el bloqueo solo se toma
+        # cuando de verdad hace falta escribir. La revision de inspeccion
+        # aleatoria / resumen admin (la unica parte que puede crear filas
+        # nuevas) se limita a como mucho una vez por minuto por usuario en
+        # vez de en cada poll -- no cambia que hace, solo cada cuanto se
+        # invoca.
+        store = ReminderState.get_global(for_update=False)
+        current_payload = (
+            store.payload
+            if isinstance(store.payload, list)
+            else []
+        )
+        reminders = _normalize_reminder_list(current_payload)
+        reminders, transfer_history_changed = _hydrate_transfer_history_from_solicitudes(reminders)
+        reminders, urgente_changed = _hydrate_urgente_from_solicitudes(reminders)
+        needs_write = reminders != current_payload or transfer_history_changed or urgente_changed
 
-            _, inspection_payload_changed = _ensure_daily_random_inspection_for_user(
-                request.user,
-                store,
-            )
-            summary_changed = _ensure_all_admin_summaries(request.user, store)
-            payload_changed = payload_changed or inspection_payload_changed or summary_changed
+        user_id = getattr(request.user, "id", None)
+        now = timezone.now()
+        last_checked = _last_inspection_check_by_user.get(user_id)
+        due_for_inspection_check = last_checked is None or (now - last_checked) >= _INSPECTION_CHECK_THROTTLE
 
-            if payload_changed:
-                store.save(update_fields=["payload", "updated_at"])
-            reminders = _normalize_reminder_list(store.payload)
-            reminders, transfer_history_changed = _hydrate_transfer_history_from_solicitudes(
-                reminders
-            )
-            reminders, urgente_changed2 = _hydrate_urgente_from_solicitudes(reminders)
-            if transfer_history_changed or urgente_changed2:
-                store.payload = reminders
-                store.save(update_fields=["payload", "updated_at"])
+        if needs_write or due_for_inspection_check:
+            with transaction.atomic():
+                store = ReminderState.get_global(for_update=True)
+                current_payload = (
+                    store.payload
+                    if isinstance(store.payload, list)
+                    else []
+                )
+                reminders = _normalize_reminder_list(current_payload)
+                reminders, transfer_history_changed = _hydrate_transfer_history_from_solicitudes(
+                    reminders
+                )
+                reminders, urgente_changed = _hydrate_urgente_from_solicitudes(reminders)
+                payload_changed = reminders != current_payload or transfer_history_changed or urgente_changed
+                if payload_changed:
+                    store.payload = reminders
+
+                if due_for_inspection_check:
+                    _last_inspection_check_by_user[user_id] = now
+                    _, inspection_payload_changed = _ensure_daily_random_inspection_for_user(
+                        request.user,
+                        store,
+                    )
+                    summary_changed = _ensure_all_admin_summaries(request.user, store)
+                    payload_changed = payload_changed or inspection_payload_changed or summary_changed
+
+                if payload_changed:
+                    store.save(update_fields=["payload", "updated_at"])
+                reminders = _normalize_reminder_list(store.payload)
+                reminders, transfer_history_changed = _hydrate_transfer_history_from_solicitudes(
+                    reminders
+                )
+                reminders, urgente_changed2 = _hydrate_urgente_from_solicitudes(reminders)
+                if transfer_history_changed or urgente_changed2:
+                    store.payload = reminders
+                    store.save(update_fields=["payload", "updated_at"])
 
         return Response(
             {

@@ -206,6 +206,14 @@ TEMPLATES = [
 # Local: fallback a POSTGRES_* como ya lo tenías
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# Si una consulta o una transaccion se queda colgada (por ejemplo esperando
+# mandarle datos a un cliente con mala conexion que dejo de leer), sin esto
+# se queda esperando para siempre y bloquea a todo lo que necesite la misma
+# fila detras -- Postgres la corta sola despues de este tiempo, asi el
+# problema dura segundos en vez de tumbar el servicio hasta reiniciar la
+# base a mano (ver incidente de app_reminderstate).
+_DB_SAFETY_TIMEOUTS = "-c statement_timeout=20000 -c idle_in_transaction_session_timeout=20000"
+
 if DATABASE_URL:
     # Render normalmente requiere SSL
     DATABASES = {
@@ -215,6 +223,8 @@ if DATABASE_URL:
             ssl_require=True,
         )
     }
+    DATABASES["default"].setdefault("OPTIONS", {})
+    DATABASES["default"]["OPTIONS"]["options"] = _DB_SAFETY_TIMEOUTS
 else:
     DATABASES = {
         "default": {
@@ -226,7 +236,7 @@ else:
             "PORT": DB_PORT,
             "CONN_MAX_AGE": 60,
             # En local puedes desactivar ssl sin problema:
-            "OPTIONS": {"sslmode": "disable"},
+            "OPTIONS": {"sslmode": "disable", "options": _DB_SAFETY_TIMEOUTS},
         }
     }
 
