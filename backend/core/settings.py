@@ -211,16 +211,10 @@ if DATABASE_URL:
     DATABASES = {
         "default": dj_database_url.parse(
             DATABASE_URL,
-            conn_max_age=300,
+            conn_max_age=60,
             ssl_require=True,
         )
     }
-    # Con conn_max_age > 0 Django reutiliza la conexion entre requests -- si
-    # el servidor de Postgres la cerro por inactividad mientras tanto (pasa
-    # seguido en instancias administradas), sin este check Django la daria
-    # por buena y el primer query fallaria o colgaria. Hace un SELECT 1
-    # barato antes de reusarla y abre una nueva si ya no responde.
-    DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 else:
     DATABASES = {
         "default": {
@@ -230,8 +224,7 @@ else:
             "PASSWORD": DB_PASSWORD,
             "HOST": DB_HOST,
             "PORT": DB_PORT,
-            "CONN_MAX_AGE": 300,
-            "CONN_HEALTH_CHECKS": True,
+            "CONN_MAX_AGE": 60,
             # En local puedes desactivar ssl sin problema:
             "OPTIONS": {"sslmode": "disable"},
         }
