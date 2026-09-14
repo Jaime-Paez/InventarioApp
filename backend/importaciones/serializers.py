@@ -181,6 +181,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
             return sum(int(detalle.cantidad or 0) for detalle in prefetched)
         return sum(obj.detalles.values_list("cantidad", flat=True))
 
+    _SIDE_SUFFIX_RE = re.compile(r"-(L|R)$", re.IGNORECASE)
+
     @staticmethod
     def _detalle_label(item):
         producto = item.get("producto")
@@ -196,6 +198,12 @@ class ImportacionSerializer(serializers.ModelSerializer):
         realidad pertenece a otro. Se avisa apenas se detecta -- con el
         producto/fila donde ocurre -- en vez de dejar que se manifieste
         despues como un producto duplicado dificil de rastrear.
+
+        Cuando el grupo en conflicto ya tiene codigos con sufijo -L/-R y
+        alguno se quedo sin sufijo (el caso de C0363PX vs C0363AFP-R/
+        C0363AF-R/C0363CL-R), se sugiere directamente cual sufijo agregarle
+        en vez de solo señalar el choque -- asi la proxima vez no hay que
+        adivinar cual lado es.
         """
         etiquetas_por_valor = {}
         for item in value:
@@ -212,8 +220,20 @@ class ImportacionSerializer(serializers.ModelSerializer):
         conflictos = []
         for valor, etiquetas in etiquetas_por_valor.items():
             distintas = list(dict.fromkeys(etiquetas))
-            if len(distintas) > 1:
-                conflictos.append(f"{label} {valor} aparece en {' y '.join(distintas)}")
+            if len(distintas) <= 1:
+                continue
+            mensaje = f"{label} {valor} aparece en {' y '.join(distintas)}"
+
+            sin_sufijo = [c for c in distintas if not self._SIDE_SUFFIX_RE.search(c)]
+            lados = {self._SIDE_SUFFIX_RE.search(c).group(1).upper() for c in distintas if self._SIDE_SUFFIX_RE.search(c)}
+            if sin_sufijo and len(lados) == 1:
+                lado = next(iter(lados))
+                sugerencias = ", ".join(f"{c} -> {c}-{lado}" for c in sin_sufijo)
+                mensaje += (
+                    f" -- {', '.join(sin_sufijo)} no tiene el sufijo -{lado} que sí tienen los demás "
+                    f"({sugerencias})"
+                )
+            conflictos.append(mensaje)
         return conflictos
 
     def validate_detalles(self, value):
