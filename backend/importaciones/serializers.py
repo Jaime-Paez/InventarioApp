@@ -181,12 +181,64 @@ class ImportacionSerializer(serializers.ModelSerializer):
             return sum(int(detalle.cantidad or 0) for detalle in prefetched)
         return sum(obj.detalles.values_list("cantidad", flat=True))
 
+    @staticmethod
+    def _detalle_label(item):
+        producto = item.get("producto")
+        if producto:
+            return producto.codigo
+        return str(item.get("codigo") or item.get("nombre") or "sin código").strip() or "sin código"
+
+    def _find_shared_field_conflicts(self, value, field_name, label):
+        """Un mismo OEM o referencia repetido en mas de una fila de la misma
+        importacion (aunque cada fila haya resuelto a un producto distinto, o
+        a ninguno todavia) es la señal exacta del problema que causo P2066PX
+        y P1915PX: un producto del catalogo con un OEM/referencia que en
+        realidad pertenece a otro. Se avisa apenas se detecta -- con el
+        producto/fila donde ocurre -- en vez de dejar que se manifieste
+        despues como un producto duplicado dificil de rastrear.
+        """
+        etiquetas_por_valor = {}
+        for item in value:
+            crudo = str(item.get(field_name) or "").strip()
+            if not crudo:
+                continue
+            etiqueta = self._detalle_label(item)
+            for token in crudo.split(","):
+                token = token.strip()
+                if not token:
+                    continue
+                etiquetas_por_valor.setdefault(token.upper(), []).append(etiqueta)
+
+        conflictos = []
+        for valor, etiquetas in etiquetas_por_valor.items():
+            distintas = list(dict.fromkeys(etiquetas))
+            if len(distintas) > 1:
+                conflictos.append(f"{label} {valor} aparece en {' y '.join(distintas)}")
+        return conflictos
+
     def validate_detalles(self, value):
         if not value:
             raise serializers.ValidationError("Agrega al menos un producto a la importacion.")
-        product_ids = [item["producto"].id for item in value if item.get("producto")]
-        if len(product_ids) != len(set(product_ids)):
-            raise serializers.ValidationError("No repitas productos dentro de la misma importacion.")
+        productos = [item["producto"] for item in value if item.get("producto")]
+        codigo_by_id = {producto.id: producto.codigo for producto in productos}
+        conteo_by_id = {}
+        for producto in productos:
+            conteo_by_id[producto.id] = conteo_by_id.get(producto.id, 0) + 1
+        codigos_repetidos = [codigo_by_id[pid] for pid, conteo in conteo_by_id.items() if conteo > 1]
+        if codigos_repetidos:
+            raise serializers.ValidationError(
+                f"No repitas productos dentro de la misma importacion: {', '.join(codigos_repetidos)}."
+            )
+
+        conflictos = self._find_shared_field_conflicts(value, "oem", "el OEM") + self._find_shared_field_conflicts(
+            value, "referencia", "la referencia"
+        )
+        if conflictos:
+            raise serializers.ValidationError(
+                "Hay un OEM o referencia repetido entre productos distintos, revisa el catálogo: "
+                + "; ".join(conflictos)
+                + "."
+            )
         return value
 
     def _resolve_producto_for_detalle(self, item, casa_comercial, importacion):
