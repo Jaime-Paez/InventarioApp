@@ -1069,10 +1069,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           cantidad: normalizeNumber(location?.cantidad),
         })),
       ].filter((location) => location?.ubicacion)
-      const visibleLocations = normalizedLocations.slice(0, 1)
-      const remainingLocations = normalizedLocations.slice(1)
 
-      if (!visibleLocations.length) {
+      if (!normalizedLocations.length) {
         return (
           <span className="cell-tooltip" style={{ color: '#9ca3af' }}>
             -
@@ -1080,27 +1078,28 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         )
       }
 
+      const visibleLocations = normalizedLocations.slice(0, 2)
+      const remainingLocations = normalizedLocations.slice(2)
+      const displayLabel =
+        visibleLocations.map((location) => location.ubicacion).join(', ') +
+        (remainingLocations.length > 0 ? '...' : '')
+      const tooltip = normalizedLocations
+        .map((location) => {
+          const place =
+            [location.bodega_nombre, location.ubicacion].filter(Boolean).join(' / ') || location.ubicacion
+          return `${place} (Cantidad: ${formatLocationQuantity(location?.cantidad)})`
+        })
+        .join(' | ')
+
       return (
         <div className="inventario-v2__location-cell">
           <div className="inventario-v2__location-lines">
-            {visibleLocations.map((location, index) => {
-              const tooltip = [location.bodega_nombre, location.ubicacion].filter(Boolean).join(' / ')
-              return (
-                <span
-                  key={`location-${branch.id}-${index}-${location.ubicacion}`}
-                  className={`cell-tooltip inventario-v2__location-main${
-                    index > 0 ? ' inventario-v2__location-main--secondary' : ''
-                  }`}
-                  data-pr-tooltip={
-                    [tooltip || location.ubicacion, `Cantidad: ${formatLocationQuantity(location?.cantidad)}`]
-                      .filter(Boolean)
-                      .join(' | ')
-                  }
-                >
-                  {location.ubicacion}
-                </span>
-              )
-            })}
+            <span
+              className="cell-tooltip inventario-v2__location-main"
+              data-pr-tooltip={tooltip}
+            >
+              {displayLabel}
+            </span>
           </div>
 
           {remainingLocations.length > 0 ? (
