@@ -52,7 +52,7 @@ import {
   writeRemindersToStorage,
 } from '../common/reminders/remindersStorage'
 
-const URGENT_SHIELD_NEAR_FULL_MS = 60 * 60 * 1000
+const URGENT_SHIELD_NEAR_FULL_MS = 5 * 60 * 60 * 1000
 const URGENT_URGENTE_NEAR_FULL_MS = 5 * 60 * 1000
 const URGENT_DECISION_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
 const URGENT_URGENTE_DECISION_MESSAGE = '¡Urgente! Tienes una solicitud de traslado pendiente.'

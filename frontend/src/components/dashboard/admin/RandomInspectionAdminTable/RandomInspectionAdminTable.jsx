@@ -970,6 +970,17 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     }
   }, [closeEditDialog, confirmedQty, editingItem, loadItems, loadSummary, notifySuccess, token, verificationNote])
 
+  // Todas las sucursales (con o sin revisores asignados) -- el modo
+  // "Division" del envio manual necesita poder elegir cualquiera de ellas,
+  // aunque todavia no tenga revisores (ahi se muestra el aviso de "sin
+  // revisores asignados" en vez de esconder la sucursal del selector).
+  const allBranchOptions = useMemo(() => {
+    return assignmentBranches.map((branch) => ({
+      id: normalizeId(branch?.id),
+      nombre: String(branch?.nombre || '').trim(),
+    }))
+  }, [assignmentBranches])
+
   const sendNowSummary = useMemo(() => {
     return assignmentBranches.map((branch) => {
       const branchId = normalizeId(branch?.id)
@@ -1419,7 +1430,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                     <CascadeDropdown
                       placeholder="Selecciona una sucursal"
                       searchPlaceholder="Buscar sucursal"
-                      options={sendNowSummary}
+                      options={allBranchOptions}
                       valueId={divisionSucursalId}
                       getOptionLabel={(o) => o.nombre}
                       onSelect={(o) => {

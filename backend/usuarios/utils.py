@@ -142,7 +142,14 @@ def get_permisos_efectivos(usuario, email):
 
     summary = build_permissions_summary(roles, extra_roles=extra_roles)
     if is_app_admin(usuario):
-        return summary
+        # Un administrador tiene acceso completo real a todos los modulos,
+        # no solo "no se le filtran los admin-only" -- si no, un admin sin
+        # una fila RolPermiso explicita para un modulo (ej. "usuarios") ve
+        # puede_leer/puede_actualizar en False en el frontend (permission_index
+        # de menuConfig.js), aunque el backend (usuarios/permissions.py) ya lo
+        # trata como acceso total via build_full_permissions(). Mismo patron,
+        # ahora tambien aca.
+        return build_full_permissions()
 
     return [
         permiso
