@@ -13,6 +13,7 @@ from .models import (
 )
 from .utils import (
     ADMIN_ONLY_MODULES,
+    build_full_permissions,
     build_permissions_summary,
     build_sucursal_scope_summary,
     get_random_inspection_branch_ids,
@@ -606,12 +607,16 @@ class UsuarioSerializer(serializers.ModelSerializer):
             UsuarioModuloSucursal.objects.bulk_create(instances)
 
     def get_permisos_resumen(self, obj):
+        if is_app_admin(obj):
+            # Acceso total real, no solo "sin filtrar admin-only" -- mismo
+            # motivo que get_permisos_efectivos en utils.py: un admin sin
+            # una fila RolPermiso explicita para un modulo no deberia verse
+            # como si no tuviera permiso ahi.
+            return build_full_permissions()
         summary = build_permissions_summary(
             obj.roles.all(),
             extra_roles=[get_personalized_role_for_email(obj.email)],
         )
-        if is_app_admin(obj):
-            return summary
         return _filter_admin_only_summary(summary)
 
     def to_representation(self, instance):
@@ -677,12 +682,16 @@ class UsuarioDestinatarioSerializer(serializers.ModelSerializer):
         return is_app_admin(obj)
 
     def get_permisos_resumen(self, obj):
+        if is_app_admin(obj):
+            # Acceso total real, no solo "sin filtrar admin-only" -- mismo
+            # motivo que get_permisos_efectivos en utils.py: un admin sin
+            # una fila RolPermiso explicita para un modulo no deberia verse
+            # como si no tuviera permiso ahi.
+            return build_full_permissions()
         summary = build_permissions_summary(
             obj.roles.all(),
             extra_roles=[get_personalized_role_for_email(obj.email)],
         )
-        if is_app_admin(obj):
-            return summary
         return _filter_admin_only_summary(summary)
 
     def get_sucursales(self, obj):
