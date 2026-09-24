@@ -1078,17 +1078,14 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         )
       }
 
-      const visibleLocations = normalizedLocations.slice(0, 2)
+      const mainLocation = normalizedLocations[0]
       const hasMoreDetail = normalizedLocations.length > 1
-      const displayLabel =
-        visibleLocations.map((location) => location.ubicacion).join(', ') +
-        (normalizedLocations.length > 2 ? '...' : '')
-      const tooltip = normalizedLocations
-        .map((location) => {
-          const place =
-            [location.bodega_nombre, location.ubicacion].filter(Boolean).join(' / ') || location.ubicacion
-          return `${place} (Cantidad: ${formatLocationQuantity(location?.cantidad)})`
-        })
+      const displayLabel = mainLocation.ubicacion
+      const tooltip = [
+        [mainLocation.bodega_nombre, mainLocation.ubicacion].filter(Boolean).join(' / ') || mainLocation.ubicacion,
+        `Cantidad: ${formatLocationQuantity(mainLocation?.cantidad)}`,
+      ]
+        .filter(Boolean)
         .join(' | ')
 
       return (
