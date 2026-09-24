@@ -1079,10 +1079,10 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       }
 
       const visibleLocations = normalizedLocations.slice(0, 2)
-      const remainingLocations = normalizedLocations.slice(2)
+      const hasMoreDetail = normalizedLocations.length > 1
       const displayLabel =
         visibleLocations.map((location) => location.ubicacion).join(', ') +
-        (remainingLocations.length > 0 ? '...' : '')
+        (normalizedLocations.length > 2 ? '...' : '')
       const tooltip = normalizedLocations
         .map((location) => {
           const place =
@@ -1102,7 +1102,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             </span>
           </div>
 
-          {remainingLocations.length > 0 ? (
+          {hasMoreDetail ? (
             <button
               type="button"
               className="inventario-v2__location-eye"

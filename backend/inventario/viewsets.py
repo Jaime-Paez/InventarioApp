@@ -904,10 +904,13 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         payload_by_product = {}
         for (product_id, branch_id), locations in locations_by_product_branch.items():
+            # Orden fijo por nombre (no por cantidad) para que la ubicacion
+            # principal no cambie de lugar cuando el stock se mueve entre
+            # bodegas de la misma sucursal (ej. Almacen Matriz vs Bodega
+            # Matriz) -- el usuario espera siempre el mismo orden.
             ordered_locations = sorted(
                 locations,
                 key=lambda item: (
-                    -int(item.get("cantidad") or 0),
                     str(item.get("bodega_nombre") or "").lower(),
                     str(item.get("division_nombre") or "").lower(),
                     str(item.get("subdivision_nombre") or "").lower(),
