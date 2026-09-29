@@ -505,6 +505,8 @@ function QuickActions({
   const [randomInspectionMode, setRandomInspectionMode] = useState('review')
   const [randomInspectionStepIndex, setRandomInspectionStepIndex] = useState(0)
   const [randomInspectionShowSummary, setRandomInspectionShowSummary] = useState(false)
+  const [randomInspectionCorrectionActive, setRandomInspectionCorrectionActive] = useState(false)
+  const [randomInspectionCorrectionIndex, setRandomInspectionCorrectionIndex] = useState(0)
   const [randomInspectionLoading, setRandomInspectionLoading] = useState(false)
   const [randomInspectionSubmitting, setRandomInspectionSubmitting] = useState(false)
   const [randomInspectionError, setRandomInspectionError] = useState('')
@@ -2496,18 +2498,34 @@ function QuickActions({
     [randomInspectionRows]
   )
 
+  // Durante la fase de correccion solo se navega sobre las filas con
+  // diferencia (randomInspectionRowsToVerify), no sobre todas las filas
+  // contadas -- por eso el "set" activo depende de la fase.
+  const randomInspectionActiveRowSet = randomInspectionCorrectionActive
+    ? randomInspectionRowsToVerify
+    : randomInspectionRows
+
   const activeRandomInspectionStepIndex = useMemo(() => {
-    if (!randomInspectionRows.length) return 0
-    return Math.min(randomInspectionStepIndex, randomInspectionRows.length - 1)
-  }, [randomInspectionRows.length, randomInspectionStepIndex])
+    const rawIndex = randomInspectionCorrectionActive
+      ? randomInspectionCorrectionIndex
+      : randomInspectionStepIndex
+    if (!randomInspectionActiveRowSet.length) return 0
+    return Math.min(rawIndex, randomInspectionActiveRowSet.length - 1)
+  }, [
+    randomInspectionActiveRowSet,
+    randomInspectionCorrectionActive,
+    randomInspectionCorrectionIndex,
+    randomInspectionStepIndex,
+  ])
 
   const activeRandomInspectionRow = useMemo(
-    () => randomInspectionRows[activeRandomInspectionStepIndex] || null,
-    [activeRandomInspectionStepIndex, randomInspectionRows]
+    () => randomInspectionActiveRowSet[activeRandomInspectionStepIndex] || null,
+    [activeRandomInspectionStepIndex, randomInspectionActiveRowSet]
   )
   const isRandomInspectionSummaryVisible = (
     !isRandomInspectionVerifyMode &&
-    randomInspectionShowSummary
+    randomInspectionShowSummary &&
+    !randomInspectionCorrectionActive
   )
   const randomInspectionMatchedCount = Math.max(
     0,
@@ -2516,6 +2534,17 @@ function QuickActions({
   const randomInspectionAllAnswersReady = (
     randomInspectionRows.length > 0 &&
     randomInspectionAnsweredCount === randomInspectionRows.length
+  )
+  // El paso final de correccion es cuando ya no queda ninguna diferencia
+  // por corregir (el usuario las fue arreglando) o cuando estamos parados
+  // en la ultima de la lista -- en ambos casos el boton principal debe
+  // guardar la inspeccion en vez de avanzar al siguiente producto.
+  const isRandomInspectionCorrectionFinalStep = (
+    randomInspectionCorrectionActive &&
+    (
+      !randomInspectionRowsToVerify.length ||
+      activeRandomInspectionStepIndex >= randomInspectionRowsToVerify.length - 1
+    )
   )
 
   const receiveShipmentTotalMissing = useMemo(
@@ -2955,6 +2984,8 @@ function QuickActions({
     setRandomInspectionMode('review')
     setRandomInspectionStepIndex(0)
     setRandomInspectionShowSummary(false)
+    setRandomInspectionCorrectionActive(false)
+    setRandomInspectionCorrectionIndex(0)
     setRandomInspectionError('')
     setRandomInspectionSubmitting(false)
     setRandomInspectionLoading(false)
@@ -3121,6 +3152,8 @@ function QuickActions({
       setRandomInspectionMode(isVerifyReminder ? 'verify' : 'review')
       setRandomInspectionStepIndex(0)
       setRandomInspectionShowSummary(false)
+      setRandomInspectionCorrectionActive(false)
+      setRandomInspectionCorrectionIndex(0)
       setRandomInspectionHasGeneralIssue(false)
       setRandomInspectionGeneralNote('')
       setIsRandomInspectionModalOpen(true)
@@ -3945,7 +3978,11 @@ function QuickActions({
   }, [activeRandomInspection, randomInspectionRows, token])
 
   const handleAdvanceRandomInspectionStep = useCallback(() => {
-    if (!randomInspectionRows.length) {
+    const rowsForStep = randomInspectionCorrectionActive
+      ? randomInspectionRowsToVerify
+      : randomInspectionRows
+
+    if (!rowsForStep.length) {
       setRandomInspectionError('No hay productos para revisar en esta inspección.')
       return
     }
@@ -3960,7 +3997,17 @@ function QuickActions({
     }
 
     setRandomInspectionError('')
-    if (activeRandomInspectionStepIndex >= randomInspectionRows.length - 1) {
+
+    // Dentro de la correccion solo avanzamos entre diferencias; el llamador
+    // (boton/Enter) ya se encarga de guardar cuando es la ultima.
+    if (randomInspectionCorrectionActive) {
+      setRandomInspectionCorrectionIndex(
+        Math.min(activeRandomInspectionStepIndex + 1, rowsForStep.length - 1)
+      )
+      return
+    }
+
+    if (activeRandomInspectionStepIndex >= rowsForStep.length - 1) {
       setRandomInspectionShowSummary(true)
       void saveInspectionDraftToBackend(activeRandomInspectionStepIndex)
       return
@@ -3971,12 +4018,23 @@ function QuickActions({
   }, [
     activeRandomInspectionRow,
     activeRandomInspectionStepIndex,
+    randomInspectionCorrectionActive,
     randomInspectionRows,
+    randomInspectionRowsToVerify,
     saveInspectionDraftToBackend,
   ])
 
   const handleGoBackRandomInspectionStep = useCallback(() => {
     setRandomInspectionError('')
+    if (randomInspectionCorrectionActive) {
+      if (activeRandomInspectionStepIndex <= 0) {
+        // En el primer item de la correccion, "Anterior" regresa al resumen.
+        setRandomInspectionCorrectionActive(false)
+        return
+      }
+      setRandomInspectionCorrectionIndex(activeRandomInspectionStepIndex - 1)
+      return
+    }
     if (isRandomInspectionSummaryVisible) {
       setRandomInspectionShowSummary(false)
       setRandomInspectionStepIndex(0)
@@ -3986,7 +4044,12 @@ function QuickActions({
     const prevStep = Math.max(0, activeRandomInspectionStepIndex - 1)
     setRandomInspectionStepIndex(prevStep)
     void saveInspectionDraftToBackend(prevStep)
-  }, [activeRandomInspectionStepIndex, isRandomInspectionSummaryVisible, saveInspectionDraftToBackend])
+  }, [
+    activeRandomInspectionStepIndex,
+    isRandomInspectionSummaryVisible,
+    randomInspectionCorrectionActive,
+    saveInspectionDraftToBackend,
+  ])
 
   const handleRandomInspectionLocationCountChange = useCallback((itemId, locationKey, value) => {
     const normalizedItemId = normalizeId(itemId)
@@ -4824,11 +4887,21 @@ function QuickActions({
 
                   {!!randomInspectionRows.length && !isRandomInspectionSummaryVisible && activeRandomInspectionRow && (
                     <div className="quick-actions__inspection-quiz">
+                      {randomInspectionCorrectionActive && (
+                        <p className="quick-actions__inspection-stage-kicker">
+                          {`Corrigiendo diferencias (${activeRandomInspectionStepIndex + 1} de ${randomInspectionRowsToVerify.length})`}
+                        </p>
+                      )}
                       <div className="quick-actions__inspection-progress" aria-hidden="true">
                         <div className="quick-actions__inspection-progress-bar">
                           <span
                             style={{
-                              width: `${((activeRandomInspectionStepIndex + 1) / Math.max(randomInspectionRows.length, 1)) * 100}%`,
+                              width: `${((activeRandomInspectionStepIndex + 1) / Math.max(
+                                (randomInspectionCorrectionActive
+                                  ? randomInspectionRowsToVerify.length
+                                  : randomInspectionRows.length),
+                                1
+                              )) * 100}%`,
                             }}
                           />
                         </div>
@@ -4851,7 +4924,9 @@ function QuickActions({
                             className="quick-actions__inspection-stage"
                           >
                             <div className="quick-actions__inspection-stage-copy">
-                              <p className="quick-actions__inspection-stage-kicker">Código a revisar</p>
+                              <p className="quick-actions__inspection-stage-kicker">
+                                {randomInspectionCorrectionActive ? 'Código a corregir' : 'Código a revisar'}
+                              </p>
                               <h5>
                                 {activeRandomInspectionRow?.producto_codigo || `Producto ${activeRandomInspectionRow?.row_id}`}
                               </h5>
@@ -4940,6 +5015,10 @@ function QuickActions({
                                 onKeyDown={(event) => {
                                   if (event.key !== 'Enter') return
                                   event.preventDefault()
+                                  if (isRandomInspectionCorrectionFinalStep) {
+                                    void handleSubmitRandomInspection()
+                                    return
+                                  }
                                   handleAdvanceRandomInspectionStep()
                                 }}
                                 maxLength={4}
@@ -4950,15 +5029,28 @@ function QuickActions({
                             </label>
 
                             <p className="quick-actions__inspection-stage-help">
-                              {activeRandomInspectionRow?.requiere_conteo_por_ubicacion
-                                ? 'Cuenta cada ubicación por separado. El inventario esperado se mostrará al final.'
-                                : 'Cuenta primero y responde solo con la cantidad encontrada. El inventario esperado se mostrara al final.'}
+                              {randomInspectionCorrectionActive
+                                ? 'Este producto no coincidió con el inventario esperado. Vuelve a contarlo y corrige la cantidad si hace falta.'
+                                : activeRandomInspectionRow?.requiere_conteo_por_ubicacion
+                                  ? 'Cuenta cada ubicación por separado. El inventario esperado se mostrará al final.'
+                                  : 'Cuenta primero y responde solo con la cantidad encontrada. El inventario esperado se mostrara al final.'}
                             </p>
                           </article>
                         ))}
                       </div>
                     </div>
                   )}
+
+                  {!!randomInspectionRows.length &&
+                    !isRandomInspectionSummaryVisible &&
+                    !activeRandomInspectionRow &&
+                    randomInspectionCorrectionActive && (
+                      <div className="quick-actions__inspection-quiz">
+                        <p className="quick-actions__inspection-empty">
+                          Ya corregiste todas las diferencias. Presiona «Guardar inspección» para terminar.
+                        </p>
+                      </div>
+                    )}
 
                   {!!randomInspectionRows.length && isRandomInspectionSummaryVisible && (
                     <div className="quick-actions__inspection-summary">
@@ -4971,7 +5063,9 @@ function QuickActions({
                               : 'Todo coincide con el inventario'}
                           </h5>
                           <p className="quick-actions__inspection-stage-help">
-                            Aqui ya puedes ver lo esperado frente a lo que realmente contaste.
+                            {randomInspectionMismatchCount > 0
+                              ? 'Aqui ya puedes ver lo esperado frente a lo que realmente contaste. Antes de guardar, tendrás que corregir cada diferencia.'
+                              : 'Aqui ya puedes ver lo esperado frente a lo que realmente contaste.'}
                           </p>
                         </div>
                         <div className="quick-actions__inspection-summary-stats">
@@ -4987,7 +5081,7 @@ function QuickActions({
                       </div>
 
                       <div className="quick-actions__inspection-list">
-                        {randomInspectionRows.map((row, rowIndex) => {
+                        {randomInspectionRows.map((row) => {
                           const rowId = normalizeId(row?.row_id || row?.id)
                           const expectedQty = toPositiveInt(row?.cantidad_esperada, 0)
                           const countedQty = toPositiveInt(row?.cantidad_reportada, 0)
@@ -5022,8 +5116,12 @@ function QuickActions({
                                     className="quick-actions__inspection-summary-badge is-mismatch is-mismatch-btn"
                                     onClick={() => {
                                       setRandomInspectionError('')
-                                      setRandomInspectionShowSummary(false)
-                                      setRandomInspectionStepIndex(rowIndex)
+                                      const correctionIndex = randomInspectionRowsToVerify.findIndex(
+                                        (verifyRow) =>
+                                          normalizeId(verifyRow?.row_id || verifyRow?.id) === rowId
+                                      )
+                                      setRandomInspectionCorrectionIndex(Math.max(0, correctionIndex))
+                                      setRandomInspectionCorrectionActive(true)
                                     }}
                                   >
                                     Corregir
@@ -5082,16 +5180,19 @@ function QuickActions({
               >
                 Cancelar
               </button>
-              {!isRandomInspectionVerifyMode && !isRandomInspectionSummaryVisible && randomInspectionRows.length > 1 && (
-                <button
-                  type="button"
-                  className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
-                  onClick={handleGoBackRandomInspectionStep}
-                  disabled={randomInspectionSubmitting || activeRandomInspectionStepIndex <= 0}
-                >
-                  Anterior
-                </button>
-              )}
+              {!isRandomInspectionVerifyMode &&
+                !isRandomInspectionSummaryVisible &&
+                !randomInspectionCorrectionActive &&
+                randomInspectionRows.length > 1 && (
+                  <button
+                    type="button"
+                    className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                    onClick={handleGoBackRandomInspectionStep}
+                    disabled={randomInspectionSubmitting || activeRandomInspectionStepIndex <= 0}
+                  >
+                    Anterior
+                  </button>
+                )}
               {!isRandomInspectionVerifyMode && isRandomInspectionSummaryVisible && (
                 <button
                   type="button"
@@ -5102,6 +5203,16 @@ function QuickActions({
                   Volver a revisar
                 </button>
               )}
+              {!isRandomInspectionVerifyMode && randomInspectionCorrectionActive && (
+                <button
+                  type="button"
+                  className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                  onClick={handleGoBackRandomInspectionStep}
+                  disabled={randomInspectionSubmitting}
+                >
+                  {activeRandomInspectionStepIndex <= 0 ? 'Volver al resumen' : 'Anterior'}
+                </button>
+              )}
               <button
                 type="button"
                 className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
@@ -5110,11 +5221,29 @@ function QuickActions({
                     void handleVerifyRandomInspection()
                     return
                   }
-                  if (!isRandomInspectionSummaryVisible) {
-                    handleAdvanceRandomInspectionStep()
+                  if (isRandomInspectionSummaryVisible) {
+                    if (randomInspectionMismatchCount > 0) {
+                      setRandomInspectionError('')
+                      setRandomInspectionCorrectionIndex(0)
+                      setRandomInspectionCorrectionActive(true)
+                      return
+                    }
+                    void handleSubmitRandomInspection()
                     return
                   }
-                  void handleSubmitRandomInspection()
+                  if (isRandomInspectionCorrectionFinalStep) {
+                    if (activeRandomInspectionRow && activeRandomInspectionRow.cantidad_reportada == null) {
+                      setRandomInspectionError(
+                        activeRandomInspectionRow?.requiere_conteo_por_ubicacion
+                          ? 'Completa la cantidad contada en cada ubicación antes de continuar.'
+                          : 'Ingresa la cantidad contada antes de continuar.'
+                      )
+                      return
+                    }
+                    void handleSubmitRandomInspection()
+                    return
+                  }
+                  handleAdvanceRandomInspectionStep()
                 }}
                 disabled={
                   randomInspectionSubmitting ||
@@ -5125,8 +5254,12 @@ function QuickActions({
                       ? randomInspectionPendingVerificationCount <= 0
                       : (
                         !randomInspectionRows.length ||
-                        (!isRandomInspectionSummaryVisible && !activeRandomInspectionRow) ||
-                        (isRandomInspectionSummaryVisible && !randomInspectionAllAnswersReady)
+                        (isRandomInspectionSummaryVisible && !randomInspectionAllAnswersReady) ||
+                        (
+                          !isRandomInspectionSummaryVisible &&
+                          !activeRandomInspectionRow &&
+                          !(randomInspectionCorrectionActive && !randomInspectionRowsToVerify.length)
+                        )
                       )
                   )
                 }
@@ -5141,6 +5274,12 @@ function QuickActions({
                     )
                     : isRandomInspectionAlreadyCompleted
                       ? 'Inspección ya enviada'
+                    : randomInspectionCorrectionActive
+                      ? (
+                        isRandomInspectionCorrectionFinalStep
+                          ? 'Guardar inspección'
+                          : 'Corregir siguiente'
+                      )
                     : !isRandomInspectionSummaryVisible
                       ? (
                         activeRandomInspectionStepIndex >= randomInspectionRows.length - 1
@@ -5149,7 +5288,7 @@ function QuickActions({
                       )
                     : (
                       randomInspectionMismatchCount > 0
-                        ? `Guardar inspecci\u00f3n (${randomInspectionMismatchCount} con diferencia)`
+                        ? `Corregir diferencias (${randomInspectionMismatchCount})`
                         : 'Guardar inspecci\u00f3n'
                     )}
               </button>
