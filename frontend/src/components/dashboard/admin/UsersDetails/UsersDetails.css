@@ -55,84 +55,6 @@
   align-items: center;
 }
 
-.user-details__confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 23, 42, 0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 20000;
-  pointer-events: auto;
-}
-
-.user-details__confirm-dialog {
-  background: #ffffff;
-  border-radius: 14px;
-  padding: 16px 18px;
-  min-width: 280px;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 12px;
-  box-shadow: var(--shadow-panel);
-  border: 1px solid rgba(148, 163, 184, 0.35);
-}
-
-.user-details__confirm-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid var(--color-primary);
-  color: var(--color-primary);
-}
-
-.dashboard-shell.dark .user-details__confirm-dialog {
-  background: #0f172a;
-  border-color: rgba(148, 163, 184, 0.25);
-}
-
-.dashboard-shell.dark .user-details__confirm-icon {
-  border-color: var(--color-primary-dark);
-  color: var(--color-primary-dark);
-}
-
-.user-details__confirm-content h4 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.user-details__confirm-content p {
-  margin: 2px 0 0;
-  color: rgba(100, 116, 139, 0.9);
-  font-size: 0.92rem;
-}
-
-.dashboard-shell.dark .user-details__confirm-content p {
-  color: rgba(226, 232, 240, 0.7);
-}
-
-.user-details__confirm-actions {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 4px;
-}
-
-.user-details__confirm-danger {
-  background: var(--color-error-text);
-  color: #fff;
-  border-color: var(--color-error-text);
-}
-
-.dashboard-shell.dark .user-details__confirm-danger {
-  background: #ef4444;
-  border-color: #ef4444;
-}
-
 .user-details__toggle-icon {
   display: inline-flex;
   align-items: center;
@@ -147,6 +69,14 @@
   justify-content: center;
   z-index: 20000;
   pointer-events: auto;
+  /* Si el dialogo interno resulta mas alto que la pantalla (lista variable,
+     pantalla corta de tablet), el overlay debe poder scrollear para poder
+     llegar a los botones de accion en vez de centrarlo y cortarlo. "safe"
+     evita que el centrado deje la mitad de arriba inalcanzable; en
+     navegadores que no lo soportan, la linea de "center" sigue aplicando. */
+  overflow-y: auto;
+  align-items: safe center;
+  padding: 20px 0;
 }
 
 .user-details__confirm-dialog {
@@ -159,6 +89,14 @@
   gap: 12px;
   box-shadow: var(--shadow-panel);
   border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.user-details__confirm-scroll {
+  grid-column: 1 / -1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
 }
 
 .user-details__confirm-icon {
@@ -326,9 +264,40 @@
 }
 
 .user-details__transfer-conflict-dialog {
-  display: block;
+  /* Esta variante puede tener una lista larga de conflictos, asi que en
+     vez del layout de icono+texto de la base usa columna flex con la
+     lista scrolleable y los botones siempre fijos abajo. Importante: este
+     dialogo vive dentro del modal arrastrable de create-user (que tiene un
+     transform CSS para la posicion), y eso hace que el overlay fixed que
+     lo envuelve se posicione relativo a ESE modal, no a la ventana real --
+     por eso el limite es "100%" del overlay (que ya coincide con el
+     tamano real disponible) y no una unidad de viewport (100vh), que
+     mediria mal el espacio y dejaria los botones fuera de vista.  */
+  display: flex;
+  flex-direction: column;
   max-width: 560px;
+  max-height: 100%;
+  overflow: hidden;
   text-align: left;
+}
+
+.user-details__transfer-conflict-dialog .user-details__confirm-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.user-details__transfer-conflict-dialog .user-details__confirm-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  gap: 4px;
+}
+
+.user-details__transfer-conflict-dialog .user-details__confirm-actions {
+  flex-shrink: 0;
 }
 
 .user-details__transfer-conflict-row {

@@ -1813,31 +1813,33 @@ function UsersDetails({
                 pendientes por aceptar o rechazar. Elige quién se hace responsable de cada uno
                 (opcional) antes de guardar.
               </p>
-              {transferConflicts.map((conflict) => (
-                <div key={conflict.solicitud_id} className="user-details__transfer-conflict-row">
-                  <strong>#{conflict.no_documento}</strong>
-                  <span className="muted">
-                    {' '}
-                    — {conflict.sucursal_solicitante_nombre} pide a {conflict.sucursal_proveedora_nombre}
-                  </span>
-                  <select
-                    value={transferReassignments[conflict.solicitud_id] || ''}
-                    onChange={(event) =>
-                      setTransferReassignments((prev) => ({
-                        ...prev,
-                        [conflict.solicitud_id]: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">No reasignar (queda solo con los demás destinatarios)</option>
-                    {(conflict.candidatos || []).map((candidate) => (
-                      <option key={candidate.id} value={candidate.id}>
-                        {candidate.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+              <div className="user-details__confirm-scroll">
+                {transferConflicts.map((conflict) => (
+                  <div key={conflict.solicitud_id} className="user-details__transfer-conflict-row">
+                    <strong>#{conflict.no_documento}</strong>
+                    <span className="muted">
+                      {' '}
+                      — {conflict.sucursal_solicitante_nombre} pide a {conflict.sucursal_proveedora_nombre}
+                    </span>
+                    <select
+                      value={transferReassignments[conflict.solicitud_id] || ''}
+                      onChange={(event) =>
+                        setTransferReassignments((prev) => ({
+                          ...prev,
+                          [conflict.solicitud_id]: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">No reasignar (queda solo con los demás destinatarios)</option>
+                      {(conflict.candidatos || []).map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="user-details__confirm-actions">
               <button

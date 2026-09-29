@@ -293,34 +293,36 @@ function SolicitudesWeb({ token, user, pendingOpenSolicitudWebId, onPendingOpenS
               </button>
             </div>
 
-            <div className="solicitudes-web__modal-grid">
-              <div className="solicitudes-web__modal-field">
-                <span className="solicitudes-web__modal-label">
-                  <i className="pi pi-phone" /> Celular
-                </span>
-                <span className="solicitudes-web__modal-value">{seleccionada.celular || '-'}</span>
+            <div className="solicitudes-web__modal-scroll">
+              <div className="solicitudes-web__modal-grid">
+                <div className="solicitudes-web__modal-field">
+                  <span className="solicitudes-web__modal-label">
+                    <i className="pi pi-phone" /> Celular
+                  </span>
+                  <span className="solicitudes-web__modal-value">{seleccionada.celular || '-'}</span>
+                </div>
+                <div className="solicitudes-web__modal-field">
+                  <span className="solicitudes-web__modal-label">
+                    <i className="pi pi-car" /> Marca / Modelo
+                  </span>
+                  <span className="solicitudes-web__modal-value">
+                    {seleccionada.marca || '-'} {seleccionada.modelo}
+                  </span>
+                </div>
+                <div className="solicitudes-web__modal-field">
+                  <span className="solicitudes-web__modal-label">Año</span>
+                  <span className="solicitudes-web__modal-value">{seleccionada.anio || '-'}</span>
+                </div>
+                <div className="solicitudes-web__modal-field">
+                  <span className="solicitudes-web__modal-label">N° de chasis</span>
+                  <span className="solicitudes-web__modal-value">{seleccionada.chasis || '-'}</span>
+                </div>
               </div>
-              <div className="solicitudes-web__modal-field">
-                <span className="solicitudes-web__modal-label">
-                  <i className="pi pi-car" /> Marca / Modelo
-                </span>
-                <span className="solicitudes-web__modal-value">
-                  {seleccionada.marca || '-'} {seleccionada.modelo}
-                </span>
-              </div>
-              <div className="solicitudes-web__modal-field">
-                <span className="solicitudes-web__modal-label">Año</span>
-                <span className="solicitudes-web__modal-value">{seleccionada.anio || '-'}</span>
-              </div>
-              <div className="solicitudes-web__modal-field">
-                <span className="solicitudes-web__modal-label">N° de chasis</span>
-                <span className="solicitudes-web__modal-value">{seleccionada.chasis || '-'}</span>
-              </div>
-            </div>
 
-            <div className="solicitudes-web__modal-detalle-box">
-              <span className="solicitudes-web__modal-label">Solicitud</span>
-              <p>{seleccionada.detalle}</p>
+              <div className="solicitudes-web__modal-detalle-box">
+                <span className="solicitudes-web__modal-label">Solicitud</span>
+                <p>{seleccionada.detalle}</p>
+              </div>
             </div>
 
             <div className="solicitudes-web__modal-footer">

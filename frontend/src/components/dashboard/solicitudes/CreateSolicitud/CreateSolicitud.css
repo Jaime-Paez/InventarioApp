@@ -471,13 +471,16 @@
 
 .create-solicitud__confirm-card {
   width: min(480px, calc(100vw - 52px));
+  max-height: calc(100vh - 40px);
   border-radius: 12px;
   border: 1px solid var(--color-border);
   background: var(--modal-color);
   box-shadow: var(--shadow-panel);
   padding: 16px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+  overflow: hidden;
 }
 
 .create-solicitud__confirm-card h4 {
@@ -496,6 +499,7 @@
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .dashboard-shell.dark .create-solicitud__confirm-card {

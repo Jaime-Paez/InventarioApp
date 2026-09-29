@@ -5038,6 +5038,7 @@ function CreateEntrada({
                 bodega, division y subdivision para cada producto y luego confirma la creacion.
               </p>
 
+              <div className="create-salida__confirm-scroll">
               {locationResolverLoading ? (
                 <p className="muted">Cargando ubicaciones disponibles...</p>
               ) : (
@@ -5356,6 +5357,7 @@ function CreateEntrada({
               {locationResolverError && (
                 <p className="create-salida__confirm-error">{locationResolverError}</p>
               )}
+              </div>
 
               <div className="create-salida__confirm-actions">
                 <button
