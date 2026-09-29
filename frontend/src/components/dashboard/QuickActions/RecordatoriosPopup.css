@@ -580,6 +580,10 @@
   opacity: 0.88;
 }
 
+.recordatorios-popup__timeline-day-name--short {
+  display: none;
+}
+
 .recordatorios-popup__timeline-day-date {
   font-size: 14px;
   font-weight: 700;
@@ -2940,32 +2944,23 @@
   .recordatorios-popup__timeline-day {
     min-width: 58px;
     flex: 0 0 58px;
+    overflow: hidden;
+  }
+
+  /* El nombre completo del dia ("MIERCOLES", "VIERNES") no entra en esta
+     celda angosta y se desbordaba encima del dia vecino -- en esta vista se
+     usa la abreviatura de 3 letras en su lugar. */
+  .recordatorios-popup__timeline-day-name {
+    display: none;
+  }
+
+  .recordatorios-popup__timeline-day-name--short {
+    display: inline;
   }
 
   .recordatorios-popup__timeline-day-header {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .recordatorios-popup__timeline-item {
-    grid-template-columns: 1fr;
-  }
-
-  .recordatorios-popup__timeline-item-col + .recordatorios-popup__timeline-item-col {
-    border-left: none;
-    border-top: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  }
-
-  .recordatorios-popup__timeline-item-col--estado {
-    align-items: flex-start;
-    text-align: left;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .recordatorios-popup__timeline-item-actions {
-    justify-content: flex-start;
   }
 
   .recordatorios-popup__table {

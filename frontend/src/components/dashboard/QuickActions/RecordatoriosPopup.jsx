@@ -727,6 +727,17 @@ const formatTimelineDayName = (dateKey) => {
   return clean.charAt(0).toUpperCase() + clean.slice(1)
 }
 
+// Version corta (3 letras) para las celdas angostas de la semana en pantallas
+// chicas -- el nombre completo ("MIERCOLES", "VIERNES") no entra en esas
+// celdas y se desborda encima de la celda vecina.
+const formatTimelineDayNameShort = (dateKey) => {
+  const parsed = parseDateKey(dateKey)
+  if (!parsed) return '-'
+  const label = new Intl.DateTimeFormat('es-CO', { weekday: 'short' }).format(parsed)
+  const clean = label.replace('.', '')
+  return clean.charAt(0).toUpperCase() + clean.slice(1)
+}
+
 const formatTimelineDayDate = (dateKey) => {
   const parsed = parseDateKey(dateKey)
   if (!parsed) return '-'
@@ -1242,6 +1253,7 @@ function RecordatoriosPopup({
         count,
         severity,
         dayName: formatTimelineDayName(dateKey),
+        dayNameShort: formatTimelineDayNameShort(dateKey),
         dayDate: formatTimelineDayDate(dateKey),
         dayDateShort: formatTimelineDayDateShort(dateKey),
       }
@@ -2741,6 +2753,9 @@ function RecordatoriosPopup({
                         >
                           <span className="recordatorios-popup__timeline-day-label">
                             <span className="recordatorios-popup__timeline-day-name">{day.dayName}</span>
+                            <span className="recordatorios-popup__timeline-day-name recordatorios-popup__timeline-day-name--short">
+                              {day.dayNameShort}
+                            </span>
                             <span className="recordatorios-popup__timeline-day-date">{day.dayDateShort}</span>
                           </span>
                           <span className="recordatorios-popup__timeline-day-count">{day.count} rec.</span>
