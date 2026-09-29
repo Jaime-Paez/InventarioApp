@@ -2865,6 +2865,15 @@
     pointer-events: none;
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-surface) 75%, transparent);
   }
+
+  /* En esta pantalla angosta el numero de envios y el punto de "recordatorio
+     pendiente" caen en el mismo lugar sobre la campana. El numero ya avisa
+     que hay algo pendiente, asi que el punto sobra ahi -- se oculta solo
+     cuando el numero esta presente (en desktop el punto sigue solo, porque
+     ahi el numero nunca se muestra). */
+  .quick-actions__mobile-count ~ .quick-actions__pending-dots {
+    display: none;
+  }
 }
 
 .quick-actions__urgent-shield {
