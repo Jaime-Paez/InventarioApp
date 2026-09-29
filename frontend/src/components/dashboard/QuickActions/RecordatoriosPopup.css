@@ -2935,15 +2935,13 @@
     display: none;
   }
 
-  .recordatorios-popup__timeline-week {
-    display: flex;
-    overflow-x: auto;
-    padding-bottom: 2px;
-  }
-
+  /* Antes esta fila usaba ancho fijo por dia (58px) con scroll horizontal,
+     lo que dejaba los 6 dias amontonados a la izquierda con un espacio
+     vacio grande a la derecha en vez de ocupar todo el ancho disponible.
+     Ahora usa el mismo grid de 6 columnas iguales que el desktop (definido
+     mas arriba), y como el nombre del dia ya es la abreviatura de 3 letras
+     en esta vista, entra sin problema aunque las columnas se achiquen. */
   .recordatorios-popup__timeline-day {
-    min-width: 58px;
-    flex: 0 0 58px;
     overflow: hidden;
   }
 
