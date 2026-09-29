@@ -555,6 +555,22 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     void loadItems()
   }, [loadItems])
 
+  // Si dos administradores tienen esta pantalla abierta a la vez, uno puede
+  // verificar una diferencia mientras el otro sigue viendo la lista vieja.
+  // Refrescamos solos cada pocos segundos para que ambos vean lo mismo casi
+  // de inmediato, sin esperar a que alguien recargue a mano. Son lecturas
+  // livianas y paginadas (no la fila global de ReminderState), asi que no
+  // tiene el riesgo de bloqueo que tuvo el polling de recordatorios.
+  useEffect(() => {
+    if (!canRead) return undefined
+    const intervalId = setInterval(() => {
+      if (editingItem) return
+      void loadSummary()
+      void loadItems()
+    }, 5000)
+    return () => clearInterval(intervalId)
+  }, [canRead, editingItem, loadItems, loadSummary])
+
   useEffect(() => {
     if (typeof document === 'undefined') return undefined
 
