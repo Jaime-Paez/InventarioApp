@@ -3400,7 +3400,7 @@ function RecordatoriosPopup({
                                       ? 'Abriendo...'
                                       : (
                                         isRandomInspectionVerifyReminder(reminder)
-                                          ? 'Ir a revisión por sucursal'
+                                          ? 'Ir a revisión'
                                           : isInspectionInProgress
                                             ? 'Continuar inspección'
                                             : 'Realizar inspección'
