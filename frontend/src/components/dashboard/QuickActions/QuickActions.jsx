@@ -2930,9 +2930,6 @@ function QuickActions({
   useEffect(() => {
     const shipmentId = normalizeId(activeInTransitShipment?.id)
     if (!shipmentId || !isReceiveShipmentModalOpen) return
-    try {
-      localStorage.setItem(`rs_draft_${shipmentId}`, JSON.stringify(receiveShipmentDraftByProductId))
-    } catch {}
 
     clearTimeout(receiveShipmentDraftSaveDebounceRef.current)
     receiveShipmentDraftSaveDebounceRef.current = setTimeout(() => {
@@ -2992,17 +2989,6 @@ function QuickActions({
     setRandomInspectionHasGeneralIssue(false)
     setRandomInspectionGeneralNote('')
   }, [])
-
-  useEffect(() => {
-    const inspectionId = normalizeId(activeRandomInspection?.id)
-    if (!inspectionId || isRandomInspectionVerifyMode || !isRandomInspectionModalOpen) return
-    try {
-      localStorage.setItem(
-        `ri_draft_${inspectionId}`,
-        JSON.stringify({ draft: randomInspectionDraftByItemId, stepIndex: randomInspectionStepIndex })
-      )
-    } catch {}
-  }, [randomInspectionDraftByItemId, randomInspectionStepIndex, activeRandomInspection, isRandomInspectionVerifyMode, isRandomInspectionModalOpen])
 
   const buildRandomInspectionDraft = useCallback((inspection) => {
     const rows = Array.isArray(inspection?.items) ? inspection.items : []
@@ -3169,22 +3155,14 @@ function QuickActions({
         if (isVerifyReminder) {
           setRandomInspectionDraftByItemId(buildRandomInspectionVerificationDraft(inspection))
         } else {
-          const baseDraft = buildRandomInspectionDraft(inspection)
-          let localState = null
-          try {
-            const raw = localStorage.getItem(`ri_draft_${inspectionId}`)
-            if (raw) localState = JSON.parse(raw)
-          } catch {}
-          if (localState?.draft) {
-            // localStorage es más reciente (captura cambios no guardados al backend todavía)
-            setRandomInspectionDraftByItemId({ ...baseDraft, ...localState.draft })
-            setRandomInspectionStepIndex(localState.stepIndex ?? 0)
-          } else {
-            // fallback: usar datos del servidor (otro dispositivo o localStorage limpio)
-            setRandomInspectionDraftByItemId(baseDraft)
-            const serverStep = toPositiveInt(inspection?.borrador_paso_actual, 0)
-            if (serverStep > 0) setRandomInspectionStepIndex(serverStep)
-          }
+          // El servidor es siempre la fuente de verdad. Un borrador guardado solo en
+          // este navegador puede quedar desactualizado si la misma cuenta se usa en
+          // otro dispositivo a la vez (ej. computadora y tablet), y usarlo pisaria
+          // cantidades ya guardadas con datos viejos -- por eso ya no se lee ningun
+          // borrador local, siempre se parte de lo que dice el servidor.
+          setRandomInspectionDraftByItemId(buildRandomInspectionDraft(inspection))
+          const serverStep = toPositiveInt(inspection?.borrador_paso_actual, 0)
+          if (serverStep > 0) setRandomInspectionStepIndex(serverStep)
         }
         return true
       } catch (error) {
@@ -3531,21 +3509,18 @@ function QuickActions({
         }
       })
 
-      // Restore saved draft: localStorage (mismo dispositivo) → servidor (otro dispositivo)
-      let savedLocal = null
-      try {
-        const raw = localStorage.getItem(`rs_draft_${shipmentId}`)
-        if (raw) savedLocal = JSON.parse(raw)
-      } catch {}
-
+      // El servidor es siempre la fuente de verdad (ver borrador de inspeccion
+      // aleatoria mas abajo, mismo motivo): un borrador guardado solo en este
+      // navegador puede quedar desactualizado si la misma cuenta recibe el
+      // mismo envio desde otro dispositivo a la vez, y usarlo pisaria
+      // cantidades ya guardadas con datos viejos.
       const serverDraft = (shipment?.borrador_recepcion && typeof shipment.borrador_recepcion === 'object')
         ? shipment.borrador_recepcion
         : null
 
-      const savedDraftSource = savedLocal || serverDraft
-      if (savedDraftSource) {
+      if (serverDraft) {
         Object.keys(initialDraft).forEach((productId) => {
-          const saved = savedDraftSource[productId]
+          const saved = serverDraft[productId]
           if (!saved || typeof saved !== 'object') return
           const cantidadEnviada = initialDraft[productId].cantidad_enviada
           const cantRecibida = saved.cantidad_recibida != null ? toPositiveInt(saved.cantidad_recibida, cantidadEnviada) : cantidadEnviada
@@ -4176,7 +4151,6 @@ function QuickActions({
           })
         }
 
-        try { localStorage.removeItem(`ri_draft_${inspectionId}`) } catch {}
         closeRandomInspectionModal()
         const remoteReminders = await fetchRemindersFromBackend(token)
         setReminders(remoteReminders)
@@ -4399,7 +4373,6 @@ function QuickActions({
             items: builtItems,
           })
         }
-        try { localStorage.removeItem(`rs_draft_${normalizeId(activeInTransitShipment?.id)}`) } catch {}
         closeReceiveShipmentModal()
         await fetchInTransitTransferShipments({ silent: true })
       } catch (error) {
