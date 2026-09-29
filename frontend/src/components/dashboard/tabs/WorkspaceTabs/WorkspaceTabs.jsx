@@ -200,22 +200,23 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
   const scrollTabs = (direction) => {
     const element = listRef.current
     if (!element) return
-    const tabs = Array.from(element.querySelectorAll('.workspace__tab'))
-    if (!tabs.length) return
-    const containerRect = element.getBoundingClientRect()
-    const THRESHOLD = 4
-    let newScrollLeft
-    if (direction === 'right') {
-      const target = tabs.find((tab) => tab.getBoundingClientRect().right > containerRect.right - THRESHOLD)
-      if (!target) return
-      newScrollLeft = element.scrollLeft + (target.getBoundingClientRect().left - containerRect.left)
-    } else {
-      const leftHidden = tabs.filter((tab) => tab.getBoundingClientRect().left < containerRect.left + THRESHOLD)
-      if (!leftHidden.length) return
-      const target = leftHidden[leftHidden.length - 1]
-      newScrollLeft = element.scrollLeft + (target.getBoundingClientRect().left - containerRect.left)
-    }
-    element.scrollTo({ left: Math.max(0, newScrollLeft), behavior: 'smooth' })
+    // Antes cada clic solo alineaba la siguiente pestaña parcialmente oculta
+    // al borde, es decir "revelaba una pestaña mas" por clic -- con varias
+    // pestañas ocultas hacian falta 2 o mas clics para llegar al final, y el
+    // primer clic dejaba la ultima pestaña todavia sin verse completa (daba
+    // la sensacion de que la flecha "no llegaba al final"). Ahora cada clic
+    // avanza casi una pantalla completa (con un poco de superposicion para
+    // dar contexto), y como scrollTo recorta el valor al rango valido del
+    // elemento, un clic que se pasa del limite simplemente llega justo al
+    // final/inicio real en vez de quedarse corto.
+    const OVERLAP = 32
+    const maxScrollLeft = element.scrollWidth - element.clientWidth
+    const delta = Math.max(element.clientWidth - OVERLAP, element.clientWidth / 2)
+    const rawTarget = direction === 'right'
+      ? element.scrollLeft + delta
+      : element.scrollLeft - delta
+    const newScrollLeft = Math.min(Math.max(0, rawTarget), Math.max(0, maxScrollLeft))
+    element.scrollTo({ left: newScrollLeft, behavior: 'smooth' })
   }
 
   const handleWheel = (event) => {
