@@ -228,11 +228,6 @@ class ConteoCiegoTests(InspeccionAleatoriaBaseTestCase):
         admin_detail = self.admin_client.get(f"{BASE_URL}/{inspection.id}/")
         self.assertEqual(admin_detail.data["inspection"]["items"][0]["cantidad_esperada"], 10)
 
-        missing = self.revisor_client.patch(
-            f"{BASE_URL}/{inspection.id}/borrador/", {"revelar": True}, format="json"
-        )
-        self.assertEqual(missing.status_code, 400)
-
         revealed = self.revisor_client.patch(
             f"{BASE_URL}/{inspection.id}/borrador/",
             {"revelar": True, "fase": "resumen", "items": [{"id": item.id, "cantidad_reportada": 6}]},
@@ -509,3 +504,23 @@ class InspeccionPorListaTests(InspeccionAleatoriaBaseTestCase):
         otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
         response = self._enviar_lista(sucursal_id=otra.id, producto_ids=[self.producto.id])
         self.assertEqual(response.status_code, 400)
+
+
+class VerResultadoConProductosPendientesTests(InspeccionAleatoriaBaseTestCase):
+    def test_se_puede_ver_el_resultado_aunque_falten_productos(self):
+        inspection = self._crear_inspeccion(productos=[self.producto, self.producto_2])
+        item_1 = inspection.items.get(producto=self.producto)
+        item_2 = inspection.items.get(producto=self.producto_2)
+
+        response = self.revisor_client.patch(
+            f"{BASE_URL}/{inspection.id}/borrador/",
+            {"revelar": True, "fase": "resumen", "items": [{"id": item_1.id, "cantidad_reportada": 9}]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["inspection"]["items"][0]["cantidad_esperada"], 10)
+        item_1.refresh_from_db()
+        item_2.refresh_from_db()
+        self.assertEqual(item_1.cantidad_primer_conteo, 9)
+        self.assertIsNone(item_2.cantidad_primer_conteo)

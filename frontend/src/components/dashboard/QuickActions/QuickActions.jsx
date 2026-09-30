@@ -3563,17 +3563,9 @@ function QuickActions({
           // ubicacion y en que paso/fase se iba): asi se continua exactamente
           // donde se quedo, aunque haya sido en otro dispositivo.
           setRandomInspectionDraftByItemId(buildRandomInspectionDraft(inspection))
-          // Si quedan productos sin contar, se abre en el primero de ellos y
-          // no en el ultimo paso guardado: antes se abria en el producto
-          // 57 de 57 y los que faltaban quedaban escondidos mas atras.
-          const inspectionItems = Array.isArray(inspection?.items) ? inspection.items : []
-          const firstUncountedIndex = inspectionItems.findIndex((item) => item?.cantidad_reportada == null)
-          const savedStep = toPositiveInt(inspection?.borrador_paso_actual, 0)
-          const serverStep = firstUncountedIndex >= 0 ? firstUncountedIndex : savedStep
+          const serverStep = toPositiveInt(inspection?.borrador_paso_actual, 0)
           if (serverStep > 0) setRandomInspectionStepIndex(serverStep)
-          const serverPhase = firstUncountedIndex >= 0
-            ? 'conteo'
-            : String(inspection?.borrador_fase || '').trim().toLowerCase()
+          const serverPhase = String(inspection?.borrador_fase || '').trim().toLowerCase()
           if (inspection?.conteo_revelado && (serverPhase === 'resumen' || serverPhase === 'correccion')) {
             setRandomInspectionShowSummary(true)
             if (serverPhase === 'correccion') {
@@ -4390,20 +4382,6 @@ function QuickActions({
       })
       if (result?.completed) return
       if (!result?.ok) {
-        const missingIds = Array.isArray(result?.payload?.items_faltantes)
-          ? result.payload.items_faltantes.map((itemId) => normalizeId(itemId))
-          : []
-        if (missingIds.length) {
-          // Lleva directo al primer producto que falta contar.
-          const firstMissingIndex = (randomInspectionRowsRef.current || []).findIndex(
-            (row) => missingIds.includes(normalizeId(row?.row_id || row?.id))
-          )
-          if (firstMissingIndex >= 0) setRandomInspectionStepIndex(firstMissingIndex)
-          setRandomInspectionError(
-            `Faltan ${missingIds.length} producto(s) por contar. Te llevamos al primero que falta.`
-          )
-          return
-        }
         setRandomInspectionError(
           result?.conflict
             ? RANDOM_INSPECTION_CONFLICT_MESSAGE

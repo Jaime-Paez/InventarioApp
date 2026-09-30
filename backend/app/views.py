@@ -3285,20 +3285,14 @@ class RandomInspectionSaveDraftAPIView(APIView):
 
             revealed_now = False
             if bool(request.data.get("revelar")) and not inspection.conteo_revelado:
+                # Se puede ver el resultado aunque falten productos por contar
+                # (asi funcionaba antes: desde el ultimo producto se abria la
+                # lista completa). Queda fijado el primer conteo a ciegas de
+                # los que ya se contaron; las correcciones posteriores (ya
+                # viendo lo esperado) no lo cambian.
                 all_items = list(inspection.items.order_by("id"))
-                missing = [int(item.id) for item in all_items if item.cantidad_reportada is None]
-                if missing:
-                    return Response(
-                        {
-                            "detail": "Faltan productos por contar antes de ver el resultado.",
-                            "items_faltantes": missing,
-                        },
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-                # Queda fijado el primer conteo a ciegas: las correcciones
-                # posteriores (ya viendo lo esperado) no lo cambian.
                 for item in all_items:
-                    if item.cantidad_primer_conteo is None:
+                    if item.cantidad_primer_conteo is None and item.cantidad_reportada is not None:
                         item.cantidad_primer_conteo = item.cantidad_reportada
                 InspeccionAleatoriaItem.objects.bulk_update(all_items, ["cantidad_primer_conteo"])
                 inspection.conteo_revelado = True
