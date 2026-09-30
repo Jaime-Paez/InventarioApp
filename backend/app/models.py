@@ -116,6 +116,19 @@ class InspeccionAleatoriaDiaria(models.Model):
         blank=True,
         related_name="inspecciones_aleatorias_diarias",
     )
+    # Inspecciones "por division" (enviar-division) son registros aparte de la
+    # inspeccion de la sucursal: si se agregaban a la de la sucursal y esa ya
+    # estaba completada, los productos nuevos quedaban imposibles de responder.
+    # `es_por_division` (y no solo `division`) define la unicidad para que
+    # borrar la division (SET_NULL) no choque con la inspeccion de la sucursal.
+    es_por_division = models.BooleanField(default=False, db_default=False)
+    division = models.ForeignKey(
+        "inventario.Division",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inspecciones_aleatorias_diarias",
+    )
     fecha_programada = models.DateField(db_index=True)
     estado = models.CharField(
         max_length=20,
@@ -126,6 +139,25 @@ class InspeccionAleatoriaDiaria(models.Model):
     cobertura_porcentaje = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     completada_en = models.DateTimeField(null=True, blank=True)
     borrador_paso_actual = models.PositiveSmallIntegerField(default=0)
+    # db_default: la version anterior del codigo (que sigue atendiendo mientras
+    # Render aplica la migracion) no conoce estas columnas y no las manda.
+    # Borrador compartido entre dispositivos: todo el progreso vive en el
+    # servidor (no en el navegador) y `borrador_version` sube con cada cambio
+    # para que un dispositivo con datos viejos no pueda pisar ni enviar
+    # lo que se conto en otro.
+    borrador_version = models.PositiveIntegerField(default=0, db_default=0)
+    borrador_fase = models.CharField(max_length=20, blank=True, default="", db_default="")
+    borrador_indice_correccion = models.PositiveSmallIntegerField(default=0, db_default=0)
+    borrador_tiene_novedad = models.BooleanField(default=False, db_default=False)
+    borrador_nota_general = models.TextField(blank=True, default="", db_default="")
+    conteo_revelado = models.BooleanField(
+        default=False,
+        db_default=False,
+        help_text=(
+            "True desde que el revisor termino el conteo a ciegas y se le mostro "
+            "el inventario esperado (queda fijado el primer conteo)."
+        ),
+    )
     disculpada = models.BooleanField(
         default=False,
         help_text="True si el admin disculpó al usuario por no haber completado el conteo.",
@@ -150,8 +182,13 @@ class InspeccionAleatoriaDiaria(models.Model):
             ),
             models.UniqueConstraint(
                 fields=["usuario", "sucursal", "fecha_programada"],
-                condition=models.Q(sucursal__isnull=False),
+                condition=models.Q(sucursal__isnull=False, es_por_division=False),
                 name="unique_insp_aleatoria_usuario_sucursal_fecha",
+            ),
+            models.UniqueConstraint(
+                fields=["usuario", "division", "fecha_programada"],
+                condition=models.Q(es_por_division=True, division__isnull=False),
+                name="unique_insp_aleatoria_usuario_division_fecha",
             ),
         ]
 
@@ -188,7 +225,29 @@ class InspeccionAleatoriaItem(models.Model):
         on_delete=models.PROTECT,
         related_name="inspecciones_aleatorias_items",
     )
+    # Mientras la inspeccion esta pendiente es la foto al generarla; al
+    # responder se reemplaza por el stock del sistema EN ESE MOMENTO, que es
+    # contra lo que se compara el conteo y la base del ajuste al aprobar.
     cantidad_esperada = models.PositiveIntegerField(default=0)
+    cantidad_esperada_inicial = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Stock del sistema cuando se genero la inspeccion (solo referencia).",
+    )
+    cantidad_primer_conteo = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Primer conteo a ciegas, antes de ver el inventario esperado.",
+    )
+    conteo_ubicaciones = models.JSONField(
+        default=list,
+        db_default=models.Value([], output_field=models.JSONField()),
+        blank=True,
+        help_text=(
+            "Conteo por ubicacion: [{key, subdivision_id, cantidad_contada, "
+            "cantidad_sistema}]. cantidad_sistema se fija al responder."
+        ),
+    )
     estado_revision = models.CharField(
         max_length=20,
         choices=EstadosRevision.choices,

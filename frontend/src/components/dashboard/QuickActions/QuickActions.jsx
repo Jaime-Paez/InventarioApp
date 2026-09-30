@@ -134,6 +134,7 @@ const buildInspectionLocationsFromProductPayload = (payload, branchId) => {
     acc.push({
       key,
       sucursal_id: toPositiveInt(sucursalId, 0),
+      subdivision_id: toPositiveInt(subdivision?.id, 0) || null,
       sucursal_nombre: String(bodega?.sucursal?.nombre || '').trim(),
       bodega_nombre: bodegaNombre,
       division_nombre: divisionNombre,
@@ -150,6 +151,80 @@ const buildInspectionLocationKey = (location) => [
   normalizeString(location?.division_nombre),
   normalizeString(location?.subdivision_nombre),
 ].join('::')
+const RANDOM_INSPECTION_SYNC_MS = 5000
+const RANDOM_INSPECTION_DRAFT_SAVE_DEBOUNCE_MS = 700
+const RANDOM_INSPECTION_CONFLICT_MESSAGE =
+  'Esta inspección se actualizó desde otro dispositivo. Se cargaron los datos más recientes: revísalos y vuelve a intentarlo.'
+// Lo que se guarda de un producto en el borrador del servidor, incluido el
+// conteo por ubicacion (antes vivia solo en el navegador y se perdia al
+// abrir la inspeccion en otro dispositivo).
+const buildRandomInspectionItemDraftPayload = (row) => {
+  const payload = {
+    id: Number(normalizeId(row?.row_id || row?.id)),
+    cantidad_reportada: row?.cantidad_reportada ?? null,
+    observacion: String(row?.observacion || '').trim(),
+  }
+  if (row?.requiere_conteo_por_ubicacion) {
+    payload.cantidad_por_ubicacion = (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
+      .filter((location) => Boolean(location?.key))
+      .map((location) => ({
+        key: location.key,
+        subdivision_id: toPositiveInt(location?.subdivision_id, 0) || null,
+        cantidad: String(location?.cantidad_contada_input ?? '').trim() === ''
+          ? null
+          : toPositiveInt(location?.cantidad_contada_input, 0),
+      }))
+  }
+  return payload
+}
+// Trae del servidor los valores (cantidades, esperado, estado) sin perder
+// las ubicaciones que este dispositivo ya tenia armadas.
+const mergeRandomInspectionFromServer = (localInspection, serverInspection) => {
+  if (!serverInspection || typeof serverInspection !== 'object') return localInspection
+  if (!localInspection || typeof localInspection !== 'object') return serverInspection
+  const localItems = Array.isArray(localInspection?.items) ? localInspection.items : []
+  const serverItems = Array.isArray(serverInspection?.items) ? serverInspection.items : []
+  const localIds = localItems.map((item) => normalizeId(item?.id)).sort().join(',')
+  const serverIds = serverItems.map((item) => normalizeId(item?.id)).sort().join(',')
+  if (localIds !== serverIds) return serverInspection
+
+  const serverById = new Map(serverItems.map((item) => [normalizeId(item?.id), item]))
+  return {
+    ...localInspection,
+    ...serverInspection,
+    items: localItems.map((item) => {
+      const serverItem = serverById.get(normalizeId(item?.id))
+      if (!serverItem) return item
+      const serverLocationsByKey = new Map(
+        (Array.isArray(serverItem?.ubicaciones_bodega) ? serverItem.ubicaciones_bodega : [])
+          .map((location) => [buildInspectionLocationKey(location), location])
+      )
+      const localLocations = Array.isArray(item?.ubicaciones_bodega) ? item.ubicaciones_bodega : []
+      return {
+        ...item,
+        cantidad_esperada: serverItem.cantidad_esperada,
+        cantidad_reportada: serverItem.cantidad_reportada,
+        cantidad_primer_conteo: serverItem.cantidad_primer_conteo,
+        conteo_ubicaciones: serverItem.conteo_ubicaciones,
+        observacion: serverItem.observacion,
+        estado_revision: serverItem.estado_revision,
+        verificacion_estado: serverItem.verificacion_estado,
+        ubicaciones_bodega: localLocations.length
+          ? localLocations.map((location) => {
+            const serverLocation = serverLocationsByKey.get(buildInspectionLocationKey(location))
+            return serverLocation
+              ? {
+                ...location,
+                cantidad: serverLocation.cantidad,
+                subdivision_id: location?.subdivision_id || serverLocation.subdivision_id,
+              }
+              : location
+          })
+          : serverItem.ubicaciones_bodega,
+      }
+    }),
+  }
+}
 const nowReminderDateTime = () => {
   const now = new Date()
   const pad = (value) => String(value).padStart(2, '0')
@@ -512,6 +587,22 @@ function QuickActions({
   const [randomInspectionError, setRandomInspectionError] = useState('')
   const [randomInspectionHasGeneralIssue, setRandomInspectionHasGeneralIssue] = useState(false)
   const [randomInspectionGeneralNote, setRandomInspectionGeneralNote] = useState('')
+  const [randomInspectionRevealing, setRandomInspectionRevealing] = useState(false)
+  // Sincronizacion del borrador entre dispositivos (misma cuenta en la compu
+  // y en la tablet): version del servidor que tiene este dispositivo, que
+  // productos cambiaron aca y todavia no se guardaron, y una cola para que
+  // los guardados de este mismo dispositivo no se pisen entre si.
+  const randomInspectionVersionRef = useRef(null)
+  const randomInspectionDirtyItemsRef = useRef(new Map())
+  const randomInspectionMetaDirtyRef = useRef(false)
+  const randomInspectionSaveQueueRef = useRef(Promise.resolve())
+  const randomInspectionSaveTimerRef = useRef(null)
+  const randomInspectionRowsRef = useRef([])
+  const randomInspectionMetaRef = useRef({})
+  const randomInspectionLastSentMetaRef = useRef('')
+  const randomInspectionActiveIdRef = useRef('')
+  const randomInspectionSubmittingRef = useRef(false)
+  const randomInspectionEditSeqRef = useRef(0)
   const [activeReceiveLocationDropdown, setActiveReceiveLocationDropdown] = useState({
     productId: '',
     field: '',
@@ -2547,6 +2638,33 @@ function QuickActions({
     )
   )
 
+  useEffect(() => {
+    randomInspectionRowsRef.current = randomInspectionRows
+  }, [randomInspectionRows])
+
+  useEffect(() => {
+    randomInspectionActiveIdRef.current = normalizeId(activeRandomInspection?.id)
+  }, [activeRandomInspection?.id])
+
+  useEffect(() => {
+    randomInspectionMetaRef.current = {
+      paso_actual: randomInspectionStepIndex,
+      fase: randomInspectionCorrectionActive
+        ? 'correccion'
+        : (randomInspectionShowSummary ? 'resumen' : 'conteo'),
+      indice_correccion: randomInspectionCorrectionIndex,
+      tiene_novedad: randomInspectionHasGeneralIssue,
+      nota_general: randomInspectionHasGeneralIssue ? randomInspectionGeneralNote : '',
+    }
+  }, [
+    randomInspectionCorrectionActive,
+    randomInspectionCorrectionIndex,
+    randomInspectionGeneralNote,
+    randomInspectionHasGeneralIssue,
+    randomInspectionShowSummary,
+    randomInspectionStepIndex,
+  ])
+
   const receiveShipmentTotalMissing = useMemo(
     () => receiveShipmentRows.reduce((total, row) => total + toPositiveInt(row?.cantidad_faltante, 0), 0),
     [receiveShipmentRows]
@@ -2974,7 +3092,175 @@ function QuickActions({
     return nextLoadRequestId
   }, [])
 
+  const randomInspectionApplyServerRef = useRef(null)
+  const randomInspectionCompletedElsewhereRef = useRef(null)
+
+  // Guarda en el servidor solo lo que cambio en ESTE dispositivo (productos
+  // editados y, si cambio, en que paso/fase va) junto con la version que
+  // tiene. Si otro dispositivo guardo algo antes, el servidor responde 409
+  // con su estado: se adopta para lo que aca no se toco y se reintenta.
+  const flushRandomInspectionDraft = useCallback((options = {}) => {
+    const {
+      includeAllItems = false,
+      meta = null,
+      reveal = false,
+      includeInspection = false,
+    } = options
+    if (randomInspectionSaveTimerRef.current) {
+      clearTimeout(randomInspectionSaveTimerRef.current)
+      randomInspectionSaveTimerRef.current = null
+    }
+    const inspectionId = normalizeId(randomInspectionActiveIdRef.current)
+    if (!token || !inspectionId) return Promise.resolve(null)
+
+    const dirtyItems = randomInspectionDirtyItemsRef.current
+    const sentSeqById = new Map()
+    const items = (randomInspectionRowsRef.current || [])
+      .filter((row) => includeAllItems || dirtyItems.has(normalizeId(row?.row_id || row?.id)))
+      .map((row) => {
+        const rowId = normalizeId(row?.row_id || row?.id)
+        if (dirtyItems.has(rowId)) sentSeqById.set(rowId, dirtyItems.get(rowId))
+        return buildRandomInspectionItemDraftPayload(row)
+      })
+
+    const metaPayload = { ...randomInspectionMetaRef.current, ...(meta || {}) }
+    const metaSignature = JSON.stringify(metaPayload)
+    const sendMeta = Boolean(meta) || (
+      randomInspectionMetaDirtyRef.current &&
+      metaSignature !== randomInspectionLastSentMetaRef.current
+    )
+    randomInspectionMetaDirtyRef.current = false
+    if (!items.length && !sendMeta && !reveal && !includeInspection) return Promise.resolve(null)
+    if (sendMeta) randomInspectionLastSentMetaRef.current = metaSignature
+
+    const body = {
+      items,
+      ...(sendMeta ? metaPayload : {}),
+      ...(reveal ? { revelar: true } : {}),
+      ...(includeInspection ? { incluir_inspeccion: true } : {}),
+    }
+
+    const isStillActive = () => normalizeId(randomInspectionActiveIdRef.current) === inspectionId
+
+    const run = async () => {
+      let version = isStillActive() ? randomInspectionVersionRef.current : null
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await authFetch(
+          `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/borrador/`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify({ ...body, version }),
+          },
+          token
+        )
+        const payload = await response.json().catch(() => ({}))
+        if (response.ok) {
+          const nextVersion = Number(payload?.version)
+          if (Number.isFinite(nextVersion) && isStillActive()) {
+            randomInspectionVersionRef.current = nextVersion
+          }
+          sentSeqById.forEach((seq, rowId) => {
+            if (dirtyItems.get(rowId) === seq) dirtyItems.delete(rowId)
+          })
+          return { ok: true, payload }
+        }
+        if (response.status === 409 && payload?.completed) {
+          if (isStillActive()) randomInspectionCompletedElsewhereRef.current?.()
+          return { ok: false, completed: true }
+        }
+        if (response.status === 409 && payload?.conflict && payload?.inspection) {
+          version = Number(payload.inspection?.borrador_version)
+          if (isStillActive()) randomInspectionApplyServerRef.current?.(payload.inspection)
+          // Con todos los productos no se reintenta: se mandarian los
+          // valores viejos de este dispositivo encima de los del otro.
+          if (includeAllItems) return { ok: false, conflict: true }
+          continue
+        }
+        if (sendMeta) randomInspectionMetaDirtyRef.current = true
+        return { ok: false, payload }
+      }
+      return { ok: false, conflict: true }
+    }
+
+    const next = randomInspectionSaveQueueRef.current
+      .then(run, run)
+      .catch(() => {
+        if (sendMeta) randomInspectionMetaDirtyRef.current = true
+        return { ok: false }
+      })
+    randomInspectionSaveQueueRef.current = next
+    return next
+  }, [token])
+
+  const scheduleRandomInspectionDraftSave = useCallback(() => {
+    if (randomInspectionSaveTimerRef.current) clearTimeout(randomInspectionSaveTimerRef.current)
+    randomInspectionSaveTimerRef.current = setTimeout(() => {
+      randomInspectionSaveTimerRef.current = null
+      void flushRandomInspectionDraft()
+    }, RANDOM_INSPECTION_DRAFT_SAVE_DEBOUNCE_MS)
+  }, [flushRandomInspectionDraft])
+
+  const markRandomInspectionItemDirty = useCallback((itemId) => {
+    const normalizedItemId = normalizeId(itemId)
+    if (!normalizedItemId) return
+    randomInspectionEditSeqRef.current += 1
+    randomInspectionDirtyItemsRef.current.set(normalizedItemId, randomInspectionEditSeqRef.current)
+    scheduleRandomInspectionDraftSave()
+  }, [scheduleRandomInspectionDraftSave])
+
+  // Paso, fase (conteo/resumen/correccion) y nota general tambien viven en
+  // el servidor, para retomar en otro dispositivo donde se quedo.
+  const activeRandomInspectionId = normalizeId(activeRandomInspection?.id)
+  const activeRandomInspectionStatus = String(activeRandomInspection?.estado || '').trim().toLowerCase()
+  useEffect(() => {
+    if (!isRandomInspectionModalOpen || randomInspectionMode !== 'review') return
+    if (!activeRandomInspectionId || activeRandomInspectionStatus === 'completada') return
+    const signature = JSON.stringify({
+      paso_actual: randomInspectionStepIndex,
+      fase: randomInspectionCorrectionActive
+        ? 'correccion'
+        : (randomInspectionShowSummary ? 'resumen' : 'conteo'),
+      indice_correccion: randomInspectionCorrectionIndex,
+      tiene_novedad: randomInspectionHasGeneralIssue,
+      nota_general: randomInspectionHasGeneralIssue ? randomInspectionGeneralNote : '',
+    })
+    if (signature === randomInspectionLastSentMetaRef.current) return
+    randomInspectionMetaDirtyRef.current = true
+    scheduleRandomInspectionDraftSave()
+  }, [
+    activeRandomInspectionId,
+    activeRandomInspectionStatus,
+    isRandomInspectionModalOpen,
+    randomInspectionCorrectionActive,
+    randomInspectionCorrectionIndex,
+    randomInspectionGeneralNote,
+    randomInspectionHasGeneralIssue,
+    randomInspectionMode,
+    randomInspectionShowSummary,
+    randomInspectionStepIndex,
+    scheduleRandomInspectionDraftSave,
+  ])
+
   const closeRandomInspectionModal = useCallback(() => {
+    // Lo que se conto aca y aun no se guardo se manda antes de cerrar.
+    if (
+      randomInspectionDirtyItemsRef.current.size > 0 ||
+      randomInspectionMetaDirtyRef.current ||
+      randomInspectionSaveTimerRef.current
+    ) {
+      void flushRandomInspectionDraft()
+    }
+    if (randomInspectionSaveTimerRef.current) {
+      clearTimeout(randomInspectionSaveTimerRef.current)
+      randomInspectionSaveTimerRef.current = null
+    }
+    randomInspectionDirtyItemsRef.current = new Map()
+    randomInspectionMetaDirtyRef.current = false
+    randomInspectionLastSentMetaRef.current = ''
+    randomInspectionVersionRef.current = null
+    randomInspectionActiveIdRef.current = ''
+    randomInspectionSubmittingRef.current = false
+    setRandomInspectionRevealing(false)
     setIsRandomInspectionModalOpen(false)
     setActiveRandomInspection(null)
     setRandomInspectionDraftByItemId({})
@@ -2988,18 +3274,26 @@ function QuickActions({
     setRandomInspectionLoading(false)
     setRandomInspectionHasGeneralIssue(false)
     setRandomInspectionGeneralNote('')
-  }, [])
+  }, [flushRandomInspectionDraft])
 
   const buildRandomInspectionDraft = useCallback((inspection) => {
     const rows = Array.isArray(inspection?.items) ? inspection.items : []
     return rows.reduce((acc, item) => {
       const itemId = normalizeId(item?.id)
       if (!itemId) return acc
+      const locationCounts = (Array.isArray(item?.conteo_ubicaciones) ? item.conteo_ubicaciones : [])
+        .reduce((counts, entry) => {
+          const key = String(entry?.key || '').trim()
+          if (!key || entry?.cantidad_contada == null) return counts
+          counts[key] = String(toPositiveInt(entry.cantidad_contada, 0))
+          return counts
+        }, {})
       acc[itemId] = {
         id: itemId,
         cantidad_reportada_input: item?.cantidad_reportada == null
           ? ''
           : String(toPositiveInt(item?.cantidad_reportada, 0)),
+        cantidad_reportada_por_ubicacion: locationCounts,
         observacion: String(item?.observacion || '').trim(),
       }
       return acc
@@ -3028,6 +3322,110 @@ function QuickActions({
       return acc
     }, {})
   }, [])
+
+  // Adopta lo que dice el servidor para todo lo que no se edito en ESTE
+  // dispositivo (lo editado aca todavia no llego al servidor y es mas nuevo).
+  const applyServerRandomInspection = useCallback((serverInspection) => {
+    if (!serverInspection || typeof serverInspection !== 'object') return
+    const serverVersion = Number(serverInspection?.borrador_version)
+    if (Number.isFinite(serverVersion)) randomInspectionVersionRef.current = serverVersion
+    const dirtyItems = randomInspectionDirtyItemsRef.current
+    const serverDraft = buildRandomInspectionDraft(serverInspection)
+    setActiveRandomInspection((prev) => mergeRandomInspectionFromServer(prev, serverInspection))
+    setRandomInspectionDraftByItemId((prev) => {
+      const next = { ...(prev || {}) }
+      Object.entries(serverDraft).forEach(([itemId, draft]) => {
+        if (dirtyItems.has(itemId)) return
+        next[itemId] = { ...(prev?.[itemId] || {}), ...draft }
+      })
+      return next
+    })
+  }, [buildRandomInspectionDraft])
+
+  const handleRandomInspectionCompletedElsewhere = useCallback(() => {
+    randomInspectionDirtyItemsRef.current = new Map()
+    randomInspectionMetaDirtyRef.current = false
+    closeRandomInspectionModal()
+    toast.current?.show({
+      severity: 'info',
+      summary: 'Inspección aleatoria',
+      detail: 'Esta inspección ya se envió desde otro dispositivo.',
+      life: 4200,
+    })
+    if (token) {
+      void fetchRemindersFromBackend(token)
+        .then((remoteReminders) => setReminders(remoteReminders))
+        .catch(() => {})
+    }
+  }, [closeRandomInspectionModal, token])
+
+  useEffect(() => {
+    randomInspectionApplyServerRef.current = applyServerRandomInspection
+    randomInspectionCompletedElsewhereRef.current = handleRandomInspectionCompletedElsewhere
+  }, [applyServerRandomInspection, handleRandomInspectionCompletedElsewhere])
+
+  // Mientras la inspeccion esta abierta se trae lo que se haya guardado desde
+  // otro dispositivo (antes el modal nunca se refrescaba y se podia enviar
+  // con cantidades viejas). No mueve al usuario de paso: solo actualiza valores.
+  useEffect(() => {
+    if (!isRandomInspectionModalOpen || randomInspectionMode !== 'review' || !token) return undefined
+    if (!activeRandomInspectionId || activeRandomInspectionStatus === 'completada') return undefined
+
+    let cancelled = false
+    let inFlight = false
+    const syncFromServer = async () => {
+      if (cancelled || inFlight || randomInspectionSubmittingRef.current) return
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      inFlight = true
+      try {
+        const response = await authFetch(
+          `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(activeRandomInspectionId)}/`,
+          {},
+          token
+        )
+        if (!response.ok) return
+        const payload = await response.json().catch(() => ({}))
+        const serverInspection = payload?.inspection
+        if (cancelled || !serverInspection || randomInspectionSubmittingRef.current) return
+        if (normalizeId(randomInspectionActiveIdRef.current) !== activeRandomInspectionId) return
+        if (String(serverInspection?.estado || '').trim().toLowerCase() === 'completada') {
+          handleRandomInspectionCompletedElsewhere()
+          return
+        }
+        const serverVersion = Number(serverInspection?.borrador_version)
+        const localVersion = Number(randomInspectionVersionRef.current)
+        if (!Number.isFinite(serverVersion)) return
+        if (Number.isFinite(localVersion) && serverVersion <= localVersion) return
+        // Con cambios propios sin guardar no se pisa nada: al guardarlos el
+        // servidor avisa el conflicto y ahi se combinan.
+        if (randomInspectionDirtyItemsRef.current.size > 0 || randomInspectionSaveTimerRef.current) return
+        applyServerRandomInspection(serverInspection)
+      } catch {
+        // Sin conexion: se reintenta en el siguiente ciclo.
+      } finally {
+        inFlight = false
+      }
+    }
+
+    const intervalId = window.setInterval(() => { void syncFromServer() }, RANDOM_INSPECTION_SYNC_MS)
+    const handleFocus = () => { void syncFromServer() }
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleFocus)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleFocus)
+    }
+  }, [
+    activeRandomInspectionId,
+    activeRandomInspectionStatus,
+    applyServerRandomInspection,
+    handleRandomInspectionCompletedElsewhere,
+    isRandomInspectionModalOpen,
+    randomInspectionMode,
+    token,
+  ])
 
   const enrichRandomInspectionWithProductLocations = useCallback(
     async (inspection) => {
@@ -3073,6 +3471,7 @@ function QuickActions({
           ...item,
           ubicaciones_bodega: locations.map((location) => ({
             sucursal_id: location.sucursal_id,
+            subdivision_id: location.subdivision_id,
             sucursal_nombre: location.sucursal_nombre,
             bodega_nombre: location.bodega_nombre,
             division_nombre: location.division_nombre,
@@ -3151,18 +3550,44 @@ function QuickActions({
           showErrorToast('Esta inspección ya fue enviada y no puede volver a realizarse.')
           return false
         }
+        randomInspectionDirtyItemsRef.current = new Map()
+        randomInspectionMetaDirtyRef.current = false
+        randomInspectionActiveIdRef.current = normalizeId(inspection?.id)
+        const serverVersion = Number(inspection?.borrador_version)
+        randomInspectionVersionRef.current = Number.isFinite(serverVersion) ? serverVersion : null
         setActiveRandomInspection(inspection)
         if (isVerifyReminder) {
           setRandomInspectionDraftByItemId(buildRandomInspectionVerificationDraft(inspection))
         } else {
-          // El servidor es siempre la fuente de verdad. Un borrador guardado solo en
-          // este navegador puede quedar desactualizado si la misma cuenta se usa en
-          // otro dispositivo a la vez (ej. computadora y tablet), y usarlo pisaria
-          // cantidades ya guardadas con datos viejos -- por eso ya no se lee ningun
-          // borrador local, siempre se parte de lo que dice el servidor.
+          // El servidor es siempre la fuente de verdad (incluido el conteo por
+          // ubicacion y en que paso/fase se iba): asi se continua exactamente
+          // donde se quedo, aunque haya sido en otro dispositivo.
           setRandomInspectionDraftByItemId(buildRandomInspectionDraft(inspection))
           const serverStep = toPositiveInt(inspection?.borrador_paso_actual, 0)
           if (serverStep > 0) setRandomInspectionStepIndex(serverStep)
+          const serverPhase = String(inspection?.borrador_fase || '').trim().toLowerCase()
+          if (inspection?.conteo_revelado && (serverPhase === 'resumen' || serverPhase === 'correccion')) {
+            setRandomInspectionShowSummary(true)
+            if (serverPhase === 'correccion') {
+              setRandomInspectionCorrectionIndex(toPositiveInt(inspection?.borrador_indice_correccion, 0))
+              setRandomInspectionCorrectionActive(true)
+            }
+          }
+          if (inspection?.borrador_tiene_novedad) {
+            setRandomInspectionHasGeneralIssue(true)
+            setRandomInspectionGeneralNote(String(inspection?.borrador_nota_general || ''))
+          }
+          randomInspectionLastSentMetaRef.current = JSON.stringify({
+            paso_actual: serverStep,
+            fase: inspection?.conteo_revelado && serverPhase === 'correccion'
+              ? 'correccion'
+              : (inspection?.conteo_revelado && serverPhase === 'resumen' ? 'resumen' : 'conteo'),
+            indice_correccion: serverPhase === 'correccion'
+              ? toPositiveInt(inspection?.borrador_indice_correccion, 0)
+              : 0,
+            tiene_novedad: Boolean(inspection?.borrador_tiene_novedad),
+            nota_general: inspection?.borrador_tiene_novedad ? String(inspection?.borrador_nota_general || '') : '',
+          })
         }
         return true
       } catch (error) {
@@ -3930,29 +4355,52 @@ function QuickActions({
         [normalizedItemId]: next,
       }
     })
-  }, [])
+    if (field === 'cantidad_reportada' || field === 'observacion') {
+      markRandomInspectionItemDirty(normalizedItemId)
+    }
+  }, [markRandomInspectionItemDirty])
 
-  const saveInspectionDraftToBackend = useCallback(async (stepIndex) => {
-    const inspectionId = normalizeId(activeRandomInspection?.id)
-    if (!token || !inspectionId) return
-    const itemsPayload = randomInspectionRows.map((row) => ({
-      id: Number(normalizeId(row?.row_id || row?.id)),
-      cantidad_reportada: row?.cantidad_reportada ?? null,
-      observacion: String(row?.observacion || '').trim(),
-    }))
+  // Antes mandaba TODOS los productos en cada paso: un dispositivo con datos
+  // viejos borraba lo contado en el otro. Ahora solo va lo que cambio aca.
+  const saveInspectionDraftToBackend = useCallback(
+    (stepIndex) => flushRandomInspectionDraft({ meta: { paso_actual: stepIndex, fase: 'conteo' } }),
+    [flushRandomInspectionDraft]
+  )
+
+  // Al terminar el conteo a ciegas: se guarda todo, el servidor fija el
+  // primer conteo y recien ahi devuelve el inventario esperado (el actual).
+  const revealRandomInspectionSummary = useCallback(async (stepIndex) => {
+    setRandomInspectionRevealing(true)
+    setRandomInspectionError('')
     try {
-      await authFetch(
-        `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/borrador/`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({ paso_actual: stepIndex, items: itemsPayload }),
-        },
-        token
-      )
-    } catch {}
-  }, [activeRandomInspection, randomInspectionRows, token])
+      const alreadyRevealed = Boolean(activeRandomInspection?.conteo_revelado)
+      const result = await flushRandomInspectionDraft({
+        includeAllItems: true,
+        reveal: !alreadyRevealed,
+        includeInspection: true,
+        meta: { paso_actual: stepIndex, fase: 'resumen' },
+      })
+      if (result?.completed) return
+      if (!result?.ok) {
+        setRandomInspectionError(
+          result?.conflict
+            ? RANDOM_INSPECTION_CONFLICT_MESSAGE
+            : (
+              String(result?.payload?.detail || '').trim() ||
+              'No se pudo cargar el resultado del conteo. Revisa tu conexión e inténtalo de nuevo.'
+            )
+        )
+        return
+      }
+      if (result?.payload?.inspection) applyServerRandomInspection(result.payload.inspection)
+      setRandomInspectionShowSummary(true)
+    } finally {
+      setRandomInspectionRevealing(false)
+    }
+  }, [activeRandomInspection?.conteo_revelado, applyServerRandomInspection, flushRandomInspectionDraft])
 
   const handleAdvanceRandomInspectionStep = useCallback(() => {
+    if (randomInspectionRevealing || randomInspectionSubmitting) return
     const rowsForStep = randomInspectionCorrectionActive
       ? randomInspectionRowsToVerify
       : randomInspectionRows
@@ -3983,8 +4431,7 @@ function QuickActions({
     }
 
     if (activeRandomInspectionStepIndex >= rowsForStep.length - 1) {
-      setRandomInspectionShowSummary(true)
-      void saveInspectionDraftToBackend(activeRandomInspectionStepIndex)
+      void revealRandomInspectionSummary(activeRandomInspectionStepIndex)
       return
     }
     const nextStep = activeRandomInspectionStepIndex + 1
@@ -3994,8 +4441,11 @@ function QuickActions({
     activeRandomInspectionRow,
     activeRandomInspectionStepIndex,
     randomInspectionCorrectionActive,
+    randomInspectionRevealing,
     randomInspectionRows,
     randomInspectionRowsToVerify,
+    randomInspectionSubmitting,
+    revealRandomInspectionSummary,
     saveInspectionDraftToBackend,
   ])
 
@@ -4052,7 +4502,8 @@ function QuickActions({
         },
       }
     })
-  }, [])
+    markRandomInspectionItemDirty(normalizedItemId)
+  }, [markRandomInspectionItemDirty])
 
   const handleSubmitRandomInspection = useCallback(
     async () => {
@@ -4091,21 +4542,18 @@ function QuickActions({
             : 'no_coincide'
         )
 
+        // Siempre la cantidad realmente contada: el servidor decide si
+        // coincide comparandola con el stock del sistema en este momento.
         const payloadRow = {
-          id: Number(rowId),
+          ...buildRandomInspectionItemDraftPayload(row),
           estado_revision: normalizedEstadoRevision,
-          observacion: String(row?.observacion || '').trim(),
+          cantidad_reportada: toPositiveInt(row?.cantidad_reportada, -1),
         }
-        if (normalizedEstadoRevision === 'no_coincide') {
-          payloadRow.cantidad_reportada = toPositiveInt(row?.cantidad_reportada, -1)
-          if (payloadRow.cantidad_reportada < 0) {
-            setRandomInspectionError(
-              `Debes indicar la cantidad real para ${row?.producto_nombre || row?.producto_codigo || `item ${rowId}`}.`
-            )
-            return
-          }
-        } else {
-          payloadRow.cantidad_reportada = toPositiveInt(row?.cantidad_esperada, 0)
+        if (payloadRow.cantidad_reportada < 0) {
+          setRandomInspectionError(
+            `Debes indicar la cantidad real para ${row?.producto_nombre || row?.producto_codigo || `item ${rowId}`}.`
+          )
+          return
         }
         itemsPayload.push(payloadRow)
       }
@@ -4118,19 +4566,44 @@ function QuickActions({
 
       setRandomInspectionError('')
       setRandomInspectionSubmitting(true)
+      randomInspectionSubmittingRef.current = true
       try {
+        // Primero lo que falte guardar de este dispositivo (y, si otro
+        // dispositivo cambio algo, se detecta aca y se combina).
+        const flushResult = await flushRandomInspectionDraft()
+        if (flushResult?.completed) return
+        if (flushResult?.conflict) {
+          setRandomInspectionError(RANDOM_INSPECTION_CONFLICT_MESSAGE)
+          return
+        }
+
         const response = await authFetch(
           `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/responder/`,
           {
             method: 'POST',
-            body: JSON.stringify({ items: itemsPayload, nota_general: generalNote }),
+            body: JSON.stringify({
+              items: itemsPayload,
+              nota_general: generalNote,
+              version: randomInspectionVersionRef.current,
+            }),
           },
           token
         )
         const payload = await response.json().catch(() => ({}))
+        if (response.status === 409 && payload?.completed) {
+          handleRandomInspectionCompletedElsewhere()
+          return
+        }
+        if (response.status === 409 && payload?.conflict) {
+          // Otro dispositivo guardo cantidades distintas: no se envia con
+          // datos viejos; se cargan los del servidor para revisarlos.
+          if (payload?.inspection) applyServerRandomInspection(payload.inspection)
+          setRandomInspectionError(RANDOM_INSPECTION_CONFLICT_MESSAGE)
+          return
+        }
         if (!response.ok) {
           throw new Error(
-            String(payload?.detail || '').trim() || 'No se pudo guardar la inspecci\u00f3n.'
+            String(payload?.detail || '').trim() || 'No se pudo guardar la inspección.'
           )
         }
 
@@ -4138,33 +4611,39 @@ function QuickActions({
         if (mismatchCount > 0) {
           toast.current?.show({
             severity: 'warn',
-            summary: 'Inspecci\u00f3n registrada',
-            detail: `Se reportaron ${mismatchCount} diferencia(s). Se notific\u00f3 a administraci\u00f3n para verificar.`,
+            summary: 'Inspección registrada',
+            detail: `Se reportaron ${mismatchCount} diferencia(s). Se notificó a administración para verificar.`,
             life: 4200,
           })
         } else {
           toast.current?.show({
             severity: 'success',
-            summary: 'Inspecci\u00f3n registrada',
-            detail: 'La inspecci\u00f3n se guard\u00f3 correctamente.',
+            summary: 'Inspección registrada',
+            detail: 'La inspección se guardó correctamente.',
             life: 3200,
           })
         }
 
+        randomInspectionDirtyItemsRef.current = new Map()
+        randomInspectionMetaDirtyRef.current = false
         closeRandomInspectionModal()
         const remoteReminders = await fetchRemindersFromBackend(token)
         setReminders(remoteReminders)
       } catch (error) {
         setRandomInspectionError(
-          error?.message || 'No se pudo guardar la inspecci\u00f3n.'
+          error?.message || 'No se pudo guardar la inspección.'
         )
       } finally {
+        randomInspectionSubmittingRef.current = false
         setRandomInspectionSubmitting(false)
       }
     },
     [
       activeRandomInspection,
+      applyServerRandomInspection,
       closeRandomInspectionModal,
+      flushRandomInspectionDraft,
+      handleRandomInspectionCompletedElsewhere,
       randomInspectionRows,
       randomInspectionHasGeneralIssue,
       randomInspectionGeneralNote,
@@ -5220,6 +5699,7 @@ function QuickActions({
                 }}
                 disabled={
                   randomInspectionSubmitting ||
+                  randomInspectionRevealing ||
                   randomInspectionLoading ||
                   (!isRandomInspectionVerifyMode && isRandomInspectionAlreadyCompleted) ||
                   (

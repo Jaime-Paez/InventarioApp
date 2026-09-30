@@ -1,3 +1,4 @@
+import math
 import random
 import re
 import json
@@ -859,6 +860,7 @@ RANDOM_INSPECTION_START_HOUR = 9
 RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY = 5
 RANDOM_INSPECTION_MIN_ITEMS_PER_DAY = 1
 RANDOM_INSPECTION_MAX_ITEMS_PER_DAY = 200
+RANDOM_INSPECTION_ROTATION_DAYS = 90
 
 
 def _normalize_int(value, default=0):
@@ -930,15 +932,20 @@ def _get_random_inspection_branch_ids_for_user(user):
     return branch_ids.intersection(allowed_branch_ids)
 
 
-def _collect_random_inspection_candidates(user):
-    allowed_branch_ids = _get_random_inspection_branch_ids_for_user(user)
-    if not allowed_branch_ids:
-        return []
+def _collect_inspection_candidates(*, branch_ids=None, division_id=None):
+    """Productos contables en el alcance dado (sucursales y/o division).
 
-    queryset = Inventario.objects.filter(cantidad__gt=0)
-    queryset = queryset.filter(
-        subdivision__division__bodega__sucursal_id__in=sorted(allowed_branch_ids)
-    )
+    Incluye tambien los productos que el sistema tiene en 0 pero con fila de
+    inventario en el alcance (`sin_stock`): son justo los que nunca se
+    revisaban y donde suele esconderse una entrada no registrada.
+    """
+    queryset = Inventario.objects.all()
+    if branch_ids is not None:
+        queryset = queryset.filter(
+            subdivision__division__bodega__sucursal_id__in=sorted(branch_ids)
+        )
+    if division_id is not None:
+        queryset = queryset.filter(subdivision__division_id=division_id)
 
     rows = (
         queryset.values(
@@ -947,6 +954,7 @@ def _collect_random_inspection_candidates(user):
             "producto_id",
             "producto__codigo",
             "producto__nombre",
+            "producto__precio",
         )
         .annotate(cantidad_esperada=Sum("cantidad"))
         .order_by(
@@ -962,9 +970,13 @@ def _collect_random_inspection_candidates(user):
             0,
         )
         producto_id = _normalize_int(row.get("producto_id"), 0)
-        cantidad_esperada = _normalize_int(row.get("cantidad_esperada"), 0)
-        if sucursal_id <= 0 or producto_id <= 0 or cantidad_esperada <= 0:
+        cantidad_esperada = max(0, _normalize_int(row.get("cantidad_esperada"), 0))
+        if sucursal_id <= 0 or producto_id <= 0:
             continue
+        try:
+            precio = float(row.get("producto__precio") or 0)
+        except (TypeError, ValueError):
+            precio = 0.0
         candidates.append(
             {
                 "sucursal_id": sucursal_id,
@@ -977,95 +989,45 @@ def _collect_random_inspection_candidates(user):
                 "producto_nombre": _normalize_text(row.get("producto__nombre"))
                 or f"Producto {producto_id}",
                 "cantidad_esperada": cantidad_esperada,
+                "sin_stock": cantidad_esperada <= 0,
+                "valor_stock": max(0.0, precio) * cantidad_esperada,
             }
         )
     return candidates
 
 
+def _collect_random_inspection_candidates(user):
+    allowed_branch_ids = _get_random_inspection_branch_ids_for_user(user)
+    if not allowed_branch_ids:
+        return []
+    return _collect_inspection_candidates(branch_ids=allowed_branch_ids)
+
+
 def _collect_branch_inspection_candidates(branch_id):
     """Collect inventory candidates for a single branch."""
-    queryset = Inventario.objects.filter(
-        cantidad__gt=0,
-        subdivision__division__bodega__sucursal_id=branch_id,
-    )
-    rows = (
-        queryset.values(
-            "subdivision__division__bodega__sucursal_id",
-            "subdivision__division__bodega__sucursal__nombre",
-            "producto_id",
-            "producto__codigo",
-            "producto__nombre",
-        )
-        .annotate(cantidad_esperada=Sum("cantidad"))
-        .order_by("producto_id")
-    )
-    candidates = []
-    for row in rows:
-        sucursal_id = _normalize_int(row.get("subdivision__division__bodega__sucursal_id"), 0)
-        producto_id = _normalize_int(row.get("producto_id"), 0)
-        cantidad_esperada = _normalize_int(row.get("cantidad_esperada"), 0)
-        if sucursal_id <= 0 or producto_id <= 0 or cantidad_esperada <= 0:
-            continue
-        candidates.append({
-            "sucursal_id": sucursal_id,
-            "sucursal_nombre": _normalize_text(
-                row.get("subdivision__division__bodega__sucursal__nombre")
-            ) or f"Sucursal {sucursal_id}",
-            "producto_id": producto_id,
-            "producto_codigo": _normalize_text(row.get("producto__codigo")),
-            "producto_nombre": _normalize_text(row.get("producto__nombre")) or f"Producto {producto_id}",
-            "cantidad_esperada": cantidad_esperada,
-        })
-    return candidates
+    return _collect_inspection_candidates(branch_ids={int(branch_id)})
 
 
 def _collect_division_inspection_candidates(division_id):
     """Collect inventory candidates for a single division (todas sus subdivisiones)."""
-    queryset = Inventario.objects.filter(
-        cantidad__gt=0,
-        subdivision__division_id=division_id,
-    )
-    rows = (
-        queryset.values(
-            "subdivision__division__bodega__sucursal_id",
-            "subdivision__division__bodega__sucursal__nombre",
-            "producto_id",
-            "producto__codigo",
-            "producto__nombre",
-        )
-        .annotate(cantidad_esperada=Sum("cantidad"))
-        .order_by("producto_id")
-    )
-    candidates = []
-    for row in rows:
-        sucursal_id = _normalize_int(row.get("subdivision__division__bodega__sucursal_id"), 0)
-        producto_id = _normalize_int(row.get("producto_id"), 0)
-        cantidad_esperada = _normalize_int(row.get("cantidad_esperada"), 0)
-        if sucursal_id <= 0 or producto_id <= 0 or cantidad_esperada <= 0:
-            continue
-        candidates.append({
-            "sucursal_id": sucursal_id,
-            "sucursal_nombre": _normalize_text(
-                row.get("subdivision__division__bodega__sucursal__nombre")
-            ) or f"Sucursal {sucursal_id}",
-            "producto_id": producto_id,
-            "producto_codigo": _normalize_text(row.get("producto__codigo")),
-            "producto_nombre": _normalize_text(row.get("producto__nombre")) or f"Producto {producto_id}",
-            "cantidad_esperada": cantidad_esperada,
-        })
-    return candidates
+    return _collect_inspection_candidates(division_id=int(division_id))
 
 
-def _collect_random_inspection_history(user):
-    # Only count completed inspections (not pending ones)
+def _collect_random_inspection_history(branch_ids):
+    """Historial GLOBAL (de cualquier revisor) por (sucursal, producto).
+
+    Antes era por usuario: dos revisores de la misma sucursal repetian los
+    mismos productos mientras otros nunca se contaban.
+    """
+    queryset = InspeccionAleatoriaItem.objects.exclude(
+        estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
+    ).exclude(
+        verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
+    )
+    if branch_ids is not None:
+        queryset = queryset.filter(sucursal_id__in=sorted(branch_ids))
     rows = (
-        InspeccionAleatoriaItem.objects.filter(
-            inspeccion__usuario=user
-        ).exclude(
-            estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
-        ).exclude(
-            verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
-        ).values("sucursal_id", "producto_id")
+        queryset.values("sucursal_id", "producto_id")
         .annotate(total_revisiones=Count("id"), ultima_revision=Max("revisado_en"))
     )
     history = {}
@@ -1081,64 +1043,139 @@ def _collect_random_inspection_history(user):
     return history
 
 
+def _collect_random_inspection_rotation(branch_ids, scheduled_date):
+    """Unidades que salieron por (sucursal, producto) en los ultimos 90 dias."""
+    from movimientos.models import DetalleMovimiento  # Import tardio para evitar ciclos
+
+    queryset = DetalleMovimiento.objects.filter(
+        movimiento_inventario__fecha__gte=scheduled_date - timedelta(days=RANDOM_INSPECTION_ROTATION_DAYS),
+        movimiento_inventario__tipo_movimiento__nombre__istartswith="sal",
+    )
+    if branch_ids is not None:
+        queryset = queryset.filter(movimiento_inventario__sucursal_id__in=sorted(branch_ids))
+    rows = queryset.values("movimiento_inventario__sucursal_id", "producto_id").annotate(
+        total=Sum("cantidad")
+    )
+    return {
+        (
+            _normalize_int(row.get("movimiento_inventario__sucursal_id"), 0),
+            _normalize_int(row.get("producto_id"), 0),
+        ): max(0, _normalize_int(row.get("total"), 0))
+        for row in rows
+    }
+
+
+def _random_inspection_candidate_weight(candidate, rotation):
+    """Peso tipo ABC: lo que mas se mueve o mas vale sale mas seguido."""
+    key = (candidate["sucursal_id"], candidate["producto_id"])
+    units_out = rotation.get(key, 0)
+    stock_value = float(candidate.get("valor_stock") or 0)
+    return 1.0 + math.log1p(units_out) + 0.5 * math.log1p(stock_value / 10.0)
+
+
+def _get_random_inspection_keys_assigned_on(scheduled_date, *, exclude_user_id=None):
+    queryset = InspeccionAleatoriaItem.objects.filter(
+        inspeccion__fecha_programada=scheduled_date
+    )
+    if exclude_user_id is not None:
+        queryset = queryset.exclude(inspeccion__usuario_id=exclude_user_id)
+    return {
+        (int(sucursal_id), int(producto_id))
+        for sucursal_id, producto_id in queryset.values_list("sucursal_id", "producto_id")
+    }
+
+
 def _select_random_inspection_candidates(
     user,
     scheduled_date,
     candidates,
     *,
     items_per_day=RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY,
+    excluded_keys=None,
 ):
+    excluded_keys = excluded_keys or set()
+    candidates = [
+        candidate
+        for candidate in (candidates or [])
+        if (candidate["sucursal_id"], candidate["producto_id"]) not in excluded_keys
+    ]
     if not candidates:
         return []
 
-    history = _collect_random_inspection_history(user)
-    ordered = []
-    for candidate in candidates:
-        key = (candidate["sucursal_id"], candidate["producto_id"])
-        stats = history.get(key, {})
-        total_revisiones = _normalize_int(stats.get("total_revisiones"), 0)
-        last_reviewed = stats.get("ultima_revision")
-        last_ts = 0.0
-        if isinstance(last_reviewed, datetime):
-            aware = last_reviewed
-            if timezone.is_naive(aware):
-                aware = timezone.make_aware(aware, timezone.get_current_timezone())
-            last_ts = aware.timestamp()
-        ordered.append((total_revisiones, last_ts, candidate))
-
-    ordered.sort(key=lambda row: (row[0], row[1]))
     resolved_items_per_day = _normalize_int(
         items_per_day,
         RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY,
     )
     resolved_items_per_day = max(RANDOM_INSPECTION_MIN_ITEMS_PER_DAY, resolved_items_per_day)
     resolved_items_per_day = min(RANDOM_INSPECTION_MAX_ITEMS_PER_DAY, resolved_items_per_day)
-    target_count = min(resolved_items_per_day, len(ordered))
+    target_count = min(resolved_items_per_day, len(candidates))
     if target_count <= 0:
         return []
 
-    pool_size = min(len(ordered), max(target_count * 4, target_count))
-    pool = [row[2] for row in ordered[:pool_size]]
-
+    branch_ids = {candidate["sucursal_id"] for candidate in candidates}
+    history = _collect_random_inspection_history(branch_ids)
+    rotation = _collect_random_inspection_rotation(branch_ids, scheduled_date)
     rng = random.Random(f"{user.id}-{scheduled_date.isoformat()}-{len(candidates)}")
-    rng.shuffle(pool)
 
-    selected = pool[:target_count]
-    if len(selected) < target_count:
-        selected_keys = {
-            (item["sucursal_id"], item["producto_id"])
-            for item in selected
-        }
-        for _, _, candidate in ordered:
+    def _ordered(group):
+        # Primero lo menos revisado (por cualquiera) y lo revisado hace mas
+        # tiempo; entre empates, sorteo ponderado (Efraimidis-Spirakis) en vez
+        # del orden por id, que antes sesgaba siempre a los productos viejos.
+        ordered = []
+        for candidate in group:
             key = (candidate["sucursal_id"], candidate["producto_id"])
-            if key in selected_keys:
-                continue
-            selected.append(candidate)
-            selected_keys.add(key)
-            if len(selected) >= target_count:
-                break
+            stats = history.get(key, {})
+            total_revisiones = _normalize_int(stats.get("total_revisiones"), 0)
+            last_reviewed = stats.get("ultima_revision")
+            last_ts = 0.0
+            if isinstance(last_reviewed, datetime):
+                aware = last_reviewed
+                if timezone.is_naive(aware):
+                    aware = timezone.make_aware(aware, timezone.get_current_timezone())
+                last_ts = aware.timestamp()
+            weight = _random_inspection_candidate_weight(candidate, rotation)
+            lottery = rng.random() ** (1.0 / weight)
+            ordered.append((total_revisiones, last_ts, -lottery, candidate))
+        ordered.sort(key=lambda row: (row[0], row[1], row[2]))
+        return [row[3] for row in ordered]
 
-    return selected
+    stocked = _ordered([candidate for candidate in candidates if not candidate.get("sin_stock")])
+    without_stock = _ordered([candidate for candidate in candidates if candidate.get("sin_stock")])
+
+    zero_slots = min(len(without_stock), (target_count + 2) // 5)
+    unique = stocked[: target_count - zero_slots] + without_stock[:zero_slots]
+    seen = {(candidate["sucursal_id"], candidate["producto_id"]) for candidate in unique}
+    # Si un grupo no alcanza, se completa con el otro.
+    for candidate in stocked + without_stock:
+        if len(unique) >= target_count:
+            break
+        key = (candidate["sucursal_id"], candidate["producto_id"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(candidate)
+    rng.shuffle(unique)
+    return unique[:target_count]
+
+
+def _stocked_candidate_keys(candidates):
+    # La cobertura se mide sobre lo que hay en stock (como siempre); los
+    # productos en 0 que ahora tambien se sortean no inflan el denominador.
+    return {
+        (candidate["sucursal_id"], candidate["producto_id"])
+        for candidate in candidates
+        if not candidate.get("sin_stock")
+    }
+
+
+def _build_random_inspection_item(inspection, candidate, *, sucursal_id=None):
+    cantidad = int(candidate["cantidad_esperada"])
+    return InspeccionAleatoriaItem(
+        inspeccion=inspection,
+        sucursal_id=int(sucursal_id if sucursal_id is not None else candidate["sucursal_id"]),
+        producto_id=int(candidate["producto_id"]),
+        cantidad_esperada=cantidad,
+        cantidad_esperada_inicial=cantidad,
+    )
 
 
 def _calculate_random_inspection_coverage(user, candidate_keys):
@@ -1303,6 +1340,13 @@ def _ensure_daily_random_inspection_for_user(user, store):
 
     changed_payload = False
     if inspection is None:
+        # Si el admin ya le mando una inspeccion hoy ("enviar ahora" o por
+        # division), no se le suma ademas la automatica: era trabajo doble.
+        if InspeccionAleatoriaDiaria.objects.filter(
+            usuario=user, fecha_programada=scheduled_date
+        ).exists():
+            return None, False
+
         candidates = _collect_random_inspection_candidates(user)
         if not candidates:
             return None, False
@@ -1313,15 +1357,16 @@ def _ensure_daily_random_inspection_for_user(user, store):
             scheduled_date,
             candidates,
             items_per_day=items_per_day,
+            excluded_keys=_get_random_inspection_keys_assigned_on(
+                scheduled_date, exclude_user_id=user.id
+            ),
         )
         if not selected:
             return None, False
 
-        candidate_keys = {
-            (candidate["sucursal_id"], candidate["producto_id"])
-            for candidate in candidates
-        }
-        coverage = _calculate_random_inspection_coverage(user, candidate_keys)
+        coverage = _calculate_random_inspection_coverage(
+            user, _stocked_candidate_keys(candidates)
+        )
 
         inspection = InspeccionAleatoriaDiaria.objects.create(
             usuario=user,
@@ -1332,17 +1377,9 @@ def _ensure_daily_random_inspection_for_user(user, store):
             cobertura_porcentaje=coverage,
         )
 
-        items = []
-        for row in selected:
-            items.append(
-                InspeccionAleatoriaItem(
-                    inspeccion=inspection,
-                    sucursal_id=int(row["sucursal_id"]),
-                    producto_id=int(row["producto_id"]),
-                    cantidad_esperada=int(row["cantidad_esperada"]),
-                )
-            )
-        InspeccionAleatoriaItem.objects.bulk_create(items)
+        InspeccionAleatoriaItem.objects.bulk_create(
+            [_build_random_inspection_item(inspection, row) for row in selected]
+        )
 
     time_str = f"{hora_config.hour:02d}:{hora_config.minute:02d}"
     changed_payload = _upsert_random_inspection_reminder(
@@ -1353,6 +1390,66 @@ def _ensure_daily_random_inspection_for_user(user, store):
         time_str=time_str,
     )
     return inspection, changed_payload
+
+
+def _purge_orphan_random_inspection_reminders(store):
+    """Quita recordatorios de inspecciones que ya no existen en la base.
+
+    Si una inspeccion se borra (p. ej. desde el admin de Django o un script),
+    su recordatorio -- y sobre todo el de "verificar diferencias" -- quedaba
+    pendiente para siempre y no habia forma de cerrarlo desde la app.
+    """
+    payload = store.payload if isinstance(store.payload, list) else []
+    inspection_kinds = {RANDOM_INSPECTION_KIND, RANDOM_INSPECTION_VERIFY_KIND}
+
+    def _inspection_id(reminder):
+        if not isinstance(reminder, dict):
+            return None
+        if _normalize_id(reminder.get("kind")) not in inspection_kinds:
+            return None
+        context = reminder.get("context") if isinstance(reminder.get("context"), dict) else {}
+        if _normalize_context_type(context.get("type")) != RANDOM_INSPECTION_CONTEXT_TYPE:
+            return None
+        inspection_id = _normalize_int(context.get("id"), 0)
+        return inspection_id if inspection_id > 0 else None
+
+    referenced_ids = {inspection_id for inspection_id in map(_inspection_id, payload) if inspection_id}
+    if not referenced_ids:
+        return False
+    existing_ids = set(
+        InspeccionAleatoriaDiaria.objects.filter(pk__in=referenced_ids).values_list("id", flat=True)
+    )
+    if referenced_ids <= existing_ids:
+        return False
+    store.payload = [
+        reminder
+        for reminder in payload
+        if _inspection_id(reminder) is None or _inspection_id(reminder) in existing_ids
+    ]
+    return True
+
+
+def _ensure_daily_random_inspections_for_all_users(store):
+    """Genera la inspeccion del dia a TODOS los revisores habilitados.
+
+    Antes solo se creaba cuando el propio revisor abria la app, asi que quien
+    no entraba no tenia inspeccion y el resumen del admin no lo mostraba como
+    pendiente (parecia que "todos completaron"). Se invoca desde el sondeo de
+    recordatorios de cualquier usuario; debe llamarse con `store` bloqueado.
+    """
+    changed = False
+    preferences = (
+        UsuarioPreferencia.objects.filter(
+            inspeccion_aleatoria=True,
+            usuario__is_active=True,
+        )
+        .select_related("usuario")
+        .order_by("usuario_id")
+    )
+    for preference in preferences:
+        _, user_changed = _ensure_daily_random_inspection_for_user(preference.usuario, store)
+        changed = changed or user_changed
+    return changed
 
 
 def _ensure_all_admin_summaries(user, store):
@@ -1398,8 +1495,74 @@ def _ensure_all_admin_summaries(user, store):
     return changed
 
 
-def _serialize_random_inspection_item(item):
+def _inspection_division_scope(inspection):
+    """Division a la que se limita el conteo (solo inspecciones por division)."""
+    if inspection is not None and getattr(inspection, "es_por_division", False):
+        return getattr(inspection, "division_id", None)
+    return None
+
+
+def _inspection_stock_queryset(*, branch_ids, product_ids, division_id=None):
+    queryset = Inventario.objects.filter(
+        producto_id__in=sorted(product_ids),
+        subdivision__division__bodega__sucursal_id__in=sorted(branch_ids),
+    )
+    if division_id is not None:
+        queryset = queryset.filter(subdivision__division_id=division_id)
+    return queryset
+
+
+def _live_expected_quantities(items, *, division_id=None):
+    """Stock actual del sistema por (sucursal, producto) en el alcance.
+
+    Es contra esto que se compara el conteo: la foto tomada al generar la
+    inspeccion queda vieja apenas hay una venta o una entrada, y ajustar con
+    ella duplicaba esos movimientos al aprobar una diferencia.
+    """
+    keys = {
+        (int(item.sucursal_id), int(item.producto_id))
+        for item in items
+        if getattr(item, "sucursal_id", None) and getattr(item, "producto_id", None)
+    }
+    if not keys:
+        return {}
+    rows = (
+        _inspection_stock_queryset(
+            branch_ids={branch_id for branch_id, _ in keys},
+            product_ids={product_id for _, product_id in keys},
+            division_id=division_id,
+        )
+        .values("subdivision__division__bodega__sucursal_id", "producto_id")
+        .annotate(total=Sum("cantidad"))
+    )
+    quantities = {key: 0 for key in keys}
+    for row in rows:
+        key = (
+            _normalize_int(row.get("subdivision__division__bodega__sucursal_id"), 0),
+            _normalize_int(row.get("producto_id"), 0),
+        )
+        if key in quantities:
+            quantities[key] = max(0, _normalize_int(row.get("total"), 0))
+    return quantities
+
+
+def _serialize_random_inspection_item(item, *, hide_expected=False, live_expected=None):
     location_payload = getattr(item, "_inspection_location_payload", None) or {}
+    locations = location_payload.get("ubicaciones_bodega", []) or []
+    location_text = _normalize_text(location_payload.get("ubicacion_bodega"))
+    expected = int(item.cantidad_esperada or 0) if live_expected is None else int(live_expected)
+    conteo_ubicaciones = item.conteo_ubicaciones if isinstance(item.conteo_ubicaciones, list) else []
+    if hide_expected:
+        # Conteo a ciegas: hasta que el revisor termina el primer conteo no se
+        # le manda ninguna cantidad del sistema (ni total ni por ubicacion).
+        expected = None
+        locations = [{**location, "cantidad": None} for location in locations]
+        location_text = "\n".join(location.get("label", "") for location in locations)
+        conteo_ubicaciones = [
+            {**entry, "cantidad_sistema": None}
+            for entry in conteo_ubicaciones
+            if isinstance(entry, dict)
+        ]
     return {
         "id": int(item.id),
         "sucursal_id": int(item.sucursal_id),
@@ -1413,15 +1576,26 @@ def _serialize_random_inspection_item(item):
         "producto_nombre": _normalize_text(
             getattr(getattr(item, "producto", None), "nombre", "")
         ),
-        "ubicacion_bodega": _normalize_text(location_payload.get("ubicacion_bodega")),
-        "ubicaciones_bodega": location_payload.get("ubicaciones_bodega", []) or [],
-        "cantidad_esperada": int(item.cantidad_esperada or 0),
+        "ubicacion_bodega": location_text,
+        "ubicaciones_bodega": locations,
+        "cantidad_esperada": expected,
+        "cantidad_esperada_inicial": (
+            int(item.cantidad_esperada_inicial)
+            if item.cantidad_esperada_inicial is not None and not hide_expected
+            else None
+        ),
         "estado_revision": str(item.estado_revision or "").strip(),
         "cantidad_reportada": (
             int(item.cantidad_reportada)
             if item.cantidad_reportada is not None
             else None
         ),
+        "cantidad_primer_conteo": (
+            int(item.cantidad_primer_conteo)
+            if item.cantidad_primer_conteo is not None
+            else None
+        ),
+        "conteo_ubicaciones": conteo_ubicaciones,
         "observacion": _normalize_text(item.observacion),
         "revisado_en": _parse_iso_timestamp(item.revisado_en),
         "verificacion_estado": str(item.verificacion_estado or "").strip(),
@@ -1438,7 +1612,7 @@ def _serialize_random_inspection_item(item):
     }
 
 
-def _attach_random_inspection_locations(items):
+def _attach_random_inspection_locations(items, *, division_id=None):
     inspection_items = list(items or [])
     if not inspection_items:
         return inspection_items
@@ -1451,16 +1625,15 @@ def _attach_random_inspection_locations(items):
     if not target_keys:
         return inspection_items
 
-    branch_ids = sorted({branch_id for branch_id, _ in target_keys})
-    product_ids = sorted({product_id for _, product_id in target_keys})
     rows = (
-        Inventario.objects.filter(
-            cantidad__gt=0,
-            producto_id__in=product_ids,
-            subdivision__division__bodega__sucursal_id__in=branch_ids,
+        _inspection_stock_queryset(
+            branch_ids={branch_id for branch_id, _ in target_keys},
+            product_ids={product_id for _, product_id in target_keys},
+            division_id=division_id,
         )
         .values(
             "producto_id",
+            "subdivision_id",
             "subdivision__division__bodega__sucursal_id",
             "subdivision__division__bodega__sucursal__nombre",
             "subdivision__division__bodega__nombre",
@@ -1474,10 +1647,12 @@ def _attach_random_inspection_locations(items):
             "subdivision__division__bodega__nombre",
             "subdivision__division__nombre",
             "subdivision__nombre",
+            "subdivision_id",
         )
     )
 
-    location_map = {}
+    stocked_map = {}
+    empty_map = {}
     for row in rows:
         branch_id = _normalize_int(row.get("subdivision__division__bodega__sucursal_id"), 0)
         product_id = _normalize_int(row.get("producto_id"), 0)
@@ -1491,16 +1666,20 @@ def _attach_random_inspection_locations(items):
         bodega_nombre = _normalize_text(row.get("subdivision__division__bodega__nombre"))
         division_nombre = _normalize_text(row.get("subdivision__division__nombre"))
         subdivision_nombre = _normalize_text(row.get("subdivision__nombre"))
-        cantidad_total = _normalize_int(row.get("cantidad_total"), 0)
+        cantidad_total = max(0, _normalize_int(row.get("cantidad_total"), 0))
 
         parts = [part for part in [bodega_nombre, division_nombre, subdivision_nombre] if part]
         if not parts:
             continue
 
-        location_map.setdefault(key, []).append(
+        # Los productos en 0 no tienen ubicacion "con stock": se muestran las
+        # filas vacias que tienen para saber donde buscarlos.
+        target_map = stocked_map if cantidad_total > 0 else empty_map
+        target_map.setdefault(key, []).append(
             {
                 "sucursal_id": branch_id,
                 "producto_id": product_id,
+                "subdivision_id": _normalize_int(row.get("subdivision_id"), 0) or None,
                 "sucursal_nombre": sucursal_nombre,
                 "bodega_nombre": bodega_nombre,
                 "division_nombre": division_nombre,
@@ -1512,7 +1691,7 @@ def _attach_random_inspection_locations(items):
 
     for item in inspection_items:
         key = (int(item.sucursal_id), int(item.producto_id))
-        locations = location_map.get(key, [])
+        locations = stocked_map.get(key) or empty_map.get(key, [])
         item._inspection_location_payload = {
             "ubicacion_bodega": "\n".join(
                 f'{location["label"]} ({int(location["cantidad"])} uds)'
@@ -1524,11 +1703,35 @@ def _attach_random_inspection_locations(items):
     return inspection_items
 
 
-def _serialize_random_inspection(inspection):
+def _is_random_inspection_pending(inspection):
+    return (
+        str(getattr(inspection, "estado", "") or "").strip().lower()
+        != InspeccionAleatoriaDiaria.Estados.COMPLETADA
+    )
+
+
+def _serialize_random_inspection(inspection, *, viewer=None):
+    division_id = _inspection_division_scope(inspection)
     inspection_items = list(
         inspection.items.select_related("sucursal", "producto", "verificado_por").all()
     )
-    inspection_items = _attach_random_inspection_locations(inspection_items)
+    inspection_items = _attach_random_inspection_locations(
+        inspection_items, division_id=division_id
+    )
+    is_pending = _is_random_inspection_pending(inspection)
+    viewer_id = getattr(viewer, "id", None)
+    hide_expected = bool(
+        is_pending
+        and not inspection.conteo_revelado
+        and viewer_id is not None
+        and int(viewer_id) == int(inspection.usuario_id)
+    )
+    live_expected = (
+        _live_expected_quantities(inspection_items, division_id=division_id)
+        if is_pending
+        else {}
+    )
+    division = getattr(inspection, "division", None) if inspection.division_id else None
     return {
         "id": int(inspection.id),
         "usuario_id": int(inspection.usuario_id),
@@ -1538,8 +1741,26 @@ def _serialize_random_inspection(inspection):
         "cobertura_porcentaje": float(inspection.cobertura_porcentaje or 0),
         "completada_en": _parse_iso_timestamp(inspection.completada_en),
         "borrador_paso_actual": int(inspection.borrador_paso_actual or 0),
+        "borrador_version": int(inspection.borrador_version or 0),
+        "borrador_fase": str(inspection.borrador_fase or "").strip(),
+        "borrador_indice_correccion": int(inspection.borrador_indice_correccion or 0),
+        "borrador_tiene_novedad": bool(inspection.borrador_tiene_novedad),
+        "borrador_nota_general": str(inspection.borrador_nota_general or ""),
+        "conteo_revelado": bool(inspection.conteo_revelado),
+        "es_por_division": bool(inspection.es_por_division),
+        "division_id": int(inspection.division_id) if inspection.division_id else None,
+        "division_nombre": _normalize_text(getattr(division, "nombre", "")),
         "nota_general": str(inspection.nota_general or "").strip(),
-        "items": [_serialize_random_inspection_item(item) for item in inspection_items],
+        "items": [
+            _serialize_random_inspection_item(
+                item,
+                hide_expected=hide_expected,
+                live_expected=live_expected.get((int(item.sucursal_id), int(item.producto_id)))
+                if is_pending
+                else None,
+            )
+            for item in inspection_items
+        ],
     }
 
 
@@ -1739,19 +1960,27 @@ def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=N
         is_completed = inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA
         is_disculpada = bool(inspection.disculpada)
         nota_general = str(inspection.nota_general or "").strip()
+        # Un usuario puede tener varias inspecciones el mismo dia (la
+        # automatica, "enviar ahora", por division). Antes bastaba con que UNA
+        # estuviera completada o disculpada para mostrarlo como terminado, y
+        # quedaban ocultas otras a medio contar. Ahora tienen que estar todas.
         if user_id not in user_map:
             user_map[user_id] = {
                 "id": user_id,
                 "name": _format_user_display_name(user),
                 "completada": is_completed,
-                "disculpada": is_disculpada,
+                "disculpada": is_disculpada and not is_completed,
                 "nota_general": nota_general,
             }
         else:
-            if is_completed:
-                user_map[user_id]["completada"] = True
-            if is_disculpada:
-                user_map[user_id]["disculpada"] = True
+            current = user_map[user_id]
+            all_closed = (
+                (current["completada"] or current["disculpada"])
+                and (is_completed or is_disculpada)
+            )
+            all_completed = current["completada"] and is_completed
+            current["completada"] = all_completed
+            current["disculpada"] = all_closed and not all_completed
             if nota_general:
                 existing_note = user_map[user_id].get("nota_general") or ""
                 user_map[user_id]["nota_general"] = (
@@ -1810,23 +2039,46 @@ def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=N
     return changed
 
 
-def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, delta):
+def _inspection_scope_stock_rows(*, sucursal_id, producto_id, division_id=None):
+    queryset = Inventario.objects.select_for_update().filter(
+        producto_id=int(producto_id),
+        subdivision__division__bodega__sucursal_id=int(sucursal_id),
+    )
+    if division_id is not None:
+        queryset = queryset.filter(subdivision__division_id=int(division_id))
+    return queryset.order_by("id")
+
+
+def _take_from_inventory_rows(rows, required):
+    remaining = int(required)
+    for row in rows:
+        if remaining <= 0:
+            break
+        current_qty = int(row.cantidad or 0)
+        take = min(current_qty, remaining)
+        if take <= 0:
+            continue
+        row.cantidad = current_qty - take
+        row.save(update_fields=["cantidad"])
+        remaining -= take
+    return remaining
+
+
+def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, delta, division_id=None):
     delta = int(delta or 0)
     if delta == 0:
         return
 
-    stock_queryset = (
-        Inventario.objects.select_for_update()
-        .filter(
-            producto_id=int(producto_id),
-            subdivision__division__bodega__sucursal_id=int(sucursal_id),
-        )
-        .order_by("id")
+    stock_queryset = _inspection_scope_stock_rows(
+        sucursal_id=sucursal_id,
+        producto_id=producto_id,
+        division_id=division_id,
     )
 
     if delta < 0:
         required = abs(delta)
-        available = sum(int(item.cantidad or 0) for item in stock_queryset)
+        rows = list(stock_queryset)
+        available = sum(int(item.cantidad or 0) for item in rows)
         if available < required:
             raise ValidationError(
                 {
@@ -1835,18 +2087,7 @@ def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, d
                     )
                 }
             )
-
-        remaining = required
-        for row in stock_queryset:
-            if remaining <= 0:
-                break
-            current_qty = int(row.cantidad or 0)
-            take = min(current_qty, remaining)
-            if take <= 0:
-                continue
-            row.cantidad = current_qty - take
-            row.save(update_fields=["cantidad"])
-            remaining -= take
+        _take_from_inventory_rows(rows, required)
         return
 
     target = stock_queryset.filter(cantidad__gt=0).first() or stock_queryset.first()
@@ -1855,12 +2096,12 @@ def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, d
         target.save(update_fields=["cantidad"])
         return
 
-    subdivision = (
-        SubDivision.objects.select_related("division__bodega")
-        .filter(division__bodega__sucursal_id=int(sucursal_id))
-        .order_by("id")
-        .first()
+    subdivisions = SubDivision.objects.select_related("division__bodega").filter(
+        division__bodega__sucursal_id=int(sucursal_id)
     )
+    if division_id is not None:
+        subdivisions = subdivisions.filter(division_id=int(division_id))
+    subdivision = subdivisions.order_by("id").first()
     if subdivision is None:
         raise ValidationError(
             {
@@ -1878,6 +2119,254 @@ def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, d
     )
     inventory_row.cantidad = int(inventory_row.cantidad or 0) + delta
     inventory_row.save(update_fields=["cantidad"])
+
+
+def _adjust_inventory_at_subdivision(*, subdivision_id, sucursal_id, producto_id, delta, division_id=None):
+    """Aplica `delta` en la ubicacion contada (y no en "la primera por id").
+
+    Si al restar esa ubicacion ya no tiene suficiente (se movio stock despues
+    del conteo), el faltante se toma del resto del alcance.
+    """
+    delta = int(delta or 0)
+    if delta == 0:
+        return
+
+    location_rows = list(
+        Inventario.objects.select_for_update()
+        .filter(
+            producto_id=int(producto_id),
+            subdivision_id=int(subdivision_id),
+            subdivision__division__bodega__sucursal_id=int(sucursal_id),
+        )
+        .order_by("id")
+    )
+
+    if delta > 0:
+        if location_rows:
+            target = location_rows[0]
+            target.cantidad = int(target.cantidad or 0) + delta
+            target.save(update_fields=["cantidad"])
+            return
+        if not SubDivision.objects.filter(
+            pk=int(subdivision_id), division__bodega__sucursal_id=int(sucursal_id)
+        ).exists():
+            _adjust_inventory_for_inspection_verification(
+                sucursal_id=sucursal_id,
+                producto_id=producto_id,
+                delta=delta,
+                division_id=division_id,
+            )
+            return
+        inventory_row, _ = Inventario.objects.select_for_update().get_or_create(
+            subdivision_id=int(subdivision_id),
+            producto_id=int(producto_id),
+            referencia="",
+            defaults={"cantidad": 0},
+        )
+        inventory_row.cantidad = int(inventory_row.cantidad or 0) + delta
+        inventory_row.save(update_fields=["cantidad"])
+        return
+
+    remaining = _take_from_inventory_rows(location_rows, abs(delta))
+    if remaining > 0:
+        _adjust_inventory_for_inspection_verification(
+            sucursal_id=sucursal_id,
+            producto_id=producto_id,
+            delta=-remaining,
+            division_id=division_id,
+        )
+
+
+def _valid_location_counts(item):
+    entries = item.conteo_ubicaciones if isinstance(item.conteo_ubicaciones, list) else []
+    valid = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        subdivision_id = _normalize_int(entry.get("subdivision_id"), 0)
+        contada = entry.get("cantidad_contada")
+        sistema = entry.get("cantidad_sistema")
+        if subdivision_id <= 0 or contada is None or sistema is None:
+            continue
+        valid.append(
+            {
+                "subdivision_id": subdivision_id,
+                "cantidad_contada": max(0, _normalize_int(contada, 0)),
+                "cantidad_sistema": max(0, _normalize_int(sistema, 0)),
+            }
+        )
+    return valid
+
+
+def _apply_random_inspection_adjustment(item, cantidad_confirmada):
+    """Deja el stock en lo confirmado, medido contra el stock AL CONTAR.
+
+    delta = confirmado - stock_al_contar, aplicado al stock actual: asi las
+    ventas/entradas hechas entre el conteo y la aprobacion no se cuentan dos
+    veces. Si el conteo fue por ubicacion y el admin confirmo lo contado, cada
+    ubicacion queda corregida por separado.
+    """
+    division_id = _inspection_division_scope(item.inspeccion)
+    total_delta = int(cantidad_confirmada) - int(item.cantidad_esperada or 0)
+    location_counts = _valid_location_counts(item)
+    applied = 0
+    per_location = []
+    if location_counts and int(cantidad_confirmada) == sum(
+        entry["cantidad_contada"] for entry in location_counts
+    ):
+        # Primero las restas: si algo no alcanza, falla antes de sumar nada.
+        ordered = sorted(
+            location_counts,
+            key=lambda entry: entry["cantidad_contada"] - entry["cantidad_sistema"],
+        )
+        for entry in ordered:
+            location_delta = entry["cantidad_contada"] - entry["cantidad_sistema"]
+            if location_delta == 0:
+                continue
+            _adjust_inventory_at_subdivision(
+                subdivision_id=entry["subdivision_id"],
+                sucursal_id=item.sucursal_id,
+                producto_id=item.producto_id,
+                delta=location_delta,
+                division_id=division_id,
+            )
+            applied += location_delta
+            per_location.append({"subdivision_id": entry["subdivision_id"], "delta": location_delta})
+
+    residual = total_delta - applied
+    if residual:
+        _adjust_inventory_for_inspection_verification(
+            sucursal_id=item.sucursal_id,
+            producto_id=item.producto_id,
+            delta=residual,
+            division_id=division_id,
+        )
+    return {"delta_total": total_delta, "por_ubicacion": per_location, "residual": residual}
+
+
+def _relocate_random_inspection_item(item):
+    """Total correcto pero repartido distinto: corrige solo las ubicaciones.
+
+    No cambia la cantidad total (suma 0), por eso no pasa por verificacion.
+    Solo aplica si se contaron todas las ubicaciones con stock del producto.
+    """
+    location_counts = _valid_location_counts(item)
+    if len(location_counts) < 2:
+        return None
+    if sum(entry["cantidad_sistema"] for entry in location_counts) != int(item.cantidad_esperada or 0):
+        return None
+    if sum(entry["cantidad_contada"] for entry in location_counts) != int(item.cantidad_esperada or 0):
+        return None
+    if all(entry["cantidad_contada"] == entry["cantidad_sistema"] for entry in location_counts):
+        return None
+    return _apply_random_inspection_adjustment(item, int(item.cantidad_esperada or 0))
+
+
+def _record_random_inspection_audit(item, actor_user, detalle, valores):
+    from django.contrib.contenttypes.models import ContentType
+
+    from auditoria.models import RegistroAuditoria
+
+    RegistroAuditoria.objects.create(
+        usuario=actor_user if getattr(actor_user, "is_authenticated", False) else None,
+        accion=RegistroAuditoria.Acciones.OTRO,
+        content_type=ContentType.objects.get_for_model(InspeccionAleatoriaItem),
+        object_id=str(item.pk),
+        representacion_objeto=str(item)[:255],
+        valores_nuevos=valores,
+        detalles=detalle,
+    )
+
+
+def _pending_warranty_quantities(keys):
+    """Unidades en salidas de garantia aun sin aprobar por (sucursal, producto).
+
+    Esas salidas no descuentan stock hasta que el admin las acepta, pero el
+    producto ya puede no estar fisicamente: explica faltantes al contar.
+    """
+    from movimientos.models import DetalleMovimiento, MovimientoInventario  # Import tardio
+
+    if not keys:
+        return {}
+    rows = (
+        DetalleMovimiento.objects.filter(
+            movimiento_inventario__garantia_pendiente=True,
+            movimiento_inventario__estado_garantia=MovimientoInventario.EstadoGarantia.SOLICITADA,
+            movimiento_inventario__sucursal_id__in=sorted({branch_id for branch_id, _ in keys}),
+            producto_id__in=sorted({product_id for _, product_id in keys}),
+        )
+        .values("movimiento_inventario__sucursal_id", "producto_id")
+        .annotate(total=Sum("cantidad"))
+    )
+    return {
+        (
+            _normalize_int(row.get("movimiento_inventario__sucursal_id"), 0),
+            _normalize_int(row.get("producto_id"), 0),
+        ): max(0, _normalize_int(row.get("total"), 0))
+        for row in rows
+    }
+
+
+def _subdivision_stock_quantities(subdivision_ids, product_ids):
+    if not subdivision_ids or not product_ids:
+        return {}
+    rows = (
+        Inventario.objects.filter(
+            subdivision_id__in=sorted(subdivision_ids),
+            producto_id__in=sorted(product_ids),
+        )
+        .values("subdivision_id", "producto_id")
+        .annotate(total=Sum("cantidad"))
+    )
+    return {
+        (_normalize_int(row.get("subdivision_id"), 0), _normalize_int(row.get("producto_id"), 0)):
+            max(0, _normalize_int(row.get("total"), 0))
+        for row in rows
+    }
+
+
+def _parse_random_inspection_location_counts(raw_value):
+    """Normaliza el conteo por ubicacion que manda el cliente.
+
+    Acepta [{key, subdivision_id, cantidad}] o {key: cantidad}. Devuelve None
+    si no vino (para no pisar lo guardado) y [] si vino vacio.
+    """
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, dict):
+        raw_value = [{"key": key, "cantidad": value} for key, value in raw_value.items()]
+    if not isinstance(raw_value, list):
+        return None
+    parsed = []
+    seen = set()
+    for entry in raw_value[:100]:
+        if not isinstance(entry, dict):
+            continue
+        key = _normalize_text(entry.get("key"))[:300]
+        subdivision_id = _normalize_int(entry.get("subdivision_id"), 0) or None
+        if not key and not subdivision_id:
+            continue
+        identity = (key, subdivision_id)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        raw_qty = entry.get("cantidad", entry.get("cantidad_contada"))
+        quantity = None
+        if raw_qty is not None and str(raw_qty).strip() != "":
+            quantity = _normalize_int(raw_qty, -1)
+            if quantity < 0:
+                quantity = None
+        parsed.append(
+            {"key": key, "subdivision_id": subdivision_id, "cantidad_contada": quantity}
+        )
+    return parsed
+
+
+def _parse_optional_quantity(raw_value):
+    if raw_value is None or str(raw_value).strip() == "":
+        return None
+    quantity = _normalize_int(raw_value, -1)
+    return quantity if quantity >= 0 else -1
 
 
 # Health check usado por Render para verificar que el servicio esté vivo.
@@ -2046,6 +2535,9 @@ class UserTableLayoutsAPIView(APIView):
 
 _INSPECTION_CHECK_THROTTLE = timedelta(seconds=60)
 _last_inspection_check_by_user = {}
+# Clave para la generacion de inspecciones de todos los revisores, con el
+# mismo limite de una vez por minuto (por proceso).
+_ALL_USERS_INSPECTION_CHECK_KEY = "__todos__"
 
 
 class ReminderStateAPIView(APIView):
@@ -2104,6 +2596,22 @@ class ReminderStateAPIView(APIView):
                         request.user,
                         store,
                     )
+                    last_all_checked = _last_inspection_check_by_user.get(
+                        _ALL_USERS_INSPECTION_CHECK_KEY
+                    )
+                    if (
+                        last_all_checked is None
+                        or (now - last_all_checked) >= _INSPECTION_CHECK_THROTTLE
+                    ):
+                        _last_inspection_check_by_user[_ALL_USERS_INSPECTION_CHECK_KEY] = now
+                        inspection_payload_changed = (
+                            _ensure_daily_random_inspections_for_all_users(store)
+                            or inspection_payload_changed
+                        )
+                        inspection_payload_changed = (
+                            _purge_orphan_random_inspection_reminders(store)
+                            or inspection_payload_changed
+                        )
                     summary_changed = _ensure_all_admin_summaries(request.user, store)
                     payload_changed = payload_changed or inspection_payload_changed or summary_changed
 
@@ -2209,7 +2717,7 @@ def _normalize_random_inspection_verify_action(value):
 
 def _get_random_inspection_queryset():
     return (
-        InspeccionAleatoriaDiaria.objects.select_related("usuario")
+        InspeccionAleatoriaDiaria.objects.select_related("usuario", "division")
         .prefetch_related("items__sucursal", "items__producto", "items__verificado_por")
         .order_by("-fecha_programada", "-id")
     )
@@ -2262,7 +2770,7 @@ class RandomInspectionCurrentAPIView(APIView):
             )
 
         return Response(
-            {"inspection": _serialize_random_inspection(inspection)},
+            {"inspection": _serialize_random_inspection(inspection, viewer=request.user)},
             status=status.HTTP_200_OK,
         )
 
@@ -2289,9 +2797,61 @@ class RandomInspectionDetailAPIView(APIView):
             )
 
         return Response(
-            {"inspection": _serialize_random_inspection(inspection)},
+            {"inspection": _serialize_random_inspection(inspection, viewer=request.user)},
             status=status.HTTP_200_OK,
         )
+
+
+RANDOM_INSPECTION_DRAFT_PHASES = {"", "conteo", "resumen", "correccion"}
+RANDOM_INSPECTION_CONFLICT_DETAIL = (
+    "Esta inspeccion se actualizo desde otro dispositivo. Se cargaron los datos "
+    "mas recientes: revisalos antes de continuar."
+)
+
+
+def _parse_client_draft_version(data):
+    raw_value = data.get("version") if hasattr(data, "get") else None
+    if raw_value is None or str(raw_value).strip() == "":
+        return None
+    version = _normalize_int(raw_value, -1)
+    return version if version >= 0 else None
+
+
+def _lock_random_inspection(inspection_id):
+    # of=("self",): la division es opcional (LEFT JOIN) y Postgres no permite
+    # FOR UPDATE sobre el lado nulo de un OUTER JOIN.
+    return (
+        InspeccionAleatoriaDiaria.objects.select_for_update(of=("self",))
+        .select_related("usuario", "division")
+        .filter(pk=inspection_id)
+        .first()
+    )
+
+
+def _random_inspection_conflict_response(inspection_id, request):
+    inspection = _get_random_inspection_queryset().filter(pk=inspection_id).first()
+    return Response(
+        {
+            "detail": RANDOM_INSPECTION_CONFLICT_DETAIL,
+            "conflict": True,
+            "inspection": (
+                _serialize_random_inspection(inspection, viewer=request.user)
+                if inspection is not None
+                else None
+            ),
+        },
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
+def _random_inspection_completed_response():
+    return Response(
+        {
+            "detail": "Esta inspeccion ya fue enviada y no puede volver a realizarse.",
+            "completed": True,
+        },
+        status=status.HTTP_409_CONFLICT,
+    )
 
 
 class RandomInspectionRespondAPIView(APIView):
@@ -2306,13 +2866,7 @@ class RandomInspectionRespondAPIView(APIView):
             )
 
         with transaction.atomic():
-            inspection = (
-                InspeccionAleatoriaDiaria.objects.select_for_update()
-                .select_related("usuario")
-                .prefetch_related("items__sucursal", "items__producto", "items__verificado_por")
-                .filter(pk=inspection_id)
-                .first()
-            )
+            inspection = _lock_random_inspection(inspection_id)
             if inspection is None:
                 return Response(
                     {"detail": "No se encontro la inspeccion aleatoria."},
@@ -2325,20 +2879,19 @@ class RandomInspectionRespondAPIView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-            if (
-                str(inspection.estado).strip().lower()
-                == InspeccionAleatoriaDiaria.Estados.COMPLETADA
-            ):
-                return Response(
-                    {
-                        "detail": (
-                            "Esta inspeccion ya fue enviada y no puede volver a realizarse."
-                        )
-                    },
-                    status=status.HTTP_409_CONFLICT,
-                )
+            if not _is_random_inspection_pending(inspection):
+                return _random_inspection_completed_response()
 
-            inspection_items = list(inspection.items.all().order_by("id"))
+            # Un dispositivo que quedo con datos viejos (la misma cuenta abierta
+            # en la compu y en la tablet) no puede enviar: sus diferencias
+            # saldrian calculadas con cantidades que ya cambiaron en el otro.
+            client_version = _parse_client_draft_version(request.data)
+            if client_version is not None and client_version != int(inspection.borrador_version or 0):
+                return _random_inspection_conflict_response(inspection.id, request)
+
+            inspection_items = list(
+                inspection.items.select_related("sucursal", "producto").order_by("id")
+            )
             if not inspection_items:
                 return Response(
                     {"detail": "La inspeccion no tiene productos para revisar."},
@@ -2369,59 +2922,157 @@ class RandomInspectionRespondAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            now = timezone.now()
-            mismatch_count = 0
+            division_id = _inspection_division_scope(inspection)
+            keys = {(int(item.sucursal_id), int(item.producto_id)) for item in inspection_items}
+            # Bloquea el stock de estos productos para que la "foto" del
+            # sistema al contar sea consistente con lo que se guarda.
+            list(
+                _inspection_stock_queryset(
+                    branch_ids={branch_id for branch_id, _ in keys},
+                    product_ids={product_id for _, product_id in keys},
+                    division_id=division_id,
+                )
+                .select_for_update()
+                .values_list("id", flat=True)
+            )
+            live_expected = _live_expected_quantities(inspection_items, division_id=division_id)
+            _attach_random_inspection_locations(inspection_items, division_id=division_id)
+
+            # 1a pasada: cantidades y conteo por ubicacion de cada producto.
+            parsed_rows = {}
+            subdivision_ids = set()
             for item in inspection_items:
                 row = payload_by_id.get(int(item.id), {})
-                estado_revision = _normalize_random_inspection_review_state(
-                    row.get("estado_revision")
-                    or row.get("estado")
-                    or row.get("resultado")
+                location_counts = _parse_random_inspection_location_counts(
+                    row.get("cantidad_por_ubicacion")
                 )
-                if estado_revision == InspeccionAleatoriaItem.EstadosRevision.PENDIENTE:
+                if location_counts is None:
+                    location_counts = _parse_random_inspection_location_counts(
+                        item.conteo_ubicaciones
+                    ) or []
+                locations_complete = len(location_counts) > 1 and all(
+                    entry["cantidad_contada"] is not None for entry in location_counts
+                )
+
+                reported = _parse_optional_quantity(row.get("cantidad_reportada"))
+                if locations_complete:
+                    reported = sum(entry["cantidad_contada"] for entry in location_counts)
+                if reported is None:
+                    legacy_state = _normalize_random_inspection_review_state(
+                        row.get("estado_revision") or row.get("estado") or row.get("resultado")
+                    )
+                    if legacy_state == InspeccionAleatoriaItem.EstadosRevision.COINCIDE:
+                        reported = int(item.cantidad_esperada or 0)
+                if reported is None:
                     return Response(
                         {
-                            "detail": (
-                                "Todos los productos deben marcarse como coincide o no coincide."
-                            ),
+                            "detail": "Debes ingresar la cantidad contada de todos los productos.",
+                            "item_id": int(item.id),
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if reported < 0:
+                    return Response(
+                        {
+                            "detail": "La cantidad reportada debe ser un numero valido.",
                             "item_id": int(item.id),
                         },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                cantidad_reportada = row.get("cantidad_reportada")
-                if estado_revision == InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE:
-                    if cantidad_reportada is None:
-                        return Response(
+                if not locations_complete:
+                    stocked_locations = [
+                        location
+                        for location in (
+                            getattr(item, "_inspection_location_payload", {}) or {}
+                        ).get("ubicaciones_bodega", [])
+                        if location.get("subdivision_id") and int(location.get("cantidad") or 0) > 0
+                    ]
+                    if len(stocked_locations) == 1:
+                        # Una sola ubicacion: el conteo total ES el de esa ubicacion.
+                        location_counts = [
                             {
-                                "detail": (
-                                    "Cuando un producto no coincide debes indicar la cantidad real."
-                                ),
-                                "item_id": int(item.id),
-                            },
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
+                                "key": "",
+                                "subdivision_id": int(stocked_locations[0]["subdivision_id"]),
+                                "cantidad_contada": int(reported),
+                            }
+                        ]
+                        locations_complete = True
+                    else:
+                        location_counts = [
+                            entry for entry in location_counts if entry["cantidad_contada"] is not None
+                        ]
+                        locations_complete = False
 
-                    cantidad_reportada = _normalize_int(cantidad_reportada, -1)
-                    if cantidad_reportada < 0:
-                        return Response(
-                            {
-                                "detail": "La cantidad reportada debe ser un numero valido.",
-                                "item_id": int(item.id),
-                            },
-                            status=status.HTTP_400_BAD_REQUEST,
-                        )
-                    mismatch_count += 1
-                    verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
-                else:
-                    cantidad_reportada = int(item.cantidad_esperada or 0)
+                for entry in location_counts:
+                    if entry.get("subdivision_id"):
+                        subdivision_ids.add(int(entry["subdivision_id"]))
+                parsed_rows[int(item.id)] = {
+                    "row": row,
+                    "reported": int(reported),
+                    "location_counts": location_counts,
+                    "locations_complete": locations_complete,
+                }
+
+            subdivision_stock = _subdivision_stock_quantities(
+                subdivision_ids,
+                {product_id for _, product_id in keys},
+            )
+            pending_warranty = _pending_warranty_quantities(keys)
+
+            # 2a pasada: se compara contra el stock del sistema AHORA (al contar).
+            now = timezone.now()
+            mismatch_count = 0
+            for item in inspection_items:
+                parsed = parsed_rows[int(item.id)]
+                row = parsed["row"]
+                key = (int(item.sucursal_id), int(item.producto_id))
+                system_qty = int(live_expected.get(key, 0))
+                reported = parsed["reported"]
+
+                location_counts = []
+                for entry in parsed["location_counts"]:
+                    subdivision_id = entry.get("subdivision_id")
+                    location_counts.append(
+                        {
+                            "key": entry.get("key", ""),
+                            "subdivision_id": subdivision_id,
+                            "cantidad_contada": entry.get("cantidad_contada"),
+                            "cantidad_sistema": (
+                                subdivision_stock.get((int(subdivision_id), int(item.producto_id)), 0)
+                                if subdivision_id and parsed["locations_complete"]
+                                else None
+                            ),
+                        }
+                    )
+
+                if reported == system_qty:
+                    estado_revision = InspeccionAleatoriaItem.EstadosRevision.COINCIDE
                     verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.SIN_NOVEDAD
+                else:
+                    estado_revision = InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE
+                    verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
+                    mismatch_count += 1
+
+                if "observacion" in row or "novedad" in row:
+                    observacion = _normalize_text(row.get("observacion") or row.get("novedad"))
+                else:
+                    observacion = _normalize_text(item.observacion)
+                warranty_qty = pending_warranty.get(key, 0)
+                if estado_revision == InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE and reported < system_qty and warranty_qty:
+                    note = (
+                        f"[Sistema] Hay {warranty_qty} unidad(es) en salidas de garantia "
+                        "pendientes de aprobacion que aun no descuentan stock."
+                    )
+                    observacion = f"{observacion}\n{note}".strip() if observacion else note
 
                 item.estado_revision = estado_revision
-                item.cantidad_reportada = int(cantidad_reportada)
-                item.observacion = _normalize_text(
-                    row.get("observacion") or row.get("novedad")
-                )
+                item.cantidad_esperada = system_qty
+                item.cantidad_reportada = reported
+                if item.cantidad_primer_conteo is None:
+                    item.cantidad_primer_conteo = reported
+                item.conteo_ubicaciones = location_counts
+                item.observacion = observacion
                 item.revisado_en = now
                 item.verificacion_estado = verificacion_estado
                 item.updated_at = now
@@ -2430,7 +3081,10 @@ class RandomInspectionRespondAPIView(APIView):
                 inspection_items,
                 [
                     "estado_revision",
+                    "cantidad_esperada",
                     "cantidad_reportada",
+                    "cantidad_primer_conteo",
+                    "conteo_ubicaciones",
                     "observacion",
                     "revisado_en",
                     "verificacion_estado",
@@ -2438,17 +3092,47 @@ class RandomInspectionRespondAPIView(APIView):
                 ],
             )
 
+            for item in inspection_items:
+                if item.estado_revision != InspeccionAleatoriaItem.EstadosRevision.COINCIDE:
+                    continue
+                relocation = _relocate_random_inspection_item(item)
+                if relocation:
+                    _record_random_inspection_audit(
+                        item,
+                        request.user,
+                        "Reubicacion por inspeccion aleatoria: el total coincide pero "
+                        "el conteo por ubicacion no; se corrigio cada ubicacion.",
+                        relocation,
+                    )
+
+            if "nota_general" in request.data:
+                nota_general = _normalize_text(request.data.get("nota_general"))
+            else:
+                nota_general = (
+                    _normalize_text(inspection.borrador_nota_general)
+                    if inspection.borrador_tiene_novedad
+                    else ""
+                )
+
             inspection.estado = InspeccionAleatoriaDiaria.Estados.COMPLETADA
             inspection.total_items = len(inspection_items)
             inspection.completada_en = now
             inspection.borrador_paso_actual = 0
-            inspection.nota_general = _normalize_text(request.data.get("nota_general"))
+            inspection.borrador_fase = ""
+            inspection.borrador_indice_correccion = 0
+            inspection.borrador_version = int(inspection.borrador_version or 0) + 1
+            inspection.conteo_revelado = True
+            inspection.nota_general = nota_general
             inspection.save(
                 update_fields=[
                     "estado",
                     "total_items",
                     "completada_en",
                     "borrador_paso_actual",
+                    "borrador_fase",
+                    "borrador_indice_correccion",
+                    "borrador_version",
+                    "conteo_revelado",
                     "nota_general",
                     "updated_at",
                 ]
@@ -2497,7 +3181,7 @@ class RandomInspectionRespondAPIView(APIView):
 
         return Response(
             {
-                "inspection": _serialize_random_inspection(inspection),
+                "inspection": _serialize_random_inspection(inspection, viewer=request.user),
                 "mismatch_count": int(mismatch_count),
             },
             status=status.HTTP_200_OK,
@@ -2508,8 +3192,7 @@ class RandomInspectionSaveDraftAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, inspection_id):
-        paso_actual = request.data.get("paso_actual")
-        payload_items = request.data.get("items")
+        payload_items = request.data.get("items", [])
         if not isinstance(payload_items, list):
             return Response(
                 {"detail": "Debes enviar un arreglo en `items`."},
@@ -2517,11 +3200,7 @@ class RandomInspectionSaveDraftAPIView(APIView):
             )
 
         with transaction.atomic():
-            inspection = (
-                InspeccionAleatoriaDiaria.objects.select_for_update()
-                .filter(pk=inspection_id)
-                .first()
-            )
+            inspection = _lock_random_inspection(inspection_id)
             if inspection is None:
                 return Response(
                     {"detail": "No se encontro la inspeccion aleatoria."},
@@ -2532,11 +3211,12 @@ class RandomInspectionSaveDraftAPIView(APIView):
                     {"detail": "Solo el usuario asignado puede modificar este borrador."},
                     status=status.HTTP_403_FORBIDDEN,
                 )
-            if str(inspection.estado).strip().lower() == InspeccionAleatoriaDiaria.Estados.COMPLETADA:
-                return Response(
-                    {"detail": "Esta inspeccion ya fue completada."},
-                    status=status.HTTP_409_CONFLICT,
-                )
+            if not _is_random_inspection_pending(inspection):
+                return _random_inspection_completed_response()
+
+            client_version = _parse_client_draft_version(request.data)
+            if client_version is not None and client_version != int(inspection.borrador_version or 0):
+                return _random_inspection_conflict_response(inspection.id, request)
 
             payload_by_id = {}
             for row in payload_items:
@@ -2546,6 +3226,8 @@ class RandomInspectionSaveDraftAPIView(APIView):
                 if item_id > 0:
                     payload_by_id[item_id] = row
 
+            # Solo se tocan los productos (y los campos) que el cliente mando:
+            # asi un dispositivo no borra lo que se conto en otro.
             if payload_by_id:
                 items_to_update = list(
                     InspeccionAleatoriaItem.objects.filter(
@@ -2554,21 +3236,85 @@ class RandomInspectionSaveDraftAPIView(APIView):
                 )
                 for item in items_to_update:
                     row = payload_by_id.get(int(item.id), {})
-                    raw_qty = row.get("cantidad_reportada")
-                    item.cantidad_reportada = (
-                        max(0, int(raw_qty)) if raw_qty is not None and str(raw_qty).strip() != "" else None
-                    )
-                    item.observacion = str(row.get("observacion") or "").strip()
+                    if "cantidad_reportada" in row:
+                        quantity = _parse_optional_quantity(row.get("cantidad_reportada"))
+                        if quantity is not None and quantity < 0:
+                            return Response(
+                                {
+                                    "detail": "La cantidad reportada debe ser un numero valido.",
+                                    "item_id": int(item.id),
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+                        item.cantidad_reportada = quantity
+                    if "cantidad_por_ubicacion" in row:
+                        location_counts = _parse_random_inspection_location_counts(
+                            row.get("cantidad_por_ubicacion")
+                        )
+                        item.conteo_ubicaciones = location_counts or []
+                    if "observacion" in row:
+                        item.observacion = str(row.get("observacion") or "").strip()
                 if items_to_update:
                     InspeccionAleatoriaItem.objects.bulk_update(
-                        items_to_update, ["cantidad_reportada", "observacion"]
+                        items_to_update,
+                        ["cantidad_reportada", "conteo_ubicaciones", "observacion"],
                     )
 
-            if paso_actual is not None:
-                inspection.borrador_paso_actual = max(0, int(paso_actual or 0))
-                inspection.save(update_fields=["borrador_paso_actual", "updated_at"])
+            update_fields = {"borrador_version", "updated_at"}
+            if request.data.get("paso_actual") is not None:
+                inspection.borrador_paso_actual = max(0, _normalize_int(request.data.get("paso_actual"), 0))
+                update_fields.add("borrador_paso_actual")
+            if "fase" in request.data:
+                fase = _normalize_text(request.data.get("fase")).lower()
+                if fase in RANDOM_INSPECTION_DRAFT_PHASES:
+                    inspection.borrador_fase = fase
+                    update_fields.add("borrador_fase")
+            if request.data.get("indice_correccion") is not None:
+                inspection.borrador_indice_correccion = max(
+                    0, _normalize_int(request.data.get("indice_correccion"), 0)
+                )
+                update_fields.add("borrador_indice_correccion")
+            if "tiene_novedad" in request.data:
+                inspection.borrador_tiene_novedad = bool(request.data.get("tiene_novedad"))
+                update_fields.add("borrador_tiene_novedad")
+            if "nota_general" in request.data:
+                inspection.borrador_nota_general = str(request.data.get("nota_general") or "")
+                update_fields.add("borrador_nota_general")
 
-        return Response({"ok": True}, status=status.HTTP_200_OK)
+            revealed_now = False
+            if bool(request.data.get("revelar")) and not inspection.conteo_revelado:
+                all_items = list(inspection.items.order_by("id"))
+                missing = [int(item.id) for item in all_items if item.cantidad_reportada is None]
+                if missing:
+                    return Response(
+                        {
+                            "detail": "Faltan productos por contar antes de ver el resultado.",
+                            "items_faltantes": missing,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                # Queda fijado el primer conteo a ciegas: las correcciones
+                # posteriores (ya viendo lo esperado) no lo cambian.
+                for item in all_items:
+                    if item.cantidad_primer_conteo is None:
+                        item.cantidad_primer_conteo = item.cantidad_reportada
+                InspeccionAleatoriaItem.objects.bulk_update(all_items, ["cantidad_primer_conteo"])
+                inspection.conteo_revelado = True
+                update_fields.add("conteo_revelado")
+                revealed_now = True
+
+            inspection.borrador_version = int(inspection.borrador_version or 0) + 1
+            inspection.save(update_fields=sorted(update_fields))
+            version = int(inspection.borrador_version)
+
+        response_payload = {"ok": True, "version": version}
+        if revealed_now or bool(request.data.get("incluir_inspeccion")):
+            refreshed = _get_random_inspection_queryset().filter(pk=inspection_id).first()
+            if refreshed is not None:
+                response_payload["inspection"] = _serialize_random_inspection(
+                    refreshed, viewer=request.user
+                )
+        return Response(response_payload, status=status.HTTP_200_OK)
 
 
 class RandomInspectionVerifyItemAPIView(APIView):
@@ -2645,13 +3391,22 @@ class RandomInspectionVerifyItemAPIView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                expected_qty = int(item.cantidad_esperada or 0)
-                delta = int(cantidad_confirmada) - expected_qty
-                _adjust_inventory_for_inspection_verification(
-                    sucursal_id=item.sucursal_id,
-                    producto_id=item.producto_id,
-                    delta=delta,
-                )
+                adjustment = _apply_random_inspection_adjustment(item, int(cantidad_confirmada))
+                if adjustment["delta_total"] or adjustment["por_ubicacion"]:
+                    _record_random_inspection_audit(
+                        item,
+                        request.user,
+                        (
+                            f"Ajuste por inspeccion aleatoria #{int(item.inspeccion_id)}: "
+                            f"stock al contar {int(item.cantidad_esperada or 0)}, "
+                            f"confirmado {int(cantidad_confirmada)}."
+                        ),
+                        {
+                            **adjustment,
+                            "cantidad_esperada_al_contar": int(item.cantidad_esperada or 0),
+                            "cantidad_confirmada": int(cantidad_confirmada),
+                        },
+                    )
                 item.verificacion_estado = (
                     InspeccionAleatoriaItem.EstadosVerificacion.APROBADA
                 )
@@ -2732,7 +3487,7 @@ class RandomInspectionVerifyItemAPIView(APIView):
 
         return Response(
             {
-                "inspection": _serialize_random_inspection(inspection),
+                "inspection": _serialize_random_inspection(inspection, viewer=request.user),
                 "item_id": int(item_id),
                 "accion": action,
             },
@@ -2770,27 +3525,29 @@ class RandomInspectionAdminExcuseAPIView(APIView):
         with transaction.atomic():
             store = ReminderState.get_global(for_update=True)
 
-            try:
-                inspection = InspeccionAleatoriaDiaria.objects.select_for_update().get(
+            # El resumen del admin agrupa por usuario, asi que disculpar cubre
+            # todas sus inspecciones de ese dia (la automatica, las de "enviar
+            # ahora" por sucursal y las por division), no solo la automatica.
+            inspections = list(
+                InspeccionAleatoriaDiaria.objects.select_for_update().filter(
                     usuario_id=int(usuario_id),
                     fecha_programada=fecha,
-                    sucursal__isnull=True,
                 )
-            except InspeccionAleatoriaDiaria.DoesNotExist:
+            )
+            if not inspections:
                 return Response(
                     {"detail": "No se encontró la inspección para ese usuario y fecha."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            already_completed = inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA
+            for inspection in inspections:
+                if inspection.estado != InspeccionAleatoriaDiaria.Estados.COMPLETADA:
+                    inspection.disculpada = True
+                    inspection.save(update_fields=["disculpada", "updated_at"])
 
-            if not already_completed:
-                inspection.disculpada = True
-                inspection.save(update_fields=["disculpada", "updated_at"])
-
-            # Mark the user's own inspection reminder as seen by the user
+            # Mark the user's own inspection reminders as seen by the user
             existing_payload = list(store.payload) if isinstance(store.payload, list) else []
-            insp_id_str = str(int(inspection.id))
+            insp_id_strs = {str(int(inspection.id)) for inspection in inspections}
             user_id_str = str(int(usuario_id))
             for rem in existing_payload:
                 if not isinstance(rem, dict):
@@ -2798,14 +3555,13 @@ class RandomInspectionAdminExcuseAPIView(APIView):
                 ctx = rem.get("context") or {}
                 if (
                     str(ctx.get("type") or "") == RANDOM_INSPECTION_CONTEXT_TYPE
-                    and str(ctx.get("id") or "") == insp_id_str
+                    and str(ctx.get("id") or "") in insp_id_strs
                     and str(rem.get("kind") or "") == RANDOM_INSPECTION_KIND
                 ):
                     completed_by = list(rem.get("completedBy") or [])
                     if user_id_str not in completed_by:
                         completed_by.append(user_id_str)
                     rem["completedBy"] = sorted(completed_by)
-                    break
 
             store.payload = _normalize_reminder_list(existing_payload)
 
@@ -3259,65 +4015,62 @@ class RandomInspectionSendNowAPIView(APIView):
         if usuario_ids is not None:
             enabled_prefs = enabled_prefs.filter(usuario_id__in=usuario_ids)
 
-        # Global deduplication: (sucursal_id, producto_id) already assigned in this batch
-        used_keys = set()
         dispatched = []
         scheduled_date = timezone.localdate()
 
         with transaction.atomic():
             store = ReminderState.get_global(for_update=True)
 
+            # Sin repetir productos: ni dentro de este envio ni con lo que ya
+            # se asigno hoy (la inspeccion automatica u otros envios).
+            used_keys = _get_random_inspection_keys_assigned_on(scheduled_date)
+
             for pref in enabled_prefs:
                 user = pref.usuario
-                branch_ids = [
-                    int(bid)
-                    for bid in (pref.inspeccion_aleatoria_sucursales or [])
-                    if bid is not None
-                ]
+                # Mismo criterio que la inspeccion automatica: lista vacia con
+                # la inspeccion habilitada = todas las sucursales permitidas.
+                branch_ids = sorted(_get_random_inspection_branch_ids_for_user(user))
 
                 for branch_id in branch_ids:
-                    # Collect all products from this branch
-                    all_candidates = _collect_branch_inspection_candidates(branch_id)
-                    if not all_candidates:
-                        continue
-
-                    # Filter out products already assigned in this batch
-                    available = [
-                        c for c in all_candidates
-                        if (c["sucursal_id"], c["producto_id"]) not in used_keys
-                    ]
-                    if not available:
-                        continue
-
-                    # Select random products (reuses history-aware selection logic)
-                    selected = _select_random_inspection_candidates(
-                        user,
-                        scheduled_date,
-                        available,
-                        items_per_day=cantidad,
-                    )
-                    if not selected:
-                        continue
-
-                    # Mark selected as globally used
-                    for item in selected:
-                        used_keys.add((item["sucursal_id"], item["producto_id"]))
-
-                    branch_nombre = selected[0].get("sucursal_nombre") or f"Sucursal {branch_id}"
-
-                    # Create inspection for this user-branch if not already created today
                     inspection = (
                         InspeccionAleatoriaDiaria.objects.select_for_update()
-                        .filter(usuario=user, sucursal_id=branch_id, fecha_programada=scheduled_date)
+                        .filter(
+                            usuario=user,
+                            sucursal_id=branch_id,
+                            es_por_division=False,
+                            fecha_programada=scheduled_date,
+                        )
                         .first()
                     )
 
-                    if inspection is None:
-                        candidate_keys = {
-                            (c["sucursal_id"], c["producto_id"])
-                            for c in all_candidates
-                        }
-                        coverage = _calculate_random_inspection_coverage(user, candidate_keys)
+                    if inspection is not None:
+                        # Ya tiene la de hoy para esta sucursal: solo se le
+                        # vuelve a avisar (no se le agregan productos).
+                        branch_nombre = (
+                            InspeccionAleatoriaItem.objects.filter(inspeccion=inspection)
+                            .values_list("sucursal__nombre", flat=True)
+                            .first()
+                        ) or f"Sucursal {branch_id}"
+                        product_count = inspection.items.count()
+                    else:
+                        all_candidates = _collect_branch_inspection_candidates(branch_id)
+                        selected = _select_random_inspection_candidates(
+                            user,
+                            scheduled_date,
+                            all_candidates,
+                            items_per_day=cantidad,
+                            excluded_keys=used_keys,
+                        )
+                        if not selected:
+                            continue
+
+                        for item in selected:
+                            used_keys.add((item["sucursal_id"], item["producto_id"]))
+
+                        branch_nombre = selected[0].get("sucursal_nombre") or f"Sucursal {branch_id}"
+                        coverage = _calculate_random_inspection_coverage(
+                            user, _stocked_candidate_keys(all_candidates)
+                        )
 
                         inspection = InspeccionAleatoriaDiaria.objects.create(
                             usuario=user,
@@ -3329,14 +4082,10 @@ class RandomInspectionSendNowAPIView(APIView):
                         )
 
                         InspeccionAleatoriaItem.objects.bulk_create([
-                            InspeccionAleatoriaItem(
-                                inspeccion=inspection,
-                                sucursal_id=branch_id,
-                                producto_id=item["producto_id"],
-                                cantidad_esperada=item["cantidad_esperada"],
-                            )
+                            _build_random_inspection_item(inspection, item, sucursal_id=branch_id)
                             for item in selected
                         ])
+                        product_count = len(selected)
 
                     _upsert_random_inspection_reminder(
                         store,
@@ -3352,7 +4101,7 @@ class RandomInspectionSendNowAPIView(APIView):
                         "sucursal_id": branch_id,
                         "sucursal_nombre": branch_nombre,
                         "inspeccion_id": int(inspection.id),
-                        "productos": len(selected),
+                        "productos": product_count,
                     })
 
             _upsert_random_inspection_admin_summary_reminder(store, scheduled_date, time_str=time_str)
@@ -3419,12 +4168,9 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Lista vacia = habilitado para todas las sucursales (mismo criterio
-        # que /usuarios/listado/inspeccion-aleatoria-asignaciones/).
-        branch_ids = [
-            int(bid) for bid in (pref.inspeccion_aleatoria_sucursales or []) if bid is not None
-        ]
-        if branch_ids and sucursal_id not in branch_ids:
+        # Mismo criterio que la inspeccion automatica y "enviar ahora": lista
+        # vacia con la inspeccion habilitada = todas las sucursales permitidas.
+        if sucursal_id not in _get_random_inspection_branch_ids_for_user(user):
             return Response(
                 {"detail": "Este usuario no esta asignado a la sucursal de esa division."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -3442,11 +4188,27 @@ class RandomInspectionSendDivisionAPIView(APIView):
         with transaction.atomic():
             store = ReminderState.get_global(for_update=True)
 
+            # Registro propio por division: antes se sumaba a la inspeccion de
+            # la sucursal y, si esa ya estaba completada, los productos nuevos
+            # quedaban pendientes para siempre (responder daba 409).
             inspection = (
                 InspeccionAleatoriaDiaria.objects.select_for_update()
-                .filter(usuario=user, sucursal_id=sucursal_id, fecha_programada=scheduled_date)
+                .filter(
+                    usuario=user,
+                    division_id=division_id,
+                    es_por_division=True,
+                    fecha_programada=scheduled_date,
+                )
                 .first()
             )
+
+            if inspection is not None and not _is_random_inspection_pending(inspection):
+                return Response(
+                    {
+                        "detail": "Este usuario ya completo hoy la revision de esta division.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             existing_producto_ids = set()
             if inspection is not None:
@@ -3463,15 +4225,16 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 )
 
             if inspection is None:
-                all_branch_candidates = _collect_branch_inspection_candidates(sucursal_id)
-                candidate_keys = {
-                    (c["sucursal_id"], c["producto_id"]) for c in all_branch_candidates
-                }
-                coverage = _calculate_random_inspection_coverage(user, candidate_keys)
+                coverage = _calculate_random_inspection_coverage(
+                    user,
+                    _stocked_candidate_keys(_collect_branch_inspection_candidates(sucursal_id)),
+                )
 
                 inspection = InspeccionAleatoriaDiaria.objects.create(
                     usuario=user,
                     sucursal_id=sucursal_id,
+                    division=division,
+                    es_por_division=True,
                     fecha_programada=scheduled_date,
                     estado=InspeccionAleatoriaDiaria.Estados.PENDIENTE,
                     total_items=len(new_items),
@@ -3483,12 +4246,7 @@ class RandomInspectionSendDivisionAPIView(APIView):
 
             InspeccionAleatoriaItem.objects.bulk_create(
                 [
-                    InspeccionAleatoriaItem(
-                        inspeccion=inspection,
-                        sucursal_id=sucursal_id,
-                        producto_id=item["producto_id"],
-                        cantidad_esperada=item["cantidad_esperada"],
-                    )
+                    _build_random_inspection_item(inspection, item, sucursal_id=sucursal_id)
                     for item in new_items
                 ],
                 ignore_conflicts=True,
