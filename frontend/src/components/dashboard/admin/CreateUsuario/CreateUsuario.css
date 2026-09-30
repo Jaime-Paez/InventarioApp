@@ -2357,3 +2357,76 @@ button.create-user__locations-row {
     padding: 7px 8px;
   }
 }
+
+/* TELEFONO: la tabla de ubicaciones (editor de inventario y pestaña
+   Ubicaciones del producto) tiene 6 columnas de escritorio y en un iPhone
+   cada una quedaba de ~40px, con todo cortado. Aqui cada ubicacion pasa a
+   ser una tarjeta: los datos en 2 columnas con su etiqueta (data-label) y
+   las acciones abajo, a todo el ancho. */
+@media (max-width: 640px) {
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row--head {
+    display: none;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row:not(.create-user__locations-row--empty) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 12px;
+    padding: 10px 12px;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row > span[data-label] {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 3px;
+    padding: 0;
+    border-left: none;
+    min-width: 0;
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row > span[data-label]::before {
+    content: attr(data-label);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--color-text-primary);
+    opacity: 0.6;
+  }
+
+  .dashboard-shell.dark .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row > span[data-label]::before {
+    color: var(--color-text-dark);
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row--head + .create-user__locations-row {
+    border-top: none;
+  }
+
+  /* Ultima fila de la tarjeta: cantidad a la izquierda, acciones a la derecha. */
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row > span[data-label="Cantidad"],
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row > span.create-user__locations-cell--action {
+    padding-top: 8px;
+    border-top: 1px dashed var(--color-border);
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row > span.create-user__locations-cell--action {
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row > span.create-user__locations-cell--action::before {
+    content: none;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-cell--editable input,
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-cell--editable select {
+    max-width: none;
+  }
+}

@@ -2310,7 +2310,7 @@ function CreateProducto({
                   </div>
                   {showLocationForm && (
                     <div className="create-user__locations-row create-user__locations-row--form">
-                      <span>
+                      <span data-label="Sucursal">
                         <div className="create-user__dropdown" ref={locationBranchDropdownRef}>
                           <button
                             type="button"
@@ -2371,7 +2371,7 @@ function CreateProducto({
                           )}
                         </div>
                       </span>
-                      <span>
+                      <span data-label="Bodega">
                         <div className="create-user__dropdown" ref={locationBodegaDropdownRef}>
                           <button
                             type="button"
@@ -2428,7 +2428,7 @@ function CreateProducto({
                           )}
                         </div>
                       </span>
-                      <span>
+                      <span data-label="Division">
                         <div className="create-user__dropdown" ref={locationDivisionDropdownRef}>
                           <button
                             type="button"
@@ -2485,7 +2485,7 @@ function CreateProducto({
                           )}
                         </div>
                       </span>
-                      <span>
+                      <span data-label="Subdivision">
                         <div className="create-user__dropdown" ref={locationSubdivisionDropdownRef}>
                           <button
                             type="button"
@@ -2542,7 +2542,7 @@ function CreateProducto({
                           )}
                         </div>
                       </span>
-                      <span>
+                      <span data-label="Cantidad">
                         <input
                           type="number"
                           min="1"
@@ -2553,7 +2553,7 @@ function CreateProducto({
                           disabled={loading || locationsLoading || !canManageLocationDraft}
                         />
                       </span>
-                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                      <span data-label="Acciones" className="create-user__locations-cell create-user__locations-cell--action">
                         <button
                           type="button"
                           className="create-user__ghost"
@@ -2584,10 +2584,10 @@ function CreateProducto({
 
                     return (
                       <div key={location.uid} className="create-user__locations-row">
-                        <span>{location.sucursalNombre}</span>
-                        <span>{location.bodegaNombre}</span>
-                        <span>{location.divisionNombre}</span>
-                        <span
+                        <span data-label="Sucursal">{location.sucursalNombre}</span>
+                        <span data-label="Bodega">{location.bodegaNombre}</span>
+                        <span data-label="Division">{location.divisionNombre}</span>
+                        <span data-label="Subdivision"
                           className={`create-user__locations-cell${canManageRow ? ' create-user__locations-cell--editable' : ''}`}
                           onDoubleClick={canManageRow ? () => beginLocationEdit(location, 'subdivision') : undefined}
                         >
@@ -2615,7 +2615,7 @@ function CreateProducto({
                             <span>{location.subdivisionNombre}</span>
                           )}
                         </span>
-                        <span
+                        <span data-label="Cantidad"
                           className={`create-user__locations-cell${canManageRow ? ' create-user__locations-cell--editable' : ''}`}
                           onDoubleClick={canManageRow ? () => beginLocationEdit(location, 'cantidad') : undefined}
                         >
@@ -2640,7 +2640,7 @@ function CreateProducto({
                             <strong className="create-user__locations-total">{location.cantidad}</strong>
                           )}
                         </span>
-                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <span data-label="Acciones" className="create-user__locations-cell create-user__locations-cell--action">
                           <button
                             type="button"
                             className="create-user__locations-remove"

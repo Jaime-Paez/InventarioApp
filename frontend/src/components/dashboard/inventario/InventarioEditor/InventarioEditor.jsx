@@ -1015,7 +1015,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
           {showLocationForm && (
             <div className="create-user__locations-row create-user__locations-row--form">
-              <span>
+              <span data-label="Sucursal">
                 <div className="create-user__dropdown" ref={locationBranchDropdownRef}>
                   <button
                     type="button"
@@ -1075,7 +1075,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   )}
                 </div>
               </span>
-              <span>
+              <span data-label="Bodega">
                 <div className="create-user__dropdown" ref={locationBodegaDropdownRef}>
                   <button
                     type="button"
@@ -1131,7 +1131,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   )}
                 </div>
               </span>
-              <span>
+              <span data-label="Division">
                 <div className="create-user__dropdown" ref={locationDivisionDropdownRef}>
                   <button
                     type="button"
@@ -1187,7 +1187,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   )}
                 </div>
               </span>
-              <span>
+              <span data-label="Subdivision">
                 <div className="create-user__dropdown" ref={locationSubdivisionDropdownRef}>
                   <button
                     type="button"
@@ -1248,7 +1248,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   )}
                 </div>
               </span>
-              <span>
+              <span data-label="Cantidad">
                 <input
                   type="number"
                   min="1"
@@ -1259,7 +1259,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   disabled={editorDisabled || !canManageLocationDraft}
                 />
               </span>
-              <span className="create-user__locations-cell create-user__locations-cell--action">
+              <span data-label="Acciones" className="create-user__locations-cell create-user__locations-cell--action">
                 <button
                   type="button"
                   className="create-user__ghost"
@@ -1464,27 +1464,27 @@ const InventarioEditor = forwardRef(function InventarioEditor(
             return (
               <Fragment key={location.uid}>
                 <div className="create-user__locations-row">
-                  <span>
+                  <span data-label="Sucursal">
                     {canInlineEdit
                       ? makeDropdown('sucursal', location.sucursalNombre || 'Sucursal', branches, (b) => b.nombre || `Sucursal ${b.id}`, (b) => b.id, false)
                       : location.sucursalNombre}
                   </span>
-                  <span>
+                  <span data-label="Bodega">
                     {canInlineEdit
                       ? makeDropdown('bodega', location.bodegaNombre || 'Bodega', rowBodegas, (b) => b.nombre || `Bodega ${b.id}`, (b) => b.id, !location.sucursalId, isBodegaFullyUsed)
                       : location.bodegaNombre}
                   </span>
-                  <span>
+                  <span data-label="Division">
                     {canInlineEdit
                       ? makeDropdown('division', location.divisionNombre || 'Division', rowDivisions, (d) => d.nombre || `Division ${d.id}`, (d) => d.id, !location.bodegaId, isDivisionFullyUsed)
                       : location.divisionNombre}
                   </span>
-                  <span>
+                  <span data-label="Subdivision">
                     {canInlineEdit
                       ? makeDropdown('subdivision', location.subdivisionNombre || 'Subdivision', rowSubdivisions, (s) => s.nombre || `Subdivision ${s.id}`, (s) => s.id, !location.divisionId, (s) => otherUsedSubIds.has(String(s.id)))
                       : location.subdivisionNombre}
                   </span>
-                  <span>
+                  <span data-label="Cantidad">
                     {canInlineEdit ? (
                       <input
                         type="number"
@@ -1497,7 +1497,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                       <strong className="create-user__locations-total">{location.cantidad}</strong>
                     )}
                   </span>
-                  <span className="create-user__locations-cell create-user__locations-cell--action">
+                  <span data-label="Acciones" className="create-user__locations-cell create-user__locations-cell--action">
                     <BodegaLocationPreview
                       bodega={currentBodega}
                       divisionName={location.divisionNombre}
@@ -1527,19 +1527,19 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
                 {isTransferring && (
                   <div className="create-user__locations-row create-user__locations-row--form create-user__locations-row--transfer">
-                    <span>
+                    <span data-label="Sucursal">
                       <em>{location.sucursalNombre}</em>
                     </span>
-                    <span>
+                    <span data-label="Bodega">
                       {makeTransferDropdown('bodega', transferBodega?.nombre || 'Bodega', transferBodegas, (b) => b.nombre || `Bodega ${b.id}`, (b) => b.id, transferBusy)}
                     </span>
-                    <span>
+                    <span data-label="Division">
                       {makeTransferDropdown('division', transferDivision?.nombre || 'Division', transferDivisions, (d) => d.nombre || `Division ${d.id}`, (d) => d.id, transferBusy || !transferDraft.bodegaId)}
                     </span>
-                    <span>
+                    <span data-label="Subdivision">
                       {makeTransferDropdown('subdivision', transferSubdivision?.nombre || 'Subdivision', transferSubdivisions, (s) => s.nombre || `Subdivision ${s.id}`, (s) => s.id, transferBusy || !transferDraft.divisionId)}
                     </span>
-                    <span>
+                    <span data-label="Cantidad">
                       <input
                         type="number"
                         min="1"
@@ -1551,7 +1551,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         disabled={transferBusy}
                       />
                     </span>
-                    <span className="create-user__locations-cell create-user__locations-cell--action">
+                    <span data-label="Acciones" className="create-user__locations-cell create-user__locations-cell--action">
                       <button
                         type="button"
                         className="create-user__locations-transfer create-user__locations-transfer--confirm"
