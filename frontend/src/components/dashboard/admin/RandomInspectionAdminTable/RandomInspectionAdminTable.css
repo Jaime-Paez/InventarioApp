@@ -1117,9 +1117,13 @@
   background: #fff;
 }
 
-.inspection-admin__list-results .create-user__result-option:disabled {
-  opacity: 0.55;
-  cursor: default;
+/* Sin columna de stock/cantidad aca (no aplica a una lista de inspeccion):
+   se colapsa a 2 columnas, Codigo y Nombre, reusando el mismo patron
+   (create-salida__results-header/result-row) que el buscador de productos
+   de Entradas/Salidas. */
+.inspection-admin__list-results .create-salida__results-header,
+.inspection-admin__list-results .create-salida__result-row {
+  grid-template-columns: minmax(90px, 0.45fr) 1fr;
 }
 
 .inspection-admin__list-paste-actions {

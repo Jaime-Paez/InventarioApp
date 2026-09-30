@@ -8,6 +8,7 @@ import { formatDateTime } from '../../../../utils/dateFormat'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import '../CreateUsuario/CreateUsuario.css'
+import '../../movimientos/CreateSalida.css'
 import './RandomInspectionAdminTable.css'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
@@ -472,7 +473,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         })
         .catch((error) => { if (!cancelled) { setListSearchResults([]); notifyError(error?.message || 'No se pudieron buscar productos.') } })
         .finally(() => { if (!cancelled) setListSearchLoading(false) })
-    }, 300)
+    }, 550)
     return () => {
       cancelled = true
       window.clearTimeout(timer)
@@ -1644,6 +1645,12 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                     <div className="inspection-admin__list-results">
                       {listSearchLoading && <small className="muted">Buscando...</small>}
                       {!listSearchLoading && !listSearchResults.length && <small className="muted">Sin resultados.</small>}
+                      {!listSearchLoading && listSearchResults.length > 0 && (
+                        <div className="create-salida__results-header">
+                          <span>Código</span>
+                          <span>Nombre</span>
+                        </div>
+                      )}
                       {!listSearchLoading && listSearchResults.map((product) => {
                         const productId = normalizeId(product?.id)
                         const alreadyAdded = listProducts.some((item) => item.id === productId)
@@ -1651,14 +1658,14 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                           <button
                             key={`list-result-${productId}`}
                             type="button"
-                            className="create-user__result-option"
+                            className={`create-salida__result-row${alreadyAdded ? ' is-added' : ''}`}
+                            onMouseDown={(event) => event.preventDefault()}
                             onClick={() => addListProducts([product])}
                             disabled={alreadyAdded || listSending}
+                            title={alreadyAdded ? 'Ya está en la lista' : undefined}
                           >
-                            <div className="create-user__result-info">
-                              <strong>{String(product?.codigo || '').trim()}</strong>
-                              <span>{alreadyAdded ? 'Ya está en la lista' : String(product?.nombre || '').trim()}</span>
-                            </div>
+                            <span className="result-codigo">{String(product?.codigo || '').trim()}</span>
+                            <span className="result-nombre">{String(product?.nombre || '').trim()}</span>
                           </button>
                         )
                       })}

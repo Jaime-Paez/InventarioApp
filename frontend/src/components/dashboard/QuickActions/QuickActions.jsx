@@ -91,12 +91,6 @@ const normalizeIntegerInputString = (value) => {
   if (!Number.isFinite(parsed)) return ''
   return String(Math.max(0, parsed))
 }
-const formatSignedInteger = (value) => {
-  const normalized = toPositiveInt(Math.abs(Number(value) || 0), 0)
-  if (Number(value) > 0) return `+${normalized}`
-  if (Number(value) < 0) return `-${normalized}`
-  return '0'
-}
 const readProductInventoryEntries = (payload) => {
   const inventoryContext = payload?.inventario_context ?? payload?.inventory_context
   if (!inventoryContext || typeof inventoryContext !== 'object') return []
@@ -580,14 +574,11 @@ function QuickActions({
   const [randomInspectionMode, setRandomInspectionMode] = useState('review')
   const [randomInspectionStepIndex, setRandomInspectionStepIndex] = useState(0)
   const [randomInspectionShowSummary, setRandomInspectionShowSummary] = useState(false)
-  const [randomInspectionCorrectionActive, setRandomInspectionCorrectionActive] = useState(false)
-  const [randomInspectionCorrectionIndex, setRandomInspectionCorrectionIndex] = useState(0)
   const [randomInspectionLoading, setRandomInspectionLoading] = useState(false)
   const [randomInspectionSubmitting, setRandomInspectionSubmitting] = useState(false)
   const [randomInspectionError, setRandomInspectionError] = useState('')
   const [randomInspectionHasGeneralIssue, setRandomInspectionHasGeneralIssue] = useState(false)
   const [randomInspectionGeneralNote, setRandomInspectionGeneralNote] = useState('')
-  const [randomInspectionRevealing, setRandomInspectionRevealing] = useState(false)
   // Sincronizacion del borrador entre dispositivos (misma cuenta en la compu
   // y en la tablet): version del servidor que tiene este dispositivo, que
   // productos cambiaron aca y todavia no se guardaron, y una cola para que
@@ -2575,67 +2566,25 @@ function QuickActions({
     [randomInspectionRowsToVerify]
   )
 
-  const randomInspectionMismatchCount = useMemo(
-    () =>
-      randomInspectionRows.filter(
-        (row) => String(row?.estado_revision || '').trim().toLowerCase() === 'no_coincide'
-      ).length,
-    [randomInspectionRows]
-  )
-
   const randomInspectionAnsweredCount = useMemo(
     () =>
       randomInspectionRows.filter((row) => row?.cantidad_reportada != null).length,
     [randomInspectionRows]
   )
 
-  // Durante la fase de correccion solo se navega sobre las filas con
-  // diferencia (randomInspectionRowsToVerify), no sobre todas las filas
-  // contadas -- por eso el "set" activo depende de la fase.
-  const randomInspectionActiveRowSet = randomInspectionCorrectionActive
-    ? randomInspectionRowsToVerify
-    : randomInspectionRows
-
   const activeRandomInspectionStepIndex = useMemo(() => {
-    const rawIndex = randomInspectionCorrectionActive
-      ? randomInspectionCorrectionIndex
-      : randomInspectionStepIndex
-    if (!randomInspectionActiveRowSet.length) return 0
-    return Math.min(rawIndex, randomInspectionActiveRowSet.length - 1)
-  }, [
-    randomInspectionActiveRowSet,
-    randomInspectionCorrectionActive,
-    randomInspectionCorrectionIndex,
-    randomInspectionStepIndex,
-  ])
+    if (!randomInspectionRows.length) return 0
+    return Math.min(randomInspectionStepIndex, randomInspectionRows.length - 1)
+  }, [randomInspectionRows, randomInspectionStepIndex])
 
   const activeRandomInspectionRow = useMemo(
-    () => randomInspectionActiveRowSet[activeRandomInspectionStepIndex] || null,
-    [activeRandomInspectionStepIndex, randomInspectionActiveRowSet]
+    () => randomInspectionRows[activeRandomInspectionStepIndex] || null,
+    [activeRandomInspectionStepIndex, randomInspectionRows]
   )
-  const isRandomInspectionSummaryVisible = (
-    !isRandomInspectionVerifyMode &&
-    randomInspectionShowSummary &&
-    !randomInspectionCorrectionActive
-  )
-  const randomInspectionMatchedCount = Math.max(
-    0,
-    randomInspectionAnsweredCount - randomInspectionMismatchCount
-  )
+  const isRandomInspectionSummaryVisible = !isRandomInspectionVerifyMode && randomInspectionShowSummary
   const randomInspectionAllAnswersReady = (
     randomInspectionRows.length > 0 &&
     randomInspectionAnsweredCount === randomInspectionRows.length
-  )
-  // El paso final de correccion es cuando ya no queda ninguna diferencia
-  // por corregir (el usuario las fue arreglando) o cuando estamos parados
-  // en la ultima de la lista -- en ambos casos el boton principal debe
-  // guardar la inspeccion en vez de avanzar al siguiente producto.
-  const isRandomInspectionCorrectionFinalStep = (
-    randomInspectionCorrectionActive &&
-    (
-      !randomInspectionRowsToVerify.length ||
-      activeRandomInspectionStepIndex >= randomInspectionRowsToVerify.length - 1
-    )
   )
 
   useEffect(() => {
@@ -2649,16 +2598,11 @@ function QuickActions({
   useEffect(() => {
     randomInspectionMetaRef.current = {
       paso_actual: randomInspectionStepIndex,
-      fase: randomInspectionCorrectionActive
-        ? 'correccion'
-        : (randomInspectionShowSummary ? 'resumen' : 'conteo'),
-      indice_correccion: randomInspectionCorrectionIndex,
+      fase: randomInspectionShowSummary ? 'resumen' : 'conteo',
       tiene_novedad: randomInspectionHasGeneralIssue,
       nota_general: randomInspectionHasGeneralIssue ? randomInspectionGeneralNote : '',
     }
   }, [
-    randomInspectionCorrectionActive,
-    randomInspectionCorrectionIndex,
     randomInspectionGeneralNote,
     randomInspectionHasGeneralIssue,
     randomInspectionShowSummary,
@@ -3208,8 +3152,8 @@ function QuickActions({
     scheduleRandomInspectionDraftSave()
   }, [scheduleRandomInspectionDraftSave])
 
-  // Paso, fase (conteo/resumen/correccion) y nota general tambien viven en
-  // el servidor, para retomar en otro dispositivo donde se quedo.
+  // Paso, fase (conteo/resumen) y nota general tambien viven en el
+  // servidor, para retomar en otro dispositivo donde se quedo.
   const activeRandomInspectionId = normalizeId(activeRandomInspection?.id)
   const activeRandomInspectionStatus = String(activeRandomInspection?.estado || '').trim().toLowerCase()
   useEffect(() => {
@@ -3217,10 +3161,7 @@ function QuickActions({
     if (!activeRandomInspectionId || activeRandomInspectionStatus === 'completada') return
     const signature = JSON.stringify({
       paso_actual: randomInspectionStepIndex,
-      fase: randomInspectionCorrectionActive
-        ? 'correccion'
-        : (randomInspectionShowSummary ? 'resumen' : 'conteo'),
-      indice_correccion: randomInspectionCorrectionIndex,
+      fase: randomInspectionShowSummary ? 'resumen' : 'conteo',
       tiene_novedad: randomInspectionHasGeneralIssue,
       nota_general: randomInspectionHasGeneralIssue ? randomInspectionGeneralNote : '',
     })
@@ -3231,8 +3172,6 @@ function QuickActions({
     activeRandomInspectionId,
     activeRandomInspectionStatus,
     isRandomInspectionModalOpen,
-    randomInspectionCorrectionActive,
-    randomInspectionCorrectionIndex,
     randomInspectionGeneralNote,
     randomInspectionHasGeneralIssue,
     randomInspectionMode,
@@ -3260,15 +3199,12 @@ function QuickActions({
     randomInspectionVersionRef.current = null
     randomInspectionActiveIdRef.current = ''
     randomInspectionSubmittingRef.current = false
-    setRandomInspectionRevealing(false)
     setIsRandomInspectionModalOpen(false)
     setActiveRandomInspection(null)
     setRandomInspectionDraftByItemId({})
     setRandomInspectionMode('review')
     setRandomInspectionStepIndex(0)
     setRandomInspectionShowSummary(false)
-    setRandomInspectionCorrectionActive(false)
-    setRandomInspectionCorrectionIndex(0)
     setRandomInspectionError('')
     setRandomInspectionSubmitting(false)
     setRandomInspectionLoading(false)
@@ -3537,8 +3473,6 @@ function QuickActions({
       setRandomInspectionMode(isVerifyReminder ? 'verify' : 'review')
       setRandomInspectionStepIndex(0)
       setRandomInspectionShowSummary(false)
-      setRandomInspectionCorrectionActive(false)
-      setRandomInspectionCorrectionIndex(0)
       setRandomInspectionHasGeneralIssue(false)
       setRandomInspectionGeneralNote('')
       setIsRandomInspectionModalOpen(true)
@@ -3566,25 +3500,18 @@ function QuickActions({
           const serverStep = toPositiveInt(inspection?.borrador_paso_actual, 0)
           if (serverStep > 0) setRandomInspectionStepIndex(serverStep)
           const serverPhase = String(inspection?.borrador_fase || '').trim().toLowerCase()
-          if (inspection?.conteo_revelado && (serverPhase === 'resumen' || serverPhase === 'correccion')) {
-            setRandomInspectionShowSummary(true)
-            if (serverPhase === 'correccion') {
-              setRandomInspectionCorrectionIndex(toPositiveInt(inspection?.borrador_indice_correccion, 0))
-              setRandomInspectionCorrectionActive(true)
-            }
-          }
+          // conteo_revelado solo puede venir en true de una inspeccion que haya
+          // quedado a medias con el flujo anterior (ya no lo activamos nosotros):
+          // en ese caso se retoma directo en el resumen, sin fase de correccion.
+          const resumesInSummary = Boolean(inspection?.conteo_revelado) && serverPhase !== 'conteo'
+          if (resumesInSummary) setRandomInspectionShowSummary(true)
           if (inspection?.borrador_tiene_novedad) {
             setRandomInspectionHasGeneralIssue(true)
             setRandomInspectionGeneralNote(String(inspection?.borrador_nota_general || ''))
           }
           randomInspectionLastSentMetaRef.current = JSON.stringify({
             paso_actual: serverStep,
-            fase: inspection?.conteo_revelado && serverPhase === 'correccion'
-              ? 'correccion'
-              : (inspection?.conteo_revelado && serverPhase === 'resumen' ? 'resumen' : 'conteo'),
-            indice_correccion: serverPhase === 'correccion'
-              ? toPositiveInt(inspection?.borrador_indice_correccion, 0)
-              : 0,
+            fase: resumesInSummary ? 'resumen' : 'conteo',
             tiene_novedad: Boolean(inspection?.borrador_tiene_novedad),
             nota_general: inspection?.borrador_tiene_novedad ? String(inspection?.borrador_nota_general || '') : '',
           })
@@ -4367,45 +4294,14 @@ function QuickActions({
     [flushRandomInspectionDraft]
   )
 
-  // Al terminar el conteo a ciegas: se guarda todo, el servidor fija el
-  // primer conteo y recien ahi devuelve el inventario esperado (el actual).
-  const revealRandomInspectionSummary = useCallback(async (stepIndex) => {
-    setRandomInspectionRevealing(true)
-    setRandomInspectionError('')
-    try {
-      const alreadyRevealed = Boolean(activeRandomInspection?.conteo_revelado)
-      const result = await flushRandomInspectionDraft({
-        includeAllItems: true,
-        reveal: !alreadyRevealed,
-        includeInspection: true,
-        meta: { paso_actual: stepIndex, fase: 'resumen' },
-      })
-      if (result?.completed) return
-      if (!result?.ok) {
-        setRandomInspectionError(
-          result?.conflict
-            ? RANDOM_INSPECTION_CONFLICT_MESSAGE
-            : (
-              String(result?.payload?.detail || '').trim() ||
-              'No se pudo cargar el resultado del conteo. Revisa tu conexión e inténtalo de nuevo.'
-            )
-        )
-        return
-      }
-      if (result?.payload?.inspection) applyServerRandomInspection(result.payload.inspection)
-      setRandomInspectionShowSummary(true)
-    } finally {
-      setRandomInspectionRevealing(false)
-    }
-  }, [activeRandomInspection?.conteo_revelado, applyServerRandomInspection, flushRandomInspectionDraft])
-
+  // Conteo a ciegas de principio a fin: nunca se le revela al empleado el
+  // inventario esperado ni si coincidio (eso queda solo para administracion
+  // al revisar "Diferencias reportadas"). Por eso, al llegar al ultimo
+  // producto, se pasa directo a un resumen neutral de lo contado -- sin
+  // pedirle nada al servidor ni marcar la inspeccion como "revelada".
   const handleAdvanceRandomInspectionStep = useCallback(() => {
-    if (randomInspectionRevealing || randomInspectionSubmitting) return
-    const rowsForStep = randomInspectionCorrectionActive
-      ? randomInspectionRowsToVerify
-      : randomInspectionRows
-
-    if (!rowsForStep.length) {
+    if (randomInspectionSubmitting) return
+    if (!randomInspectionRows.length) {
       setRandomInspectionError('No hay productos para revisar en esta inspección.')
       return
     }
@@ -4421,17 +4317,9 @@ function QuickActions({
 
     setRandomInspectionError('')
 
-    // Dentro de la correccion solo avanzamos entre diferencias; el llamador
-    // (boton/Enter) ya se encarga de guardar cuando es la ultima.
-    if (randomInspectionCorrectionActive) {
-      setRandomInspectionCorrectionIndex(
-        Math.min(activeRandomInspectionStepIndex + 1, rowsForStep.length - 1)
-      )
-      return
-    }
-
-    if (activeRandomInspectionStepIndex >= rowsForStep.length - 1) {
-      void revealRandomInspectionSummary(activeRandomInspectionStepIndex)
+    if (activeRandomInspectionStepIndex >= randomInspectionRows.length - 1) {
+      setRandomInspectionShowSummary(true)
+      void saveInspectionDraftToBackend(activeRandomInspectionStepIndex)
       return
     }
     const nextStep = activeRandomInspectionStepIndex + 1
@@ -4440,26 +4328,13 @@ function QuickActions({
   }, [
     activeRandomInspectionRow,
     activeRandomInspectionStepIndex,
-    randomInspectionCorrectionActive,
-    randomInspectionRevealing,
     randomInspectionRows,
-    randomInspectionRowsToVerify,
     randomInspectionSubmitting,
-    revealRandomInspectionSummary,
     saveInspectionDraftToBackend,
   ])
 
   const handleGoBackRandomInspectionStep = useCallback(() => {
     setRandomInspectionError('')
-    if (randomInspectionCorrectionActive) {
-      if (activeRandomInspectionStepIndex <= 0) {
-        // En el primer item de la correccion, "Anterior" regresa al resumen.
-        setRandomInspectionCorrectionActive(false)
-        return
-      }
-      setRandomInspectionCorrectionIndex(activeRandomInspectionStepIndex - 1)
-      return
-    }
     if (isRandomInspectionSummaryVisible) {
       setRandomInspectionShowSummary(false)
       setRandomInspectionStepIndex(0)
@@ -4472,7 +4347,6 @@ function QuickActions({
   }, [
     activeRandomInspectionStepIndex,
     isRandomInspectionSummaryVisible,
-    randomInspectionCorrectionActive,
     saveInspectionDraftToBackend,
   ])
 
@@ -4607,22 +4481,14 @@ function QuickActions({
           )
         }
 
-        const mismatchCount = toPositiveInt(payload?.mismatch_count, 0)
-        if (mismatchCount > 0) {
-          toast.current?.show({
-            severity: 'warn',
-            summary: 'Inspección registrada',
-            detail: `Se reportaron ${mismatchCount} diferencia(s). Se notificó a administración para verificar.`,
-            life: 4200,
-          })
-        } else {
-          toast.current?.show({
-            severity: 'success',
-            summary: 'Inspección registrada',
-            detail: 'La inspección se guardó correctamente.',
-            life: 3200,
-          })
-        }
+        // Nunca se le dice al empleado si hubo diferencias: eso solo lo ve
+        // administracion en "Diferencias reportadas".
+        toast.current?.show({
+          severity: 'success',
+          summary: 'Inspección registrada',
+          detail: 'La inspección se guardó correctamente.',
+          life: 3200,
+        })
 
         randomInspectionDirtyItemsRef.current = new Map()
         randomInspectionMetaDirtyRef.current = false
@@ -5339,21 +5205,11 @@ function QuickActions({
 
                   {!!randomInspectionRows.length && !isRandomInspectionSummaryVisible && activeRandomInspectionRow && (
                     <div className="quick-actions__inspection-quiz">
-                      {randomInspectionCorrectionActive && (
-                        <p className="quick-actions__inspection-stage-kicker">
-                          {`Corrigiendo diferencias (${activeRandomInspectionStepIndex + 1} de ${randomInspectionRowsToVerify.length})`}
-                        </p>
-                      )}
                       <div className="quick-actions__inspection-progress" aria-hidden="true">
                         <div className="quick-actions__inspection-progress-bar">
                           <span
                             style={{
-                              width: `${((activeRandomInspectionStepIndex + 1) / Math.max(
-                                (randomInspectionCorrectionActive
-                                  ? randomInspectionRowsToVerify.length
-                                  : randomInspectionRows.length),
-                                1
-                              )) * 100}%`,
+                              width: `${((activeRandomInspectionStepIndex + 1) / Math.max(randomInspectionRows.length, 1)) * 100}%`,
                             }}
                           />
                         </div>
@@ -5376,9 +5232,7 @@ function QuickActions({
                             className="quick-actions__inspection-stage"
                           >
                             <div className="quick-actions__inspection-stage-copy">
-                              <p className="quick-actions__inspection-stage-kicker">
-                                {randomInspectionCorrectionActive ? 'Código a corregir' : 'Código a revisar'}
-                              </p>
+                              <p className="quick-actions__inspection-stage-kicker">Código a revisar</p>
                               <h5>
                                 {activeRandomInspectionRow?.producto_codigo || `Producto ${activeRandomInspectionRow?.row_id}`}
                               </h5>
@@ -5467,10 +5321,6 @@ function QuickActions({
                                 onKeyDown={(event) => {
                                   if (event.key !== 'Enter') return
                                   event.preventDefault()
-                                  if (isRandomInspectionCorrectionFinalStep) {
-                                    void handleSubmitRandomInspection()
-                                    return
-                                  }
                                   handleAdvanceRandomInspectionStep()
                                 }}
                                 maxLength={4}
@@ -5481,11 +5331,9 @@ function QuickActions({
                             </label>
 
                             <p className="quick-actions__inspection-stage-help">
-                              {randomInspectionCorrectionActive
-                                ? 'Este producto no coincidió con el inventario esperado. Vuelve a contarlo y corrige la cantidad si hace falta.'
-                                : activeRandomInspectionRow?.requiere_conteo_por_ubicacion
-                                  ? 'Cuenta cada ubicación por separado. El inventario esperado se mostrará al final.'
-                                  : 'Cuenta primero y responde solo con la cantidad encontrada. El inventario esperado se mostrara al final.'}
+                              {activeRandomInspectionRow?.requiere_conteo_por_ubicacion
+                                ? 'Cuenta cada ubicación por separado.'
+                                : 'Cuenta primero y responde solo con la cantidad encontrada.'}
                             </p>
                           </article>
                         ))}
@@ -5493,41 +5341,20 @@ function QuickActions({
                     </div>
                   )}
 
-                  {!!randomInspectionRows.length &&
-                    !isRandomInspectionSummaryVisible &&
-                    !activeRandomInspectionRow &&
-                    randomInspectionCorrectionActive && (
-                      <div className="quick-actions__inspection-quiz">
-                        <p className="quick-actions__inspection-empty">
-                          Ya corregiste todas las diferencias. Presiona «Guardar inspección» para terminar.
-                        </p>
-                      </div>
-                    )}
-
                   {!!randomInspectionRows.length && isRandomInspectionSummaryVisible && (
                     <div className="quick-actions__inspection-summary">
                       <div className="quick-actions__inspection-summary-head">
                         <div>
-                          <p className="quick-actions__inspection-stage-kicker">Resultado de la prueba</p>
-                          <h5>
-                            {randomInspectionMismatchCount > 0
-                              ? `Se encontraron ${randomInspectionMismatchCount} diferencia(s)`
-                              : 'Todo coincide con el inventario'}
-                          </h5>
+                          <p className="quick-actions__inspection-stage-kicker">Resumen del conteo</p>
+                          <h5>Conteo completado</h5>
                           <p className="quick-actions__inspection-stage-help">
-                            {randomInspectionMismatchCount > 0
-                              ? 'Aqui ya puedes ver lo esperado frente a lo que realmente contaste. Antes de guardar, tendrás que corregir cada diferencia.'
-                              : 'Aqui ya puedes ver lo esperado frente a lo que realmente contaste.'}
+                            Revisa lo que contaste antes de guardar. Administración se encarga de comparar el resultado con el inventario.
                           </p>
                         </div>
                         <div className="quick-actions__inspection-summary-stats">
                           <span>
-                            Coinciden
-                            <strong>{randomInspectionMatchedCount}</strong>
-                          </span>
-                          <span>
-                            Diferencias
-                            <strong>{randomInspectionMismatchCount}</strong>
+                            Productos contados
+                            <strong>{randomInspectionAnsweredCount}</strong>
                           </span>
                         </div>
                       </div>
@@ -5535,10 +5362,7 @@ function QuickActions({
                       <div className="quick-actions__inspection-list">
                         {randomInspectionRows.map((row) => {
                           const rowId = normalizeId(row?.row_id || row?.id)
-                          const expectedQty = toPositiveInt(row?.cantidad_esperada, 0)
                           const countedQty = toPositiveInt(row?.cantidad_reportada, 0)
-                          const delta = countedQty - expectedQty
-                          const isMismatch = countedQty !== expectedQty
                           return (
                             <article key={`inspection-summary-${rowId}`} className="quick-actions__inspection-item">
                               <div className="quick-actions__inspection-item-head">
@@ -5551,38 +5375,9 @@ function QuickActions({
 
                               <div className="quick-actions__inspection-summary-row">
                                 <div>
-                                  <small>Esperado</small>
-                                  <strong>{expectedQty}</strong>
-                                </div>
-                                <div>
                                   <small>Contado</small>
                                   <strong>{countedQty}</strong>
                                 </div>
-                                <div>
-                                  <small>Diferencia</small>
-                                  <strong>{formatSignedInteger(delta)}</strong>
-                                </div>
-                                {isMismatch ? (
-                                  <button
-                                    type="button"
-                                    className="quick-actions__inspection-summary-badge is-mismatch is-mismatch-btn"
-                                    onClick={() => {
-                                      setRandomInspectionError('')
-                                      const correctionIndex = randomInspectionRowsToVerify.findIndex(
-                                        (verifyRow) =>
-                                          normalizeId(verifyRow?.row_id || verifyRow?.id) === rowId
-                                      )
-                                      setRandomInspectionCorrectionIndex(Math.max(0, correctionIndex))
-                                      setRandomInspectionCorrectionActive(true)
-                                    }}
-                                  >
-                                    Corregir
-                                  </button>
-                                ) : (
-                                  <span className="quick-actions__inspection-summary-badge is-match">
-                                    Coincide
-                                  </span>
-                                )}
                               </div>
                             </article>
                           )
@@ -5634,7 +5429,6 @@ function QuickActions({
               </button>
               {!isRandomInspectionVerifyMode &&
                 !isRandomInspectionSummaryVisible &&
-                !randomInspectionCorrectionActive &&
                 randomInspectionRows.length > 1 && (
                   <button
                     type="button"
@@ -5655,16 +5449,6 @@ function QuickActions({
                   Volver a revisar
                 </button>
               )}
-              {!isRandomInspectionVerifyMode && randomInspectionCorrectionActive && (
-                <button
-                  type="button"
-                  className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
-                  onClick={handleGoBackRandomInspectionStep}
-                  disabled={randomInspectionSubmitting}
-                >
-                  {activeRandomInspectionStepIndex <= 0 ? 'Volver al resumen' : 'Anterior'}
-                </button>
-              )}
               <button
                 type="button"
                 className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
@@ -5674,24 +5458,6 @@ function QuickActions({
                     return
                   }
                   if (isRandomInspectionSummaryVisible) {
-                    if (randomInspectionMismatchCount > 0) {
-                      setRandomInspectionError('')
-                      setRandomInspectionCorrectionIndex(0)
-                      setRandomInspectionCorrectionActive(true)
-                      return
-                    }
-                    void handleSubmitRandomInspection()
-                    return
-                  }
-                  if (isRandomInspectionCorrectionFinalStep) {
-                    if (activeRandomInspectionRow && activeRandomInspectionRow.cantidad_reportada == null) {
-                      setRandomInspectionError(
-                        activeRandomInspectionRow?.requiere_conteo_por_ubicacion
-                          ? 'Completa la cantidad contada en cada ubicación antes de continuar.'
-                          : 'Ingresa la cantidad contada antes de continuar.'
-                      )
-                      return
-                    }
                     void handleSubmitRandomInspection()
                     return
                   }
@@ -5699,7 +5465,6 @@ function QuickActions({
                 }}
                 disabled={
                   randomInspectionSubmitting ||
-                  randomInspectionRevealing ||
                   randomInspectionLoading ||
                   (!isRandomInspectionVerifyMode && isRandomInspectionAlreadyCompleted) ||
                   (
@@ -5708,11 +5473,7 @@ function QuickActions({
                       : (
                         !randomInspectionRows.length ||
                         (isRandomInspectionSummaryVisible && !randomInspectionAllAnswersReady) ||
-                        (
-                          !isRandomInspectionSummaryVisible &&
-                          !activeRandomInspectionRow &&
-                          !(randomInspectionCorrectionActive && !randomInspectionRowsToVerify.length)
-                        )
+                        (!isRandomInspectionSummaryVisible && !activeRandomInspectionRow)
                       )
                   )
                 }
@@ -5727,23 +5488,13 @@ function QuickActions({
                     )
                     : isRandomInspectionAlreadyCompleted
                       ? 'Inspección ya enviada'
-                    : randomInspectionCorrectionActive
-                      ? (
-                        isRandomInspectionCorrectionFinalStep
-                          ? 'Guardar inspección'
-                          : 'Corregir siguiente'
-                      )
                     : !isRandomInspectionSummaryVisible
                       ? (
                         activeRandomInspectionStepIndex >= randomInspectionRows.length - 1
-                          ? 'Ver resultado'
+                          ? 'Ver resumen'
                           : 'Siguiente producto'
                       )
-                    : (
-                      randomInspectionMismatchCount > 0
-                        ? `Corregir diferencias (${randomInspectionMismatchCount})`
-                        : 'Guardar inspecci\u00f3n'
-                    )}
+                    : 'Guardar inspecci\u00f3n'}
               </button>
             </footer>
           </div>

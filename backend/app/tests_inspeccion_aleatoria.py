@@ -79,6 +79,11 @@ class InspeccionAleatoriaBaseTestCase(TestCase):
         inspection.save(update_fields=["total_items"])
         return inspection
 
+    def _diferencias(self, inspection):
+        return inspection.items.filter(
+            estado_revision=InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE
+        ).count()
+
     def _stock(self, producto=None, subdivision=None):
         queryset = Inventario.objects.filter(producto=producto or self.producto)
         if subdivision is not None:
@@ -108,7 +113,7 @@ class AjusteContraStockAlContarTests(InspeccionAleatoriaBaseTestCase):
         response = self._responder(inspection, {self.producto.id: 8})
 
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["mismatch_count"], 0)
+        self.assertEqual(self._diferencias(inspection), 0)
         item = inspection.items.get()
         self.assertEqual(item.estado_revision, "coincide")
         self.assertEqual(item.cantidad_esperada, 8)
@@ -118,7 +123,7 @@ class AjusteContraStockAlContarTests(InspeccionAleatoriaBaseTestCase):
         inspection = self._crear_inspeccion()
         Inventario.objects.filter(pk=self.inv_a.pk).update(cantidad=8)  # venta antes de contar
         response = self._responder(inspection, {self.producto.id: 7})
-        self.assertEqual(response.data["mismatch_count"], 1)
+        self.assertEqual(self._diferencias(inspection), 1)
 
         Inventario.objects.filter(pk=self.inv_a.pk).update(cantidad=6)  # venta despues de contar
         item = inspection.items.get()
@@ -234,7 +239,8 @@ class ConteoCiegoTests(InspeccionAleatoriaBaseTestCase):
             format="json",
         )
         self.assertEqual(revealed.status_code, 200, revealed.data)
-        self.assertEqual(revealed.data["inspection"]["items"][0]["cantidad_esperada"], 10)
+        # El revisor sigue sin ver el esperado; administracion si.
+        self.assertIsNone(revealed.data["inspection"]["items"][0]["cantidad_esperada"])
         self.assertEqual(revealed.data["inspection"]["borrador_fase"], "resumen")
 
         # Corrige despues de ver lo esperado: el primer conteo no cambia.
@@ -271,8 +277,8 @@ class ConteoPorUbicacionTests(InspeccionAleatoriaBaseTestCase):
 
     def test_aprobar_corrige_cada_ubicacion(self):
         inspection = self._crear_inspeccion()
-        response = self._responder_por_ubicacion(inspection, 3, 5)
-        self.assertEqual(response.data["mismatch_count"], 1)
+        self._responder_por_ubicacion(inspection, 3, 5)
+        self.assertEqual(self._diferencias(inspection), 1)
 
         item = inspection.items.get()
         self.admin_client.post(
@@ -285,9 +291,9 @@ class ConteoPorUbicacionTests(InspeccionAleatoriaBaseTestCase):
 
     def test_total_correcto_con_ubicaciones_cruzadas_se_reubica(self):
         inspection = self._crear_inspeccion()
-        response = self._responder_por_ubicacion(inspection, 3, 7)
+        self._responder_por_ubicacion(inspection, 3, 7)
 
-        self.assertEqual(response.data["mismatch_count"], 0)
+        self.assertEqual(self._diferencias(inspection), 0)
         self.assertEqual(self._stock(), 10)
         self.assertEqual(self._stock(subdivision=self.sub_a), 3)
         self.assertEqual(self._stock(subdivision=self.sub_b), 7)
@@ -375,7 +381,7 @@ class InspeccionPorDivisionTests(InspeccionAleatoriaBaseTestCase):
         )
         inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
         response = self._responder(inspection, {self.producto.id: 10, self.producto_2.id: 4})
-        self.assertEqual(response.data["mismatch_count"], 0)
+        self.assertEqual(self._diferencias(inspection), 0)
 
 
 class DisculparTests(InspeccionAleatoriaBaseTestCase):
@@ -484,7 +490,7 @@ class InspeccionPorListaTests(InspeccionAleatoriaBaseTestCase):
         inspection = InspeccionAleatoriaDiaria.objects.get(pk=primera.data["inspeccion_id"])
         response = self._responder(inspection, {self.producto.id: 9})
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["mismatch_count"], 1)
+        self.assertEqual(self._diferencias(inspection), 1)
 
     def test_lista_no_reemplaza_la_inspeccion_automatica(self):
         self._enviar_lista(producto_ids=[self.producto.id])
@@ -519,8 +525,29 @@ class VerResultadoConProductosPendientesTests(InspeccionAleatoriaBaseTestCase):
         )
 
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["inspection"]["items"][0]["cantidad_esperada"], 10)
+        self.assertIsNone(response.data["inspection"]["items"][0]["cantidad_esperada"])
         item_1.refresh_from_db()
         item_2.refresh_from_db()
         self.assertEqual(item_1.cantidad_primer_conteo, 9)
         self.assertIsNone(item_2.cantidad_primer_conteo)
+
+
+class RevisorNoVeElResultadoTests(InspeccionAleatoriaBaseTestCase):
+    def test_el_revisor_no_recibe_esperado_ni_diferencias_despues_de_enviar(self):
+        inspection = self._crear_inspeccion()
+        response = self._responder(inspection, {self.producto.id: 7})
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertNotIn("mismatch_count", response.data)
+        item = response.data["inspection"]["items"][0]
+        self.assertIsNone(item["cantidad_esperada"])
+        self.assertEqual(item["estado_revision"], "revisado")
+        self.assertEqual(item["verificacion_estado"], "")
+        self.assertEqual(item["cantidad_reportada"], 7)
+
+        # Administracion si lo ve todo.
+        admin_view = self.admin_client.get(f"{BASE_URL}/{inspection.id}/")
+        admin_item = admin_view.data["inspection"]["items"][0]
+        self.assertEqual(admin_item["cantidad_esperada"], 10)
+        self.assertEqual(admin_item["estado_revision"], "no_coincide")
+        self.assertEqual(admin_item["verificacion_estado"], "pendiente")

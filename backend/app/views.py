@@ -1564,6 +1564,41 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
             for entry in conteo_ubicaciones
             if isinstance(entry, dict)
         ]
+    serialized_result = {
+        "estado_revision": str(item.estado_revision or "").strip(),
+        "observacion": _normalize_text(item.observacion),
+        "verificacion_estado": str(item.verificacion_estado or "").strip(),
+        "cantidad_confirmada": (
+            int(item.cantidad_confirmada)
+            if item.cantidad_confirmada is not None
+            else None
+        ),
+        "nota_verificacion": _normalize_text(item.nota_verificacion),
+        "verificado_en": _parse_iso_timestamp(item.verificado_en),
+        "verificado_por": _format_user_display_name(getattr(item, "verificado_por", None))
+        if getattr(item, "verificado_por_id", None)
+        else "",
+    }
+    if hide_expected:
+        # Tampoco si coincidio ni lo que decidio administracion; y se quitan
+        # las notas automaticas del sistema (delatan una diferencia).
+        serialized_result = {
+            "estado_revision": (
+                InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
+                if item.estado_revision == InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
+                else "revisado"
+            ),
+            "observacion": "\n".join(
+                line
+                for line in _normalize_text(item.observacion).splitlines()
+                if not line.strip().startswith("[Sistema]")
+            ).strip(),
+            "verificacion_estado": "",
+            "cantidad_confirmada": None,
+            "nota_verificacion": "",
+            "verificado_en": None,
+            "verificado_por": "",
+        }
     return {
         "id": int(item.id),
         "sucursal_id": int(item.sucursal_id),
@@ -1585,7 +1620,6 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
             if item.cantidad_esperada_inicial is not None and not hide_expected
             else None
         ),
-        "estado_revision": str(item.estado_revision or "").strip(),
         "cantidad_reportada": (
             int(item.cantidad_reportada)
             if item.cantidad_reportada is not None
@@ -1597,19 +1631,8 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
             else None
         ),
         "conteo_ubicaciones": conteo_ubicaciones,
-        "observacion": _normalize_text(item.observacion),
         "revisado_en": _parse_iso_timestamp(item.revisado_en),
-        "verificacion_estado": str(item.verificacion_estado or "").strip(),
-        "cantidad_confirmada": (
-            int(item.cantidad_confirmada)
-            if item.cantidad_confirmada is not None
-            else None
-        ),
-        "nota_verificacion": _normalize_text(item.nota_verificacion),
-        "verificado_en": _parse_iso_timestamp(item.verificado_en),
-        "verificado_por": _format_user_display_name(getattr(item, "verificado_por", None))
-        if getattr(item, "verificado_por_id", None)
-        else "",
+        **serialized_result,
     }
 
 
@@ -1721,11 +1744,16 @@ def _serialize_random_inspection(inspection, *, viewer=None):
     )
     is_pending = _is_random_inspection_pending(inspection)
     viewer_id = getattr(viewer, "id", None)
+    viewer_is_assignee = viewer_id is not None and int(viewer_id) == int(inspection.usuario_id)
+    # El revisor nunca ve el inventario esperado ni si coincidio (ni antes ni
+    # despues de enviar): eso lo decide solo administracion. Si el revisor
+    # tambien es administrador, se le oculta solo mientras cuenta.
     hide_expected = bool(
-        is_pending
-        and not inspection.conteo_revelado
-        and viewer_id is not None
-        and int(viewer_id) == int(inspection.usuario_id)
+        viewer_is_assignee
+        and (
+            not _can_verify_random_inspection(viewer)
+            or (is_pending and not inspection.conteo_revelado)
+        )
     )
     live_expected = (
         _live_expected_quantities(inspection_items, division_id=division_id)
@@ -3181,13 +3209,13 @@ class RandomInspectionRespondAPIView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        return Response(
-            {
-                "inspection": _serialize_random_inspection(inspection, viewer=request.user),
-                "mismatch_count": int(mismatch_count),
-            },
-            status=status.HTTP_200_OK,
-        )
+        response_payload = {
+            "inspection": _serialize_random_inspection(inspection, viewer=request.user),
+        }
+        # Cuantas diferencias hubo solo lo sabe administracion.
+        if _can_verify_random_inspection(request.user):
+            response_payload["mismatch_count"] = int(mismatch_count)
+        return Response(response_payload, status=status.HTTP_200_OK)
 
 
 class RandomInspectionSaveDraftAPIView(APIView):
