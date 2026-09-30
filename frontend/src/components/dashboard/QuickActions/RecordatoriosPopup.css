@@ -2984,3 +2984,96 @@
     align-items: stretch;
   }
 }
+
+/* TELEFONO (iPhone y similares): la fila de dias usaba la letra de escritorio
+   y las tarjetas mantenian 3 columnas fijas (tema | hora | estado), asi que la
+   de estado -- con la etiqueta y el boton -- no entraba y se cortaba. Aqui la
+   letra baja un poco y el estado pasa a una fila propia debajo, a todo el ancho. */
+@media (max-width: 560px) {
+  .recordatorios-popup__timeline-week {
+    gap: 2px;
+  }
+
+  .recordatorios-popup__timeline-day {
+    padding: 5px 1px;
+    border-radius: 8px;
+    gap: 3px;
+  }
+
+  .recordatorios-popup__timeline-day-label {
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .recordatorios-popup__timeline-day-name {
+    font-size: 10px;
+  }
+
+  .recordatorios-popup__timeline-day-date {
+    font-size: 11px;
+  }
+
+  .recordatorios-popup__timeline-day-count {
+    font-size: 9px;
+  }
+
+  .recordatorios-popup__timeline-list {
+    padding: 5px;
+  }
+
+  .recordatorios-popup__timeline-item {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .recordatorios-popup__timeline-item-col {
+    padding: 7px 8px;
+    min-width: 0;
+  }
+
+  .recordatorios-popup__timeline-item-col--estado,
+  .recordatorios-popup__timeline-item-col + .recordatorios-popup__timeline-item-col--estado {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    text-align: left;
+    border-left: none;
+    border-top: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  }
+
+  .recordatorios-popup__dialog.is-dark .recordatorios-popup__timeline-item-col--estado {
+    border-left: none;
+    border-top-color: #36414c;
+  }
+
+  .recordatorios-popup__timeline-item-actions {
+    justify-content: flex-end;
+    flex: 1 1 auto;
+  }
+
+  .recordatorios-popup__timeline-item-context,
+  .recordatorios-popup__timeline-item-context-ref {
+    font-size: 11px;
+  }
+
+  .recordatorios-popup__timeline-item-description {
+    font-size: 12px;
+  }
+
+  .recordatorios-popup__timeline-item-time {
+    font-size: 10px;
+  }
+
+  .recordatorios-popup__status {
+    font-size: 10px;
+  }
+
+  .recordatorios-popup__mark-seen--decision {
+    min-height: 30px;
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+}
