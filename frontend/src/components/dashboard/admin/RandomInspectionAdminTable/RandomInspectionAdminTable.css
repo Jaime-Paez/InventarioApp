@@ -1099,3 +1099,89 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Envio de una lista especifica de repuestos */
+.inspection-admin__list-builder {
+  display: grid;
+  gap: 10px;
+}
+
+.inspection-admin__list-results {
+  display: grid;
+  gap: 2px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.inspection-admin__list-results .create-user__result-option:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.inspection-admin__list-paste-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -4px;
+}
+
+.inspection-admin__list-empty {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  font-size: var(--font-size-sm);
+  color: #6b7280;
+  text-align: center;
+}
+
+.inspection-admin__list-table tbody tr {
+  cursor: default;
+}
+
+.inspection-admin__list-remove {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #b42318;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.inspection-admin__list-remove:hover {
+  border-color: #b42318;
+  background: #fef3f2;
+}
+
+.inspection-admin__list-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dashboard-shell.dark .inspection-admin__list-results {
+  border-color: var(--color-border-dark, #384451);
+  background: var(--color-surface-darker, #1f2328);
+}
+
+.dashboard-shell.dark .inspection-admin__list-empty {
+  border-color: var(--color-border-dark, #384451);
+  color: var(--color-text-dark, #cbd5e1);
+}
+
+.dashboard-shell.dark .inspection-admin__list-remove {
+  border-color: var(--color-border-dark, #384451);
+  background: transparent;
+}
+
+@media (max-width: 640px) {
+  .inspection-admin__division-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

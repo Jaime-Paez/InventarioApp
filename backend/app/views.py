@@ -1342,8 +1342,9 @@ def _ensure_daily_random_inspection_for_user(user, store):
     if inspection is None:
         # Si el admin ya le mando una inspeccion hoy ("enviar ahora" o por
         # division), no se le suma ademas la automatica: era trabajo doble.
+        # Una lista especifica no la reemplaza: es un control puntual aparte.
         if InspeccionAleatoriaDiaria.objects.filter(
-            usuario=user, fecha_programada=scheduled_date
+            usuario=user, fecha_programada=scheduled_date, es_por_lista=False
         ).exists():
             return None, False
 
@@ -1748,6 +1749,7 @@ def _serialize_random_inspection(inspection, *, viewer=None):
         "borrador_nota_general": str(inspection.borrador_nota_general or ""),
         "conteo_revelado": bool(inspection.conteo_revelado),
         "es_por_division": bool(inspection.es_por_division),
+        "es_por_lista": bool(inspection.es_por_lista),
         "division_id": int(inspection.division_id) if inspection.division_id else None,
         "division_nombre": _normalize_text(getattr(division, "nombre", "")),
         "nota_general": str(inspection.nota_general or "").strip(),
@@ -4038,6 +4040,7 @@ class RandomInspectionSendNowAPIView(APIView):
                             usuario=user,
                             sucursal_id=branch_id,
                             es_por_division=False,
+                            es_por_lista=False,
                             fecha_programada=scheduled_date,
                         )
                         .first()
@@ -4272,6 +4275,193 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 "division_nombre": division.nombre,
                 "inspeccion_id": int(inspection.id),
                 "productos": len(new_items),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+RANDOM_INSPECTION_LIST_MAX_ITEMS = 200
+
+
+class RandomInspectionSendListAPIView(APIView):
+    """Envia a un revisor una inspeccion con una lista de productos elegida
+    por el admin (por id o por codigo), en vez de la muestra aleatoria.
+
+    Es un registro aparte (es_por_lista): se pueden mandar varias listas el
+    mismo dia y no reemplaza a la inspeccion aleatoria automatica.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta accion."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        sucursal_id = _normalize_int(request.data.get("sucursal_id"), 0)
+        usuario_id = _normalize_int(request.data.get("usuario_id"), 0)
+        if sucursal_id <= 0 or usuario_id <= 0:
+            return Response(
+                {"detail": "Debes seleccionar una sucursal y un revisor."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        time_str, time_error = _parse_reminder_time(request.data.get("hora_recordatorio", ""))
+        if time_error:
+            return Response({"detail": time_error}, status=status.HTTP_400_BAD_REQUEST)
+
+        raw_ids = request.data.get("producto_ids") or []
+        raw_codes = request.data.get("codigos") or []
+        if not isinstance(raw_ids, list) or not isinstance(raw_codes, list):
+            return Response(
+                {"detail": "Los productos y los codigos deben enviarse como listas."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from inventario.models import Sucursal  # Import tardio para evitar ciclos
+        from productos.models import Producto
+
+        sucursal = Sucursal.objects.filter(pk=sucursal_id).first()
+        if sucursal is None:
+            return Response({"detail": "La sucursal no existe."}, status=status.HTTP_404_NOT_FOUND)
+
+        user = get_user_model().objects.filter(id=usuario_id, is_active=True).first()
+        if user is None:
+            return Response(
+                {"detail": "El usuario no existe o esta inactivo."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        pref = UsuarioPreferencia.objects.filter(usuario_id=usuario_id).first()
+        if pref is None or not pref.inspeccion_aleatoria:
+            return Response(
+                {"detail": "Este usuario no tiene habilitada la inspeccion aleatoria."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if sucursal_id not in _get_random_inspection_branch_ids_for_user(user):
+            return Response(
+                {"detail": "Este usuario no esta asignado a esa sucursal."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        product_ids = []
+        for raw_id in raw_ids:
+            product_id = _normalize_int(raw_id, 0)
+            if product_id > 0 and product_id not in product_ids:
+                product_ids.append(product_id)
+        found_by_id = set(
+            Producto.objects.filter(pk__in=product_ids).values_list("id", flat=True)
+        )
+        product_ids = [product_id for product_id in product_ids if product_id in found_by_id]
+
+        # Codigos pegados por el admin: coincidencia exacta sin distinguir
+        # mayusculas, y se informan los que no existen en el catalogo.
+        codes = []
+        seen_codes = set()
+        for raw_code in raw_codes:
+            code = _normalize_text(raw_code)
+            if code and code.upper() not in seen_codes:
+                seen_codes.add(code.upper())
+                codes.append(code)
+        not_found_codes = []
+        if codes:
+            code_filter = Q()
+            for code in codes:
+                code_filter |= Q(codigo__iexact=code)
+            by_code = {
+                str(codigo).upper(): product_id
+                for product_id, codigo in Producto.objects.filter(code_filter).values_list("id", "codigo")
+            }
+            for code in codes:
+                product_id = by_code.get(code.upper())
+                if product_id is None:
+                    not_found_codes.append(code)
+                elif product_id not in product_ids:
+                    product_ids.append(product_id)
+
+        if not product_ids:
+            return Response(
+                {
+                    "detail": "No hay productos validos en la lista.",
+                    "codigos_no_encontrados": not_found_codes,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(product_ids) > RANDOM_INSPECTION_LIST_MAX_ITEMS:
+            return Response(
+                {
+                    "detail": (
+                        f"La lista no puede tener mas de {RANDOM_INSPECTION_LIST_MAX_ITEMS} productos."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        stock_rows = (
+            Inventario.objects.filter(
+                producto_id__in=product_ids,
+                subdivision__division__bodega__sucursal_id=sucursal_id,
+            )
+            .values("producto_id")
+            .annotate(total=Sum("cantidad"))
+        )
+        stock_by_product = {
+            int(row["producto_id"]): max(0, _normalize_int(row.get("total"), 0))
+            for row in stock_rows
+        }
+        scheduled_date = timezone.localdate()
+
+        with transaction.atomic():
+            store = ReminderState.get_global(for_update=True)
+
+            coverage = _calculate_random_inspection_coverage(
+                user,
+                _stocked_candidate_keys(_collect_branch_inspection_candidates(sucursal_id)),
+            )
+            inspection = InspeccionAleatoriaDiaria.objects.create(
+                usuario=user,
+                sucursal_id=sucursal_id,
+                es_por_lista=True,
+                fecha_programada=scheduled_date,
+                estado=InspeccionAleatoriaDiaria.Estados.PENDIENTE,
+                total_items=len(product_ids),
+                cobertura_porcentaje=coverage,
+            )
+            InspeccionAleatoriaItem.objects.bulk_create(
+                [
+                    _build_random_inspection_item(
+                        inspection,
+                        {
+                            "producto_id": product_id,
+                            "cantidad_esperada": stock_by_product.get(product_id, 0),
+                        },
+                        sucursal_id=sucursal_id,
+                    )
+                    for product_id in product_ids
+                ]
+            )
+
+            _upsert_random_inspection_reminder(
+                store,
+                inspection,
+                user,
+                branch_nombre=f"{sucursal.nombre} (lista especifica)",
+                time_str=time_str,
+            )
+            _upsert_random_inspection_admin_summary_reminder(store, scheduled_date, time_str=time_str)
+            store.save()
+
+        return Response(
+            {
+                "usuario_id": int(user.id),
+                "nombre": _format_user_display_name(user),
+                "sucursal_id": sucursal_id,
+                "sucursal_nombre": sucursal.nombre,
+                "inspeccion_id": int(inspection.id),
+                "productos": len(product_ids),
+                "codigos_no_encontrados": not_found_codes,
             },
             status=status.HTTP_200_OK,
         )

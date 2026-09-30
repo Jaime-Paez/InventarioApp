@@ -451,3 +451,61 @@ class RecordatoriosHuerfanosTests(InspeccionAleatoriaBaseTestCase):
             [reminder["id"] for reminder in store.payload],
             [f"insp-{existente.id}", "insp-admin-summary-2026-01-01"],
         )
+
+
+class InspeccionPorListaTests(InspeccionAleatoriaBaseTestCase):
+    def _enviar_lista(self, **body):
+        payload = {
+            "sucursal_id": self.sucursal.id,
+            "usuario_id": self.revisor.id,
+            "hora_recordatorio": "23:59",
+            **body,
+        }
+        return self.admin_client.post(f"{BASE_URL}/enviar-lista/", payload, format="json")
+
+    def test_envia_lista_por_ids_y_codigos_e_informa_los_no_encontrados(self):
+        response = self._enviar_lista(
+            producto_ids=[self.producto.id],
+            codigos=["p-2", "NO-EXISTE", "P-1"],
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["productos"], 2)
+        self.assertEqual(response.data["codigos_no_encontrados"], ["NO-EXISTE"])
+        inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
+        self.assertTrue(inspection.es_por_lista)
+        self.assertEqual(
+            {item.producto_id: item.cantidad_esperada for item in inspection.items.all()},
+            {self.producto.id: 10, self.producto_2.id: 4},
+        )
+
+    def test_varias_listas_el_mismo_dia_y_se_pueden_responder(self):
+        primera = self._enviar_lista(producto_ids=[self.producto.id])
+        segunda = self._enviar_lista(producto_ids=[self.producto_2.id])
+        self.assertEqual(primera.status_code, 200)
+        self.assertEqual(segunda.status_code, 200)
+        self.assertNotEqual(primera.data["inspeccion_id"], segunda.data["inspeccion_id"])
+
+        inspection = InspeccionAleatoriaDiaria.objects.get(pk=primera.data["inspeccion_id"])
+        response = self._responder(inspection, {self.producto.id: 9})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["mismatch_count"], 1)
+
+    def test_lista_no_reemplaza_la_inspeccion_automatica(self):
+        self._enviar_lista(producto_ids=[self.producto.id])
+        self.admin_client.get("/recordatorios/estado/")
+
+        self.assertTrue(
+            InspeccionAleatoriaDiaria.objects.filter(
+                usuario=self.revisor, sucursal__isnull=True, fecha_programada=timezone.localdate()
+            ).exists()
+        )
+
+    def test_rechaza_lista_vacia_o_sucursal_no_asignada(self):
+        vacia = self._enviar_lista(codigos=["NO-EXISTE"])
+        self.assertEqual(vacia.status_code, 400)
+        self.assertEqual(vacia.data["codigos_no_encontrados"], ["NO-EXISTE"])
+
+        otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
+        response = self._enviar_lista(sucursal_id=otra.id, producto_ids=[self.producto.id])
+        self.assertEqual(response.status_code, 400)

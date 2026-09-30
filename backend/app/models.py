@@ -122,6 +122,9 @@ class InspeccionAleatoriaDiaria(models.Model):
     # `es_por_division` (y no solo `division`) define la unicidad para que
     # borrar la division (SET_NULL) no choque con la inspeccion de la sucursal.
     es_por_division = models.BooleanField(default=False, db_default=False)
+    # Lista de productos elegida a mano por el admin (enviar-lista). No es
+    # unica por dia: se pueden mandar varias listas al mismo revisor.
+    es_por_lista = models.BooleanField(default=False, db_default=False)
     division = models.ForeignKey(
         "inventario.Division",
         on_delete=models.SET_NULL,
@@ -182,7 +185,7 @@ class InspeccionAleatoriaDiaria(models.Model):
             ),
             models.UniqueConstraint(
                 fields=["usuario", "sucursal", "fecha_programada"],
-                condition=models.Q(sucursal__isnull=False, es_por_division=False),
+                condition=models.Q(sucursal__isnull=False, es_por_division=False, es_por_lista=False),
                 name="unique_insp_aleatoria_usuario_sucursal_fecha",
             ),
             models.UniqueConstraint(

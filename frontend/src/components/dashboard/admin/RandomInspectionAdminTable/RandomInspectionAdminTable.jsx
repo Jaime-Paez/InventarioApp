@@ -230,6 +230,16 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [divisionDivisiones, setDivisionDivisiones] = useState([])
   const [divisionDivisionesLoading, setDivisionDivisionesLoading] = useState(false)
   const [divisionSending, setDivisionSending] = useState(false)
+  // Modo "Lista especifica": el admin elige a mano que repuestos revisar.
+  const [listSucursalId, setListSucursalId] = useState('')
+  const [listUsuarioId, setListUsuarioId] = useState('')
+  const [listProducts, setListProducts] = useState([])
+  const [listSearch, setListSearch] = useState('')
+  const [listSearchResults, setListSearchResults] = useState([])
+  const [listSearchLoading, setListSearchLoading] = useState(false)
+  const [listPasteText, setListPasteText] = useState('')
+  const [listPasteLoading, setListPasteLoading] = useState(false)
+  const [listSending, setListSending] = useState(false)
   const [assignmentsModalPosition, setAssignmentsModalPosition] = useState({ x: 0, y: 0 })
   const [assignmentsModalSize, setAssignmentsModalSize] = useState({
     width: ASSIGNMENTS_MODAL_MIN_WIDTH,
@@ -425,6 +435,130 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       setDivisionSending(false)
     }
   }, [token, divisionId, divisionUsuarioId, sendNowParams, notifyError, notifySuccess])
+
+  const addListProducts = useCallback((products) => {
+    setListProducts((prev) => {
+      const seen = new Set(prev.map((item) => normalizeId(item.id)))
+      const next = [...prev]
+      products.forEach((product) => {
+        const id = normalizeId(product?.id)
+        if (!id || seen.has(id)) return
+        seen.add(id)
+        next.push({
+          id,
+          codigo: String(product?.codigo || '').trim(),
+          nombre: String(product?.nombre || '').trim(),
+        })
+      })
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    const term = String(listSearch || '').trim()
+    if (!token || sendNowMode !== 'lista' || term.length < 2) {
+      setListSearchResults([])
+      setListSearchLoading(false)
+      return undefined
+    }
+    let cancelled = false
+    setListSearchLoading(true)
+    const timer = window.setTimeout(() => {
+      authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=15`, {}, token)
+        .then(async (res) => {
+          const payload = await res.json().catch(() => ({}))
+          if (!res.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron buscar productos.')
+          if (!cancelled) setListSearchResults(parseApiList(payload))
+        })
+        .catch((error) => { if (!cancelled) { setListSearchResults([]); notifyError(error?.message || 'No se pudieron buscar productos.') } })
+        .finally(() => { if (!cancelled) setListSearchLoading(false) })
+    }, 300)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [token, sendNowMode, listSearch, notifyError])
+
+  // Codigos pegados (uno por linea, o separados por coma, punto y coma o
+  // tabulacion, como vienen de Excel): se buscan en el catalogo y los que
+  // no existen se dejan en el cuadro para corregirlos.
+  const addPastedCodes = useCallback(async () => {
+    if (!token) return
+    const codes = []
+    const seen = new Set()
+    String(listPasteText || '')
+      .split(/[\n,;\t]+/)
+      .map((code) => code.trim())
+      .filter(Boolean)
+      .forEach((code) => {
+        const key = code.toUpperCase()
+        if (seen.has(key)) return
+        seen.add(key)
+        codes.push(code)
+      })
+    if (!codes.length) { notifyError('Pega al menos un codigo.'); return }
+    if (codes.length > 200) { notifyError('Puedes pegar hasta 200 codigos a la vez.'); return }
+
+    setListPasteLoading(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/productos/listado/?codigos=${encodeURIComponent(codes.join(','))}&page_size=300`,
+        {},
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron buscar los codigos.')
+      const found = parseApiList(payload)
+      const foundCodes = new Set(found.map((product) => String(product?.codigo || '').trim().toUpperCase()))
+      const notFound = codes.filter((code) => !foundCodes.has(code.toUpperCase()))
+      addListProducts(found)
+      setListPasteText(notFound.join('\n'))
+      if (notFound.length) {
+        notifyError(`No se encontraron ${notFound.length} codigo(s): ${notFound.slice(0, 5).join(', ')}${notFound.length > 5 ? '...' : ''}`)
+      } else {
+        notifySuccess(`Se agregaron ${found.length} producto(s) a la lista.`)
+      }
+    } catch (error) {
+      notifyError(error?.message || 'No se pudieron buscar los codigos.')
+    } finally {
+      setListPasteLoading(false)
+    }
+  }, [token, listPasteText, addListProducts, notifyError, notifySuccess])
+
+  const sendList = useCallback(async () => {
+    if (!token) return
+    if (!listSucursalId) { notifyError('Debes seleccionar una sucursal.'); return }
+    if (!listUsuarioId) { notifyError('Debes seleccionar un revisor.'); return }
+    if (!listProducts.length) { notifyError('Agrega al menos un producto a la lista.'); return }
+
+    const hora = String(sendNowParams?.hora_recordatorio || '').trim()
+    if (!hora) { notifyError('Debes seleccionar la hora del recordatorio.'); return }
+
+    setListSending(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/recordatorios/inspeccion-aleatoria/enviar-lista/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            sucursal_id: listSucursalId,
+            usuario_id: listUsuarioId,
+            producto_ids: listProducts.map((item) => item.id),
+            hora_recordatorio: hora,
+          }),
+        },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo enviar la lista.')
+      notifySuccess(`Lista enviada: ${payload.productos} producto(s) para ${payload.nombre}.`)
+      setShowSendNowDialog(false)
+    } catch (error) {
+      notifyError(error?.message || 'No se pudo enviar la lista.')
+    } finally {
+      setListSending(false)
+    }
+  }, [token, listSucursalId, listUsuarioId, listProducts, sendNowParams, notifyError, notifySuccess])
 
   const loadAssignments = useCallback(async () => {
     if (!token || !canUpdate) {
@@ -1015,6 +1149,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     return sendNowSummary.find((b) => b.id === normalizeId(divisionSucursalId))?.reviewers || []
   }, [sendNowSummary, divisionSucursalId])
 
+  const listReviewers = useMemo(() => {
+    if (!listSucursalId) return []
+    return sendNowSummary.find((b) => b.id === normalizeId(listSucursalId))?.reviewers || []
+  }, [sendNowSummary, listSucursalId])
+
   if (!canRead) {
     return (
       <section className="inspection-admin">
@@ -1049,6 +1188,12 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 setDivisionBodegaId('')
                 setDivisionId('')
                 setDivisionUsuarioId('')
+                setListSucursalId('')
+                setListUsuarioId('')
+                setListProducts([])
+                setListSearch('')
+                setListSearchResults([])
+                setListPasteText('')
                 try {
                   const now = new Date()
                   now.setMinutes(now.getMinutes() + 5)
@@ -1359,7 +1504,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       )}
 
       {showSendNowDialog && (
-        <div className="inspection-admin__dialog-overlay" onMouseDown={() => !(sendNowLoading || sendNowDialogLoading || divisionSending) && setShowSendNowDialog(false)}>
+        <div className="inspection-admin__dialog-overlay" onMouseDown={() => !(sendNowLoading || sendNowDialogLoading || divisionSending || listSending) && setShowSendNowDialog(false)}>
           <div
             className="inspection-admin__dialog"
             role="dialog"
@@ -1367,7 +1512,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             aria-label="Enviar revision ahora"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            {(sendNowLoading || sendNowDialogLoading || divisionSending) && (
+            {(sendNowLoading || sendNowDialogLoading || divisionSending || listSending) && (
               <div className="inspection-admin__dialog-loading">
                 <div className="inspection-admin__dialog-loading-content">
                   <Loader2 className="inspection-admin__dialog-loading-spinner" size={24} />
@@ -1384,7 +1529,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 type="button"
                 className="inspection-admin__dialog-close"
                 onClick={() => setShowSendNowDialog(false)}
-                disabled={sendNowLoading || sendNowDialogLoading || divisionSending}
+                disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
                 aria-label="Cerrar"
               >
                 <X size={16} />
@@ -1396,7 +1541,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 type="button"
                 className={`create-user__tab${sendNowMode === 'aleatorio' ? ' create-user__tab--active' : ''}`}
                 onClick={() => setSendNowMode('aleatorio')}
-                disabled={sendNowLoading || sendNowDialogLoading || divisionSending}
+                disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
               >
                 Aleatorio
               </button>
@@ -1404,9 +1549,17 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 type="button"
                 className={`create-user__tab${sendNowMode === 'division' ? ' create-user__tab--active' : ''}`}
                 onClick={() => setSendNowMode('division')}
-                disabled={sendNowLoading || sendNowDialogLoading || divisionSending}
+                disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
               >
                 Division especifica
+              </button>
+              <button
+                type="button"
+                className={`create-user__tab${sendNowMode === 'lista' ? ' create-user__tab--active' : ''}`}
+                onClick={() => setSendNowMode('lista')}
+                disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
+              >
+                Lista especifica
               </button>
             </div>
 
@@ -1434,12 +1587,156 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                     min={`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`}
                     value={sendNowParams.hora_recordatorio}
                     onChange={(e) => setSendNowParams((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
-                    disabled={sendNowLoading || sendNowDialogLoading || divisionSending}
+                    disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
                   />
                 </label>
               </div>
 
-              {sendNowMode === 'division' ? (
+              {sendNowMode === 'lista' ? (
+                <div className="inspection-admin__list-builder">
+                  <div className="inspection-admin__division-fields">
+                    <label className="create-user__field">
+                      <span>Sucursal</span>
+                      <CascadeDropdown
+                        placeholder="Selecciona una sucursal"
+                        searchPlaceholder="Buscar sucursal"
+                        options={allBranchOptions}
+                        valueId={listSucursalId}
+                        getOptionLabel={(o) => o.nombre}
+                        onSelect={(o) => {
+                          setListSucursalId(o.id)
+                          setListUsuarioId('')
+                        }}
+                        disabled={listSending}
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Revisor</span>
+                      <CascadeDropdown
+                        placeholder="Selecciona un revisor"
+                        searchPlaceholder="Buscar revisor"
+                        options={listReviewers}
+                        valueId={listUsuarioId}
+                        getOptionLabel={(o) => String(o?.nombre_completo || o?.correo || `Usuario ${o?.id}`).trim()}
+                        onSelect={(o) => setListUsuarioId(o.id)}
+                        disabled={!listSucursalId || listSending}
+                      />
+                    </label>
+                  </div>
+                  {listSucursalId && listReviewers.length === 0 && (
+                    <p className="inspection-admin__sendnow-empty">
+                      Esta sucursal no tiene revisores asignados.
+                    </p>
+                  )}
+
+                  <label className="create-user__field">
+                    <span>Buscar repuesto</span>
+                    <input
+                      type="text"
+                      value={listSearch}
+                      onChange={(e) => setListSearch(e.target.value)}
+                      placeholder="Código o nombre (mínimo 2 letras)"
+                      disabled={listSending}
+                      autoComplete="off"
+                    />
+                  </label>
+                  {String(listSearch || '').trim().length >= 2 && (
+                    <div className="inspection-admin__list-results">
+                      {listSearchLoading && <small className="muted">Buscando...</small>}
+                      {!listSearchLoading && !listSearchResults.length && <small className="muted">Sin resultados.</small>}
+                      {!listSearchLoading && listSearchResults.map((product) => {
+                        const productId = normalizeId(product?.id)
+                        const alreadyAdded = listProducts.some((item) => item.id === productId)
+                        return (
+                          <button
+                            key={`list-result-${productId}`}
+                            type="button"
+                            className="create-user__result-option"
+                            onClick={() => addListProducts([product])}
+                            disabled={alreadyAdded || listSending}
+                          >
+                            <div className="create-user__result-info">
+                              <strong>{String(product?.codigo || '').trim()}</strong>
+                              <span>{alreadyAdded ? 'Ya está en la lista' : String(product?.nombre || '').trim()}</span>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  <label className="create-user__field">
+                    <span>O pega varios códigos (uno por línea o separados por coma)</span>
+                    <textarea
+                      rows={3}
+                      value={listPasteText}
+                      onChange={(e) => setListPasteText(e.target.value)}
+                      placeholder={'C0104CL-A\nC0105CL-B'}
+                      disabled={listSending || listPasteLoading}
+                    />
+                  </label>
+                  <div className="inspection-admin__list-paste-actions">
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--secondary"
+                      onClick={() => void addPastedCodes()}
+                      disabled={listSending || listPasteLoading || !String(listPasteText || '').trim()}
+                    >
+                      {listPasteLoading ? 'Buscando...' : 'Agregar códigos'}
+                    </button>
+                  </div>
+
+                  {listProducts.length === 0 ? (
+                    <p className="inspection-admin__list-empty">Todavía no hay repuestos en la lista.</p>
+                  ) : (
+                    <div className="inspection-admin__sendnow-table-wrap">
+                      <table className="inspection-admin__sendnow-table inspection-admin__list-table">
+                        <thead>
+                          <tr>
+                            <th>Código</th>
+                            <th>Nombre</th>
+                            <th>
+                              <button
+                                type="button"
+                                className="inspection-admin__list-remove"
+                                onClick={() => setListProducts([])}
+                                disabled={listSending}
+                                title="Quitar todos"
+                                aria-label="Quitar todos"
+                              >
+                                <X size={13} />
+                              </button>
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {listProducts.map((item) => (
+                            <tr key={`list-item-${item.id}`}>
+                              <td>{item.codigo}</td>
+                              <td>{item.nombre}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="inspection-admin__list-remove"
+                                  onClick={() => setListProducts((prev) => prev.filter((row) => row.id !== item.id))}
+                                  disabled={listSending}
+                                  title="Quitar de la lista"
+                                  aria-label={`Quitar ${item.codigo}`}
+                                >
+                                  <X size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="inspection-admin__sendnow-count-footer">
+                        {listProducts.length} repuesto(s) en la lista
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : sendNowMode === 'division' ? (
                 <div className="inspection-admin__division-fields">
                   <label className="create-user__field">
                     <span>Sucursal</span>
@@ -1597,11 +1894,20 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 type="button"
                 className="create-user__action create-user__action--secondary"
                 onClick={() => setShowSendNowDialog(false)}
-                disabled={sendNowLoading || sendNowDialogLoading || divisionSending}
+                disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
               >
                 Cancelar
               </button>
-              {sendNowMode === 'division' ? (
+              {sendNowMode === 'lista' ? (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={() => void sendList()}
+                  disabled={listSending || listPasteLoading || !listSucursalId || !listUsuarioId || listProducts.length === 0}
+                >
+                  {listSending ? 'Enviando...' : `Enviar lista (${listProducts.length})`}
+                </button>
+              ) : sendNowMode === 'division' ? (
                 <button
                   type="button"
                   className="create-user__action create-user__action--primary"
