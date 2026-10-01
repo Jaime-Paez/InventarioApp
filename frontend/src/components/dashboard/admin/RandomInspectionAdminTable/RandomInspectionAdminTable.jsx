@@ -227,6 +227,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [verifyWizardDecisions, setVerifyWizardDecisions] = useState({})
   const [verifyWizardSubmitting, setVerifyWizardSubmitting] = useState(false)
   const [verifyWizardError, setVerifyWizardError] = useState('')
+  // Advertencia al aprobar con una cantidad distinta de lo que conto el
+  // revisor: pide una nota obligatoria explicando que paso.
+  const [verifyWizardConfirming, setVerifyWizardConfirming] = useState(false)
   const [showAssignmentsDialog, setShowAssignmentsDialog] = useState(false)
   const [assignmentRows, setAssignmentRows] = useState([])
   const [assignmentBranches, setAssignmentBranches] = useState([])
@@ -980,6 +983,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     setVerifyWizardDrafts({})
     setVerifyWizardDecisions({})
     setVerifyWizardError('')
+    setVerifyWizardConfirming(false)
     setVerifyWizardSubmitting(false)
     setVerifyWizardLoading(false)
     void loadSummary()
@@ -1257,13 +1261,14 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     }
   }, [token, canUpdate, assignmentRows, assignmentBranches, localAssignmentMap, configData, loadAssignments, loadConfig, notifyError, notifySuccess])
 
-  const submitVerifyDecision = useCallback(async (action) => {
+  const submitVerifyDecision = useCallback(async (action, options = {}) => {
     const item = verifyWizardItems[verifyWizardIndex]
     const itemId = normalizeId(item?.id)
     if (!token || !itemId || verifyWizardDecisions[itemId]) return
 
     const draft = verifyWizardDrafts[itemId] || {}
     const body = { accion: action, nota: String(draft?.nota || '').trim() }
+    let changedFromCount = false
     if (action === 'aprobar' && draft?.porUbicacion) {
       const entries = Object.entries(draft.porUbicacion)
       const parsed = entries.map(([subdivisionId, value]) => ({
@@ -1276,6 +1281,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       }
       body.cantidades_por_ubicacion = parsed
       body.cantidad_confirmada = parsed.reduce((total, entry) => total + entry.cantidad, 0)
+      const countedBySubdivision = getVerifiableLocations(item).reduce((acc, location) => {
+        acc[Number(location.subdivision_id)] = Number.parseInt(String(location.cantidad_contada ?? 0), 10) || 0
+        return acc
+      }, {})
+      changedFromCount = parsed.some((entry) => entry.cantidad !== countedBySubdivision[entry.subdivision_id])
     } else if (action === 'aprobar') {
       const nextQty = Number.parseInt(String(draft?.cantidad ?? '').trim(), 10)
       if (!Number.isFinite(nextQty) || nextQty < 0) {
@@ -1283,6 +1293,22 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         return
       }
       body.cantidad_confirmada = nextQty
+      const reportedQty = Number.parseInt(String(item?.cantidad_reportada ?? ''), 10)
+      changedFromCount = Number.isFinite(reportedQty) && nextQty !== reportedQty
+    }
+
+    if (action === 'aprobar' && changedFromCount) {
+      // Se va a dejar una cantidad distinta de la contada: primero la
+      // advertencia, y no se guarda sin una nota que explique que paso.
+      if (!options.confirmed) {
+        setVerifyWizardError('')
+        setVerifyWizardConfirming(true)
+        return
+      }
+      if (!body.nota) {
+        setVerifyWizardError('Agrega una nota de verificacion explicando por que cambia la cantidad.')
+        return
+      }
     }
 
     setVerifyWizardError('')
@@ -1299,6 +1325,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       }
       const nextDecisions = { ...verifyWizardDecisions, [itemId]: action === 'aprobar' ? 'aprobada' : 'rechazada' }
       setVerifyWizardDecisions(nextDecisions)
+      setVerifyWizardConfirming(false)
       // Siguiente diferencia sin decidir (hacia adelante y luego desde el inicio).
       const total = verifyWizardItems.length
       let nextIndex = -1
@@ -1862,7 +1889,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                               ? 'Ingresa la cantidad real que hay en la sucursal.'
                               : adjustment === 0
                                 ? 'Con esta cantidad el inventario queda igual (coincide con lo esperado).'
-                                : `"Ajustar inventario" ${adjustment > 0 ? 'suma' : 'resta'} ${Math.abs(adjustment)} unidad(es). "Mantener inventario" lo deja como está (por ejemplo, si el conteo estuvo mal).`}
+                                : `Al aprobar se ${adjustment > 0 ? 'sumarán' : 'restarán'} ${Math.abs(adjustment)} unidad(es) al inventario.`}
                           </p>
                           <label className="quick-actions__inspection-note">
                             <span>Nota de verificación (opcional)</span>
@@ -1884,6 +1911,66 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 {verifyWizardError && <p className="quick-actions__inspection-error">{verifyWizardError}</p>}
               </div>
 
+              {verifyWizardConfirming && item && !decision && (
+                <div className="inspection-admin__verify-confirm-overlay">
+                  <div className="inspection-admin__verify-confirm" role="alertdialog" aria-modal="true" aria-label="Vas a cambiar la cantidad contada">
+                    <h5>Vas a cambiar la cantidad contada</h5>
+                    <p>
+                      {'El revisor contó '}
+                      <strong>{reported == null ? '-' : reported}</strong>
+                      {' y vas a confirmar '}
+                      <strong>{Number.isFinite(confirmed) ? confirmed : '-'}</strong>
+                      {'. Explica en la nota qué pasó antes de aprobar.'}
+                    </p>
+                    {perLocationDraft && (
+                      <ul className="inspection-admin__verify-confirm-list">
+                        {perLocationValues
+                          .filter((location) => location.value !== Number(location.cantidad_contada))
+                          .map((location) => (
+                            <li key={`verify-confirm-change-${itemId}-${location.subdivision_id}`}>
+                              <span>{String(location?.label || '-').trim()}</span>
+                              <strong>{`${location.cantidad_contada} → ${location.value ?? '-'}`}</strong>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                    <label className="quick-actions__inspection-note">
+                      <span>Nota de verificación (obligatoria)</span>
+                      <textarea
+                        rows={3}
+                        value={draft.nota}
+                        placeholder="Ej.: se volvió a contar y había 6; el revisor contó mal la bodega; estaba en otra ubicación; hubo una venta sin registrar..."
+                        onChange={(event) => {
+                          const value = event.target.value
+                          setVerifyWizardDrafts((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || {}), nota: value } }))
+                        }}
+                        disabled={busy}
+                        autoFocus
+                      />
+                    </label>
+                    {verifyWizardError && <p className="quick-actions__inspection-error">{verifyWizardError}</p>}
+                    <div className="inspection-admin__verify-confirm-actions">
+                      <button
+                        type="button"
+                        className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                        onClick={() => { setVerifyWizardError(''); setVerifyWizardConfirming(false) }}
+                        disabled={busy}
+                      >
+                        Volver
+                      </button>
+                      <button
+                        type="button"
+                        className="quick-actions__inspection-btn inspection-admin__verify-adjust"
+                        onClick={() => void submitVerifyDecision('aprobar', { confirmed: true })}
+                        disabled={busy || !String(draft.nota || '').trim()}
+                      >
+                        {verifyWizardSubmitting ? 'Guardando...' : 'Confirmar ajuste'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <footer className="quick-actions__inspection-actions inspection-admin__verify-actions">
                 <button
                   type="button"
@@ -1898,7 +1985,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                     <button
                       type="button"
                       className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost inspection-admin__verify-nav"
-                      onClick={() => { setVerifyWizardError(''); setVerifyWizardIndex((index) => Math.max(0, index - 1)) }}
+                      onClick={() => { setVerifyWizardError(''); setVerifyWizardConfirming(false); setVerifyWizardIndex((index) => Math.max(0, index - 1)) }}
                       disabled={busy || verifyWizardIndex <= 0}
                     >
                       <ChevronLeft size={15} />
@@ -1907,33 +1994,22 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                     <button
                       type="button"
                       className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost inspection-admin__verify-nav"
-                      onClick={() => { setVerifyWizardError(''); setVerifyWizardIndex((index) => Math.min(total - 1, index + 1)) }}
+                      onClick={() => { setVerifyWizardError(''); setVerifyWizardConfirming(false); setVerifyWizardIndex((index) => Math.min(total - 1, index + 1)) }}
                       disabled={busy || verifyWizardIndex >= total - 1}
                     >
                       Siguiente
                       <ChevronRight size={15} />
                     </button>
                     {!decision && (
-                      <>
-                        <button
-                          type="button"
-                          className="quick-actions__inspection-btn inspection-admin__verify-keep"
-                          onClick={() => void submitVerifyDecision('rechazar')}
-                          disabled={busy}
-                          title="No cambia el inventario: el conteo no se acepta"
-                        >
-                          Mantener inventario
-                        </button>
-                        <button
-                          type="button"
-                          className="quick-actions__inspection-btn inspection-admin__verify-adjust"
-                          onClick={() => void submitVerifyDecision('aprobar')}
-                          disabled={busy}
-                          title="Deja el inventario en la cantidad confirmada"
-                        >
-                          {verifyWizardSubmitting ? 'Guardando...' : 'Ajustar inventario'}
-                        </button>
-                      </>
+                      <button
+                        type="button"
+                        className="quick-actions__inspection-btn inspection-admin__verify-adjust"
+                        onClick={() => void submitVerifyDecision('aprobar')}
+                        disabled={busy || verifyWizardConfirming}
+                        title="Deja el inventario en la cantidad real confirmada"
+                      >
+                        {verifyWizardSubmitting ? 'Guardando...' : 'Aprobar ajuste'}
+                      </button>
                     )}
                   </>
                 )}

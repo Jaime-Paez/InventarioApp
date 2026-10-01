@@ -1364,9 +1364,94 @@
     font-size: 0.8rem;
   }
 
-  .inspection-admin__verify-actions .inspection-admin__verify-keep,
   .inspection-admin__verify-actions .inspection-admin__verify-adjust {
+    grid-column: 1 / -1;
     min-height: 44px;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
   }
+}
+
+/* Advertencia: aprobar con una cantidad distinta de la contada. */
+.quick-actions__inspection-dialog.inspection-admin__verify-dialog {
+  position: relative;
+}
+
+.inspection-admin__verify-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.inspection-admin__verify-confirm {
+  width: min(520px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, #d97706 45%, var(--color-border));
+  background: var(--modal-color, #fff);
+  box-shadow: 0 18px 36px rgba(12, 25, 44, 0.28);
+}
+
+.inspection-admin__verify-confirm h5 {
+  margin: 0;
+  font-size: 1rem;
+  color: #b45309;
+}
+
+.inspection-admin__verify-confirm p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+}
+
+.inspection-admin__verify-confirm-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.inspection-admin__verify-confirm-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #f59e0b 12%, var(--color-surface));
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+}
+
+.inspection-admin__verify-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.quick-actions__inspection-overlay.dark .inspection-admin__verify-confirm {
+  background: #23272d;
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+.quick-actions__inspection-overlay.dark .inspection-admin__verify-confirm h5 {
+  color: #fbbf24;
+}
+
+.quick-actions__inspection-overlay.dark .inspection-admin__verify-confirm p,
+.quick-actions__inspection-overlay.dark .inspection-admin__verify-confirm-list li {
+  color: #f8fafc;
+}
+
+.quick-actions__inspection-overlay.dark .inspection-admin__verify-confirm-list li {
+  background: rgba(245, 158, 11, 0.14);
 }
