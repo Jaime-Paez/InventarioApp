@@ -551,3 +551,40 @@ class RevisorNoVeElResultadoTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(admin_item["cantidad_esperada"], 10)
         self.assertEqual(admin_item["estado_revision"], "no_coincide")
         self.assertEqual(admin_item["verificacion_estado"], "pendiente")
+
+
+class DiferenciasAdminTests(InspeccionAleatoriaBaseTestCase):
+    def test_admin_recibe_conteo_por_ubicacion_con_nombre(self):
+        Inventario.objects.filter(pk=self.inv_a.pk).update(cantidad=5)
+        Inventario.objects.create(producto=self.producto, subdivision=self.sub_b, cantidad=5)
+        inspection = self._crear_inspeccion()
+        item = inspection.items.get()
+        self.revisor_client.post(
+            f"{BASE_URL}/{inspection.id}/responder/",
+            {
+                "items": [
+                    {
+                        "id": item.id,
+                        "cantidad_reportada": 8,
+                        "cantidad_por_ubicacion": [
+                            {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": 3},
+                            {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": 5},
+                        ],
+                    }
+                ]
+            },
+            format="json",
+        )
+
+        response = self.admin_client.get(
+            f"{BASE_URL}/admin/items/", {"sucursal_id": self.sucursal.id, "estado": "pendiente"}
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        row = response.data["results"][0]
+        self.assertEqual(row["cantidad_esperada"], 10)
+        self.assertEqual(row["cantidad_reportada"], 8)
+        self.assertEqual(
+            [(u["label"], u["cantidad_contada"], u["cantidad_sistema"]) for u in row["ubicaciones_conteo"]],
+            [("Principal / Percha A / Nivel 1", 3, 5), ("Principal / Percha B / Nivel 1", 5, 5)],
+        )

@@ -1794,10 +1794,57 @@ def _serialize_random_inspection(inspection, *, viewer=None):
     }
 
 
-def _serialize_random_inspection_admin_item(item):
+def _random_inspection_subdivision_labels(items):
+    """{subdivision_id: "Bodega / Division / Subdivision"} de los conteos por ubicacion."""
+    subdivision_ids = set()
+    for item in items:
+        for entry in item.conteo_ubicaciones if isinstance(item.conteo_ubicaciones, list) else []:
+            subdivision_id = _normalize_int((entry or {}).get("subdivision_id"), 0) if isinstance(entry, dict) else 0
+            if subdivision_id > 0:
+                subdivision_ids.add(subdivision_id)
+    if not subdivision_ids:
+        return {}
+    rows = SubDivision.objects.filter(pk__in=subdivision_ids).values(
+        "id", "nombre", "division__nombre", "division__bodega__nombre"
+    )
+    return {
+        int(row["id"]): " / ".join(
+            part
+            for part in (
+                _normalize_text(row.get("division__bodega__nombre")),
+                _normalize_text(row.get("division__nombre")),
+                _normalize_text(row.get("nombre")),
+            )
+            if part
+        )
+        for row in rows
+    }
+
+
+def _serialize_random_inspection_admin_item(item, subdivision_labels=None):
     serialized = _serialize_random_inspection_item(item)
     inspection = getattr(item, "inspeccion", None)
     inspection_user = getattr(inspection, "usuario", None)
+    subdivision_labels = subdivision_labels or {}
+    # Conteo por ubicacion con nombre legible, para que administracion vea
+    # donde estuvo la diferencia (lo contado vs lo que habia en el sistema).
+    location_counts = []
+    for entry in item.conteo_ubicaciones if isinstance(item.conteo_ubicaciones, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        subdivision_id = _normalize_int(entry.get("subdivision_id"), 0)
+        label = subdivision_labels.get(subdivision_id) or " / ".join(
+            part for part in str(entry.get("key") or "").split("::")[1:] if part
+        )
+        location_counts.append(
+            {
+                "subdivision_id": subdivision_id or None,
+                "label": label or "Ubicacion",
+                "cantidad_contada": entry.get("cantidad_contada"),
+                "cantidad_sistema": entry.get("cantidad_sistema"),
+            }
+        )
+    serialized["ubicaciones_conteo"] = location_counts
     serialized.update(
         {
             "inspeccion_id": int(item.inspeccion_id),
@@ -3878,7 +3925,10 @@ class RandomInspectionAdminItemsAPIView(APIView):
         current_page = min(page, total_pages)
         offset = (current_page - 1) * page_size
         rows = list(queryset[offset : offset + page_size])
-        serialized = [_serialize_random_inspection_admin_item(item) for item in rows]
+        subdivision_labels = _random_inspection_subdivision_labels(rows)
+        serialized = [
+            _serialize_random_inspection_admin_item(item, subdivision_labels) for item in rows
+        ]
 
         return Response(
             {

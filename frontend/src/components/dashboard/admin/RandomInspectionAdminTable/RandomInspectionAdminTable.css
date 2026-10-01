@@ -1189,3 +1189,38 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Boton "Revisar diferencias (N)" junto al filtro de la tabla. */
+.inspection-admin__subhead-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .inspection-admin__subhead-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Wizard de verificacion: en telefono los 5 botones no entran en una fila
+   y estiraban el dialogo fuera de la pantalla. */
+.inspection-admin__verify-dialog {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.inspection-admin__verify-actions {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 560px) {
+  .inspection-admin__verify-actions > button {
+    flex: 1 1 calc(50% - 8px);
+  }
+
+  .inspection-admin__verify-actions > button:first-child {
+    margin-right: 0;
+  }
+}

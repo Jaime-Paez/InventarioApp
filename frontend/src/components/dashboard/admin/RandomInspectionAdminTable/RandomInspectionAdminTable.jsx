@@ -8,6 +8,7 @@ import { formatDateTime } from '../../../../utils/dateFormat'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import '../CreateUsuario/CreateUsuario.css'
+import '../../QuickActions/QuickActions.css'
 import '../../movimientos/CreateSalida.css'
 import './RandomInspectionAdminTable.css'
 
@@ -150,6 +151,12 @@ function CascadeDropdown({ placeholder, searchPlaceholder, options, valueId, onS
   )
 }
 
+const formatSignedInteger = (value) => {
+  const numeric = Number.parseInt(String(value ?? 0), 10) || 0
+  if (numeric > 0) return `+${numeric}`
+  return String(numeric)
+}
+
 const formatPercent = (value) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return '0.0%'
@@ -201,11 +208,16 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [itemsPageSize, setItemsPageSize] = useState(20)
   const [itemsTotalCount, setItemsTotalCount] = useState(0)
 
-  const [editingItem, setEditingItem] = useState(null)
-  const [confirmedQty, setConfirmedQty] = useState('')
-  const [verificationNote, setVerificationNote] = useState('')
-  const [submitLoading, setSubmitLoading] = useState(false)
-  const [submitError, setSubmitError] = useState('')
+  // Wizard de verificacion: administracion revisa las diferencias una por
+  // una, con el mismo formato del wizard de conteo del revisor.
+  const [verifyWizardOpen, setVerifyWizardOpen] = useState(false)
+  const [verifyWizardLoading, setVerifyWizardLoading] = useState(false)
+  const [verifyWizardItems, setVerifyWizardItems] = useState([])
+  const [verifyWizardIndex, setVerifyWizardIndex] = useState(0)
+  const [verifyWizardDrafts, setVerifyWizardDrafts] = useState({})
+  const [verifyWizardDecisions, setVerifyWizardDecisions] = useState({})
+  const [verifyWizardSubmitting, setVerifyWizardSubmitting] = useState(false)
+  const [verifyWizardError, setVerifyWizardError] = useState('')
   const [showAssignmentsDialog, setShowAssignmentsDialog] = useState(false)
   const [assignmentRows, setAssignmentRows] = useState([])
   const [assignmentBranches, setAssignmentBranches] = useState([])
@@ -699,12 +711,12 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   useEffect(() => {
     if (!canRead) return undefined
     const intervalId = setInterval(() => {
-      if (editingItem) return
+      if (verifyWizardOpen) return
       void loadSummary()
       void loadItems()
     }, 5000)
     return () => clearInterval(intervalId)
-  }, [canRead, editingItem, loadItems, loadSummary])
+  }, [canRead, verifyWizardOpen, loadItems, loadSummary])
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined
@@ -841,24 +853,61 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     })
   }, [assignmentRows, assignmentSearch])
 
-  const closeEditDialog = useCallback(() => {
-    setEditingItem(null)
-    setConfirmedQty('')
-    setVerificationNote('')
-    setSubmitError('')
-    setSubmitLoading(false)
-  }, [])
+  const closeVerifyWizard = useCallback(() => {
+    setVerifyWizardOpen(false)
+    setVerifyWizardItems([])
+    setVerifyWizardIndex(0)
+    setVerifyWizardDrafts({})
+    setVerifyWizardDecisions({})
+    setVerifyWizardError('')
+    setVerifyWizardSubmitting(false)
+    setVerifyWizardLoading(false)
+    void loadSummary()
+    void loadItems()
+  }, [loadItems, loadSummary])
 
-  const openEditDialog = useCallback((row) => {
-    setEditingItem(row || null)
-    const fallback = row?.cantidad_reportada ?? row?.cantidad_esperada ?? 0
-    setConfirmedQty(String(Math.max(0, Number.parseInt(String(fallback || 0), 10) || 0)))
-    setVerificationNote('')
-    setSubmitError('')
-    setSubmitLoading(false)
-  }, [])
+  // Trae todas las diferencias pendientes de la sucursal (hasta 100 por vez)
+  // y abre el wizard en la elegida (o en la primera).
+  const openVerifyWizard = useCallback(async (startItemId = '') => {
+    const branchId = normalizeId(selectedBranchId)
+    if (!token || !branchId) return
+    setVerifyWizardOpen(true)
+    setVerifyWizardLoading(true)
+    setVerifyWizardError('')
+    setVerifyWizardDecisions({})
+    try {
+      const endpoint = new URL(`${API_URL}/recordatorios/inspeccion-aleatoria/admin/items/`)
+      endpoint.searchParams.set('sucursal_id', branchId)
+      endpoint.searchParams.set('estado', 'pendiente')
+      endpoint.searchParams.set('page', '1')
+      endpoint.searchParams.set('page_size', '100')
+      const response = await authFetch(endpoint.toString(), {}, token)
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(String(payload?.detail || '').trim() || 'No se pudieron cargar las diferencias.')
+      }
+      const rows = parseApiList(payload)
+      setVerifyWizardItems(rows)
+      setVerifyWizardDrafts(rows.reduce((acc, row) => {
+        const id = normalizeId(row?.id)
+        const fallback = row?.cantidad_reportada ?? row?.cantidad_esperada ?? 0
+        acc[id] = {
+          cantidad: String(Math.max(0, Number.parseInt(String(fallback || 0), 10) || 0)),
+          nota: '',
+        }
+        return acc
+      }, {}))
+      const startIndex = rows.findIndex((row) => normalizeId(row?.id) === normalizeId(startItemId))
+      setVerifyWizardIndex(startIndex >= 0 ? startIndex : 0)
+    } catch (error) {
+      setVerifyWizardItems([])
+      setVerifyWizardError(error?.message || 'No se pudieron cargar las diferencias.')
+    } finally {
+      setVerifyWizardLoading(false)
+    }
+  }, [selectedBranchId, token])
 
-  const closeAssignmentsDialog = useCallback(() => {
+    const closeAssignmentsDialog = useCallback(() => {
     setShowAssignmentsDialog(false)
     setAssignmentSearch('')
     setIsEditingAssignments(false)
@@ -1079,49 +1128,55 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     }
   }, [token, canUpdate, assignmentRows, assignmentBranches, localAssignmentMap, configData, loadAssignments, loadConfig, notifyError, notifySuccess])
 
-  const submitVerification = useCallback(async () => {
-    if (!token || !editingItem) return
+  const submitVerifyDecision = useCallback(async (action) => {
+    const item = verifyWizardItems[verifyWizardIndex]
+    const itemId = normalizeId(item?.id)
+    if (!token || !itemId || verifyWizardDecisions[itemId]) return
 
-    const nextQty = Number.parseInt(String(confirmedQty || '').trim(), 10)
-    if (!Number.isFinite(nextQty) || nextQty < 0) {
-      setSubmitError('Debes ingresar una cantidad valida mayor o igual a cero.')
-      return
+    const draft = verifyWizardDrafts[itemId] || {}
+    const body = { accion: action, nota: String(draft?.nota || '').trim() }
+    if (action === 'aprobar') {
+      const nextQty = Number.parseInt(String(draft?.cantidad ?? '').trim(), 10)
+      if (!Number.isFinite(nextQty) || nextQty < 0) {
+        setVerifyWizardError('Debes ingresar una cantidad valida mayor o igual a cero.')
+        return
+      }
+      body.cantidad_confirmada = nextQty
     }
 
-    setSubmitError('')
-    setSubmitLoading(true)
+    setVerifyWizardError('')
+    setVerifyWizardSubmitting(true)
     try {
       const response = await authFetch(
-        `${API_URL}/recordatorios/inspeccion-aleatoria/items/${encodeURIComponent(
-          normalizeId(editingItem?.id)
-        )}/verificar/`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            accion: 'aprobar',
-            cantidad_confirmada: nextQty,
-            nota: String(verificationNote || '').trim(),
-          }),
-        },
+        `${API_URL}/recordatorios/inspeccion-aleatoria/items/${encodeURIComponent(itemId)}/verificar/`,
+        { method: 'POST', body: JSON.stringify(body) },
         token
       )
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
         throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar la verificacion.')
       }
-
-      notifySuccess('Cantidad confirmada y ajuste aplicado.')
-      closeEditDialog()
-      await Promise.all([loadSummary(), loadItems()])
+      const nextDecisions = { ...verifyWizardDecisions, [itemId]: action === 'aprobar' ? 'aprobada' : 'rechazada' }
+      setVerifyWizardDecisions(nextDecisions)
+      // Siguiente diferencia sin decidir (hacia adelante y luego desde el inicio).
+      const total = verifyWizardItems.length
+      let nextIndex = -1
+      for (let offset = 1; offset <= total; offset += 1) {
+        const candidate = (verifyWizardIndex + offset) % total
+        if (!nextDecisions[normalizeId(verifyWizardItems[candidate]?.id)]) {
+          nextIndex = candidate
+          break
+        }
+      }
+      setVerifyWizardIndex(nextIndex >= 0 ? nextIndex : total)
     } catch (error) {
-      setSubmitError(error?.message || 'No se pudo guardar la verificacion.')
-      void Promise.all([loadSummary(), loadItems()])
+      setVerifyWizardError(error?.message || 'No se pudo guardar la verificacion.')
     } finally {
-      setSubmitLoading(false)
+      setVerifyWizardSubmitting(false)
     }
-  }, [closeEditDialog, confirmedQty, editingItem, loadItems, loadSummary, notifySuccess, token, verificationNote])
+  }, [token, verifyWizardDecisions, verifyWizardDrafts, verifyWizardIndex, verifyWizardItems])
 
-  // Todas las sucursales (con o sin revisores asignados) -- el modo
+    // Todas las sucursales (con o sin revisores asignados) -- el modo
   // "Division" del envio manual necesita poder elegir cualquiera de ellas,
   // aunque todavia no tenga revisores (ahi se muestra el aviso de "sin
   // revisores asignados" en vez de esconder la sucursal del selector).
@@ -1314,6 +1369,17 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             Diferencias reportadas
             {selectedBranch ? ` - ${String(selectedBranch?.sucursal_nombre || '').trim()}` : ''}
           </h4>
+          <div className="inspection-admin__subhead-actions">
+          {canUpdate && Number(selectedBranch?.pendientes_verificacion || 0) > 0 && (
+            <button
+              type="button"
+              className="inspection-admin__manage"
+              onClick={() => void openVerifyWizard()}
+            >
+              <Wrench size={14} />
+              {`Revisar diferencias (${Number(selectedBranch?.pendientes_verificacion || 0)})`}
+            </button>
+          )}
           <select
             value={itemsFilter}
             onChange={(event) => setItemsFilter(String(event.target.value || 'pendiente'))}
@@ -1324,6 +1390,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             <option value="verificado">Verificadas</option>
             <option value="todos">Todas</option>
           </select>
+          </div>
         </div>
 
         <div className="inspection-admin__table-wrap">
@@ -1372,10 +1439,10 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                         <button
                           type="button"
                           className="inspection-admin__action"
-                          onClick={() => openEditDialog(row)}
+                          onClick={() => void openVerifyWizard(normalizeId(row?.id))}
                         >
                           <Wrench size={13} />
-                          Ajustar cantidad
+                          Revisar
                         </button>
                       ) : (
                         <span className="inspection-admin__action-placeholder">Sin accion</span>
@@ -1413,96 +1480,251 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         />
       </div>
 
-      {editingItem && (
-        <div className="inspection-admin__dialog-overlay" onMouseDown={closeEditDialog}>
+      {verifyWizardOpen && (() => {
+        const total = verifyWizardItems.length
+        const item = verifyWizardItems[verifyWizardIndex] || null
+        const itemId = normalizeId(item?.id)
+        const draft = verifyWizardDrafts[itemId] || { cantidad: '', nota: '' }
+        const decision = verifyWizardDecisions[itemId] || ''
+        const decidedCount = Object.keys(verifyWizardDecisions).length
+        const approvedCount = Object.values(verifyWizardDecisions).filter((value) => value === 'aprobada').length
+        const expected = Number.parseInt(String(item?.cantidad_esperada ?? 0), 10) || 0
+        const reported = item?.cantidad_reportada == null ? null : Number.parseInt(String(item.cantidad_reportada), 10) || 0
+        const firstCount = item?.cantidad_primer_conteo == null ? null : Number.parseInt(String(item.cantidad_primer_conteo), 10) || 0
+        const confirmed = Number.parseInt(String(draft?.cantidad ?? '').trim(), 10)
+        const adjustment = Number.isFinite(confirmed) ? confirmed - expected : null
+        const locations = Array.isArray(item?.ubicaciones_conteo) ? item.ubicaciones_conteo : []
+        const busy = verifyWizardSubmitting || verifyWizardLoading
+        return (
           <div
-            className="inspection-admin__dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Ajustar cantidad real"
-            onMouseDown={(event) => event.stopPropagation()}
+            className={`quick-actions__inspection-overlay${isDarkTheme ? ' dark' : ''}`}
+            onMouseDown={() => { if (!busy) closeVerifyWizard() }}
           >
-            <header className="inspection-admin__dialog-head">
-              <div>
-                <h4>Ajustar cantidad real</h4>
-                <p>
-                  {String(editingItem?.producto_codigo || '').trim() || '#'} - {String(editingItem?.producto_nombre || '').trim()}
-                </p>
+            <div
+              className="quick-actions__inspection-dialog inspection-admin__verify-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Verificacion de diferencias"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <header className="quick-actions__inspection-head">
+                <div>
+                  <h4>Verificación de diferencias</h4>
+                  <p>
+                    {String(selectedBranch?.sucursal_nombre || 'Sucursal').trim()}
+                    {total ? ` · ${decidedCount} de ${total} revisada(s)` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="quick-actions__inspection-close"
+                  onClick={closeVerifyWizard}
+                  disabled={busy}
+                  aria-label="Cerrar verificacion"
+                >
+                  <X size={16} />
+                </button>
+              </header>
+
+              <div className="quick-actions__inspection-body">
+                {verifyWizardLoading ? (
+                  <p className="quick-actions__inspection-loading">
+                    <Loader2 size={14} />
+                    Cargando diferencias...
+                  </p>
+                ) : !total ? (
+                  <p className="quick-actions__inspection-empty">No hay diferencias pendientes por verificar.</p>
+                ) : !item ? (
+                  <div className="quick-actions__inspection-quiz">
+                    <p className="quick-actions__inspection-empty">
+                      {`Listo: revisaste ${decidedCount} diferencia(s) (${approvedCount} ajustada(s), ${decidedCount - approvedCount} rechazada(s)).`}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="quick-actions__inspection-quiz">
+                    <p className="quick-actions__inspection-stage-kicker">
+                      {`Diferencia ${verifyWizardIndex + 1} de ${total}`}
+                    </p>
+                    <div className="quick-actions__inspection-progress" aria-hidden="true">
+                      <div className="quick-actions__inspection-progress-bar">
+                        <span style={{ width: `${((verifyWizardIndex + 1) / Math.max(total, 1)) * 100}%` }} />
+                      </div>
+                    </div>
+
+                    <article className="quick-actions__inspection-stage">
+                      <div className="quick-actions__inspection-stage-copy">
+                        <p className="quick-actions__inspection-stage-kicker">Código a verificar</p>
+                        <h5>{String(item?.producto_codigo || '').trim() || `Producto ${item?.producto_id || ''}`}</h5>
+                        {!!String(item?.producto_nombre || '').trim() && (
+                          <p className="quick-actions__inspection-stage-name">{String(item.producto_nombre).trim()}</p>
+                        )}
+                      </div>
+
+                      <div className="quick-actions__inspection-stage-meta quick-actions__inspection-stage-meta--split">
+                        <div className="quick-actions__inspection-stage-meta-block">
+                          <strong>{String(item?.sucursal_nombre || 'Sucursal').trim()}</strong>
+                          <small>
+                            {`Contó ${String(item?.inspeccion_usuario_nombre || '-').trim() || '-'} · ${formatDateTime(item?.revisado_en || item?.fecha_programada)}`}
+                          </small>
+                        </div>
+                        <div className="quick-actions__inspection-stage-meta-block">
+                          {locations.length ? (
+                            <div className="quick-actions__inspection-location-list">
+                              {locations.map((location, index) => (
+                                <div key={`verify-location-${itemId}-${index}`} className="quick-actions__inspection-location-row">
+                                  <div>
+                                    <small>Ubicación</small>
+                                    <strong>{String(location?.label || '-').trim()}</strong>
+                                  </div>
+                                  <div>
+                                    <small>Sistema</small>
+                                    <strong>{location?.cantidad_sistema == null ? '-' : location.cantidad_sistema}</strong>
+                                  </div>
+                                  <div>
+                                    <small>Contado</small>
+                                    <strong>{location?.cantidad_contada == null ? '-' : location.cantidad_contada}</strong>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <strong>Sin conteo por ubicación</strong>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="quick-actions__inspection-summary-row">
+                        <div>
+                          <small>Esperado</small>
+                          <strong>{expected}</strong>
+                        </div>
+                        <div>
+                          <small>Contado</small>
+                          <strong>{reported == null ? '-' : reported}</strong>
+                        </div>
+                        <div>
+                          <small>Diferencia</small>
+                          <strong>{reported == null ? '-' : formatSignedInteger(reported - expected)}</strong>
+                        </div>
+                        {firstCount != null && reported != null && firstCount !== reported ? (
+                          <span className="quick-actions__inspection-summary-badge is-mismatch">
+                            {`Primer conteo: ${firstCount}`}
+                          </span>
+                        ) : <span />}
+                      </div>
+
+                      {!!String(item?.observacion || '').trim() && (
+                        <p className="quick-actions__inspection-stage-help">
+                          {`Nota: ${String(item.observacion).trim()}`}
+                        </p>
+                      )}
+
+                      {decision ? (
+                        <p className="quick-actions__inspection-verify-state">
+                          {decision === 'aprobada' ? 'Ajuste aprobado.' : 'Ajuste rechazado.'}
+                        </p>
+                      ) : (
+                        <>
+                          <label className="quick-actions__inspection-count-field">
+                            <span>Cantidad real confirmada</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={draft.cantidad}
+                              onChange={(event) => {
+                                const value = String(event.target.value || '').replace(/\D+/g, '').slice(0, 5)
+                                setVerifyWizardDrafts((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || {}), cantidad: value } }))
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key !== 'Enter') return
+                                event.preventDefault()
+                                void submitVerifyDecision('aprobar')
+                              }}
+                              disabled={busy}
+                              autoFocus
+                            />
+                          </label>
+                          <p className="quick-actions__inspection-stage-help">
+                            {adjustment == null
+                              ? 'Ingresa la cantidad real que hay en la sucursal.'
+                              : adjustment === 0
+                                ? 'Al aprobar, el inventario queda igual (coincide con lo esperado).'
+                                : `Al aprobar se ${adjustment > 0 ? 'sumarán' : 'restarán'} ${Math.abs(adjustment)} unidad(es) al inventario. Al rechazar, el inventario no cambia.`}
+                          </p>
+                          <label className="quick-actions__inspection-note">
+                            <span>Nota de verificación (opcional)</span>
+                            <textarea
+                              rows={2}
+                              value={draft.nota}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                setVerifyWizardDrafts((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || {}), nota: value } }))
+                              }}
+                              disabled={busy}
+                            />
+                          </label>
+                        </>
+                      )}
+                    </article>
+                  </div>
+                )}
+                {verifyWizardError && <p className="quick-actions__inspection-error">{verifyWizardError}</p>}
               </div>
-              <button
-                type="button"
-                className="inspection-admin__dialog-close"
-                onClick={closeEditDialog}
-                disabled={submitLoading}
-                aria-label="Cerrar"
-              >
-                <X size={16} />
-              </button>
-            </header>
 
-            <div className="inspection-admin__dialog-body">
-              <div className="inspection-admin__dialog-grid">
-                <label className="create-user__field">
-                  <span>Cantidad esperada</span>
-                  <input type="number" value={Number.parseInt(String(editingItem?.cantidad_esperada || 0), 10) || 0} disabled />
-                </label>
-                <label className="create-user__field">
-                  <span>Cantidad reportada</span>
-                  <input
-                    type="number"
-                    value={editingItem?.cantidad_reportada == null ? 0 : Number.parseInt(String(editingItem?.cantidad_reportada || 0), 10) || 0}
-                    disabled
-                  />
-                </label>
-              </div>
-
-              <label className="create-user__field">
-                <span>Cantidad real confirmada</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={confirmedQty}
-                  onChange={(event) => setConfirmedQty(String(event.target.value || '0'))}
-                  disabled={submitLoading}
-                />
-              </label>
-
-              <label className="create-user__field">
-                <span>Nota (opcional)</span>
-                <textarea
-                  rows={3}
-                  value={verificationNote}
-                  onChange={(event) => setVerificationNote(String(event.target.value || ''))}
-                  placeholder="Observacion de verificacion"
-                  disabled={submitLoading}
-                />
-              </label>
-
-              {submitError && <p className="inspection-admin__dialog-error">{submitError}</p>}
+              <footer className="quick-actions__inspection-actions inspection-admin__verify-actions">
+                <button
+                  type="button"
+                  className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                  onClick={closeVerifyWizard}
+                  disabled={busy}
+                >
+                  {item ? 'Cancelar' : 'Cerrar'}
+                </button>
+                {item && (
+                  <>
+                    <button
+                      type="button"
+                      className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                      onClick={() => { setVerifyWizardError(''); setVerifyWizardIndex((index) => Math.max(0, index - 1)) }}
+                      disabled={busy || verifyWizardIndex <= 0}
+                    >
+                      Anterior
+                    </button>
+                    <button
+                      type="button"
+                      className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                      onClick={() => { setVerifyWizardError(''); setVerifyWizardIndex((index) => Math.min(total - 1, index + 1)) }}
+                      disabled={busy || verifyWizardIndex >= total - 1}
+                    >
+                      Siguiente
+                    </button>
+                    {!decision && (
+                      <>
+                        <button
+                          type="button"
+                          className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                          onClick={() => void submitVerifyDecision('rechazar')}
+                          disabled={busy}
+                        >
+                          Rechazar
+                        </button>
+                        <button
+                          type="button"
+                          className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
+                          onClick={() => void submitVerifyDecision('aprobar')}
+                          disabled={busy}
+                        >
+                          {verifyWizardSubmitting ? 'Guardando...' : 'Aprobar ajuste'}
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+              </footer>
             </div>
-
-            <footer className="inspection-admin__dialog-actions">
-              <button
-                type="button"
-                className="create-user__action create-user__action--secondary"
-                onClick={closeEditDialog}
-                disabled={submitLoading}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="create-user__action create-user__action--primary"
-                onClick={() => void submitVerification()}
-                disabled={submitLoading}
-              >
-                {submitLoading ? 'Guardando...' : 'Guardar cantidad'}
-              </button>
-            </footer>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {showSendNowDialog && (
         <div className="inspection-admin__dialog-overlay" onMouseDown={() => !(sendNowLoading || sendNowDialogLoading || divisionSending || listSending) && setShowSendNowDialog(false)}>
