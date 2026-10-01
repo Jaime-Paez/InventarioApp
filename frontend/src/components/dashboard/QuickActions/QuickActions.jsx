@@ -3889,7 +3889,18 @@ function QuickActions({
       // avance solo quedaba en este navegador (rs_draft_<id>). Si el servidor
       // aun no tiene nada, se rescata ese avance y el guardado automatico lo
       // sube al servidor.
-      if (shipment?._source === 'importacion' && (!serverDraft || !Object.keys(serverDraft).length)) {
+      // Un borrador del servidor "sin avance" (lo que guarda el autoguardado al
+      // solo abrir el envio en otro dispositivo) no debe tapar el rescatado.
+      const serverDraftHasProgress = Boolean(serverDraft) && Object.keys(initialDraft).some((productId) => {
+        const saved = serverDraft[productId]
+        if (!saved || typeof saved !== 'object') return false
+        if (saved.recepcion_revisada) return true
+        if (String(saved.novedad || '').trim()) return true
+        if (Array.isArray(saved.ubicaciones) && saved.ubicaciones.length) return true
+        return saved.cantidad_recibida != null
+          && Number(saved.cantidad_recibida) !== Number(initialDraft[productId].cantidad_enviada)
+      })
+      if (shipment?._source === 'importacion' && !serverDraftHasProgress) {
         try {
           const legacyRaw = localStorage.getItem(`rs_draft_${shipmentId}`)
           const legacyDraft = legacyRaw ? JSON.parse(legacyRaw) : null
