@@ -3007,11 +3007,26 @@ function QuickActions({
           ubicaciones: Array.isArray(row?.ubicaciones) ? row.ubicaciones : [],
         }
       })
-      void authFetch(
-        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(shipmentId)}/borrador-recepcion/`,
-        { method: 'PATCH', body: JSON.stringify({ items }) },
-        token
-      ).catch(() => {})
+      // Los envios de importacion tienen su propio borrador: antes se mandaban
+      // al endpoint de traslados, respondia 404 y el avance se perdia.
+      const isImportacionEnvio = activeInTransitShipment?._source === 'importacion'
+      const draftUrl = isImportacionEnvio
+        ? `${API_URL}/importaciones/importaciones/envios/${encodeURIComponent(normalizeId(activeInTransitShipment?.envio_id) || shipmentId)}/borrador-recepcion/`
+        : `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(shipmentId)}/borrador-recepcion/`
+      void authFetch(draftUrl, { method: 'PATCH', body: JSON.stringify({ items }) }, token)
+        .then((response) => {
+          if (!response?.ok) return
+          // Mantener la lista en memoria al dia para que al reabrir el envio
+          // sin recargar se vea el ultimo avance guardado.
+          setInTransitShipments((prev) => (Array.isArray(prev)
+            ? prev.map((row) => (
+              normalizeId(row?.id) === shipmentId && row?._source === activeInTransitShipment?._source
+                ? { ...row, borrador_recepcion: items }
+                : row
+            ))
+            : prev))
+        })
+        .catch(() => {})
     }, 1500)
   }, [receiveShipmentDraftByProductId, activeInTransitShipment, isReceiveShipmentModalOpen, token])
 
@@ -3866,9 +3881,37 @@ function QuickActions({
       // navegador puede quedar desactualizado si la misma cuenta recibe el
       // mismo envio desde otro dispositivo a la vez, y usarlo pisaria
       // cantidades ya guardadas con datos viejos.
-      const serverDraft = (shipment?.borrador_recepcion && typeof shipment.borrador_recepcion === 'object')
+      let serverDraft = (shipment?.borrador_recepcion && typeof shipment.borrador_recepcion === 'object')
         ? shipment.borrador_recepcion
         : null
+
+      // Envios de importacion: hasta que tuvieron borrador en el servidor, el
+      // avance solo quedaba en este navegador (rs_draft_<id>). Si el servidor
+      // aun no tiene nada, se rescata ese avance y el guardado automatico lo
+      // sube al servidor.
+      if (shipment?._source === 'importacion' && (!serverDraft || !Object.keys(serverDraft).length)) {
+        try {
+          const legacyRaw = localStorage.getItem(`rs_draft_${shipmentId}`)
+          const legacyDraft = legacyRaw ? JSON.parse(legacyRaw) : null
+          if (legacyDraft && typeof legacyDraft === 'object') {
+            const recovered = {}
+            Object.keys(initialDraft).forEach((productId) => {
+              const row = legacyDraft[productId]
+              if (!row || typeof row !== 'object') return
+              if (normalizeId(row.producto_id) && normalizeId(row.producto_id) !== productId) return
+              recovered[productId] = {
+                cantidad_recibida: row.cantidad_recibida ?? null,
+                recepcion_revisada: Boolean(row.recepcion_revisada),
+                novedad: String(row.novedad || '').trim(),
+                ubicaciones: Array.isArray(row.ubicaciones) ? row.ubicaciones : [],
+              }
+            })
+            if (Object.keys(recovered).length) serverDraft = recovered
+          }
+        } catch {
+          // sin acceso a localStorage: se sigue sin borrador local
+        }
+      }
 
       if (serverDraft) {
         Object.keys(initialDraft).forEach((productId) => {
@@ -4717,6 +4760,9 @@ function QuickActions({
             totalMissing,
             items: builtItems,
           })
+        }
+        if (isImportacionEnvio) {
+          try { localStorage.removeItem(`rs_draft_${normalizeId(activeInTransitShipment?.id)}`) } catch { /* noop */ }
         }
         closeReceiveShipmentModal()
         await fetchInTransitTransferShipments({ silent: true })

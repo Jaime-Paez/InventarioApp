@@ -440,6 +440,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in (
             "envios_pendientes",
+            "guardar_borrador_recepcion_envio",
             "confirmar_recepcion_envio",
             "importacion_inconvenientes",
             "resolver_importacion_inconveniente",
@@ -1396,10 +1397,68 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "descripcion": f"Envío de Importación {envio.importacion.codigo}",
                 "detalles": detalles_payload,
                 "inconvenientes_pendientes": 0,
+                "borrador_recepcion": envio.borrador_recepcion or {},
                 "_source": "importacion",
             })
 
         return Response(payload, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["patch"], url_path=r"envios/(?P<envio_id>\d+)/borrador-recepcion")
+    def guardar_borrador_recepcion_envio(self, request, envio_id=None):
+        envio = ImportacionEnvio.objects.filter(
+            pk=envio_id, estado=ImportacionEnvio.ESTADO_PENDIENTE
+        ).first()
+        if envio is None:
+            return Response(
+                {"detail": "Envío no encontrado o ya recibido."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not is_app_admin(request.user):
+            allowed_ids = get_readable_sucursal_ids(
+                request.user, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS
+            )
+            if allowed_ids is not None and int(envio.sucursal_id) not in set(allowed_ids):
+                return Response(
+                    {"detail": "Envío no encontrado o ya recibido."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        items = request.data.get("items")
+        if not isinstance(items, dict):
+            return Response(
+                {"detail": "Se esperaba un objeto en `items`."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        def _to_int(value):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        borrador = {}
+        for producto_id, data in items.items():
+            if not isinstance(data, dict):
+                continue
+            qty = _to_int(data.get("cantidad_recibida"))
+            ubicaciones = []
+            for loc in data.get("ubicaciones") or []:
+                if not isinstance(loc, dict):
+                    continue
+                subdivision_id = _to_int(loc.get("subdivision_id"))
+                cantidad = _to_int(loc.get("cantidad"))
+                if subdivision_id and cantidad is not None:
+                    ubicaciones.append({"subdivision_id": subdivision_id, "cantidad": max(0, cantidad)})
+            borrador[str(producto_id)] = {
+                "cantidad_recibida": max(0, qty) if qty is not None else None,
+                "recepcion_revisada": bool(data.get("recepcion_revisada", False)),
+                "novedad": str(data.get("novedad") or "").strip(),
+                "ubicaciones": ubicaciones,
+            }
+
+        envio.borrador_recepcion = borrador
+        envio.save(update_fields=["borrador_recepcion"])
+        return Response({"ok": True}, status=status.HTTP_200_OK)
 
     @transaction.atomic
     @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/confirmar-recepcion")

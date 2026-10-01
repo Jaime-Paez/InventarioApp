@@ -162,6 +162,14 @@ class ImportacionEnvio(models.Model):
         blank=True,
         related_name="importacion_envios_recibidos",
     )
+    # Avance de la recepcion en la sucursal (cantidades, "visto" y ubicaciones
+    # por producto) para retomarla al reabrir o desde otro dispositivo. Antes
+    # se mandaba al endpoint de traslados y no se guardaba en ningun lado.
+    borrador_recepcion = models.JSONField(
+        default=dict,
+        blank=True,
+        db_default=models.Value({}, output_field=models.JSONField()),
+    )
 
     class Meta:
         ordering = ["-fecha", "-id"]
