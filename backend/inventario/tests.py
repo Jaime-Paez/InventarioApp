@@ -235,3 +235,39 @@ class SubDivisionPageSizeTests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["count"], 520)
         self.assertEqual(len(response.data["results"]), 520)
+
+
+class InventarioTablaBusquedaEnieTests(APITestCase):
+    """La busqueda de la tabla de Inventario no debe ignorar la ñ."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_superuser(
+            username="admin-enie@test.com", email="admin-enie@test.com", password="x"
+        )
+        self.client.force_authenticate(self.admin)
+        tipo, _ = TipoDivision.objects.get_or_create(nombre="General")
+        sucursal = Sucursal.objects.create(nombre="Norte", direccion="Av 1")
+        bodega = Bodega.objects.create(sucursal=sucursal, nombre="Principal")
+        division = Division.objects.create(tipo_division=tipo, bodega=bodega, nombre="Percha")
+        subdivision = SubDivision.objects.create(division=division, nombre="Nivel 1")
+        self.pinon = Producto.objects.create(codigo="ENIE-01", nombre="PIÑON DE CAJA 208")
+        otro = Producto.objects.create(codigo="ENIE-02", nombre="FILTRO DE ACEITE")
+        Inventario.objects.create(producto=self.pinon, subdivision=subdivision, cantidad=3)
+        Inventario.objects.create(producto=otro, subdivision=subdivision, cantidad=2)
+
+    def _codigos(self, **params):
+        response = self.client.get("/inventario/inventario/tabla/", params)
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        return {str(row.get("codigo") or row.get("producto_codigo") or "") for row in rows}
+
+    def test_busqueda_general_encuentra_pinon_con_o_sin_enie(self):
+        for termino in ("piñon", "pinon", "PIÑÓN", "piñon caja"):
+            with self.subTest(termino=termino):
+                codigos = self._codigos(search=termino)
+                self.assertIn("ENIE-01", codigos)
+                self.assertNotIn("ENIE-02", codigos)
+
+    def test_filtro_por_nombre_encuentra_pinon_sin_enie(self):
+        self.assertIn("ENIE-01", self._codigos(nombre="pinon"))

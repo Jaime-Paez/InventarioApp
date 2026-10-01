@@ -635,16 +635,16 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         nombre = (params.get("nombre") or "").strip()
         if nombre:
-            product_queryset = product_queryset.filter(nombre__icontains=nombre)
+            product_queryset = product_queryset.filter(nombre__unaccent__icontains=nombre)
 
         descripcion = (params.get("descripcion") or "").strip()
         if descripcion:
-            product_queryset = product_queryset.filter(descripcion__icontains=descripcion)
+            product_queryset = product_queryset.filter(descripcion__unaccent__icontains=descripcion)
 
         casa_comercial = (params.get("casa_comercial") or "").strip()
         if casa_comercial:
             product_queryset = product_queryset.filter(
-                casas_comerciales__nombre__icontains=casa_comercial
+                casas_comerciales__nombre__unaccent__icontains=casa_comercial
             )
 
         oem = (params.get("oem") or "").strip()
@@ -717,25 +717,29 @@ class InventarioViewSet(viewsets.ModelViewSet):
         # independiente por relacion y por palabra no infla las filas del
         # queryset principal, y el significado no cambia: por palabra,
         # "algun" registro relacionado que calce sigue bastando.
+        # Los tokens ya vienen sin tildes ni eñes (get_search_tokens: "piñon"
+        # -> "pinon"), asi que la comparacion tambien quita tildes y eñes del
+        # lado de la base (unaccent). Con icontains crudo "pinon" nunca
+        # coincidia con "PIÑON" y la busqueda parecia ignorar la ñ.
         for token in tokens:
             matching_casa_ids = Producto.objects.filter(
-                casas_comerciales__nombre__icontains=token
+                casas_comerciales__nombre__unaccent__icontains=token
             ).values("id")
             matching_oem_ids = Producto.objects.filter(
-                oem_productos__oem__codigo__icontains=token
+                oem_productos__oem__codigo__unaccent__icontains=token
             ).values("id")
             # Un producto puede tener varias referencias (ProductoReferencia)
             # -- se busca en todas con la misma subconsulta independiente que
             # casa/OEM, no con un .filter() encadenado directo (mismo motivo
             # del comentario de arriba: evitar el fan-out de joins).
             matching_referencia_ids = Producto.objects.filter(
-                referencias__valor__icontains=token
+                referencias__valor__unaccent__icontains=token
             ).values("id")
             product_query = (
-                Q(codigo__icontains=token)
-                | Q(nombre__icontains=token)
-                | Q(descripcion__icontains=token)
-                | Q(referencia__icontains=token)
+                Q(codigo__unaccent__icontains=token)
+                | Q(nombre__unaccent__icontains=token)
+                | Q(descripcion__unaccent__icontains=token)
+                | Q(referencia__unaccent__icontains=token)
                 | Q(id__in=matching_casa_ids)
                 | Q(id__in=matching_oem_ids)
                 | Q(id__in=matching_referencia_ids)
@@ -746,15 +750,15 @@ class InventarioViewSet(viewsets.ModelViewSet):
                         inventarios__subdivision__division__bodega__sucursal_id__in=allowed_branch_ids
                     )
                     & (
-                        Q(inventarios__subdivision__nombre__icontains=token)
-                        | Q(inventarios__subdivision__division__nombre__icontains=token)
+                        Q(inventarios__subdivision__nombre__unaccent__icontains=token)
+                        | Q(inventarios__subdivision__division__nombre__unaccent__icontains=token)
                         | Q(
-                            inventarios__subdivision__division__bodega__nombre__icontains=token
+                            inventarios__subdivision__division__bodega__nombre__unaccent__icontains=token
                         )
                         | Q(
-                            inventarios__subdivision__division__bodega__sucursal__nombre__icontains=token
+                            inventarios__subdivision__division__bodega__sucursal__nombre__unaccent__icontains=token
                         )
-                        | Q(inventarios__referencia__icontains=token)
+                        | Q(inventarios__referencia__unaccent__icontains=token)
                     )
                 ).values("id")
                 product_query |= Q(id__in=matching_location_ids)
@@ -1260,17 +1264,17 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         nombre = (params.get("nombre") or "").strip()
         if nombre:
-            queryset = queryset.filter(producto__nombre__icontains=nombre)
+            queryset = queryset.filter(producto__nombre__unaccent__icontains=nombre)
 
         descripcion = (params.get("descripcion") or "").strip()
         if descripcion:
-            queryset = queryset.filter(producto__descripcion__icontains=descripcion)
+            queryset = queryset.filter(producto__descripcion__unaccent__icontains=descripcion)
 
         casa_comercial = (params.get("casa_comercial") or "").strip()
         if casa_comercial:
             needs_distinct = True
             queryset = queryset.filter(
-                producto__casas_comerciales__nombre__icontains=casa_comercial
+                producto__casas_comerciales__nombre__unaccent__icontains=casa_comercial
             )
 
         oem = (params.get("oem") or "").strip()
