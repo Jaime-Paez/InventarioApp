@@ -5359,27 +5359,48 @@ function QuickActions({
                         </div>
                       </div>
 
-                      <div className="quick-actions__inspection-list">
+                      {/* Solo producto y lo contado: al revisor no se le muestra
+                          nada mas (ni sucursal, ni esperado, ni diferencias). */}
+                      <div className="create-user__locations-table quick-actions__inspection-count-table">
+                        <div className="create-user__locations-row create-user__locations-row--head">
+                          <span>Producto</span>
+                          <span>Contado</span>
+                        </div>
                         {randomInspectionRows.map((row) => {
                           const rowId = normalizeId(row?.row_id || row?.id)
-                          const countedQty = toPositiveInt(row?.cantidad_reportada, 0)
+                          const locations = (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
+                            .map((location) => ({
+                              label: [location?.bodega_nombre, location?.division_nombre, location?.subdivision_nombre]
+                                .map((part) => String(part || '').trim())
+                                .filter(Boolean)
+                                .join(' / '),
+                              // Solo lo que conto el revisor en esa ubicacion (nunca lo del sistema).
+                              counted: row?.requiere_conteo_por_ubicacion ? location?.cantidad_contada : null,
+                            }))
+                            .filter((location) => location.label)
                           return (
-                            <article key={`inspection-summary-${rowId}`} className="quick-actions__inspection-item">
-                              <div className="quick-actions__inspection-item-head">
-                                <strong>
-                                  {row?.producto_codigo ? `${row.producto_codigo} - ` : ''}
+                            <div key={`inspection-summary-${rowId}`} className="create-user__locations-row">
+                              <span className="quick-actions__inspection-count-table-product">
+                                <span className="quick-actions__inspection-count-table-name">
+                                  {row?.producto_codigo && <strong>{row.producto_codigo}</strong>}
+                                  {row?.producto_codigo && ' - '}
                                   {row?.producto_nombre || `Producto ${rowId}`}
-                                </strong>
-                                <span>{String(row?.sucursal_nombre || 'Sucursal').trim()}</span>
-                              </div>
-
-                              <div className="quick-actions__inspection-summary-row">
-                                <div>
-                                  <small>Contado</small>
-                                  <strong>{countedQty}</strong>
-                                </div>
-                              </div>
-                            </article>
+                                </span>
+                                {locations.length > 0 && (
+                                  <span className="quick-actions__inspection-count-table-locations">
+                                    {locations.map((location, index) => (
+                                      <span key={`inspection-summary-location-${rowId}-${index}`}>
+                                        <span>{location.label}</span>
+                                        {location.counted != null && <strong>{location.counted}</strong>}
+                                      </span>
+                                    ))}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="quick-actions__inspection-count-table-qty">
+                                {row?.cantidad_reportada == null ? '-' : toPositiveInt(row.cantidad_reportada, 0)}
+                              </span>
+                            </div>
                           )
                         })}
                       </div>

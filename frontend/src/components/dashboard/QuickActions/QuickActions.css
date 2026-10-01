@@ -3165,3 +3165,58 @@
   background: color-mix(in srgb, var(--color-primary-dark) 16%, var(--table-color-dark));
   border-color: color-mix(in srgb, var(--color-primary-dark) 42%, var(--color-border-dark));
 }
+
+/* Resumen del conteo del revisor: tabla de dos columnas, producto a la
+   izquierda (codigo - nombre) y la cantidad contada a la derecha. */
+.quick-actions__inspection-count-table .create-user__locations-row {
+  grid-template-columns: minmax(0, 1fr) 110px;
+}
+
+.quick-actions__inspection-count-table .create-user__locations-row--head > span:first-child,
+.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-product {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-product {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  justify-content: stretch;
+  justify-items: stretch;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+/* Ubicaciones debajo del producto; si se conto por ubicacion, lo contado
+   en cada una va a su derecha (el total va en la columna Contado). */
+.quick-actions__inspection-count-table-locations {
+  display: grid;
+  gap: 2px;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+
+.quick-actions__inspection-count-table-locations > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quick-actions__inspection-count-table-locations strong {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.quick-actions__inspection-count-table .create-user__locations-row--head > span:last-child,
+.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-qty {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-qty {
+  font-size: 1rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
