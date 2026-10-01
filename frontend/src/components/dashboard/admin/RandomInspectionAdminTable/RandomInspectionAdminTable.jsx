@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Eye, Loader2, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, Loader2, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
 import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -184,8 +184,8 @@ const formatVerificationState = (value) => {
   const normalized = String(value || '').trim().toLowerCase()
   if (normalized === 'sin_novedad') return 'Sin novedad'
   if (normalized === 'pendiente') return 'Pendiente'
-  if (normalized === 'aprobada') return 'Aprobada'
-  if (normalized === 'rechazada') return 'Rechazada'
+  if (normalized === 'aprobada') return 'Ajustada'
+  if (normalized === 'rechazada') return 'Sin ajuste'
   return '-'
 }
 
@@ -1695,7 +1695,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 ) : !item ? (
                   <div className="quick-actions__inspection-quiz">
                     <p className="quick-actions__inspection-empty">
-                      {`Listo: revisaste ${decidedCount} diferencia(s) (${approvedCount} ajustada(s), ${decidedCount - approvedCount} rechazada(s)).`}
+                      {`Listo: revisaste ${decidedCount} diferencia(s) (${approvedCount} con ajuste de inventario, ${decidedCount - approvedCount} sin ajuste).`}
                     </p>
                   </div>
                 ) : (
@@ -1790,7 +1790,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
 
                       {decision ? (
                         <p className="quick-actions__inspection-verify-state">
-                          {decision === 'aprobada' ? 'Ajuste aprobado.' : 'Ajuste rechazado.'}
+                          {decision === 'aprobada' ? 'Inventario ajustado.' : 'Inventario mantenido, sin ajuste.'}
                         </p>
                       ) : (
                         <>
@@ -1861,8 +1861,8 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                             {adjustment == null
                               ? 'Ingresa la cantidad real que hay en la sucursal.'
                               : adjustment === 0
-                                ? 'Al aprobar, el inventario queda igual (coincide con lo esperado).'
-                                : `Al aprobar se ${adjustment > 0 ? 'sumarán' : 'restarán'} ${Math.abs(adjustment)} unidad(es) al inventario. Al rechazar, el inventario no cambia.`}
+                                ? 'Con esta cantidad el inventario queda igual (coincide con lo esperado).'
+                                : `"Ajustar inventario" ${adjustment > 0 ? 'suma' : 'resta'} ${Math.abs(adjustment)} unidad(es). "Mantener inventario" lo deja como está (por ejemplo, si el conteo estuvo mal).`}
                           </p>
                           <label className="quick-actions__inspection-note">
                             <span>Nota de verificación (opcional)</span>
@@ -1887,7 +1887,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
               <footer className="quick-actions__inspection-actions inspection-admin__verify-actions">
                 <button
                   type="button"
-                  className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                  className={`quick-actions__inspection-btn quick-actions__inspection-btn--ghost${item ? ' inspection-admin__verify-cancel' : ''}`}
                   onClick={closeVerifyWizard}
                   disabled={busy}
                 >
@@ -1897,37 +1897,41 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                   <>
                     <button
                       type="button"
-                      className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                      className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost inspection-admin__verify-nav"
                       onClick={() => { setVerifyWizardError(''); setVerifyWizardIndex((index) => Math.max(0, index - 1)) }}
                       disabled={busy || verifyWizardIndex <= 0}
                     >
+                      <ChevronLeft size={15} />
                       Anterior
                     </button>
                     <button
                       type="button"
-                      className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                      className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost inspection-admin__verify-nav"
                       onClick={() => { setVerifyWizardError(''); setVerifyWizardIndex((index) => Math.min(total - 1, index + 1)) }}
                       disabled={busy || verifyWizardIndex >= total - 1}
                     >
                       Siguiente
+                      <ChevronRight size={15} />
                     </button>
                     {!decision && (
                       <>
                         <button
                           type="button"
-                          className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                          className="quick-actions__inspection-btn inspection-admin__verify-keep"
                           onClick={() => void submitVerifyDecision('rechazar')}
                           disabled={busy}
+                          title="No cambia el inventario: el conteo no se acepta"
                         >
-                          Rechazar
+                          Mantener inventario
                         </button>
                         <button
                           type="button"
-                          className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
+                          className="quick-actions__inspection-btn inspection-admin__verify-adjust"
                           onClick={() => void submitVerifyDecision('aprobar')}
                           disabled={busy}
+                          title="Deja el inventario en la cantidad confirmada"
                         >
-                          {verifyWizardSubmitting ? 'Guardando...' : 'Aprobar ajuste'}
+                          {verifyWizardSubmitting ? 'Guardando...' : 'Ajustar inventario'}
                         </button>
                       </>
                     )}

@@ -1202,15 +1202,6 @@
   flex-wrap: wrap;
 }
 
-@media (max-width: 560px) {
-  .inspection-admin__verify-actions > button {
-    flex: 1 1 calc(50% - 8px);
-  }
-
-  .inspection-admin__verify-actions > button:first-child {
-    margin-right: 0;
-  }
-}
 
 /* Wizard de verificacion: lo que no coincide va en rojo para que el
    administrador vea de un vistazo donde estuvo la diferencia. */
@@ -1324,5 +1315,58 @@
 @media (max-width: 560px) {
   .inspection-admin__verify-location-field {
     grid-template-columns: minmax(0, 1fr) 96px;
+  }
+}
+
+/* Botones del wizard de verificacion */
+.inspection-admin__verify-actions .inspection-admin__verify-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.inspection-admin__verify-actions .inspection-admin__verify-keep {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.inspection-admin__verify-actions .inspection-admin__verify-adjust {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.inspection-admin__verify-actions .inspection-admin__verify-adjust:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+@media (max-width: 560px) {
+  /* Telefono: la X de arriba ya cierra. Arriba Anterior / Siguiente
+     compactos; abajo las dos decisiones lado a lado. */
+  .quick-actions__inspection-actions.inspection-admin__verify-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .inspection-admin__verify-actions > button:first-child {
+    margin-right: 0;
+  }
+
+  .inspection-admin__verify-actions .inspection-admin__verify-cancel {
+    display: none;
+  }
+
+  .inspection-admin__verify-actions .inspection-admin__verify-nav {
+    min-height: 32px;
+    font-size: 0.8rem;
+  }
+
+  .inspection-admin__verify-actions .inspection-admin__verify-keep,
+  .inspection-admin__verify-actions .inspection-admin__verify-adjust {
+    min-height: 44px;
+    font-size: 0.85rem;
   }
 }
