@@ -19,9 +19,22 @@ def get_search_tokens(search_term: str) -> list[str]:
     Splits on whitespace and common separators (-, _, ., /, ,).
     Example: "p0849cl 0.3" -> ["p0849cl", "0", "3"]
     Example: "válvula escape" -> ["valvula", "escape"]
+
+    Una palabra que EMPIEZA con guion ("-L", "-la") busca ese sufijo
+    literal, con el guion incluido: "c0634 -l" -> ["c0634", "-l"]. Asi
+    "-L" encuentra C0634RX-LA pero no C0634RX-RA. Sin esto el guion se
+    descartaba y la "l" sola calzaba con casi todo (DELANTERO, -RA...).
     """
     normalized = strip_accents(search_term.strip())
-    return [t for t in re.split(r"[\s\-_./,]+", normalized) if t]
+    tokens = []
+    for word in normalized.split():
+        parts = [t for t in re.split(r"[\-_./,]+", word) if t]
+        if not parts:
+            continue
+        if word.startswith("-"):
+            parts[0] = f"-{parts[0]}"
+        tokens.extend(parts)
+    return tokens
 
 
 def apply_token_search(queryset, tokens: list[str], fields: list[str]):

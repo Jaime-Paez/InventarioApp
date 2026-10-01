@@ -271,3 +271,35 @@ class InventarioTablaBusquedaEnieTests(APITestCase):
 
     def test_filtro_por_nombre_encuentra_pinon_sin_enie(self):
         self.assertIn("ENIE-01", self._codigos(nombre="pinon"))
+
+
+class InventarioTablaBusquedaSufijoGuionTests(APITestCase):
+    """Buscar "-L" debe traer solo los codigos con -L, no los -R."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_superuser(
+            username="admin-guion@test.com", email="admin-guion@test.com", password="x"
+        )
+        self.client.force_authenticate(self.admin)
+        tipo, _ = TipoDivision.objects.get_or_create(nombre="General")
+        sucursal = Sucursal.objects.create(nombre="Norte", direccion="Av 1")
+        bodega = Bodega.objects.create(sucursal=sucursal, nombre="Principal")
+        division = Division.objects.create(tipo_division=tipo, bodega=bodega, nombre="Percha")
+        subdivision = SubDivision.objects.create(division=division, nombre="Nivel 1")
+        for codigo in ("C0634RX-LA", "C0634RX-RA", "C0634AM-L", "C0634AM-R"):
+            producto = Producto.objects.create(codigo=codigo, nombre="AMORTIGUADOR DELANTERO")
+            Inventario.objects.create(producto=producto, subdivision=subdivision, cantidad=1)
+
+    def _codigos(self, **params):
+        response = self.client.get("/inventario/inventario/tabla/", params)
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        return {str(row.get("codigo") or row.get("producto_codigo") or "") for row in rows}
+
+    def test_guion_l_solo_trae_los_l(self):
+        self.assertEqual(self._codigos(search="c0634 -L"), {"C0634RX-LA", "C0634AM-L"})
+        self.assertEqual(self._codigos(search="-r"), {"C0634RX-RA", "C0634AM-R"})
+
+    def test_sin_guion_sigue_igual(self):
+        self.assertEqual(len(self._codigos(search="c0634")), 4)
