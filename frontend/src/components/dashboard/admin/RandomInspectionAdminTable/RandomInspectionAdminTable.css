@@ -1064,10 +1064,16 @@
 }
 
 @media (max-width: 900px) {
+  /* La seccion se desplaza sola: su contenedor de pestaña tiene
+     overflow: hidden, asi que con overflow: visible lo de abajo quedaba
+     cortado y en iPhone no habia nada que desplazar. */
   .inspection-admin {
-    overflow: visible;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     padding-right: 0;
-    padding-bottom: 0;
+    padding-bottom: 16px;
   }
 
   .inspection-admin__head {
