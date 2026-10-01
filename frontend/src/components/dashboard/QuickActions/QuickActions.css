@@ -3167,18 +3167,21 @@
 }
 
 /* Resumen del conteo del revisor: tabla de dos columnas, producto a la
-   izquierda (codigo - nombre) y la cantidad contada a la derecha. */
-.quick-actions__inspection-count-table .create-user__locations-row {
+   izquierda (codigo - nombre, y sus ubicaciones debajo) y la cantidad
+   contada a la derecha. Selectores con la clase base repetida a proposito:
+   en el CSS final de la app CreateUsuario.css carga despues y, con el mismo
+   peso, sus reglas de celda (una linea, centrada) le ganaban a estas. */
+.create-user__locations-table.quick-actions__inspection-count-table .create-user__locations-row {
   grid-template-columns: minmax(0, 1fr) 110px;
 }
 
-.quick-actions__inspection-count-table .create-user__locations-row--head > span:first-child,
-.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-product {
+.create-user__locations-table.quick-actions__inspection-count-table .create-user__locations-row--head > span:first-child,
+.create-user__locations-table.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-product {
   justify-content: flex-start;
   text-align: left;
 }
 
-.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-product {
+.create-user__locations-table.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-product {
   display: grid;
   gap: 4px;
   align-content: center;
@@ -3209,13 +3212,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-.quick-actions__inspection-count-table .create-user__locations-row--head > span:last-child,
-.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-qty {
+.create-user__locations-table.quick-actions__inspection-count-table .create-user__locations-row--head > span:last-child,
+.create-user__locations-table.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-qty {
   justify-content: flex-end;
   text-align: right;
 }
 
-.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-qty {
+.create-user__locations-table.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-qty {
   font-size: 1rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
