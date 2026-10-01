@@ -349,7 +349,6 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     const parts = hora.split(':')
     const parsedHour = Number.parseInt(parts[0], 10)
     const parsedMinute = Number.parseInt(parts[1] ?? '0', 10)
-    const now = new Date()
 
     if (
       !Number.isFinite(parsedHour) ||
@@ -362,14 +361,8 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       notifyError('Formato de hora invalido. Usa HH:MM.')
       return
     }
-
-    if (
-      parsedHour < now.getHours() ||
-      (parsedHour === now.getHours() && parsedMinute < now.getMinutes())
-    ) {
-      notifyError('La hora debe ser igual o posterior a la hora actual.')
-      return
-    }
+    // Una hora que ya paso no se rechaza: el servidor la envia con la hora
+    // actual (antes fallaba si el reloj avanzaba un minuto antes de enviar).
 
     setSendNowLoading(true)
     try {
@@ -1926,7 +1919,6 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                   <span>Hora del recordatorio</span>
                   <input
                     type="time"
-                    min={`${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`}
                     value={sendNowParams.hora_recordatorio}
                     onChange={(e) => setSendNowParams((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
                     disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}

@@ -588,3 +588,17 @@ class DiferenciasAdminTests(InspeccionAleatoriaBaseTestCase):
             [(u["label"], u["cantidad_contada"], u["cantidad_sistema"]) for u in row["ubicaciones_conteo"]],
             [("Principal / Percha A / Nivel 1", 3, 5), ("Principal / Percha B / Nivel 1", 5, 5)],
         )
+
+
+class HoraRecordatorioTests(InspeccionAleatoriaBaseTestCase):
+    def test_hora_que_ya_paso_se_envia_con_la_hora_actual(self):
+        time_str, error = app_views._parse_reminder_time("00:00")
+        now = timezone.localtime()
+        self.assertIsNone(error)
+        if (now.hour, now.minute) > (0, 0):
+            self.assertEqual(time_str, f"{now.hour:02d}:{now.minute:02d}")
+
+    def test_hora_futura_se_respeta_y_formato_invalido_falla(self):
+        self.assertEqual(app_views._parse_reminder_time("23:59"), ("23:59", None))
+        self.assertEqual(app_views._parse_reminder_time("25:00")[0], "")
+        self.assertIsNotNone(app_views._parse_reminder_time("abc")[1])

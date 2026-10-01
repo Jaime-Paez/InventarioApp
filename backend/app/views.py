@@ -4017,7 +4017,11 @@ class RandomInspectionConfigAPIView(APIView):
 
 
 def _parse_reminder_time(raw_value):
-    """Valida "HH:MM" (hoy, igual o posterior a la hora actual).
+    """Valida "HH:MM" para el recordatorio de hoy.
+
+    Si la hora ya paso (por ejemplo, se eligio la hora actual y el reloj
+    avanzo un minuto antes de enviar, o el reloj del navegador va un poco
+    atrasado), no se rechaza: se envia igual con la hora actual.
 
     Devuelve (time_str, error_detail): si error_detail no es None, time_str
     queda en "" y el detail ya esta listo para responder un 400.
@@ -4037,7 +4041,7 @@ def _parse_reminder_time(raw_value):
 
     now = timezone.localtime().time()
     if (h, m) < (now.hour, now.minute):
-        return "", "La hora debe ser igual o posterior a la hora actual."
+        h, m = now.hour, now.minute
 
     return f"{h:02d}:{m:02d}", None
 
