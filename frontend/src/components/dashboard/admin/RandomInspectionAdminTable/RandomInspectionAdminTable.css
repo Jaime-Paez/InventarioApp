@@ -1211,3 +1211,35 @@
     margin-right: 0;
   }
 }
+
+/* Wizard de verificacion: lo que no coincide va en rojo para que el
+   administrador vea de un vistazo donde estuvo la diferencia. */
+.quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-summary-row > div.inspection-admin__verify-diff,
+.quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-location-row > div.inspection-admin__verify-diff {
+  border-color: color-mix(in srgb, #dc2626 55%, transparent);
+  background: color-mix(in srgb, #dc2626 12%, var(--color-surface));
+}
+
+.quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-summary-row > div.inspection-admin__verify-diff small,
+.quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-summary-row > div.inspection-admin__verify-diff strong,
+.quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-location-row > div.inspection-admin__verify-diff small,
+.quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-location-row > div.inspection-admin__verify-diff strong {
+  color: #b91c1c;
+}
+
+.quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-location-row.inspection-admin__verify-diff-row > div:first-child {
+  border-color: color-mix(in srgb, #dc2626 35%, transparent);
+}
+
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-summary-row > div.inspection-admin__verify-diff small,
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-summary-row > div.inspection-admin__verify-diff strong,
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-location-row > div.inspection-admin__verify-diff small,
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-location-row > div.inspection-admin__verify-diff strong {
+  color: #fca5a5;
+}
+
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-summary-row > div.inspection-admin__verify-diff,
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-dialog.inspection-admin__verify-dialog .quick-actions__inspection-location-row > div.inspection-admin__verify-diff {
+  border-color: rgba(248, 113, 113, 0.55);
+  background: rgba(220, 38, 38, 0.18);
+}

@@ -1682,22 +1682,33 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                         <div className="quick-actions__inspection-stage-meta-block">
                           {locations.length ? (
                             <div className="quick-actions__inspection-location-list">
-                              {locations.map((location, index) => (
-                                <div key={`verify-location-${itemId}-${index}`} className="quick-actions__inspection-location-row">
-                                  <div>
-                                    <small>Ubicación</small>
-                                    <strong>{String(location?.label || '-').trim()}</strong>
+                              {locations.map((location, index) => {
+                                // En rojo las ubicaciones donde lo contado no coincide con el sistema.
+                                const locationDiff = (
+                                  location?.cantidad_sistema != null &&
+                                  location?.cantidad_contada != null &&
+                                  Number(location.cantidad_sistema) !== Number(location.cantidad_contada)
+                                )
+                                return (
+                                  <div
+                                    key={`verify-location-${itemId}-${index}`}
+                                    className={`quick-actions__inspection-location-row${locationDiff ? ' inspection-admin__verify-diff-row' : ''}`}
+                                  >
+                                    <div>
+                                      <small>Ubicación</small>
+                                      <strong>{String(location?.label || '-').trim()}</strong>
+                                    </div>
+                                    <div>
+                                      <small>Sistema</small>
+                                      <strong>{location?.cantidad_sistema == null ? '-' : location.cantidad_sistema}</strong>
+                                    </div>
+                                    <div className={locationDiff ? 'inspection-admin__verify-diff' : undefined}>
+                                      <small>Contado</small>
+                                      <strong>{location?.cantidad_contada == null ? '-' : location.cantidad_contada}</strong>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <small>Sistema</small>
-                                    <strong>{location?.cantidad_sistema == null ? '-' : location.cantidad_sistema}</strong>
-                                  </div>
-                                  <div>
-                                    <small>Contado</small>
-                                    <strong>{location?.cantidad_contada == null ? '-' : location.cantidad_contada}</strong>
-                                  </div>
-                                </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           ) : (
                             <strong>Sin conteo por ubicación</strong>
@@ -1710,11 +1721,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                           <small>Esperado</small>
                           <strong>{expected}</strong>
                         </div>
-                        <div>
+                        <div className={reported != null && reported !== expected ? 'inspection-admin__verify-diff' : undefined}>
                           <small>Contado</small>
                           <strong>{reported == null ? '-' : reported}</strong>
                         </div>
-                        <div>
+                        <div className={reported != null && reported !== expected ? 'inspection-admin__verify-diff' : undefined}>
                           <small>Diferencia</small>
                           <strong>{reported == null ? '-' : formatSignedInteger(reported - expected)}</strong>
                         </div>
