@@ -3193,7 +3193,7 @@
 }
 
 /* Ubicaciones debajo del producto; si se conto por ubicacion, lo contado
-   en cada una va a su derecha (el total va en la columna Contado). */
+   en cada una va al lado ("Ubicacion - 5"); el total va en Contado. */
 .quick-actions__inspection-count-table-locations {
   display: grid;
   gap: 2px;
@@ -3202,9 +3202,7 @@
 }
 
 .quick-actions__inspection-count-table-locations > span {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+  display: block;
 }
 
 .quick-actions__inspection-count-table-locations strong {
@@ -3214,8 +3212,8 @@
 
 .create-user__locations-table.quick-actions__inspection-count-table .create-user__locations-row--head > span:last-child,
 .create-user__locations-table.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-qty {
-  justify-content: flex-end;
-  text-align: right;
+  justify-content: center;
+  text-align: center;
 }
 
 .create-user__locations-table.quick-actions__inspection-count-table .create-user__locations-row > span.quick-actions__inspection-count-table-qty {

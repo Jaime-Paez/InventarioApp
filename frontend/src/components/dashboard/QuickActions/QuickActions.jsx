@@ -5390,8 +5390,13 @@ function QuickActions({
                                   <span className="quick-actions__inspection-count-table-locations">
                                     {locations.map((location, index) => (
                                       <span key={`inspection-summary-location-${rowId}-${index}`}>
-                                        <span>{location.label}</span>
-                                        {location.counted != null && <strong>{location.counted}</strong>}
+                                        {location.label}
+                                        {location.counted != null && (
+                                          <>
+                                            {' - '}
+                                            <strong>{location.counted}</strong>
+                                          </>
+                                        )}
                                       </span>
                                     ))}
                                   </span>
