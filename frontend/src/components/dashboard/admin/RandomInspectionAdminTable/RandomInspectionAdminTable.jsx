@@ -247,11 +247,20 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [listSucursalId, setListSucursalId] = useState('')
   const [listUsuarioId, setListUsuarioId] = useState('')
   const [listProducts, setListProducts] = useState([])
-  const [listSearch, setListSearch] = useState('')
-  const [listSearchResults, setListSearchResults] = useState([])
-  const [listSearchLoading, setListSearchLoading] = useState(false)
-  const [listPasteText, setListPasteText] = useState('')
-  const [listPasteLoading, setListPasteLoading] = useState(false)
+  const listProductsRef = useRef([])
+  listProductsRef.current = listProducts
+  // Fila de "agregar" igual a la de Entradas/Salidas: dropdown de producto
+  // + boton Agregar. Pegar varios codigos en el buscador los agrega todos.
+  const [listDraftProduct, setListDraftProduct] = useState(null)
+  const [listProductQuery, setListProductQuery] = useState('')
+  const [listProductOptions, setListProductOptions] = useState([])
+  const [listProductLoading, setListProductLoading] = useState(false)
+  const [showListProductDropdown, setShowListProductDropdown] = useState(false)
+  const [listProductDropdownStyle, setListProductDropdownStyle] = useState({})
+  const [listBulkLoading, setListBulkLoading] = useState(false)
+  const listProductDropdownRef = useRef(null)
+  const listProductTriggerRef = useRef(null)
+  const listProductPanelRef = useRef(null)
   const [listSending, setListSending] = useState(false)
   const [assignmentsModalPosition, setAssignmentsModalPosition] = useState({ x: 0, y: 0 })
   const [assignmentsModalSize, setAssignmentsModalSize] = useState({
@@ -449,70 +458,178 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     }
   }, [token, divisionId, divisionUsuarioId, sendNowParams, notifyError, notifySuccess])
 
-  const addListProducts = useCallback((products) => {
-    setListProducts((prev) => {
-      const seen = new Set(prev.map((item) => normalizeId(item.id)))
-      const next = [...prev]
-      products.forEach((product) => {
-        const id = normalizeId(product?.id)
-        if (!id || seen.has(id)) return
-        seen.add(id)
-        next.push({
-          id,
-          codigo: String(product?.codigo || '').trim(),
-          nombre: String(product?.nombre || '').trim(),
-        })
+  // Ubicaciones (Bodega / Division / Subdivision) del producto dentro de la
+  // sucursal elegida, para la columna "Ubicacion" de la lista.
+  const fetchListProductLocations = useCallback(async (productIds, branchId) => {
+    const locationsById = {}
+    if (!token || !branchId) return locationsById
+    const ids = [...productIds]
+    for (let start = 0; start < ids.length; start += 6) {
+      const chunk = ids.slice(start, start + 6)
+      await Promise.all(chunk.map(async (productId) => {
+        try {
+          const response = await authFetch(
+            `${API_URL}/productos/listado/${encodeURIComponent(productId)}/?include_inventory_context=1`,
+            {},
+            token
+          )
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error('error')
+          const context = payload?.inventario_context ?? payload?.inventory_context ?? {}
+          const entries = Array.isArray(context?.inventario_entries)
+            ? context.inventario_entries
+            : (Array.isArray(context?.inventarioEntries) ? context.inventarioEntries : [])
+          const labels = []
+          entries.forEach((entry) => {
+            const subdivision = entry?.subdivision
+            const division = subdivision?.division
+            const bodega = division?.bodega
+            const entryBranchId = normalizeId(bodega?.sucursal?.id ?? bodega?.sucursal_id)
+            if (entryBranchId !== normalizeId(branchId)) return
+            if ((Number.parseInt(String(entry?.cantidad ?? 0), 10) || 0) <= 0) return
+            const label = [bodega?.nombre, division?.nombre, subdivision?.nombre]
+              .map((part) => String(part || '').trim())
+              .filter(Boolean)
+              .join(' / ')
+            if (label && !labels.includes(label)) labels.push(label)
+          })
+          locationsById[productId] = labels.length ? labels.join(' · ') : 'Sin stock en esta sucursal'
+        } catch {
+          locationsById[productId] = '-'
+        }
+      }))
+    }
+    return locationsById
+  }, [token])
+
+  const addListProducts = useCallback(async (products) => {
+    const branchId = normalizeId(listSucursalId)
+    const seen = new Set(listProductsRef.current.map((item) => normalizeId(item.id)))
+    const newRows = []
+    products.forEach((product) => {
+      const id = normalizeId(product?.id)
+      if (!id || seen.has(id)) return
+      seen.add(id)
+      newRows.push({
+        id,
+        codigo: String(product?.codigo || '').trim(),
+        nombre: String(product?.nombre || '').trim(),
+        ubicacion: null,
       })
-      return next
     })
-  }, [])
+    if (!newRows.length) return
+    const newIds = newRows.map((row) => row.id)
+    setListProducts((prev) => {
+      const existing = new Set(prev.map((item) => normalizeId(item.id)))
+      return [...prev, ...newRows.filter((row) => !existing.has(row.id))]
+    })
+    const locationsById = await fetchListProductLocations(newIds, branchId)
+    setListProducts((prev) => prev.map((item) => (
+      Object.prototype.hasOwnProperty.call(locationsById, item.id)
+        ? { ...item, ubicacion: locationsById[item.id] }
+        : item
+    )))
+  }, [fetchListProductLocations, listSucursalId])
+
+  // Si cambia la sucursal, la columna Ubicacion se recalcula para esa sucursal.
+  const listProductIdsKey = listProducts.map((item) => item.id).join(',')
+  useEffect(() => {
+    const branchId = normalizeId(listSucursalId)
+    const ids = listProductIdsKey ? listProductIdsKey.split(',') : []
+    if (!branchId || !ids.length) return undefined
+    let cancelled = false
+    setListProducts((prev) => prev.map((item) => ({ ...item, ubicacion: null })))
+    void fetchListProductLocations(ids, branchId).then((locationsById) => {
+      if (cancelled) return
+      setListProducts((prev) => prev.map((item) => ({ ...item, ubicacion: locationsById[item.id] ?? item.ubicacion ?? '-' })))
+    })
+    return () => { cancelled = true }
+    // Solo cuando cambia la sucursal (al agregar productos ya se calcula).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listSucursalId])
 
   useEffect(() => {
-    const term = String(listSearch || '').trim()
-    if (!token || sendNowMode !== 'lista' || term.length < 2) {
-      setListSearchResults([])
-      setListSearchLoading(false)
+    const term = String(listProductQuery || '').trim()
+    if (!token || !showListProductDropdown || !term) {
+      setListProductOptions([])
+      setListProductLoading(false)
       return undefined
     }
     let cancelled = false
-    setListSearchLoading(true)
+    setListProductLoading(true)
     const timer = window.setTimeout(() => {
-      authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=15`, {}, token)
+      authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(term)}&page_size=25`, {}, token)
         .then(async (res) => {
           const payload = await res.json().catch(() => ({}))
           if (!res.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron buscar productos.')
-          if (!cancelled) setListSearchResults(parseApiList(payload))
+          if (!cancelled) setListProductOptions(parseApiList(payload))
         })
-        .catch((error) => { if (!cancelled) { setListSearchResults([]); notifyError(error?.message || 'No se pudieron buscar productos.') } })
-        .finally(() => { if (!cancelled) setListSearchLoading(false) })
+        .catch(() => { if (!cancelled) setListProductOptions([]) })
+        .finally(() => { if (!cancelled) setListProductLoading(false) })
     }, 550)
     return () => {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [token, sendNowMode, listSearch, notifyError])
+  }, [token, showListProductDropdown, listProductQuery])
 
-  // Codigos pegados (uno por linea, o separados por coma, punto y coma o
-  // tabulacion, como vienen de Excel): se buscan en el catalogo y los que
-  // no existen se dejan en el cuadro para corregirlos.
-  const addPastedCodes = useCallback(async () => {
+  const updateListProductDropdownPlacement = useCallback(() => {
+    const trigger = listProductTriggerRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    const spacing = 8
+    const spaceBelow = window.innerHeight - rect.bottom - 12
+    const spaceAbove = rect.top - 12
+    const openUpward = spaceBelow < 260 && spaceAbove > spaceBelow
+    const maxHeight = Math.max(160, Math.min(340, openUpward ? spaceAbove : spaceBelow))
+    const panelWidth = Math.min(550, window.innerWidth - 32)
+    const left = Math.min(Math.max(rect.left, 16), window.innerWidth - panelWidth - 16)
+    setListProductDropdownStyle({
+      left,
+      maxHeight,
+      ...(openUpward
+        ? { bottom: window.innerHeight - rect.top + spacing }
+        : { top: rect.bottom + spacing }),
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!showListProductDropdown) return undefined
+    const handleOutside = (event) => {
+      if (listProductDropdownRef.current?.contains(event.target)) return
+      if (listProductPanelRef.current?.contains(event.target)) return
+      setShowListProductDropdown(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showListProductDropdown])
+
+  const handleListAddDraft = useCallback(() => {
+    if (!listDraftProduct) return
+    void addListProducts([listDraftProduct])
+    setListDraftProduct(null)
+  }, [addListProducts, listDraftProduct])
+
+  // Pegar varios codigos en el buscador (uno por linea, separados por coma, o
+  // una columna copiada de Excel) los agrega todos de una vez.
+  const handleListBulkPaste = useCallback(async (text) => {
     if (!token) return
+    const raw = String(text || '')
+    const tokens = raw.includes('\t')
+      ? raw.split(/\r?\n/).map((line) => line.split('\t')[0])
+      : raw.split(/[\r\n,;]+/)
     const codes = []
     const seen = new Set()
-    String(listPasteText || '')
-      .split(/[\n,;\t]+/)
-      .map((code) => code.trim())
-      .filter(Boolean)
-      .forEach((code) => {
-        const key = code.toUpperCase()
-        if (seen.has(key)) return
-        seen.add(key)
-        codes.push(code)
-      })
-    if (!codes.length) { notifyError('Pega al menos un codigo.'); return }
+    tokens.map((code) => String(code || '').trim()).filter(Boolean).forEach((code) => {
+      const key = code.toUpperCase()
+      if (seen.has(key)) return
+      seen.add(key)
+      codes.push(code)
+    })
+    if (!codes.length) return
     if (codes.length > 200) { notifyError('Puedes pegar hasta 200 codigos a la vez.'); return }
 
-    setListPasteLoading(true)
+    setListBulkLoading(true)
     try {
       const response = await authFetch(
         `${API_URL}/productos/listado/?codigos=${encodeURIComponent(codes.join(','))}&page_size=300`,
@@ -524,8 +641,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       const found = parseApiList(payload)
       const foundCodes = new Set(found.map((product) => String(product?.codigo || '').trim().toUpperCase()))
       const notFound = codes.filter((code) => !foundCodes.has(code.toUpperCase()))
-      addListProducts(found)
-      setListPasteText(notFound.join('\n'))
+      setShowListProductDropdown(false)
+      setListProductQuery('')
+      await addListProducts(found)
       if (notFound.length) {
         notifyError(`No se encontraron ${notFound.length} codigo(s): ${notFound.slice(0, 5).join(', ')}${notFound.length > 5 ? '...' : ''}`)
       } else {
@@ -534,9 +652,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     } catch (error) {
       notifyError(error?.message || 'No se pudieron buscar los codigos.')
     } finally {
-      setListPasteLoading(false)
+      setListBulkLoading(false)
     }
-  }, [token, listPasteText, addListProducts, notifyError, notifySuccess])
+  }, [token, addListProducts, notifyError, notifySuccess])
 
   const sendList = useCallback(async () => {
     if (!token) return
@@ -1247,9 +1365,10 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 setListSucursalId('')
                 setListUsuarioId('')
                 setListProducts([])
-                setListSearch('')
-                setListSearchResults([])
-                setListPasteText('')
+                setListDraftProduct(null)
+                setListProductQuery('')
+                setListProductOptions([])
+                setShowListProductDropdown(false)
                 try {
                   const now = new Date()
                   now.setMinutes(now.getMinutes() + 5)
@@ -1729,7 +1848,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       {showSendNowDialog && (
         <div className="inspection-admin__dialog-overlay" onMouseDown={() => !(sendNowLoading || sendNowDialogLoading || divisionSending || listSending) && setShowSendNowDialog(false)}>
           <div
-            className="inspection-admin__dialog"
+            className={`inspection-admin__dialog${sendNowMode === 'lista' ? ' inspection-admin__dialog--wide' : ''}`}
             role="dialog"
             aria-modal="true"
             aria-label="Enviar revision ahora"
@@ -1852,117 +1971,179 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                     </p>
                   )}
 
-                  <label className="create-user__field">
-                    <span>Buscar repuesto</span>
-                    <input
-                      type="text"
-                      value={listSearch}
-                      onChange={(e) => setListSearch(e.target.value)}
-                      placeholder="Código o nombre (mínimo 2 letras)"
-                      disabled={listSending}
-                      autoComplete="off"
-                    />
-                  </label>
-                  {String(listSearch || '').trim().length >= 2 && (
-                    <div className="inspection-admin__list-results">
-                      {listSearchLoading && <small className="muted">Buscando...</small>}
-                      {!listSearchLoading && !listSearchResults.length && <small className="muted">Sin resultados.</small>}
-                      {!listSearchLoading && listSearchResults.length > 0 && (
-                        <div className="create-salida__results-header">
-                          <span>Código</span>
-                          <span>Nombre</span>
-                        </div>
-                      )}
-                      {!listSearchLoading && listSearchResults.map((product) => {
-                        const productId = normalizeId(product?.id)
-                        const alreadyAdded = listProducts.some((item) => item.id === productId)
-                        return (
+                  <div className="create-user__locations-table create-salida__products-table inspection-admin__list-products-table">
+                    <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Código</span>
+                      <span>Nombre</span>
+                      <span>Ubicación</span>
+                      <span>Acciones</span>
+                    </div>
+
+                    <div className="create-user__locations-row create-user__locations-row--form">
+                      <span className="create-salida__product-picker create-salida__product-code-cell">
+                        <div className="create-user__dropdown create-salida__product-dropdown" ref={listProductDropdownRef}>
                           <button
-                            key={`list-result-${productId}`}
                             type="button"
-                            className={`create-salida__result-row${alreadyAdded ? ' is-added' : ''}`}
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => addListProducts([product])}
-                            disabled={alreadyAdded || listSending}
-                            title={alreadyAdded ? 'Ya está en la lista' : undefined}
+                            className="create-user__dropdown-trigger"
+                            ref={listProductTriggerRef}
+                            disabled={listSending || listBulkLoading || !listSucursalId}
+                            title={!listSucursalId ? 'Selecciona una sucursal primero.' : undefined}
+                            onClick={() => {
+                              if (!listSucursalId) return
+                              if (!showListProductDropdown) {
+                                setListProductQuery('')
+                                setListProductOptions([])
+                                requestAnimationFrame(() => updateListProductDropdownPlacement())
+                              }
+                              setShowListProductDropdown((prev) => !prev)
+                            }}
                           >
-                            <span className="result-codigo">{String(product?.codigo || '').trim()}</span>
-                            <span className="result-nombre">{String(product?.nombre || '').trim()}</span>
+                            <span>
+                              {listBulkLoading
+                                ? 'Agregando códigos...'
+                                : (listDraftProduct ? String(listDraftProduct?.codigo || '').trim() : 'Selecciona un producto')}
+                            </span>
+                            <i className={`pi pi-chevron-${showListProductDropdown ? 'up' : 'down'}`} />
                           </button>
-                        )
-                      })}
-                    </div>
-                  )}
 
-                  <label className="create-user__field">
-                    <span>O pega varios códigos (uno por línea o separados por coma)</span>
-                    <textarea
-                      rows={3}
-                      value={listPasteText}
-                      onChange={(e) => setListPasteText(e.target.value)}
-                      placeholder={'C0104CL-A\nC0105CL-B'}
-                      disabled={listSending || listPasteLoading}
-                    />
-                  </label>
-                  <div className="inspection-admin__list-paste-actions">
-                    <button
-                      type="button"
-                      className="create-user__action create-user__action--secondary"
-                      onClick={() => void addPastedCodes()}
-                      disabled={listSending || listPasteLoading || !String(listPasteText || '').trim()}
-                    >
-                      {listPasteLoading ? 'Buscando...' : 'Agregar códigos'}
-                    </button>
-                  </div>
+                          {showListProductDropdown && createPortal(
+                            <div
+                              ref={listProductPanelRef}
+                              className="create-user__dropdown-panel create-salida__product-panel"
+                              style={listProductDropdownStyle}
+                            >
+                              <div className="create-user__dropdown-search">
+                                <i className="pi pi-search" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar productos (o pega varios códigos)"
+                                  value={listProductQuery}
+                                  onChange={(event) => setListProductQuery(event.target.value)}
+                                  onPaste={(event) => {
+                                    const text = event.clipboardData?.getData('text') || ''
+                                    if (!/[\r\n,;\t]/.test(text.trim())) return
+                                    event.preventDefault()
+                                    void handleListBulkPaste(text)
+                                  }}
+                                  autoFocus
+                                />
+                              </div>
 
-                  {listProducts.length === 0 ? (
-                    <p className="inspection-admin__list-empty">Todavía no hay repuestos en la lista.</p>
-                  ) : (
-                    <div className="inspection-admin__sendnow-table-wrap">
-                      <table className="inspection-admin__sendnow-table inspection-admin__list-table">
-                        <thead>
-                          <tr>
-                            <th>Código</th>
-                            <th>Nombre</th>
-                            <th>
-                              <button
-                                type="button"
-                                className="inspection-admin__list-remove"
-                                onClick={() => setListProducts([])}
-                                disabled={listSending}
-                                title="Quitar todos"
-                                aria-label="Quitar todos"
+                              <div
+                                className="create-user__dropdown-results"
+                                style={listProductDropdownStyle?.maxHeight
+                                  ? { maxHeight: `${Math.max(listProductDropdownStyle.maxHeight - 72, 84)}px` }
+                                  : undefined}
                               >
-                                <X size={13} />
-                              </button>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {listProducts.map((item) => (
-                            <tr key={`list-item-${item.id}`}>
-                              <td>{item.codigo}</td>
-                              <td>{item.nombre}</td>
-                              <td>
-                                <button
-                                  type="button"
-                                  className="inspection-admin__list-remove"
-                                  onClick={() => setListProducts((prev) => prev.filter((row) => row.id !== item.id))}
-                                  disabled={listSending}
-                                  title="Quitar de la lista"
-                                  aria-label={`Quitar ${item.codigo}`}
-                                >
-                                  <X size={13} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <p className="inspection-admin__sendnow-count-footer">
-                        {listProducts.length} repuesto(s) en la lista
-                      </p>
+                                {listProductLoading && <small className="muted">Buscando productos...</small>}
+                                {!listProductLoading && listProductQuery.trim() && !listProductOptions.length && (
+                                  <small className="muted">Sin resultados.</small>
+                                )}
+                                {listProductOptions.length > 0 && (
+                                  <div className="create-salida__results-header">
+                                    <span>Código</span>
+                                    <span>Descripción</span>
+                                    <span>Cantidad</span>
+                                  </div>
+                                )}
+                                {listProductOptions.map((product) => {
+                                  const productId = normalizeId(product?.id)
+                                  const isSelected = productId === normalizeId(listDraftProduct?.id)
+                                  const isAlreadyAdded = listProducts.some((item) => item.id === productId)
+                                  return (
+                                    <button
+                                      key={`list-option-${productId}`}
+                                      type="button"
+                                      className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}`}
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={(event) => {
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        if (isAlreadyAdded) return
+                                        setListDraftProduct({
+                                          id: productId,
+                                          codigo: String(product?.codigo || '').trim(),
+                                          nombre: String(product?.nombre || '').trim(),
+                                        })
+                                        setShowListProductDropdown(false)
+                                        setListProductQuery('')
+                                      }}
+                                      disabled={isAlreadyAdded}
+                                      title={isAlreadyAdded ? 'Ya está en la lista' : undefined}
+                                    >
+                                      <span className="result-codigo">
+                                        {String(product?.codigo || '').trim() || `ID ${productId}`}
+                                        {isAlreadyAdded && (
+                                          <span className="create-salida__result-added-badge">en la lista</span>
+                                        )}
+                                      </span>
+                                      <span className="result-nombre">{String(product?.nombre || '').trim() || '-'}</span>
+                                      <span className="result-stock">{String(Number(product?.total_stock ?? 0))}</span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>,
+                            getAppPortalRoot()
+                          )}
+                        </div>
+                      </span>
+                      <span className="create-salida__product-name-cell">
+                        <span
+                          className="create-salida__table-static-value create-salida__table-static-value--name"
+                          title={listDraftProduct?.nombre || undefined}
+                        >
+                          {listDraftProduct?.nombre || '-'}
+                        </span>
+                      </span>
+                      <span>
+                        <span className="create-salida__table-static-value">-</span>
+                      </span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                        <button
+                          type="button"
+                          className="create-user__ghost create-salida__ghost--add"
+                          onClick={handleListAddDraft}
+                          disabled={!listDraftProduct || listSending || listBulkLoading}
+                        >
+                          Agregar
+                        </button>
+                      </span>
                     </div>
+
+                    {!listProducts.length && (
+                      <div className="create-user__locations-row create-user__locations-row--empty">
+                        <span>{listSucursalId ? 'Sin productos agregados.' : 'Selecciona una sucursal para agregar productos.'}</span>
+                      </div>
+                    )}
+
+                    {listProducts.map((item) => (
+                      <div key={`list-item-${item.id}`} className="create-user__locations-row">
+                        <span>{item.codigo || '-'}</span>
+                        <span title={item.nombre || undefined}>
+                          <span className="create-salida__product-name-text">{item.nombre || '-'}</span>
+                        </span>
+                        <span className="inspection-admin__list-location" title={item.ubicacion || undefined}>
+                          {item.ubicacion == null ? 'Cargando...' : item.ubicacion}
+                        </span>
+                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                          <button
+                            type="button"
+                            className="create-user__locations-remove"
+                            onClick={() => setListProducts((prev) => prev.filter((row) => row.id !== item.id))}
+                            disabled={listSending}
+                            aria-label={`Quitar ${item.codigo}`}
+                          >
+                            x
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {listProducts.length > 0 && (
+                    <p className="inspection-admin__sendnow-count-footer">
+                      {listProducts.length} repuesto(s) en la lista
+                    </p>
                   )}
                 </div>
               ) : sendNowMode === 'division' ? (
@@ -2132,7 +2313,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                   type="button"
                   className="create-user__action create-user__action--primary"
                   onClick={() => void sendList()}
-                  disabled={listSending || listPasteLoading || !listSucursalId || !listUsuarioId || listProducts.length === 0}
+                  disabled={listSending || listBulkLoading || !listSucursalId || !listUsuarioId || listProducts.length === 0}
                 >
                   {listSending ? 'Enviando...' : `Enviar lista (${listProducts.length})`}
                 </button>

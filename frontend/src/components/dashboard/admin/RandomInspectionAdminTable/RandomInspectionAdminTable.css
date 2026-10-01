@@ -1100,93 +1100,80 @@
   }
 }
 
-/* Envio de una lista especifica de repuestos */
+/* Envio de una lista especifica de repuestos: tabla igual a la de
+   Entradas/Salidas, con columnas Codigo, Nombre, Ubicacion y Acciones. */
 .inspection-admin__list-builder {
   display: grid;
   gap: 10px;
 }
 
-.inspection-admin__list-results {
-  display: grid;
-  gap: 2px;
-  max-height: 190px;
-  overflow-y: auto;
-  padding: 4px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #fff;
+/* Selectores largos a proposito: CreateSalida.css trae reglas responsive
+   para su tabla (5 columnas, min-width 620px) que si no le ganarian a estas. */
+.inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table {
+  overflow: visible;
 }
 
-/* Sin columna de stock/cantidad aca (no aplica a una lista de inspeccion):
-   se colapsa a 2 columnas, Codigo y Nombre, reusando el mismo patron
-   (create-salida__results-header/result-row) que el buscador de productos
-   de Entradas/Salidas. */
-.inspection-admin__list-results .create-salida__results-header,
-.inspection-admin__list-results .create-salida__result-row {
-  grid-template-columns: minmax(90px, 0.45fr) 1fr;
+.inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row {
+  grid-template-columns:
+    minmax(130px, 1fr)
+    minmax(150px, 1.5fr)
+    minmax(160px, 1.6fr)
+    minmax(96px, 0.6fr);
+  min-width: 0;
 }
 
-.inspection-admin__list-paste-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: -4px;
+.inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row--empty {
+  grid-template-columns: 1fr;
 }
 
-.inspection-admin__list-empty {
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px dashed #d1d5db;
-  border-radius: 8px;
-  font-size: var(--font-size-sm);
-  color: #6b7280;
-  text-align: center;
+.inspection-admin__dialog.inspection-admin__dialog--wide {
+  width: min(980px, 100%);
 }
 
-.inspection-admin__list-table tbody tr {
-  cursor: default;
-}
-
-.inspection-admin__list-remove {
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  color: #b42318;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.inspection-admin__list-remove:hover {
-  border-color: #b42318;
-  background: #fef3f2;
-}
-
-.inspection-admin__list-remove:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.dashboard-shell.dark .inspection-admin__list-results {
-  border-color: var(--color-border-dark, #384451);
-  background: var(--color-surface-darker, #1f2328);
-}
-
-.dashboard-shell.dark .inspection-admin__list-empty {
-  border-color: var(--color-border-dark, #384451);
-  color: var(--color-text-dark, #cbd5e1);
-}
-
-.dashboard-shell.dark .inspection-admin__list-remove {
-  border-color: var(--color-border-dark, #384451);
-  background: transparent;
+.inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row > span.inspection-admin__list-location {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
 }
 
 @media (max-width: 640px) {
   .inspection-admin__division-fields {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* En telefono cada repuesto es una tarjeta: Codigo y Acciones arriba,
+     Nombre y Ubicacion abajo a todo el ancho. */
+  .inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row--head {
+    display: none;
+  }
+
+  .inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row:not(.create-user__locations-row--empty) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-width: 0;
+  }
+
+  .inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row:not(.create-user__locations-row--empty) > span {
+    min-width: 0;
+    justify-content: flex-start;
+    text-align: left;
+    border-left: none;
+  }
+
+  .inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row:not(.create-user__locations-row--empty) > span:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row:not(.create-user__locations-row--empty) > span:nth-child(4) {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+  }
+
+  .inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row:not(.create-user__locations-row--empty) > span:nth-child(2),
+  .inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row:not(.create-user__locations-row--empty) > span:nth-child(3) {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--color-border);
   }
 }
 
