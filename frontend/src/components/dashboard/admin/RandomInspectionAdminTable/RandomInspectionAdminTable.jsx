@@ -151,6 +151,15 @@ function CascadeDropdown({ placeholder, searchPlaceholder, options, valueId, onS
   )
 }
 
+// Ubicaciones de una diferencia que el admin puede confirmar por separado:
+// las que tienen subdivision, cantidad del sistema y cantidad contada.
+const getVerifiableLocations = (item) => (Array.isArray(item?.ubicaciones_conteo) ? item.ubicaciones_conteo : [])
+  .filter((location) => (
+    Number.parseInt(String(location?.subdivision_id ?? ''), 10) > 0 &&
+    location?.cantidad_sistema != null &&
+    location?.cantidad_contada != null
+  ))
+
 const formatSignedInteger = (value) => {
   const numeric = Number.parseInt(String(value ?? 0), 10) || 0
   if (numeric > 0) return `+${numeric}`
@@ -1002,9 +1011,18 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       setVerifyWizardDrafts(rows.reduce((acc, row) => {
         const id = normalizeId(row?.id)
         const fallback = row?.cantidad_reportada ?? row?.cantidad_esperada ?? 0
+        const verifiableLocations = getVerifiableLocations(row)
         acc[id] = {
           cantidad: String(Math.max(0, Number.parseInt(String(fallback || 0), 10) || 0)),
           nota: '',
+          porUbicacion: verifiableLocations.length >= 2
+            ? verifiableLocations.reduce((byLocation, location) => {
+              byLocation[String(location.subdivision_id)] = String(
+                Math.max(0, Number.parseInt(String(location.cantidad_contada ?? 0), 10) || 0)
+              )
+              return byLocation
+            }, {})
+            : null,
         }
         return acc
       }, {}))
@@ -1246,7 +1264,19 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
 
     const draft = verifyWizardDrafts[itemId] || {}
     const body = { accion: action, nota: String(draft?.nota || '').trim() }
-    if (action === 'aprobar') {
+    if (action === 'aprobar' && draft?.porUbicacion) {
+      const entries = Object.entries(draft.porUbicacion)
+      const parsed = entries.map(([subdivisionId, value]) => ({
+        subdivision_id: Number(subdivisionId),
+        cantidad: Number.parseInt(String(value ?? '').trim(), 10),
+      }))
+      if (parsed.some((entry) => !Number.isFinite(entry.cantidad) || entry.cantidad < 0)) {
+        setVerifyWizardError('Ingresa una cantidad valida en cada ubicacion.')
+        return
+      }
+      body.cantidades_por_ubicacion = parsed
+      body.cantidad_confirmada = parsed.reduce((total, entry) => total + entry.cantidad, 0)
+    } else if (action === 'aprobar') {
       const nextQty = Number.parseInt(String(draft?.cantidad ?? '').trim(), 10)
       if (!Number.isFinite(nextQty) || nextQty < 0) {
         setVerifyWizardError('Debes ingresar una cantidad valida mayor o igual a cero.')
@@ -1603,7 +1633,23 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         const expected = Number.parseInt(String(item?.cantidad_esperada ?? 0), 10) || 0
         const reported = item?.cantidad_reportada == null ? null : Number.parseInt(String(item.cantidad_reportada), 10) || 0
         const firstCount = item?.cantidad_primer_conteo == null ? null : Number.parseInt(String(item.cantidad_primer_conteo), 10) || 0
-        const confirmed = Number.parseInt(String(draft?.cantidad ?? '').trim(), 10)
+        const perLocationDraft = draft?.porUbicacion || null
+        const verifiableLocations = perLocationDraft ? getVerifiableLocations(item) : []
+        const perLocationValues = verifiableLocations.map((location) => {
+          const raw = String(perLocationDraft?.[String(location.subdivision_id)] ?? '').trim()
+          const value = Number.parseInt(raw, 10)
+          return {
+            ...location,
+            raw,
+            value: Number.isFinite(value) ? value : null,
+            delta: Number.isFinite(value) ? value - Number(location.cantidad_sistema) : null,
+          }
+        })
+        const confirmed = perLocationDraft
+          ? (perLocationValues.every((location) => location.value != null)
+            ? perLocationValues.reduce((total, location) => total + location.value, 0)
+            : Number.NaN)
+          : Number.parseInt(String(draft?.cantidad ?? '').trim(), 10)
         const adjustment = Number.isFinite(confirmed) ? confirmed - expected : null
         const locations = Array.isArray(item?.ubicaciones_conteo) ? item.ubicaciones_conteo : []
         const busy = verifyWizardSubmitting || verifyWizardLoading
@@ -1748,6 +1794,49 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                         </p>
                       ) : (
                         <>
+                          {perLocationDraft ? (
+                            <div className="inspection-admin__verify-locations">
+                              <p className="quick-actions__inspection-stage-kicker">Cantidad real confirmada por ubicación</p>
+                              {perLocationValues.map((location, index) => (
+                                <label key={`verify-confirm-${itemId}-${location.subdivision_id}`} className="inspection-admin__verify-location-field">
+                                  <span>
+                                    <strong>{String(location?.label || '-').trim()}</strong>
+                                    <small>
+                                      {location.delta == null || location.delta === 0
+                                        ? 'Sin cambios en esta ubicación'
+                                        : `Se ${location.delta > 0 ? 'sumarán' : 'restarán'} ${Math.abs(location.delta)} (sistema: ${location.cantidad_sistema})`}
+                                    </small>
+                                  </span>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={location.raw}
+                                    onChange={(event) => {
+                                      const value = String(event.target.value || '').replace(/\D+/g, '').slice(0, 5)
+                                      setVerifyWizardDrafts((prev) => ({
+                                        ...prev,
+                                        [itemId]: {
+                                          ...(prev[itemId] || {}),
+                                          porUbicacion: { ...(prev[itemId]?.porUbicacion || {}), [String(location.subdivision_id)]: value },
+                                        },
+                                      }))
+                                    }}
+                                    onKeyDown={(event) => {
+                                      if (event.key !== 'Enter') return
+                                      event.preventDefault()
+                                      void submitVerifyDecision('aprobar')
+                                    }}
+                                    disabled={busy}
+                                    autoFocus={index === 0}
+                                  />
+                                </label>
+                              ))}
+                              <div className="inspection-admin__verify-locations-total">
+                                <span>Total confirmado</span>
+                                <strong>{Number.isFinite(confirmed) ? confirmed : '-'}</strong>
+                              </div>
+                            </div>
+                          ) : (
                           <label className="quick-actions__inspection-count-field">
                             <span>Cantidad real confirmada</span>
                             <input
@@ -1767,6 +1856,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                               autoFocus
                             />
                           </label>
+                          )}
                           <p className="quick-actions__inspection-stage-help">
                             {adjustment == null
                               ? 'Ingresa la cantidad real que hay en la sucursal.'

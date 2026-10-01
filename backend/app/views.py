@@ -2275,17 +2275,29 @@ def _valid_location_counts(item):
     return valid
 
 
-def _apply_random_inspection_adjustment(item, cantidad_confirmada):
+def _apply_random_inspection_adjustment(item, cantidad_confirmada, confirmed_by_location=None):
     """Deja el stock en lo confirmado, medido contra el stock AL CONTAR.
 
     delta = confirmado - stock_al_contar, aplicado al stock actual: asi las
     ventas/entradas hechas entre el conteo y la aprobacion no se cuentan dos
-    veces. Si el conteo fue por ubicacion y el admin confirmo lo contado, cada
-    ubicacion queda corregida por separado.
+    veces. Si el conteo fue por ubicacion, cada ubicacion queda corregida por
+    separado: con la cantidad que el admin confirmo para cada una
+    (`confirmed_by_location` = {subdivision_id: cantidad}) o, si no la paso,
+    con lo contado cuando el total confirmado coincide con lo contado.
     """
     division_id = _inspection_division_scope(item.inspeccion)
     total_delta = int(cantidad_confirmada) - int(item.cantidad_esperada or 0)
     location_counts = _valid_location_counts(item)
+    if confirmed_by_location:
+        location_counts = [
+            {
+                **entry,
+                "cantidad_contada": int(
+                    confirmed_by_location.get(entry["subdivision_id"], entry["cantidad_contada"])
+                ),
+            }
+            for entry in location_counts
+        ]
     applied = 0
     per_location = []
     if location_counts and int(cantidad_confirmada) == sum(
@@ -3448,7 +3460,42 @@ class RandomInspectionVerifyItemAPIView(APIView):
             )
 
             if action == "aprobar":
+                # Cantidad confirmada por ubicacion (cuando se conto en varias):
+                # [{subdivision_id, cantidad}]. El total es la suma de ellas.
+                confirmed_by_location = {}
+                raw_by_location = request.data.get("cantidades_por_ubicacion")
+                if raw_by_location:
+                    if not isinstance(raw_by_location, list):
+                        return Response(
+                            {"detail": "Las cantidades por ubicacion deben enviarse como lista."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    counted_subdivisions = {
+                        entry["subdivision_id"] for entry in _valid_location_counts(item)
+                    }
+                    for entry in raw_by_location:
+                        if not isinstance(entry, dict):
+                            continue
+                        subdivision_id = _normalize_int(entry.get("subdivision_id"), 0)
+                        quantity = _normalize_int(entry.get("cantidad"), -1)
+                        if subdivision_id not in counted_subdivisions:
+                            return Response(
+                                {"detail": "Una de las ubicaciones no pertenece a este conteo."},
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+                        if quantity < 0:
+                            return Response(
+                                {"detail": "Cada ubicacion debe tener una cantidad valida mayor o igual a cero."},
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+                        confirmed_by_location[subdivision_id] = quantity
+
                 cantidad_confirmada_raw = request.data.get("cantidad_confirmada")
+                if confirmed_by_location:
+                    cantidad_confirmada_raw = sum(
+                        confirmed_by_location.get(entry["subdivision_id"], entry["cantidad_contada"])
+                        for entry in _valid_location_counts(item)
+                    )
                 if cantidad_confirmada_raw is None:
                     cantidad_confirmada_raw = item.cantidad_reportada
                 cantidad_confirmada = _normalize_int(cantidad_confirmada_raw, -1)
@@ -3462,7 +3509,22 @@ class RandomInspectionVerifyItemAPIView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                adjustment = _apply_random_inspection_adjustment(item, int(cantidad_confirmada))
+                adjustment = _apply_random_inspection_adjustment(
+                    item, int(cantidad_confirmada), confirmed_by_location or None
+                )
+                if confirmed_by_location:
+                    # Queda registrado lo confirmado en cada ubicacion.
+                    item.conteo_ubicaciones = [
+                        {
+                            **entry,
+                            "cantidad_confirmada": confirmed_by_location.get(
+                                _normalize_int(entry.get("subdivision_id"), 0)
+                            ),
+                        }
+                        if isinstance(entry, dict)
+                        else entry
+                        for entry in (item.conteo_ubicaciones or [])
+                    ]
                 if adjustment["delta_total"] or adjustment["por_ubicacion"]:
                     _record_random_inspection_audit(
                         item,
@@ -3495,6 +3557,7 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 update_fields=[
                     "verificacion_estado",
                     "cantidad_confirmada",
+                    "conteo_ubicaciones",
                     "nota_verificacion",
                     "verificado_por",
                     "verificado_en",

@@ -602,3 +602,69 @@ class HoraRecordatorioTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(app_views._parse_reminder_time("23:59"), ("23:59", None))
         self.assertEqual(app_views._parse_reminder_time("25:00")[0], "")
         self.assertIsNotNone(app_views._parse_reminder_time("abc")[1])
+
+
+class ConfirmarPorUbicacionTests(InspeccionAleatoriaBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        Inventario.objects.filter(pk=self.inv_a.pk).update(cantidad=8)
+        self.inv_b = Inventario.objects.create(producto=self.producto, subdivision=self.sub_b, cantidad=6)
+
+    def test_admin_confirma_una_cantidad_distinta_en_cada_ubicacion(self):
+        inspection = self._crear_inspeccion()
+        item = inspection.items.get()
+        self.revisor_client.post(
+            f"{BASE_URL}/{inspection.id}/responder/",
+            {
+                "items": [
+                    {
+                        "id": item.id,
+                        "cantidad_reportada": 7,
+                        "cantidad_por_ubicacion": [
+                            {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": 5},
+                            {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": 2},
+                        ],
+                    }
+                ]
+            },
+            format="json",
+        )
+
+        # El admin recuenta: en A hay 6 (no 5) y en B 6 (como el sistema).
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/",
+            {
+                "accion": "aprobar",
+                "cantidades_por_ubicacion": [
+                    {"subdivision_id": self.sub_a.id, "cantidad": 6},
+                    {"subdivision_id": self.sub_b.id, "cantidad": 6},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 6)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 6)
+        item.refresh_from_db()
+        self.assertEqual(item.cantidad_confirmada, 12)
+        self.assertEqual(
+            sorted(entry["cantidad_confirmada"] for entry in item.conteo_ubicaciones), [6, 6]
+        )
+
+    def test_rechaza_ubicacion_que_no_es_del_conteo(self):
+        inspection = self._crear_inspeccion()
+        item = inspection.items.get()
+        self._responder(inspection, {self.producto.id: 10})
+        otra = SubDivision.objects.create(division=self.division, nombre="Nivel 9")
+        item.refresh_from_db()
+        if item.estado_revision != "no_coincide":
+            item.estado_revision = "no_coincide"
+            item.verificacion_estado = "pendiente"
+            item.save(update_fields=["estado_revision", "verificacion_estado"])
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/",
+            {"accion": "aprobar", "cantidades_por_ubicacion": [{"subdivision_id": otra.id, "cantidad": 3}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)

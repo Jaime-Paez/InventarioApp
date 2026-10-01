@@ -1243,3 +1243,86 @@
   border-color: rgba(248, 113, 113, 0.55);
   background: rgba(220, 38, 38, 0.18);
 }
+
+/* Wizard de verificacion: cantidad confirmada por cada ubicacion cuando el
+   producto se conto en varias. */
+.inspection-admin__verify-locations {
+  display: grid;
+  gap: 8px;
+}
+
+.inspection-admin__verify-location-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 86%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 84%, transparent);
+}
+
+.inspection-admin__verify-location-field > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.inspection-admin__verify-location-field strong {
+  font-size: 0.9rem;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.inspection-admin__verify-location-field small {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.inspection-admin__verify-location-field input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 1.4rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.inspection-admin__verify-locations-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.inspection-admin__verify-locations-total strong {
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.quick-actions__inspection-overlay.dark .inspection-admin__verify-location-field {
+  border-color: var(--color-border-dark, #384451);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.quick-actions__inspection-overlay.dark .inspection-admin__verify-location-field input {
+  border-color: var(--color-border-dark, #384451);
+  background: #1f2328;
+  color: #fff;
+}
+
+.quick-actions__inspection-overlay.dark .inspection-admin__verify-location-field strong,
+.quick-actions__inspection-overlay.dark .inspection-admin__verify-locations-total {
+  color: #fff;
+}
+
+@media (max-width: 560px) {
+  .inspection-admin__verify-location-field {
+    grid-template-columns: minmax(0, 1fr) 96px;
+  }
+}
