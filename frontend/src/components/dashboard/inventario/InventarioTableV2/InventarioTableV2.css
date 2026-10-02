@@ -405,7 +405,7 @@
   }
 }
 
-/* Ubicaciones con poco stock (3 o menos): ojo y filas del recuadro en rojo */
+/* Ubicaciones del almacen con menos de 2: ojo y filas del recuadro en rojo */
 .inventario-v2__location-cell .inventario-v2__location-eye--low {
   border-color: color-mix(in srgb, #dc2626 45%, var(--color-border));
   background: color-mix(in srgb, #dc2626 12%, var(--color-surface));

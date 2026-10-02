@@ -24,7 +24,12 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.search_utils import FuzzyTokenSearchFilter, apply_token_search, get_search_tokens
+from core.search_utils import (
+    FuzzyTokenSearchFilter,
+    apply_token_search,
+    get_search_tokens,
+    strip_accents,
+)
 from core.table_filters import apply_column_filters, parse_column_filters
 from productos.models import OEMProducto, Producto
 from usuarios.models import RolPermiso
@@ -58,10 +63,19 @@ from movimientos.transfer_helpers import (
 )
 
 
-# Una ubicacion con esta cantidad o menos se marca como "poco stock": el ojo
-# de "otras ubicaciones" de la tabla de Inventario se pinta de rojo cuando la
-# sucursal tiene varias ubicaciones y alguna esta en este nivel o por debajo.
-LOW_STOCK_LOCATION_THRESHOLD = 3
+# Una ubicacion del ALMACEN (no de la bodega) con esta cantidad o menos se
+# marca como "poco stock": el ojo de "otras ubicaciones" de la tabla de
+# Inventario se pinta de rojo cuando la sucursal tiene varias ubicaciones y
+# alguna del almacen esta en este nivel o por debajo ("menos de 2 unidades").
+LOW_STOCK_LOCATION_THRESHOLD = 1
+LOW_STOCK_BODEGA_PREFIX = "almacen"
+
+
+def _is_low_stock_location(bodega_nombre, cantidad):
+    return (
+        strip_accents(str(bodega_nombre or "").strip()).startswith(LOW_STOCK_BODEGA_PREFIX)
+        and int(cantidad or 0) <= LOW_STOCK_LOCATION_THRESHOLD
+    )
 
 LOCATION_CATALOG_SCOPED_READ_MODULE_KEYS = (
     RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
@@ -949,7 +963,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "division_nombre": principal.get("division_nombre") or "",
                 "subdivision_nombre": principal.get("subdivision_nombre") or "",
                 "cantidad": int(principal.get("cantidad") or 0),
-                "stock_bajo": int(principal.get("cantidad") or 0) <= LOW_STOCK_LOCATION_THRESHOLD,
+                "stock_bajo": _is_low_stock_location(principal.get("bodega_nombre"), principal.get("cantidad")),
             }
             additional_locations = [
                 {
@@ -958,7 +972,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     "division_nombre": location.get("division_nombre") or "",
                     "subdivision_nombre": location.get("subdivision_nombre") or "",
                     "cantidad": int(location.get("cantidad") or 0),
-                    "stock_bajo": int(location.get("cantidad") or 0) <= LOW_STOCK_LOCATION_THRESHOLD,
+                    "stock_bajo": _is_low_stock_location(location.get("bodega_nombre"), location.get("cantidad")),
                 }
                 for location in ordered_locations[1:]
             ]
@@ -968,9 +982,10 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "ubicacion_principal": principal_payload["ubicacion"],
                 "ubicaciones_adicionales": additional_locations,
                 "total_ubicaciones": len(ordered_locations),
-                # Rojo solo cuando hay ojo (varias ubicaciones) y alguna esta baja.
+                # Rojo solo cuando hay ojo (varias ubicaciones) y alguna del
+                # almacen esta baja.
                 "tiene_stock_bajo": len(ordered_locations) > 1 and any(
-                    int(location.get("cantidad") or 0) <= LOW_STOCK_LOCATION_THRESHOLD
+                    _is_low_stock_location(location.get("bodega_nombre"), location.get("cantidad"))
                     for location in ordered_locations
                 ),
             }
@@ -1213,12 +1228,13 @@ class InventarioViewSet(viewsets.ModelViewSet):
             if bajo_field in ordering_param:
                 # Misma regla que "tiene_stock_bajo" del payload: varias
                 # ubicaciones en la sucursal, alguna con stock, y alguna
-                # (sumada por subdivision) en el umbral o por debajo.
+                # del almacen (sumada por subdivision) en el umbral o por debajo.
                 branch_q = Q(inventarios__subdivision__division__bodega__sucursal_id=branch.id)
                 low_subdivision_exists = Exists(
                     Inventario.objects.filter(
                         producto_id=OuterRef("id"),
                         subdivision__division__bodega__sucursal_id=branch.id,
+                        subdivision__division__bodega__nombre__unaccent__istartswith=LOW_STOCK_BODEGA_PREFIX,
                     )
                     .values("subdivision_id")
                     .annotate(_total=Sum("cantidad"))
