@@ -6,6 +6,8 @@ from django.db.models.deletion import ProtectedError
 from django.db.models import (
     Case,
     CharField,
+    Count,
+    Exists,
     IntegerField,
     Max,
     OuterRef,
@@ -55,6 +57,11 @@ from movimientos.transfer_helpers import (
     REMINDERS_SYNC_FLAG,
 )
 
+
+# Una ubicacion con esta cantidad o menos se marca como "poco stock": el ojo
+# de "otras ubicaciones" de la tabla de Inventario se pinta de rojo cuando la
+# sucursal tiene varias ubicaciones y alguna esta en este nivel o por debajo.
+LOW_STOCK_LOCATION_THRESHOLD = 3
 
 LOCATION_CATALOG_SCOPED_READ_MODULE_KEYS = (
     RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
@@ -806,6 +813,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             ordering_aliases[field_name] = field_name
         for branch in branches:
             ordering_aliases[f"ubicacion_sucursal_{branch.id}"] = f"ubicacion_sort_{branch.id}"
+            ordering_aliases[f"ubicacion_bajo_sucursal_{branch.id}"] = f"ubicacion_bajo_sort_{branch.id}"
 
         allowed_fields = set(ordering_aliases.values())
         resolved = []
@@ -851,9 +859,10 @@ class InventarioViewSet(viewsets.ModelViewSet):
             return {}
 
         aggregated_locations = (
+            # Tambien las ubicaciones en 0: se muestran (en rojo) junto a las
+            # demas para que se vea donde falta stock.
             Inventario.objects.filter(
                 producto_id__in=normalized_product_ids,
-                cantidad__gt=0,
                 subdivision__division__bodega__sucursal_id__in=normalized_branch_ids,
             )
             .values(
@@ -879,8 +888,8 @@ class InventarioViewSet(viewsets.ModelViewSet):
         for row in aggregated_locations:
             product_id = int(row.get("producto_id") or 0)
             branch_id = int(row.get("subdivision__division__bodega__sucursal_id") or 0)
-            cantidad_total = int(row.get("cantidad_total") or 0)
-            if product_id <= 0 or branch_id <= 0 or cantidad_total <= 0:
+            cantidad_total = max(0, int(row.get("cantidad_total") or 0))
+            if product_id <= 0 or branch_id <= 0:
                 continue
 
             bodega_nombre = str(
@@ -908,6 +917,10 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         payload_by_product = {}
         for (product_id, branch_id), locations in locations_by_product_branch.items():
+            # Sin stock en ninguna ubicacion de la sucursal: igual que antes,
+            # la celda queda vacia.
+            if not any(int(location.get("cantidad") or 0) > 0 for location in locations):
+                continue
             # Orden fijo por nombre (no por cantidad) para que la ubicacion
             # principal no cambie de lugar cuando el stock se mueve entre
             # bodegas de la misma sucursal (ej. Almacen Matriz vs Bodega
@@ -923,13 +936,20 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     int(item.get("subdivision_id") or 0),
                 ),
             )
-            principal = ordered_locations[0]
+            # La principal es la primera con stock (una en 0 nunca lo es).
+            principal = next(
+                location for location in ordered_locations if int(location.get("cantidad") or 0) > 0
+            )
+            ordered_locations = [principal] + [
+                location for location in ordered_locations if location is not principal
+            ]
             principal_payload = {
                 "bodega_nombre": principal.get("bodega_nombre") or "",
                 "ubicacion": principal.get("ubicacion") or "-",
                 "division_nombre": principal.get("division_nombre") or "",
                 "subdivision_nombre": principal.get("subdivision_nombre") or "",
                 "cantidad": int(principal.get("cantidad") or 0),
+                "stock_bajo": int(principal.get("cantidad") or 0) <= LOW_STOCK_LOCATION_THRESHOLD,
             }
             additional_locations = [
                 {
@@ -938,6 +958,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     "division_nombre": location.get("division_nombre") or "",
                     "subdivision_nombre": location.get("subdivision_nombre") or "",
                     "cantidad": int(location.get("cantidad") or 0),
+                    "stock_bajo": int(location.get("cantidad") or 0) <= LOW_STOCK_LOCATION_THRESHOLD,
                 }
                 for location in ordered_locations[1:]
             ]
@@ -947,6 +968,11 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "ubicacion_principal": principal_payload["ubicacion"],
                 "ubicaciones_adicionales": additional_locations,
                 "total_ubicaciones": len(ordered_locations),
+                # Rojo solo cuando hay ojo (varias ubicaciones) y alguna esta baja.
+                "tiene_stock_bajo": len(ordered_locations) > 1 and any(
+                    int(location.get("cantidad") or 0) <= LOW_STOCK_LOCATION_THRESHOLD
+                    for location in ordered_locations
+                ),
             }
 
         return payload_by_product
@@ -1179,6 +1205,48 @@ class InventarioViewSet(viewsets.ModelViewSet):
                             )
                             .values("_full_label")[:1],
                             output_field=CharField(),
+                        )
+                    }
+                )
+
+            bajo_field = f"ubicacion_bajo_sucursal_{branch.id}"
+            if bajo_field in ordering_param:
+                # Misma regla que "tiene_stock_bajo" del payload: varias
+                # ubicaciones en la sucursal, alguna con stock, y alguna
+                # (sumada por subdivision) en el umbral o por debajo.
+                branch_q = Q(inventarios__subdivision__division__bodega__sucursal_id=branch.id)
+                low_subdivision_exists = Exists(
+                    Inventario.objects.filter(
+                        producto_id=OuterRef("id"),
+                        subdivision__division__bodega__sucursal_id=branch.id,
+                    )
+                    .values("subdivision_id")
+                    .annotate(_total=Sum("cantidad"))
+                    .filter(_total__lte=LOW_STOCK_LOCATION_THRESHOLD)
+                )
+                aggregated_queryset = aggregated_queryset.annotate(
+                    **{
+                        f"_ub_count_{branch.id}": Count(
+                            "inventarios__subdivision", filter=branch_q, distinct=True
+                        ),
+                        f"_ub_pos_{branch.id}": Count(
+                            "inventarios__id", filter=branch_q & Q(inventarios__cantidad__gt=0)
+                        ),
+                        f"_ub_low_{branch.id}": low_subdivision_exists,
+                    }
+                ).annotate(
+                    **{
+                        f"ubicacion_bajo_sort_{branch.id}": Case(
+                            When(
+                                **{
+                                    f"_ub_count_{branch.id}__gte": 2,
+                                    f"_ub_pos_{branch.id}__gte": 1,
+                                    f"_ub_low_{branch.id}": True,
+                                },
+                                then=Value(1),
+                            ),
+                            default=Value(0),
+                            output_field=IntegerField(),
                         )
                     }
                 )

@@ -404,3 +404,70 @@
     max-width: 36px !important;
   }
 }
+
+/* Ubicaciones con poco stock (3 o menos): ojo y filas del recuadro en rojo */
+.inventario-v2__location-cell .inventario-v2__location-eye--low {
+  border-color: color-mix(in srgb, #dc2626 45%, var(--color-border));
+  background: color-mix(in srgb, #dc2626 12%, var(--color-surface));
+  color: #dc2626;
+}
+
+.inventario-v2__location-cell .inventario-v2__location-eye--low:hover,
+.inventario-v2__location-cell .inventario-v2__location-eye--low:focus-visible {
+  border-color: #dc2626;
+  background: color-mix(in srgb, #dc2626 20%, var(--color-surface));
+}
+
+.dashboard-shell.dark .inventario-v2__location-cell .inventario-v2__location-eye--low {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(248, 113, 113, 0.18);
+  color: #fca5a5;
+}
+
+.dashboard-shell.dark .inventario-v2__location-cell .inventario-v2__location-eye--low:hover,
+.dashboard-shell.dark .inventario-v2__location-cell .inventario-v2__location-eye--low:focus-visible {
+  border-color: #f87171;
+  background: rgba(248, 113, 113, 0.28);
+}
+
+.inventario-v2__location-hover-table tr.inventario-v2__location-hover-row--low td {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.dashboard-shell.dark .inventario-v2__location-hover-table tr.inventario-v2__location-hover-row--low td {
+  color: #fca5a5;
+}
+
+.inventario-v2__location-sort-header {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.inventario-v2__location-sort-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+  color: var(--color-primary);
+}
+
+.inventario-v2__location-sort-badge--red {
+  background: color-mix(in srgb, #dc2626 14%, var(--color-surface));
+  color: #dc2626;
+}
+
+.dashboard-shell.dark .inventario-v2__location-sort-badge {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.dashboard-shell.dark .inventario-v2__location-sort-badge--red {
+  background: rgba(248, 113, 113, 0.2);
+  color: #fca5a5;
+}

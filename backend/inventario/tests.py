@@ -130,23 +130,27 @@ class InventarioTableLocationPayloadTests(TestCase):
         self.assertEqual(principal_branch_payload["total_ubicaciones"], 3)
         self.assertEqual(
             principal_branch_payload["ubicaciones_adicionales"],
+            # Orden fijo por nombre de bodega/division/subdivision.
             [
-                {
-                    "bodega_nombre": "Bodega Respaldo",
-                    "ubicacion": "Rack C:Nivel 4",
-                    "division_nombre": "Rack C",
-                    "subdivision_nombre": "Nivel 4",
-                    "cantidad": 7,
-                },
                 {
                     "bodega_nombre": "Bodega Principal",
                     "ubicacion": "Percha B:Nivel 2",
                     "division_nombre": "Percha B",
                     "subdivision_nombre": "Nivel 2",
                     "cantidad": 2,
+                    "stock_bajo": True,
+                },
+                {
+                    "bodega_nombre": "Bodega Respaldo",
+                    "ubicacion": "Rack C:Nivel 4",
+                    "division_nombre": "Rack C",
+                    "subdivision_nombre": "Nivel 4",
+                    "cantidad": 7,
+                    "stock_bajo": False,
                 },
             ],
         )
+        self.assertTrue(principal_branch_payload["tiene_stock_bajo"])
         self.assertEqual(
             secondary_branch_payload["ubicacion_principal"],
             "Zona 1:Fila 3",
@@ -303,3 +307,69 @@ class InventarioTablaBusquedaSufijoGuionTests(APITestCase):
 
     def test_sin_guion_sigue_igual(self):
         self.assertEqual(len(self._codigos(search="c0634")), 4)
+
+
+class InventarioTablaUbicacionesStockBajoTests(APITestCase):
+    """Ojo en rojo cuando alguna ubicacion de la sucursal tiene 3 o menos, y
+    orden "rojos primero" / "sin rojo primero" en la columna de ubicacion."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_superuser(
+            username="admin-bajo@test.com", email="admin-bajo@test.com", password="x"
+        )
+        self.client.force_authenticate(self.admin)
+        tipo, _ = TipoDivision.objects.get_or_create(nombre="General")
+        self.sucursal = Sucursal.objects.create(nombre="Norte", direccion="Av 1")
+        bodega = Bodega.objects.create(sucursal=self.sucursal, nombre="Principal")
+        division = Division.objects.create(tipo_division=tipo, bodega=bodega, nombre="Percha")
+        self.sub_a = SubDivision.objects.create(division=division, nombre="A")
+        self.sub_b = SubDivision.objects.create(division=division, nombre="B")
+        self.sub_c = SubDivision.objects.create(division=division, nombre="C")
+
+        def producto(codigo, cantidades):
+            item = Producto.objects.create(codigo=codigo, nombre=f"PRODUCTO {codigo}")
+            for subdivision, cantidad in zip((self.sub_a, self.sub_b, self.sub_c), cantidades):
+                if cantidad is not None:
+                    Inventario.objects.create(producto=item, subdivision=subdivision, cantidad=cantidad)
+            return item
+
+        producto("BAJO-CERO", [0, 20, None])       # una en 0 -> rojo
+        producto("BAJO-TRES", [50, 3, None])       # una en 3 -> rojo
+        producto("BAJO-NO", [50, 4, None])         # ninguna <= 3 -> normal
+        producto("BAJO-UNA", [2, None, None])      # una sola ubicacion -> sin ojo, normal
+        producto("BAJO-SINSTOCK", [0, 0, None])    # sin stock -> celda vacia
+
+    def _rows(self, **params):
+        response = self.client.get("/inventario/inventario/tabla/", params)
+        self.assertEqual(response.status_code, 200, response.data)
+        rows = response.data.get("results", response.data) if isinstance(response.data, dict) else response.data
+        return [row for row in rows if str(row.get("codigo") or "").startswith("BAJO-")]
+
+    def _ubicacion(self, row):
+        return row.get(f"ubicacion_sucursal_{self.sucursal.id}") or {}
+
+    def test_payload_marca_stock_bajo(self):
+        rows = {row["codigo"]: self._ubicacion(row) for row in self._rows()}
+        self.assertTrue(rows["BAJO-CERO"]["tiene_stock_bajo"])
+        self.assertTrue(rows["BAJO-TRES"]["tiene_stock_bajo"])
+        self.assertFalse(rows["BAJO-NO"]["tiene_stock_bajo"])
+        self.assertFalse(rows["BAJO-UNA"]["tiene_stock_bajo"])
+        self.assertEqual(rows["BAJO-SINSTOCK"], {})
+
+        cero = rows["BAJO-CERO"]
+        # La principal nunca es la de 0; la de 0 se muestra como adicional en rojo.
+        self.assertEqual(cero["principal"]["cantidad"], 20)
+        self.assertFalse(cero["principal"]["stock_bajo"])
+        self.assertEqual(
+            [(loc["cantidad"], loc["stock_bajo"]) for loc in cero["ubicaciones_adicionales"]],
+            [(0, True)],
+        )
+
+    def test_orden_rojos_primero_y_sin_rojo_primero(self):
+        branch = self.sucursal.id
+        rojos = [row["codigo"] for row in self._rows(ordering=f"-ubicacion_bajo_sucursal_{branch},ubicacion_sucursal_{branch}")]
+        self.assertEqual(set(rojos[:2]), {"BAJO-CERO", "BAJO-TRES"})
+
+        sin_rojo = [row["codigo"] for row in self._rows(ordering=f"ubicacion_bajo_sucursal_{branch},ubicacion_sucursal_{branch}")]
+        self.assertEqual(set(sin_rojo[-2:]), {"BAJO-CERO", "BAJO-TRES"})

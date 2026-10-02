@@ -86,6 +86,15 @@ const INVENTARIO_V2_FILTER_DEFAULT_MODES = {
   precio_con_iva: FilterMatchMode.EQUALS,
   total_general: FilterMatchMode.EQUALS,
 }
+// Orden de las columnas "Ub. <sucursal>": ademas de ascendente (1) y
+// descendente (-1), al seguir tocando el titulo se pasa por "rojos primero"
+// y "sin rojo primero" (ubicaciones con poco stock, ojo en rojo).
+const LOCATION_SORT_RED_FIRST = 2
+const LOCATION_SORT_NO_RED_FIRST = 3
+const isLocationSortField = (field) => /^ubicacion_sucursal_\d+$/.test(String(field || ''))
+const isLocationRedSortOrder = (order) =>
+  order === LOCATION_SORT_RED_FIRST || order === LOCATION_SORT_NO_RED_FIRST
+
 const INVENTARIO_V2_ORDERING_MAP = {
   codigo: 'codigo',
   nombre: 'nombre',
@@ -324,8 +333,16 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     branches.forEach((branch) => {
       orderingMap[`ubicacion_sucursal_${branch.id}`] = `ubicacion_sucursal_${branch.id}`
     })
-    const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, orderingMap)
-    if (ordering) params.set('ordering', ordering)
+    if (isLocationSortField(tableSortField) && isLocationRedSortOrder(Number(tableSortOrder))) {
+      const redField = String(tableSortField).replace('ubicacion_sucursal_', 'ubicacion_bajo_sucursal_')
+      params.set(
+        'ordering',
+        `${Number(tableSortOrder) === LOCATION_SORT_RED_FIRST ? '-' : ''}${redField},${tableSortField}`
+      )
+    } else {
+      const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, orderingMap)
+      if (ordering) params.set('ordering', ordering)
+    }
 
     return `${API_URL}/inventario/inventario/tabla/?${params.toString()}`
   }, [canSeeCost, branches])
@@ -1061,14 +1078,17 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             bodega_nombre: principalBodega,
             ubicacion: principalLabel,
             cantidad: normalizeNumber(locationPayload?.principal?.cantidad),
+            stock_bajo: Boolean(locationPayload?.principal?.stock_bajo),
           }
           : null,
         ...extraLocations.map((location) => ({
           bodega_nombre: String(location?.bodega_nombre || '').trim(),
           ubicacion: String(location?.ubicacion || '').trim(),
           cantidad: normalizeNumber(location?.cantidad),
+          stock_bajo: Boolean(location?.stock_bajo),
         })),
       ].filter((location) => location?.ubicacion)
+      const hasLowStock = Boolean(locationPayload?.tiene_stock_bajo)
 
       if (!normalizedLocations.length) {
         return (
@@ -1102,8 +1122,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           {hasMoreDetail ? (
             <button
               type="button"
-              className="inventario-v2__location-eye"
-              aria-label={`Ver otras ubicaciones en ${branch.nombre}`}
+              className={`inventario-v2__location-eye${hasLowStock ? ' inventario-v2__location-eye--low' : ''}`}
+              aria-label={`Ver otras ubicaciones en ${branch.nombre}${hasLowStock ? ' (alguna con poco stock)' : ''}`}
               onClick={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
@@ -1921,8 +1941,24 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
 
   const handleSortChange = async (event) => {
     const rawSortOrder = Number(event?.sortOrder)
-    const normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
-    const nextSortField = normalizedSortOrder ? event?.sortField || null : null
+    let normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
+    let nextSortField = normalizedSortOrder ? event?.sortField || null : null
+    // Columnas de ubicacion: ascendente -> descendente -> rojos primero ->
+    // sin rojo primero -> sin orden. Quitar el orden solo ocurre al tocar la
+    // columna ya ordenada, asi que sin sortField en el evento es la misma.
+    const clickedField = event?.sortField || sortField
+    if (isLocationSortField(clickedField) && clickedField === sortField) {
+      if (sortOrder === -1) {
+        nextSortField = clickedField
+        normalizedSortOrder = LOCATION_SORT_RED_FIRST
+      } else if (sortOrder === LOCATION_SORT_RED_FIRST) {
+        nextSortField = clickedField
+        normalizedSortOrder = LOCATION_SORT_NO_RED_FIRST
+      } else if (sortOrder === LOCATION_SORT_NO_RED_FIRST) {
+        nextSortField = null
+        normalizedSortOrder = null
+      }
+    }
     setSortField(nextSortField)
     setSortOrder(normalizedSortOrder)
     setPageFirst(0)
@@ -2196,8 +2232,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           rowsPerPageOptions={[5, 10, 20, 25, 50]}
           onPage={handlePageChange}
           removableSort
-          sortField={sortField || undefined}
-          sortOrder={sortOrder || 0}
+          sortField={(isLocationRedSortOrder(sortOrder) ? null : sortField) || undefined}
+          sortOrder={isLocationRedSortOrder(sortOrder) ? 0 : sortOrder || 0}
           onSort={handleSortChange}
           filters={filters}
           onValueChange={(value) => setProcessedRows(value ?? [])}
@@ -2345,7 +2381,20 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 <Column
                   key={`branch_location_${branch.id}`}
                   field={field}
-                  header={`Ub. ${abbreviateBranchName(branch.nombre)}`}
+                  header={
+                    sortField === field && isLocationRedSortOrder(sortOrder) ? (
+                      <span className="inventario-v2__location-sort-header">
+                        {`Ub. ${abbreviateBranchName(branch.nombre)}`}
+                        <span
+                          className={`inventario-v2__location-sort-badge${
+                            sortOrder === LOCATION_SORT_RED_FIRST ? ' inventario-v2__location-sort-badge--red' : ''
+                          }`}
+                        >
+                          {sortOrder === LOCATION_SORT_RED_FIRST ? 'Rojos primero' : 'Sin rojo primero'}
+                        </span>
+                      </span>
+                    ) : `Ub. ${abbreviateBranchName(branch.nombre)}`
+                  }
                   sortable
                   reorderable
                   className="column-max-min-width inventario-v2__location-col"
@@ -2392,7 +2441,10 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
               </thead>
               <tbody>
                 {locationHoverCard.ubicaciones.map((location, index) => (
-                  <tr key={`location-hover-row-${index}`}>
+                  <tr
+                    key={`location-hover-row-${index}`}
+                    className={location?.stock_bajo ? 'inventario-v2__location-hover-row--low' : undefined}
+                  >
                     <td title={String(location?.bodega_nombre || '-').trim()}>
                       {String(location?.bodega_nombre || '-').trim()}
                     </td>
