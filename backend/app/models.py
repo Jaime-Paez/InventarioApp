@@ -132,6 +132,17 @@ class InspeccionAleatoriaDiaria(models.Model):
         blank=True,
         related_name="inspecciones_aleatorias_diarias",
     )
+    # Opcional dentro de "por division": limita la revision a una sola
+    # subdivision de esa division. `es_por_subdivision` (y no solo
+    # `subdivision`) define la unicidad, igual que es_por_division.
+    es_por_subdivision = models.BooleanField(default=False, db_default=False)
+    subdivision = models.ForeignKey(
+        "inventario.SubDivision",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="inspecciones_aleatorias_diarias",
+    )
     fecha_programada = models.DateField(db_index=True)
     estado = models.CharField(
         max_length=20,
@@ -190,8 +201,15 @@ class InspeccionAleatoriaDiaria(models.Model):
             ),
             models.UniqueConstraint(
                 fields=["usuario", "division", "fecha_programada"],
-                condition=models.Q(es_por_division=True, division__isnull=False),
+                condition=models.Q(
+                    es_por_division=True, division__isnull=False, es_por_subdivision=False
+                ),
                 name="unique_insp_aleatoria_usuario_division_fecha",
+            ),
+            models.UniqueConstraint(
+                fields=["usuario", "subdivision", "fecha_programada"],
+                condition=models.Q(es_por_subdivision=True, subdivision__isnull=False),
+                name="unique_insp_aleatoria_usuario_subdivision_fecha",
             ),
         ]
 

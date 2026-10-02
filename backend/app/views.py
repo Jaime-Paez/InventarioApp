@@ -932,8 +932,8 @@ def _get_random_inspection_branch_ids_for_user(user):
     return branch_ids.intersection(allowed_branch_ids)
 
 
-def _collect_inspection_candidates(*, branch_ids=None, division_id=None):
-    """Productos contables en el alcance dado (sucursales y/o division).
+def _collect_inspection_candidates(*, branch_ids=None, division_id=None, subdivision_id=None):
+    """Productos contables en el alcance dado (sucursales, division y/o subdivision).
 
     Incluye tambien los productos que el sistema tiene en 0 pero con fila de
     inventario en el alcance (`sin_stock`): son justo los que nunca se
@@ -946,6 +946,8 @@ def _collect_inspection_candidates(*, branch_ids=None, division_id=None):
         )
     if division_id is not None:
         queryset = queryset.filter(subdivision__division_id=division_id)
+    if subdivision_id is not None:
+        queryset = queryset.filter(subdivision_id=subdivision_id)
 
     rows = (
         queryset.values(
@@ -1008,9 +1010,12 @@ def _collect_branch_inspection_candidates(branch_id):
     return _collect_inspection_candidates(branch_ids={int(branch_id)})
 
 
-def _collect_division_inspection_candidates(division_id):
-    """Collect inventory candidates for a single division (todas sus subdivisiones)."""
-    return _collect_inspection_candidates(division_id=int(division_id))
+def _collect_division_inspection_candidates(division_id, subdivision_id=None):
+    """Candidatos de una division (todas sus subdivisiones, o solo una)."""
+    return _collect_inspection_candidates(
+        division_id=int(division_id),
+        subdivision_id=int(subdivision_id) if subdivision_id else None,
+    )
 
 
 def _collect_random_inspection_history(branch_ids):
@@ -1503,17 +1508,30 @@ def _inspection_division_scope(inspection):
     return None
 
 
-def _inspection_stock_queryset(*, branch_ids, product_ids, division_id=None):
+def _inspection_subdivision_scope(inspection):
+    """Subdivision a la que se limita el conteo (division con subdivision elegida)."""
+    if (
+        inspection is not None
+        and getattr(inspection, "es_por_division", False)
+        and getattr(inspection, "es_por_subdivision", False)
+    ):
+        return getattr(inspection, "subdivision_id", None)
+    return None
+
+
+def _inspection_stock_queryset(*, branch_ids, product_ids, division_id=None, subdivision_id=None):
     queryset = Inventario.objects.filter(
         producto_id__in=sorted(product_ids),
         subdivision__division__bodega__sucursal_id__in=sorted(branch_ids),
     )
     if division_id is not None:
         queryset = queryset.filter(subdivision__division_id=division_id)
+    if subdivision_id is not None:
+        queryset = queryset.filter(subdivision_id=subdivision_id)
     return queryset
 
 
-def _live_expected_quantities(items, *, division_id=None):
+def _live_expected_quantities(items, *, division_id=None, subdivision_id=None):
     """Stock actual del sistema por (sucursal, producto) en el alcance.
 
     Es contra esto que se compara el conteo: la foto tomada al generar la
@@ -1532,6 +1550,7 @@ def _live_expected_quantities(items, *, division_id=None):
             branch_ids={branch_id for branch_id, _ in keys},
             product_ids={product_id for _, product_id in keys},
             division_id=division_id,
+            subdivision_id=subdivision_id,
         )
         .values("subdivision__division__bodega__sucursal_id", "producto_id")
         .annotate(total=Sum("cantidad"))
@@ -1636,7 +1655,7 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
     }
 
 
-def _attach_random_inspection_locations(items, *, division_id=None):
+def _attach_random_inspection_locations(items, *, division_id=None, subdivision_id=None):
     inspection_items = list(items or [])
     if not inspection_items:
         return inspection_items
@@ -1654,6 +1673,7 @@ def _attach_random_inspection_locations(items, *, division_id=None):
             branch_ids={branch_id for branch_id, _ in target_keys},
             product_ids={product_id for _, product_id in target_keys},
             division_id=division_id,
+            subdivision_id=subdivision_id,
         )
         .values(
             "producto_id",
@@ -1736,11 +1756,12 @@ def _is_random_inspection_pending(inspection):
 
 def _serialize_random_inspection(inspection, *, viewer=None):
     division_id = _inspection_division_scope(inspection)
+    subdivision_id = _inspection_subdivision_scope(inspection)
     inspection_items = list(
         inspection.items.select_related("sucursal", "producto", "verificado_por").all()
     )
     inspection_items = _attach_random_inspection_locations(
-        inspection_items, division_id=division_id
+        inspection_items, division_id=division_id, subdivision_id=subdivision_id
     )
     is_pending = _is_random_inspection_pending(inspection)
     viewer_id = getattr(viewer, "id", None)
@@ -1756,11 +1777,14 @@ def _serialize_random_inspection(inspection, *, viewer=None):
         )
     )
     live_expected = (
-        _live_expected_quantities(inspection_items, division_id=division_id)
+        _live_expected_quantities(
+            inspection_items, division_id=division_id, subdivision_id=subdivision_id
+        )
         if is_pending
         else {}
     )
     division = getattr(inspection, "division", None) if inspection.division_id else None
+    subdivision = getattr(inspection, "subdivision", None) if inspection.subdivision_id else None
     return {
         "id": int(inspection.id),
         "usuario_id": int(inspection.usuario_id),
@@ -1780,6 +1804,9 @@ def _serialize_random_inspection(inspection, *, viewer=None):
         "es_por_lista": bool(inspection.es_por_lista),
         "division_id": int(inspection.division_id) if inspection.division_id else None,
         "division_nombre": _normalize_text(getattr(division, "nombre", "")),
+        "es_por_subdivision": bool(inspection.es_por_subdivision),
+        "subdivision_id": int(inspection.subdivision_id) if inspection.subdivision_id else None,
+        "subdivision_nombre": _normalize_text(getattr(subdivision, "nombre", "")),
         "nota_general": str(inspection.nota_general or "").strip(),
         "items": [
             _serialize_random_inspection_item(
@@ -2116,13 +2143,15 @@ def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=N
     return changed
 
 
-def _inspection_scope_stock_rows(*, sucursal_id, producto_id, division_id=None):
+def _inspection_scope_stock_rows(*, sucursal_id, producto_id, division_id=None, subdivision_id=None):
     queryset = Inventario.objects.select_for_update().filter(
         producto_id=int(producto_id),
         subdivision__division__bodega__sucursal_id=int(sucursal_id),
     )
     if division_id is not None:
         queryset = queryset.filter(subdivision__division_id=int(division_id))
+    if subdivision_id is not None:
+        queryset = queryset.filter(subdivision_id=int(subdivision_id))
     return queryset.order_by("id")
 
 
@@ -2141,7 +2170,9 @@ def _take_from_inventory_rows(rows, required):
     return remaining
 
 
-def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, delta, division_id=None):
+def _adjust_inventory_for_inspection_verification(
+    *, sucursal_id, producto_id, delta, division_id=None, subdivision_id=None
+):
     delta = int(delta or 0)
     if delta == 0:
         return
@@ -2150,6 +2181,7 @@ def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, d
         sucursal_id=sucursal_id,
         producto_id=producto_id,
         division_id=division_id,
+        subdivision_id=subdivision_id,
     )
 
     if delta < 0:
@@ -2178,6 +2210,8 @@ def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, d
     )
     if division_id is not None:
         subdivisions = subdivisions.filter(division_id=int(division_id))
+    if subdivision_id is not None:
+        subdivisions = subdivisions.filter(pk=int(subdivision_id))
     subdivision = subdivisions.order_by("id").first()
     if subdivision is None:
         raise ValidationError(
@@ -2198,7 +2232,9 @@ def _adjust_inventory_for_inspection_verification(*, sucursal_id, producto_id, d
     inventory_row.save(update_fields=["cantidad"])
 
 
-def _adjust_inventory_at_subdivision(*, subdivision_id, sucursal_id, producto_id, delta, division_id=None):
+def _adjust_inventory_at_subdivision(
+    *, subdivision_id, sucursal_id, producto_id, delta, division_id=None, scope_subdivision_id=None
+):
     """Aplica `delta` en la ubicacion contada (y no en "la primera por id").
 
     Si al restar esa ubicacion ya no tiene suficiente (se movio stock despues
@@ -2232,6 +2268,7 @@ def _adjust_inventory_at_subdivision(*, subdivision_id, sucursal_id, producto_id
                 producto_id=producto_id,
                 delta=delta,
                 division_id=division_id,
+                subdivision_id=scope_subdivision_id,
             )
             return
         inventory_row, _ = Inventario.objects.select_for_update().get_or_create(
@@ -2251,6 +2288,7 @@ def _adjust_inventory_at_subdivision(*, subdivision_id, sucursal_id, producto_id
             producto_id=producto_id,
             delta=-remaining,
             division_id=division_id,
+            subdivision_id=scope_subdivision_id,
         )
 
 
@@ -2286,6 +2324,7 @@ def _apply_random_inspection_adjustment(item, cantidad_confirmada, confirmed_by_
     con lo contado cuando el total confirmado coincide con lo contado.
     """
     division_id = _inspection_division_scope(item.inspeccion)
+    scope_subdivision_id = _inspection_subdivision_scope(item.inspeccion)
     total_delta = int(cantidad_confirmada) - int(item.cantidad_esperada or 0)
     location_counts = _valid_location_counts(item)
     if confirmed_by_location:
@@ -2318,6 +2357,7 @@ def _apply_random_inspection_adjustment(item, cantidad_confirmada, confirmed_by_
                 producto_id=item.producto_id,
                 delta=location_delta,
                 division_id=division_id,
+                scope_subdivision_id=scope_subdivision_id,
             )
             applied += location_delta
             per_location.append({"subdivision_id": entry["subdivision_id"], "delta": location_delta})
@@ -2329,6 +2369,7 @@ def _apply_random_inspection_adjustment(item, cantidad_confirmada, confirmed_by_
             producto_id=item.producto_id,
             delta=residual,
             division_id=division_id,
+            subdivision_id=scope_subdivision_id,
         )
     return {"delta_total": total_delta, "por_ubicacion": per_location, "residual": residual}
 
@@ -2806,7 +2847,7 @@ def _normalize_random_inspection_verify_action(value):
 
 def _get_random_inspection_queryset():
     return (
-        InspeccionAleatoriaDiaria.objects.select_related("usuario", "division")
+        InspeccionAleatoriaDiaria.objects.select_related("usuario", "division", "subdivision")
         .prefetch_related("items__sucursal", "items__producto", "items__verificado_por")
         .order_by("-fecha_programada", "-id")
     )
@@ -2911,7 +2952,7 @@ def _lock_random_inspection(inspection_id):
     # FOR UPDATE sobre el lado nulo de un OUTER JOIN.
     return (
         InspeccionAleatoriaDiaria.objects.select_for_update(of=("self",))
-        .select_related("usuario", "division")
+        .select_related("usuario", "division", "subdivision")
         .filter(pk=inspection_id)
         .first()
     )
@@ -3012,6 +3053,7 @@ class RandomInspectionRespondAPIView(APIView):
                 )
 
             division_id = _inspection_division_scope(inspection)
+            subdivision_id = _inspection_subdivision_scope(inspection)
             keys = {(int(item.sucursal_id), int(item.producto_id)) for item in inspection_items}
             # Bloquea el stock de estos productos para que la "foto" del
             # sistema al contar sea consistente con lo que se guarda.
@@ -3020,12 +3062,17 @@ class RandomInspectionRespondAPIView(APIView):
                     branch_ids={branch_id for branch_id, _ in keys},
                     product_ids={product_id for _, product_id in keys},
                     division_id=division_id,
+                    subdivision_id=subdivision_id,
                 )
                 .select_for_update()
                 .values_list("id", flat=True)
             )
-            live_expected = _live_expected_quantities(inspection_items, division_id=division_id)
-            _attach_random_inspection_locations(inspection_items, division_id=division_id)
+            live_expected = _live_expected_quantities(
+                inspection_items, division_id=division_id, subdivision_id=subdivision_id
+            )
+            _attach_random_inspection_locations(
+                inspection_items, division_id=division_id, subdivision_id=subdivision_id
+            )
 
             # 1a pasada: cantidades y conteo por ubicacion de cada producto.
             parsed_rows = {}
@@ -4261,7 +4308,8 @@ class RandomInspectionSendNowAPIView(APIView):
 class RandomInspectionSendDivisionAPIView(APIView):
     """Envia a un revisor puntual una inspeccion que cubre TODOS los
     productos de una division especifica de una bodega, en vez de la
-    muestra aleatoria diaria."""
+    muestra aleatoria diaria. Opcionalmente (`subdivision_id`) se limita a
+    una sola subdivision de esa division."""
 
     permission_classes = [IsAuthenticated]
 
@@ -4273,6 +4321,7 @@ class RandomInspectionSendDivisionAPIView(APIView):
             )
 
         division_id = _normalize_int(request.data.get("division_id"), 0)
+        subdivision_id = _normalize_int(request.data.get("subdivision_id"), 0) or None
         usuario_id = _normalize_int(request.data.get("usuario_id"), 0)
         if division_id <= 0 or usuario_id <= 0:
             return Response(
@@ -4291,6 +4340,17 @@ class RandomInspectionSendDivisionAPIView(APIView):
         )
         if division is None:
             return Response({"detail": "La division no existe."}, status=status.HTTP_404_NOT_FOUND)
+
+        subdivision = None
+        if subdivision_id is not None:
+            subdivision = SubDivision.objects.filter(id=subdivision_id, division_id=division_id).first()
+            if subdivision is None:
+                return Response(
+                    {"detail": "La subdivision no existe o no pertenece a esa division."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        scope_label = f"{division.nombre} / {subdivision.nombre}" if subdivision else division.nombre
+        scope_word = "subdivision" if subdivision else "division"
 
         sucursal_id = division.bodega.sucursal_id
         sucursal_nombre = division.bodega.sucursal.nombre
@@ -4318,10 +4378,10 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        candidates = _collect_division_inspection_candidates(division_id)
+        candidates = _collect_division_inspection_candidates(division_id, subdivision_id)
         if not candidates:
             return Response(
-                {"detail": "Esta division no tiene inventario disponible para revisar."},
+                {"detail": f"Esta {scope_word} no tiene inventario disponible para revisar."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -4333,13 +4393,18 @@ class RandomInspectionSendDivisionAPIView(APIView):
             # Registro propio por division: antes se sumaba a la inspeccion de
             # la sucursal y, si esa ya estaba completada, los productos nuevos
             # quedaban pendientes para siempre (responder daba 409).
+            scope_filter = (
+                {"subdivision_id": subdivision_id, "es_por_subdivision": True}
+                if subdivision is not None
+                else {"division_id": division_id, "es_por_subdivision": False}
+            )
             inspection = (
                 InspeccionAleatoriaDiaria.objects.select_for_update()
                 .filter(
                     usuario=user,
-                    division_id=division_id,
                     es_por_division=True,
                     fecha_programada=scheduled_date,
+                    **scope_filter,
                 )
                 .first()
             )
@@ -4347,7 +4412,7 @@ class RandomInspectionSendDivisionAPIView(APIView):
             if inspection is not None and not _is_random_inspection_pending(inspection):
                 return Response(
                     {
-                        "detail": "Este usuario ya completo hoy la revision de esta division.",
+                        "detail": f"Este usuario ya completo hoy la revision de esta {scope_word}.",
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
@@ -4360,7 +4425,7 @@ class RandomInspectionSendDivisionAPIView(APIView):
             if not new_items:
                 return Response(
                     {
-                        "detail": "Todos los productos de esta division ya estaban en la "
+                        "detail": f"Todos los productos de esta {scope_word} ya estaban en la "
                         "inspeccion de hoy de este usuario.",
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -4377,6 +4442,8 @@ class RandomInspectionSendDivisionAPIView(APIView):
                     sucursal_id=sucursal_id,
                     division=division,
                     es_por_division=True,
+                    subdivision=subdivision,
+                    es_por_subdivision=subdivision is not None,
                     fecha_programada=scheduled_date,
                     estado=InspeccionAleatoriaDiaria.Estados.PENDIENTE,
                     total_items=len(new_items),
@@ -4398,7 +4465,7 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 store,
                 inspection,
                 user,
-                branch_nombre=f"{division.nombre} - {sucursal_nombre}",
+                branch_nombre=f"{scope_label} - {sucursal_nombre}",
                 time_str=time_str,
             )
             _upsert_random_inspection_admin_summary_reminder(store, scheduled_date, time_str=time_str)
@@ -4412,6 +4479,8 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 "sucursal_nombre": sucursal_nombre,
                 "division_id": int(division.id),
                 "division_nombre": division.nombre,
+                "subdivision_id": int(subdivision.id) if subdivision else None,
+                "subdivision_nombre": subdivision.nombre if subdivision else "",
                 "inspeccion_id": int(inspection.id),
                 "productos": len(new_items),
             },

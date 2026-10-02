@@ -668,3 +668,73 @@ class ConfirmarPorUbicacionTests(InspeccionAleatoriaBaseTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+
+class InspeccionPorSubdivisionTests(InspeccionAleatoriaBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        # Segunda subdivision dentro de la misma division (Percha A).
+        self.sub_a2 = SubDivision.objects.create(division=self.division, nombre="Nivel 2")
+        self.inv_a2 = Inventario.objects.create(producto=self.producto, subdivision=self.sub_a2, cantidad=3)
+
+    def _enviar(self, **extra):
+        return self.admin_client.post(
+            f"{BASE_URL}/enviar-division/",
+            {
+                "division_id": self.division.id,
+                "usuario_id": self.revisor.id,
+                "hora_recordatorio": "23:59",
+                **extra,
+            },
+            format="json",
+        )
+
+    def test_solo_cuenta_y_ajusta_la_subdivision_elegida(self):
+        response = self._enviar(subdivision_id=self.sub_a2.id)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["subdivision_id"], self.sub_a2.id)
+        inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
+        self.assertTrue(inspection.es_por_division)
+        self.assertTrue(inspection.es_por_subdivision)
+        # Solo el producto que hay en Nivel 2 (el producto_2 esta solo en Nivel 1).
+        self.assertEqual(
+            list(inspection.items.values_list("producto_id", flat=True)), [self.producto.id]
+        )
+
+        # Esperado = 3 (solo Nivel 2), no 13 (toda la division).
+        self._responder(inspection, {self.producto.id: 3})
+        self.assertEqual(self._diferencias(inspection), 0)
+
+    def test_aprobar_ajusta_solo_la_subdivision(self):
+        response = self._enviar(subdivision_id=self.sub_a2.id)
+        inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
+        self._responder(inspection, {self.producto.id: 1})
+        self.assertEqual(self._diferencias(inspection), 1)
+
+        item = inspection.items.get()
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/",
+            {"accion": "aprobar", "cantidad_confirmada": 1},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.inv_a.refresh_from_db()
+        self.inv_a2.refresh_from_db()
+        self.assertEqual(self.inv_a2.cantidad, 1)
+        self.assertEqual(self.inv_a.cantidad, 10)
+
+    def test_division_completa_y_subdivision_el_mismo_dia_son_separadas(self):
+        por_subdivision = self._enviar(subdivision_id=self.sub_a2.id)
+        division_completa = self._enviar()
+        self.assertEqual(por_subdivision.status_code, 200, por_subdivision.data)
+        self.assertEqual(division_completa.status_code, 200, division_completa.data)
+        self.assertNotEqual(
+            por_subdivision.data["inspeccion_id"], division_completa.data["inspeccion_id"]
+        )
+        completa = InspeccionAleatoriaDiaria.objects.get(pk=division_completa.data["inspeccion_id"])
+        self.assertFalse(completa.es_por_subdivision)
+        self.assertEqual(completa.items.count(), 2)
+
+    def test_subdivision_de_otra_division_se_rechaza(self):
+        response = self._enviar(subdivision_id=self.sub_b.id)
+        self.assertEqual(response.status_code, 404)

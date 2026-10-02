@@ -249,6 +249,10 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [divisionSucursalId, setDivisionSucursalId] = useState('')
   const [divisionBodegaId, setDivisionBodegaId] = useState('')
   const [divisionId, setDivisionId] = useState('')
+  // Opcional: '' = toda la division.
+  const [divisionSubdivisionId, setDivisionSubdivisionId] = useState('')
+  const [divisionSubdivisiones, setDivisionSubdivisiones] = useState([])
+  const [divisionSubdivisionesLoading, setDivisionSubdivisionesLoading] = useState(false)
   const [divisionUsuarioId, setDivisionUsuarioId] = useState('')
   const [divisionBodegas, setDivisionBodegas] = useState([])
   const [divisionBodegasLoading, setDivisionBodegasLoading] = useState(false)
@@ -430,6 +434,30 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     return () => { cancelled = true }
   }, [token, sendNowMode, divisionBodegaId, notifyError])
 
+  useEffect(() => {
+    if (!token || sendNowMode !== 'division' || !divisionId) {
+      setDivisionSubdivisiones([])
+      return undefined
+    }
+    let cancelled = false
+    setDivisionSubdivisionesLoading(true)
+    authFetch(`${API_URL}/inventario/subdivisiones/?division_id=${encodeURIComponent(divisionId)}&page_size=500`, {}, token)
+      .then(async (res) => {
+        const payload = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron cargar las subdivisiones.')
+        if (!cancelled) setDivisionSubdivisiones(parseApiList(payload))
+      })
+      .catch((error) => { if (!cancelled) { setDivisionSubdivisiones([]); notifyError(error?.message || 'No se pudieron cargar las subdivisiones.') } })
+      .finally(() => { if (!cancelled) setDivisionSubdivisionesLoading(false) })
+    return () => { cancelled = true }
+  }, [token, sendNowMode, divisionId, notifyError])
+
+  // "Toda la division" va primero: la subdivision es opcional.
+  const divisionSubdivisionOptions = useMemo(
+    () => [{ id: '', nombre: 'Toda la division' }, ...divisionSubdivisiones],
+    [divisionSubdivisiones]
+  )
+
   const sendDivision = useCallback(async () => {
     if (!token) return
     if (!divisionId) { notifyError('Debes seleccionar una division.'); return }
@@ -446,6 +474,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
           method: 'POST',
           body: JSON.stringify({
             division_id: divisionId,
+            ...(divisionSubdivisionId ? { subdivision_id: divisionSubdivisionId } : {}),
             usuario_id: divisionUsuarioId,
             hora_recordatorio: hora,
           }),
@@ -454,14 +483,16 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       )
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo enviar la division.')
-      notifySuccess(`Division enviada: ${payload.productos} producto(s) para ${payload.nombre}.`)
+      notifySuccess(
+        `${payload.subdivision_id ? 'Subdivision' : 'Division'} enviada: ${payload.productos} producto(s) para ${payload.nombre}.`
+      )
       setShowSendNowDialog(false)
     } catch (error) {
       notifyError(error?.message || 'No se pudo enviar la division.')
     } finally {
       setDivisionSending(false)
     }
-  }, [token, divisionId, divisionUsuarioId, sendNowParams, notifyError, notifySuccess])
+  }, [token, divisionId, divisionSubdivisionId, divisionUsuarioId, sendNowParams, notifyError, notifySuccess])
 
   // Ubicaciones (Bodega / Division / Subdivision) del producto dentro de la
   // sucursal elegida, para la columna "Ubicacion" de la lista.
@@ -1411,6 +1442,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 setDivisionSucursalId('')
                 setDivisionBodegaId('')
                 setDivisionId('')
+                setDivisionSubdivisionId('')
                 setDivisionUsuarioId('')
                 setListSucursalId('')
                 setListUsuarioId('')
@@ -2333,6 +2365,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                         setDivisionSucursalId(o.id)
                         setDivisionBodegaId('')
                         setDivisionId('')
+                        setDivisionSubdivisionId('')
                         setDivisionUsuarioId('')
                       }}
                       disabled={divisionSending}
@@ -2349,6 +2382,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                       onSelect={(o) => {
                         setDivisionBodegaId(o.id)
                         setDivisionId('')
+                        setDivisionSubdivisionId('')
                       }}
                       disabled={!divisionSucursalId || divisionBodegasLoading || divisionSending}
                     />
@@ -2361,8 +2395,23 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                       options={divisionDivisiones}
                       valueId={divisionId}
                       getOptionLabel={(o) => o.nombre}
-                      onSelect={(o) => setDivisionId(o.id)}
+                      onSelect={(o) => {
+                        setDivisionId(o.id)
+                        setDivisionSubdivisionId('')
+                      }}
                       disabled={!divisionBodegaId || divisionDivisionesLoading || divisionSending}
+                    />
+                  </label>
+                  <label className="create-user__field">
+                    <span>Subdivision (opcional)</span>
+                    <CascadeDropdown
+                      placeholder={divisionSubdivisionesLoading ? 'Cargando...' : 'Toda la division'}
+                      searchPlaceholder="Buscar subdivision"
+                      options={divisionSubdivisionOptions}
+                      valueId={divisionSubdivisionId}
+                      getOptionLabel={(o) => o.nombre}
+                      onSelect={(o) => setDivisionSubdivisionId(normalizeId(o.id))}
+                      disabled={!divisionId || divisionSubdivisionesLoading || divisionSending}
                     />
                   </label>
                   <label className="create-user__field">
