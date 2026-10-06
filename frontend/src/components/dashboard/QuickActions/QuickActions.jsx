@@ -2614,14 +2614,63 @@ function QuickActions({
     [randomInspectionRows]
   )
 
-  const activeRandomInspectionStepIndex = useMemo(() => {
-    if (!randomInspectionRows.length) return 0
-    return Math.min(randomInspectionStepIndex, randomInspectionRows.length - 1)
-  }, [randomInspectionRows, randomInspectionStepIndex])
+  // Revision por division: se cuenta fila por fila (cada subdivision es un
+  // paso con todos sus codigos en una tabla). Un producto que esta en varias
+  // filas aparece en cada una con su cantidad por ubicacion.
+  const isRandomInspectionTableMode = (
+    !isRandomInspectionVerifyMode &&
+    Boolean(activeRandomInspection?.es_por_division)
+  )
+  const randomInspectionGroups = useMemo(() => {
+    if (!isRandomInspectionTableMode) return []
+    const groups = []
+    const byKey = new Map()
+    const addEntry = (location, entry) => {
+      const key = String(location?.subdivision_id || location?.label || 'sin-ubicacion')
+      let group = byKey.get(key)
+      if (!group) {
+        group = {
+          key,
+          label: [location?.bodega_nombre, location?.division_nombre, location?.subdivision_nombre]
+            .map((part) => String(part || '').trim())
+            .filter(Boolean)
+            .join(' / ') || 'Sin ubicación',
+          entries: [],
+        }
+        byKey.set(key, group)
+        groups.push(group)
+      }
+      group.entries.push(entry)
+    }
+    randomInspectionRows.forEach((row, rowIndex) => {
+      const locations = Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : []
+      if (row?.requiere_conteo_por_ubicacion) {
+        locations.forEach((location) => addEntry(location, { row, rowIndex, location }))
+      } else {
+        addEntry(locations[0] || null, { row, rowIndex, location: null })
+      }
+    })
+    return groups
+  }, [isRandomInspectionTableMode, randomInspectionRows])
+  const randomInspectionStepCount = isRandomInspectionTableMode
+    ? randomInspectionGroups.length
+    : randomInspectionRows.length
 
+  const activeRandomInspectionStepIndex = useMemo(() => {
+    if (!randomInspectionStepCount) return 0
+    return Math.min(randomInspectionStepIndex, randomInspectionStepCount - 1)
+  }, [randomInspectionStepCount, randomInspectionStepIndex])
+
+  const activeRandomInspectionGroup = isRandomInspectionTableMode
+    ? randomInspectionGroups[activeRandomInspectionStepIndex] || null
+    : null
   const activeRandomInspectionRow = useMemo(
-    () => randomInspectionRows[activeRandomInspectionStepIndex] || null,
-    [activeRandomInspectionStepIndex, randomInspectionRows]
+    () => (
+      activeRandomInspectionGroup
+        ? activeRandomInspectionGroup.entries[0]?.row || null
+        : randomInspectionRows[activeRandomInspectionStepIndex] || null
+    ),
+    [activeRandomInspectionGroup, activeRandomInspectionStepIndex, randomInspectionRows]
   )
   const isRandomInspectionSummaryVisible = !isRandomInspectionVerifyMode && randomInspectionShowSummary
   const randomInspectionAllAnswersReady = (
@@ -4557,7 +4606,22 @@ function QuickActions({
       return
     }
 
-    if (activeRandomInspectionRow?.cantidad_reportada == null) {
+    if (activeRandomInspectionGroup) {
+      const missing = activeRandomInspectionGroup.entries.filter((entry) => (
+        entry.location
+          ? String(entry.location?.cantidad_contada_input ?? '').trim() === ''
+          : entry.row?.cantidad_reportada == null
+      ))
+      if (missing.length) {
+        setRandomInspectionError(
+          `Falta la cantidad de ${missing.length} código(s) de esta fila (${missing
+            .slice(0, 3)
+            .map((entry) => entry.row?.producto_codigo || entry.row?.producto_nombre)
+            .join(', ')}${missing.length > 3 ? '...' : ''}). Si no lo encuentras, toca "No lo encontré".`
+        )
+        return
+      }
+    } else if (activeRandomInspectionRow?.cantidad_reportada == null) {
       setRandomInspectionError(
         activeRandomInspectionRow?.requiere_conteo_por_ubicacion
           ? 'Completa la cantidad contada en cada ubicación antes de continuar.'
@@ -4568,7 +4632,7 @@ function QuickActions({
 
     setRandomInspectionError('')
 
-    if (activeRandomInspectionStepIndex >= randomInspectionRows.length - 1) {
+    if (activeRandomInspectionStepIndex >= randomInspectionStepCount - 1) {
       setRandomInspectionShowSummary(true)
       void saveInspectionDraftToBackend(activeRandomInspectionStepIndex)
       return
@@ -4577,9 +4641,11 @@ function QuickActions({
     setRandomInspectionStepIndex(nextStep)
     void saveInspectionDraftToBackend(nextStep)
   }, [
+    activeRandomInspectionGroup,
     activeRandomInspectionRow,
     activeRandomInspectionStepIndex,
     randomInspectionRows,
+    randomInspectionStepCount,
     randomInspectionSubmitting,
     saveInspectionDraftToBackend,
   ])
@@ -4614,20 +4680,41 @@ function QuickActions({
       .slice(0, 8)
   }, [randomInspectionRows, randomInspectionSearch])
 
-  const jumpToRandomInspectionStep = useCallback((index) => {
+  const [randomInspectionHighlightRowId, setRandomInspectionHighlightRowId] = useState('')
+  const jumpToRandomInspectionStep = useCallback((rowIndex) => {
     if (randomInspectionSubmitting) return
+    let step = rowIndex
+    if (isRandomInspectionTableMode) {
+      step = Math.max(0, randomInspectionGroups.findIndex((group) => (
+        group.entries.some((entry) => entry.rowIndex === rowIndex)
+      )))
+      const rowId = normalizeId(randomInspectionRows[rowIndex]?.row_id || randomInspectionRows[rowIndex]?.id)
+      setRandomInspectionHighlightRowId(rowId)
+      window.setTimeout(() => {
+        document.querySelector(`[data-inspection-row="${rowId}"] input`)?.focus()
+        document.querySelector(`[data-inspection-row="${rowId}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }, 60)
+      window.setTimeout(() => setRandomInspectionHighlightRowId((current) => (current === rowId ? '' : current)), 2600)
+    }
     setRandomInspectionError('')
     setRandomInspectionSearch('')
     setRandomInspectionShowSummary(false)
-    setRandomInspectionStepIndex(index)
-    void saveInspectionDraftToBackend(index)
-  }, [randomInspectionSubmitting, saveInspectionDraftToBackend])
+    setRandomInspectionStepIndex(step)
+    void saveInspectionDraftToBackend(step)
+  }, [
+    isRandomInspectionTableMode,
+    randomInspectionGroups,
+    randomInspectionRows,
+    randomInspectionSubmitting,
+    saveInspectionDraftToBackend,
+  ])
 
   // "No lo encontre": queda en 0 y marcado para que administracion decida
   // (puede reubicarlo). Pasa al siguiente producto como "Siguiente".
-  const handleRandomInspectionNotFound = useCallback(() => {
-    if (randomInspectionSubmitting || !activeRandomInspectionRow) return
-    const itemId = normalizeId(activeRandomInspectionRow?.row_id || activeRandomInspectionRow?.id)
+  const handleRandomInspectionNotFound = useCallback((targetRow = null, { advance = true } = {}) => {
+    const row = targetRow || activeRandomInspectionRow
+    if (randomInspectionSubmitting || !row) return
+    const itemId = normalizeId(row?.row_id || row?.id)
     if (!itemId) return
     setRandomInspectionDraftByItemId((prev) => ({
       ...prev,
@@ -4641,7 +4728,8 @@ function QuickActions({
     }))
     markRandomInspectionItemDirty(itemId)
     setRandomInspectionError('')
-    if (activeRandomInspectionStepIndex >= randomInspectionRows.length - 1) {
+    if (!advance) return
+    if (activeRandomInspectionStepIndex >= randomInspectionStepCount - 1) {
       setRandomInspectionShowSummary(true)
     } else {
       setRandomInspectionStepIndex(activeRandomInspectionStepIndex + 1)
@@ -4650,7 +4738,7 @@ function QuickActions({
     activeRandomInspectionRow,
     activeRandomInspectionStepIndex,
     markRandomInspectionItemDirty,
-    randomInspectionRows.length,
+    randomInspectionStepCount,
     randomInspectionSubmitting,
   ])
 
@@ -4984,13 +5072,13 @@ function QuickActions({
     setReceiveShipmentError('')
     if (blocking) setReceiveShipmentSubmitting(true)
     setReceivingProductIds((prev) => new Set([...prev, ...ids]))
-    try {
+    const postRows = async (batch) => {
       const response = await authFetch(
         receiveShipmentActionUrl('recibir-parcial'),
         {
           method: 'POST',
           body: JSON.stringify({
-            items: rows.map((row) => ({
+            items: batch.map((row) => ({
               producto_id: toPositiveInt(row?.producto_id, 0),
               cantidad: toPositiveInt(row?.cantidad_recibida, 0),
               ...(normalizeId(row?.location_draft_subdivision_id)
@@ -5004,11 +5092,34 @@ function QuickActions({
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron recibir los productos.')
       applyReceiveShipmentProgress(payload?.recepcion_progreso)
-      if (blocking || rows.length > 1) {
+    }
+    try {
+      let receivedCount = rows.length
+      try {
+        await postRows(rows)
+      } catch (batchError) {
+        if (rows.length === 1) throw batchError
+        receivedCount = 0
+        const failed = []
+        for (const row of rows) {
+          try {
+            await postRows([row])
+            receivedCount += 1
+          } catch (rowError) {
+            failed.push(`${row?.producto_codigo || row?.producto_id}: ${rowError?.message || 'error'}`)
+          }
+        }
+        if (failed.length) {
+          setReceiveShipmentError(
+            `No se pudieron recibir ${failed.length} producto(s): ${failed.slice(0, 3).join(' · ')}${failed.length > 3 ? '...' : ''}`
+          )
+        }
+      }
+      if (receivedCount > 0 && (blocking || rows.length > 1)) {
         toast.current?.show({
           severity: 'success',
           summary: 'Recibido',
-          detail: `${rows.length} producto(s) ya estan en stock y se pueden vender.`,
+          detail: `${receivedCount} producto(s) ya estan en stock y se pueden vender.`,
           life: 3200,
         })
       }
@@ -5023,6 +5134,30 @@ function QuickActions({
       })
     }
   }, [activeInTransitShipment, applyReceiveShipmentProgress, receiveShipmentActionUrl, token])
+
+  const autoReceivedShipmentRef = useRef('')
+  const activeInTransitShipmentKey = activeInTransitShipment
+    ? `${activeInTransitShipment?._source || 'traslado'}-${normalizeId(activeInTransitShipment?.id)}`
+    : ''
+  useEffect(() => {
+    if (!isReceiveShipmentModalOpen || !activeInTransitShipmentKey) {
+      autoReceivedShipmentRef.current = ''
+      return
+    }
+    if (autoReceivedShipmentRef.current === activeInTransitShipmentKey) return
+    if (receiveShipmentSubmitting || !receiveShipmentRows.length) return
+    autoReceivedShipmentRef.current = activeInTransitShipmentKey
+    if (receiveShipmentReceivableRows.length) {
+      void receiveRowsNow(receiveShipmentReceivableRows, { blocking: true })
+    }
+  }, [
+    activeInTransitShipmentKey,
+    isReceiveShipmentModalOpen,
+    receiveRowsNow,
+    receiveShipmentReceivableRows,
+    receiveShipmentRows.length,
+    receiveShipmentSubmitting,
+  ])
 
   const handleReceiveMarkedRows = useCallback(
     () => receiveRowsNow(receiveShipmentReceivableRows, { blocking: true }),
@@ -5738,7 +5873,127 @@ function QuickActions({
                     </div>
                   )}
 
-                  {!!randomInspectionRows.length && !isRandomInspectionSummaryVisible && activeRandomInspectionRow && (
+                  {!!randomInspectionRows.length && !isRandomInspectionSummaryVisible && activeRandomInspectionGroup && (
+                    <div className="quick-actions__inspection-quiz">
+                      <div className="quick-actions__inspection-progress" aria-hidden="true">
+                        <div className="quick-actions__inspection-progress-bar">
+                          <span
+                            style={{
+                              width: `${((activeRandomInspectionStepIndex + 1) / Math.max(randomInspectionStepCount, 1)) * 100}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="quick-actions__inspection-rowhead">
+                        <p className="quick-actions__inspection-stage-kicker">
+                          {`Fila ${activeRandomInspectionStepIndex + 1} de ${randomInspectionStepCount}`}
+                        </p>
+                        <h5>{activeRandomInspectionGroup.label}</h5>
+                        <p className="quick-actions__inspection-stage-help">
+                          Cuenta todos los códigos de esta fila y escribe lo que encontraste de cada uno.
+                        </p>
+                      </div>
+
+                      <div
+                        key={`inspection-rowtable-${activeRandomInspectionGroup.key}`}
+                        className="create-user__locations-table quick-actions__inspection-row-table"
+                      >
+                        <div className="create-user__locations-row create-user__locations-row--head">
+                          <span>Código</span>
+                          <span>Descripción</span>
+                          <span>Contado</span>
+                          <span />
+                        </div>
+                        {activeRandomInspectionGroup.entries.map((entry, entryIndex) => {
+                          const row = entry.row
+                          const rowId = normalizeId(row?.row_id || row?.id)
+                          const value = entry.location
+                            ? String(entry.location?.cantidad_contada_input ?? '')
+                            : String(row?.cantidad_reportada_input ?? '')
+                          const otherLocations = entry.location
+                            ? (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
+                              .filter((location) => location?.key !== entry.location?.key)
+                              .map((location) => String(location?.label || location?.subdivision_nombre || '').trim())
+                              .filter(Boolean)
+                            : []
+                          return (
+                            <div
+                              key={`inspection-rowtable-${rowId}-${entry.location?.key || 'unica'}`}
+                              data-inspection-row={rowId}
+                              className={`create-user__locations-row${randomInspectionHighlightRowId === rowId ? ' quick-actions__inspection-row--highlight' : ''}`}
+                            >
+                              <span className="quick-actions__inspection-row-code">
+                                <strong>{row?.producto_codigo || `Producto ${rowId}`}</strong>
+                              </span>
+                              <span className="quick-actions__inspection-row-name">
+                                {String(row?.producto_nombre || '').trim()}
+                                {otherLocations.length > 0 && (
+                                  <small>{`También en: ${otherLocations.join(', ')} (se cuenta aparte)`}</small>
+                                )}
+                              </span>
+                              <span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  data-count-input
+                                  value={value}
+                                  onChange={(event) => {
+                                    if (entry.location) {
+                                      handleRandomInspectionLocationCountChange(rowId, entry.location?.key, event.target.value)
+                                      return
+                                    }
+                                    handleRandomInspectionDraftFieldChange(
+                                      rowId,
+                                      'cantidad_reportada',
+                                      normalizeQuantityInputString(event.target.value)
+                                    )
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key !== 'Enter') return
+                                    event.preventDefault()
+                                    const inputs = Array.from(
+                                      event.currentTarget
+                                        .closest('.quick-actions__inspection-row-table')
+                                        ?.querySelectorAll('input[data-count-input]') || []
+                                    )
+                                    const position = inputs.indexOf(event.currentTarget)
+                                    if (position >= 0 && position < inputs.length - 1) {
+                                      inputs[position + 1].focus()
+                                      inputs[position + 1].select?.()
+                                      return
+                                    }
+                                    handleAdvanceRandomInspectionStep()
+                                  }}
+                                  maxLength={4}
+                                  placeholder="-"
+                                  disabled={randomInspectionSubmitting}
+                                  autoFocus={entryIndex === 0}
+                                  aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'}`}
+                                />
+                              </span>
+                              <span>
+                                {row?.no_encontrado ? (
+                                  <span className="quick-actions__inspection-notfound-tag">No encontrado</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="quick-actions__inspection-row-notfound"
+                                    onClick={() => handleRandomInspectionNotFound(row, { advance: false })}
+                                    disabled={randomInspectionSubmitting}
+                                  >
+                                    No lo encontré
+                                  </button>
+                                )}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {!!randomInspectionRows.length && !isRandomInspectionSummaryVisible && !activeRandomInspectionGroup && activeRandomInspectionRow && (
                     <div className="quick-actions__inspection-quiz">
                       <div className="quick-actions__inspection-progress" aria-hidden="true">
                         <div className="quick-actions__inspection-progress-bar">
@@ -5883,7 +6138,7 @@ function QuickActions({
                           <button
                             type="button"
                             className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost quick-actions__inspection-notfound-btn"
-                            onClick={handleRandomInspectionNotFound}
+                            onClick={() => handleRandomInspectionNotFound()}
                             disabled={randomInspectionSubmitting}
                             title="Administración verá que no lo encontraste y podrá indicar su nueva ubicación"
                           >
@@ -6010,7 +6265,7 @@ function QuickActions({
               </button>
               {!isRandomInspectionVerifyMode &&
                 !isRandomInspectionSummaryVisible &&
-                randomInspectionRows.length > 1 && (
+                randomInspectionStepCount > 1 && (
                   <button
                     type="button"
                     className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
@@ -6071,9 +6326,9 @@ function QuickActions({
                       ? 'Inspección ya enviada'
                     : !isRandomInspectionSummaryVisible
                       ? (
-                        activeRandomInspectionStepIndex >= randomInspectionRows.length - 1
+                        activeRandomInspectionStepIndex >= randomInspectionStepCount - 1
                           ? 'Ver resumen'
-                          : 'Siguiente producto'
+                          : isRandomInspectionTableMode ? 'Siguiente fila' : 'Siguiente producto'
                       )
                     : 'Guardar inspecci\u00f3n'}
               </button>
@@ -6963,9 +7218,9 @@ function QuickActions({
                       className="quick-actions__receive-btn quick-actions__receive-btn--success"
                       onClick={() => void handleReceiveMarkedRows()}
                       disabled={receiveShipmentSubmitting}
-                      title="Los productos marcados entran ya al stock (sin ubicacion: a POR UBICAR) y se pueden vender"
+                      title="Estos productos tienen check pero no se pudieron recibir; vuelve a intentarlo"
                     >
-                      {receiveShipmentSubmitting ? 'Guardando...' : `Recibir marcados (${receiveShipmentReceivableRows.length})`}
+                      {receiveShipmentSubmitting ? 'Recibiendo...' : `Reintentar recibir (${receiveShipmentReceivableRows.length})`}
                     </button>
                   )}
                   <button

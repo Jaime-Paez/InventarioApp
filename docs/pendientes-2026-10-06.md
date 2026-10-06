@@ -13,13 +13,13 @@ Estados: ⬜ pendiente · 🔄 en curso · ✅ aplicado y subido
 | 3 | Enviar ahora sin aleatorios | En **"Enviar revisión ahora"** se quita la pestaña *Aleatorio*; quedan *División específica* y *Lista específica*. | ✅ |
 | 4 | Buscar entre productos | En la revisión del revisor, un **buscador** para encontrar un producto (contado o no) y saltar a él. | ✅ |
 | 5 | Advertencia "ya fue contado" | Al enviar una revisión (división, subdivisión, lista o faltantes del mapa) que incluye productos que ya se contaron, aviso: *"N productos ya fueron contados, ¿seguro quieres seguir con la revisión?"*. | ✅ (se consideran los contados en los últimos 30 días) |
-| 6 | División: contar fila por fila | En revisiones por división, el revisor cuenta **una subdivisión (fila) a la vez**: todos sus productos en una tabla, como en la recepción de importaciones; luego pasa a la siguiente subdivisión. | ⬜ |
+| 6 | División: contar fila por fila | En revisiones por división, el revisor cuenta **una subdivisión (fila) a la vez**: todos sus productos en una tabla, como en la recepción de importaciones; luego pasa a la siguiente subdivisión. | ✅ |
 
 ## Recepción de envíos (importaciones y traslados)
 
 | # | Pedido | Cómo se entendió | Estado |
 |---|---|---|---|
-| 7 | El check ya suma al inventario | Al marcar el check de un producto, **se recibe en ese momento** (entra al stock en su ubicación o en POR UBICAR). No hace falta terminar todo el envío. | ✅ |
+| 7 | El check ya suma al inventario | Al marcar el check de un producto, **se recibe en ese momento** (entra al stock en su ubicación o en POR UBICAR). No hace falta terminar todo el envío. | ✅ (además, al abrir el envío se reciben solos los que ya tenían check de antes; lo recibido queda bloqueado) |
 | 8 | Barra de progreso | Arriba de la ventana de recepción, una **barra con el avance**: cuántos productos ya se recibieron de cuántos. | ✅ |
 
 ## Importaciones (sugerencia / edición)
