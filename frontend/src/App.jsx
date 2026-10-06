@@ -89,6 +89,13 @@ function App() {
   const logoutTimeoutRef = useRef(null)
   const loginReturnTimeoutRef = useRef(null)
 
+  // El tema tambien en <body>: las ventanas que se abren como portal (mapas,
+  // recordatorios...) quedan fuera de .app-shell y necesitan sus colores,
+  // por ejemplo el de las barras de desplazamiento.
+  useEffect(() => {
+    document.body.classList.toggle('app-theme-dark', darkMode)
+  }, [darkMode])
+
   useEffect(() => {
     // Limpia el tema que guardaban las versiones anteriores en el navegador.
     try { localStorage.removeItem('theme') } catch { /* no-op */ }

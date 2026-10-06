@@ -80,6 +80,10 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Las barras de desplazamiento siguen el tema tambien en las ventanas que se
+   abren fuera de .app-shell (portales en <body>: mapas, recordatorios...).
+   App.jsx pone la clase app-theme-dark en <body>. */
+body,
 .app-shell {
   --scrollbar-track-color: var(--color-surface);
   --scrollbar-thumb-color: var(--color-primary);
@@ -87,6 +91,7 @@
   --scrollbar-border-color: var(--color-surface);
 }
 
+body.app-theme-dark,
 .app-shell.theme-dark {
   --scrollbar-track-color: var(--color-surface-darker);
   --scrollbar-thumb-color: var(--color-primary-dark);
@@ -94,27 +99,33 @@
   --scrollbar-border-color: var(--color-surface-dark);
 }
 
+body,
+body *,
 .app-shell,
 .app-shell * {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb-color) var(--scrollbar-track-color);
 }
 
+body ::-webkit-scrollbar,
 .app-shell ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
+body ::-webkit-scrollbar-track,
 .app-shell ::-webkit-scrollbar-track {
   background: var(--scrollbar-track-color);
 }
 
+body ::-webkit-scrollbar-thumb,
 .app-shell ::-webkit-scrollbar-thumb {
   background-color: var(--scrollbar-thumb-color);
   border-radius: 999px;
   border: 2px solid var(--scrollbar-border-color);
 }
 
+body ::-webkit-scrollbar-thumb:hover,
 .app-shell ::-webkit-scrollbar-thumb:hover {
   background-color: var(--scrollbar-thumb-hover-color);
 }
