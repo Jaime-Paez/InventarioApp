@@ -1,4 +1,4 @@
-/* Croquis de conteo (Revision inventario > Sucursales > mapa) */
+/* Mapa de conteo (Revision inventario > Sucursales > Mapa) */
 .coverage-map {
   --coverage-done: #16a34a;
   --coverage-partial: #f59e0b;
@@ -226,7 +226,7 @@
   background: color-mix(in srgb, var(--coverage-empty) 14%, transparent);
   color: inherit;
   font: inherit;
-  font-size: 0.62rem;
+  font-size: 0.68rem;
   font-weight: 700;
   line-height: 1.15;
   text-align: center;
@@ -452,4 +452,79 @@
   .coverage-map__legend {
     margin-left: 0;
   }
+}
+
+/* Modo oscuro: colores explicitos. El mapa se abre fuera de .dashboard-shell
+   y hay reglas globales (label { color } de Login.css) que si no dejaban
+   "Desde"/"Hasta" y las fechas en gris oscuro sobre fondo oscuro. */
+.coverage-map--dark .coverage-map__header h4,
+.coverage-map--dark .coverage-map__side-head h5,
+.coverage-map--dark .coverage-map__summary,
+.coverage-map--dark .coverage-map__level-head strong {
+  color: var(--color-text-title-dark);
+}
+
+.coverage-map--dark .coverage-map__header p,
+.coverage-map--dark .coverage-map__date,
+.coverage-map--dark .coverage-map__date span,
+.coverage-map--dark .coverage-map__legend,
+.coverage-map--dark .coverage-map__side-meta,
+.coverage-map--dark .coverage-map__level-head,
+.coverage-map--dark .coverage-map__hint,
+.coverage-map--dark .coverage-map__unplaced,
+.coverage-map--dark .coverage-map__pending li {
+  color: var(--color-text-dark);
+}
+
+.coverage-map--dark .coverage-map__date input {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-search-dark);
+  color: var(--color-text-title-dark);
+}
+
+.coverage-map--dark .coverage-map__date input::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.8;
+}
+
+.coverage-map--dark .coverage-map__dialog,
+.coverage-map--dark .coverage-map__header,
+.coverage-map--dark .coverage-map__plan-scroll,
+.coverage-map--dark .coverage-map__side,
+.coverage-map--dark .coverage-map__close,
+.coverage-map--dark .coverage-map__clear,
+.coverage-map--dark .coverage-map__tab:not(.is-active) {
+  border-color: var(--color-border-dark);
+}
+
+.coverage-map--dark .coverage-map__close,
+.coverage-map--dark .coverage-map__clear,
+.coverage-map--dark .coverage-map__tab:not(.is-active),
+.coverage-map--dark .coverage-map__shape,
+.coverage-map--dark .coverage-map__chip {
+  color: var(--color-text-title-dark);
+}
+
+.coverage-map--dark .coverage-map__tab.is-active {
+  border-color: var(--color-primary-dark);
+  background: var(--color-primary-dark);
+}
+
+.coverage-map--dark .coverage-map__plan {
+  border-color: var(--color-border-dark);
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+}
+
+.coverage-map--dark .coverage-map__shape--done { background: rgba(22, 163, 74, 0.32); }
+.coverage-map--dark .coverage-map__shape--partial { background: rgba(245, 158, 11, 0.3); }
+.coverage-map--dark .coverage-map__shape--none { background: rgba(220, 38, 38, 0.28); }
+
+.coverage-map--dark .coverage-map__pending summary {
+  color: #fca5a5;
+}
+
+.coverage-map--dark .coverage-map__pending li {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
 }

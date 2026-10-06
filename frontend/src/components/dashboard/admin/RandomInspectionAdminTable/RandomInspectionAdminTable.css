@@ -1462,7 +1462,7 @@
   background: rgba(245, 158, 11, 0.14);
 }
 
-/* Boton del croquis de conteo en la tabla de sucursales */
+/* Boton del mapa de conteo en la tabla de sucursales */
 .inspection-admin__table th.inspection-admin__map-col,
 .inspection-admin__table td.inspection-admin__map-col {
   width: 72px;

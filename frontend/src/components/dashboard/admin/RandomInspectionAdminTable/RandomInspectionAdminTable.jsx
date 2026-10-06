@@ -206,7 +206,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const canRead = moduleActions?.puede_leer ?? true
   const canUpdate = moduleActions?.puede_actualizar ?? true
   const [isDarkTheme, setIsDarkTheme] = useState(detectDarkTheme)
-  // Sucursal cuyo croquis de conteo esta abierto ({ id, nombre } o null).
+  // Sucursal cuyo mapa de conteo esta abierto ({ id, nombre } o null).
   const [coverageMapBranch, setCoverageMapBranch] = useState(null)
 
   const [summaryRows, setSummaryRows] = useState([])
@@ -1542,7 +1542,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 <th>Diferencias</th>
                 <th>Pendientes verificacion</th>
                 <th>Ultima revision</th>
-                <th className="inspection-admin__map-col">Croquis</th>
+                <th className="inspection-admin__map-col">Mapa</th>
               </tr>
             </thead>
             <tbody>
@@ -1570,8 +1570,8 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                       <button
                         type="button"
                         className="inspection-admin__map-btn"
-                        title="Ver croquis de conteo"
-                        aria-label={`Ver croquis de conteo de ${String(row?.sucursal_nombre || '').trim() || 'la sucursal'}`}
+                        title="Ver mapa de conteo"
+                        aria-label={`Ver mapa de conteo de ${String(row?.sucursal_nombre || '').trim() || 'la sucursal'}`}
                         onClick={(event) => {
                           event.stopPropagation()
                           setCoverageMapBranch({

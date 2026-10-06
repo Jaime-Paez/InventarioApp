@@ -5,7 +5,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { formatDateTime } from '../../../../utils/dateFormat'
 import './InspectionCoverageMap.css'
 
-// Croquis de conteo: el plano de cada bodega de la sucursal con cada percha
+// Mapa de conteo: el plano de cada bodega de la sucursal con cada percha
 // (division) pintada segun cuanto de lo que tiene stock ya se conto.
 const VERTICAL_LABEL_RATIO = 1.6
 
@@ -68,14 +68,14 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
         token
       )
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo cargar el croquis.')
+      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo cargar el mapa.')
       setData(payload)
       setBodegaId((current) => {
         const ids = (payload?.bodegas || []).map((bodega) => String(bodega.id))
         return ids.includes(current) ? current : ids[0] || ''
       })
     } catch (loadError) {
-      setError(loadError?.message || 'No se pudo cargar el croquis.')
+      setError(loadError?.message || 'No se pudo cargar el mapa.')
     } finally {
       setLoading(false)
     }
@@ -138,7 +138,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
   }, [bodega, shapes])
   const hasPlan = planSize.width > 0 && planSize.height > 0 && shapes.length > 0
 
-  // Perchas con productos que no estan dibujadas en el croquis: se listan
+  // Perchas con productos que no estan dibujadas en el mapa: se listan
   // aparte para que no queden fuera del control.
   const shapeNames = useMemo(() => new Set(shapes.map((shape) => normalizeKey(shape.nombre))), [shapes])
   const unplacedDivisions = useMemo(
@@ -179,10 +179,10 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
       <div className="coverage-map__dialog">
         <header className="coverage-map__header">
           <div>
-            <h4>Croquis de conteo</h4>
+            <h4>Mapa de conteo</h4>
             <p>{sucursal?.nombre || 'Sucursal'}</p>
           </div>
-          <button type="button" className="coverage-map__close" onClick={onClose} aria-label="Cerrar croquis">
+          <button type="button" className="coverage-map__close" onClick={onClose} aria-label="Cerrar mapa">
             <X size={16} />
           </button>
         </header>
@@ -227,7 +227,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
 
         <div className="coverage-map__body">
           {loading && !data ? (
-            <p className="coverage-map__hint"><Loader2 size={14} className="coverage-map__spin" /> Cargando croquis...</p>
+            <p className="coverage-map__hint"><Loader2 size={14} className="coverage-map__spin" /> Cargando mapa...</p>
           ) : error ? (
             <p className="coverage-map__hint coverage-map__hint--error">{error}</p>
           ) : (
@@ -276,12 +276,12 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
                     </div>
                   </div>
                 ) : (
-                  <p className="coverage-map__hint">Esta bodega no tiene croquis dibujado. Las perchas se listan abajo.</p>
+                  <p className="coverage-map__hint">Esta bodega no tiene mapa dibujado. Las perchas se listan abajo.</p>
                 )}
 
                 {(unplacedDivisions.length > 0 || !hasPlan) && (
                   <div className="coverage-map__unplaced">
-                    <span>{hasPlan ? 'Perchas que no estan en el croquis:' : 'Perchas:'}</span>
+                    <span>{hasPlan ? 'Perchas que no estan en el mapa:' : 'Perchas:'}</span>
                     {(hasPlan ? unplacedDivisions : bodegaDivisions.filter((division) => Number(division.total || 0) > 0)).map((division) => (
                       <button
                         type="button"
