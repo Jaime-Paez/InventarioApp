@@ -313,10 +313,8 @@ const emitRejectedTransferEditingState = (solicitudId, active) => {
   )
 }
 
-const hasRandomInspectionDraft = (inspectionId) => {
-  if (!inspectionId) return false
-  try { return !!localStorage.getItem(`ri_draft_${inspectionId}`) } catch { return false }
-}
+// Avance guardado en el servidor (context.en_progreso, calculado por el backend).
+const hasRandomInspectionDraft = (reminder) => Boolean(reminder?.context?.en_progreso)
 
 const normalizeStateText = (value) =>
   String(value || '')
@@ -1143,7 +1141,7 @@ function RecordatoriosPopup({
         isRandomInspectionAdminSummaryReminder(reminder)
       )
     )
-    const isInspectionInProgress = isPendingInspectionAlert && !isRandomInspectionAdminSummaryReminder(reminder) && hasRandomInspectionDraft(solicitudId)
+    const isInspectionInProgress = isPendingInspectionAlert && !isRandomInspectionAdminSummaryReminder(reminder) && hasRandomInspectionDraft(reminder)
 
     if (
       displayStatus.className === 'rejected' ||
@@ -3033,7 +3031,7 @@ function RecordatoriosPopup({
                             isAdminSummaryReminder
                           )
                         )
-                        const isInspectionInProgress = isPendingInspectionAlert && !isAdminSummaryReminder && hasRandomInspectionDraft(currentReminderId && normalizeId(reminder?.context?.id))
+                        const isInspectionInProgress = isPendingInspectionAlert && !isAdminSummaryReminder && Boolean(currentReminderId) && hasRandomInspectionDraft(reminder)
                         const isCompletedInspectionDailyReminder = (
                           isRandomInspectionDailyReminder(reminder) &&
                           !isPendingInspectionAlert

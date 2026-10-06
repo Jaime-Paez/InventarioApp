@@ -66,6 +66,24 @@ class BorradorRecepcionEnvioTests(TestCase):
             },
         )
 
+    def test_guarda_nota_general(self):
+        response = self.client.patch(
+            self._url(),
+            {
+                "items": {str(self.producto.id): {"cantidad_recibida": 5, "recepcion_revisada": True}},
+                "tiene_novedad_general": True,
+                "nota_general": "Caja golpeada",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.envio.refresh_from_db()
+        self.assertEqual(
+            self.envio.borrador_recepcion["__meta__"],
+            {"tiene_novedad_general": True, "nota_general": "Caja golpeada"},
+        )
+        self.assertTrue(self.envio.borrador_recepcion[str(self.producto.id)]["recepcion_revisada"])
+
     def test_envio_recibido_no_acepta_borrador(self):
         ImportacionEnvio.objects.filter(pk=self.envio.pk).update(estado=ImportacionEnvio.ESTADO_RECIBIDO)
         response = self.client.patch(self._url(), {"items": {}}, format="json")

@@ -738,3 +738,34 @@ class InspeccionPorSubdivisionTests(InspeccionAleatoriaBaseTestCase):
     def test_subdivision_de_otra_division_se_rechaza(self):
         response = self._enviar(subdivision_id=self.sub_b.id)
         self.assertEqual(response.status_code, 404)
+
+
+class RecordatorioEnProgresoTests(InspeccionAleatoriaBaseTestCase):
+    """El aviso "en progreso" sale del borrador guardado en el servidor."""
+
+    def _contexto(self, inspection):
+        response = self.revisor_client.get("/recordatorios/estado/")
+        self.assertEqual(response.status_code, 200)
+        for reminder in response.data["reminders"]:
+            context = reminder.get("context") or {}
+            if context.get("type") == app_views.RANDOM_INSPECTION_CONTEXT_TYPE and str(
+                context.get("id")
+            ) == str(inspection.id):
+                return context
+        return None
+
+    def test_en_progreso_segun_borrador_del_servidor(self):
+        response = self.admin_client.post(
+            f"{BASE_URL}/enviar-division/",
+            {"division_id": self.division.id, "usuario_id": self.revisor.id, "hora_recordatorio": "23:59"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
+
+        context = self._contexto(inspection)
+        self.assertIsNotNone(context)
+        self.assertFalse(context["en_progreso"])
+
+        InspeccionAleatoriaDiaria.objects.filter(pk=inspection.pk).update(borrador_version=1)
+        self.assertTrue(self._contexto(inspection)["en_progreso"])

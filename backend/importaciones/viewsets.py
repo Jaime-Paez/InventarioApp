@@ -1456,6 +1456,15 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "ubicaciones": ubicaciones,
             }
 
+        # Nota general del envio ("hay una novedad general" + texto): tambien
+        # va al servidor, no solo las filas. Se guarda bajo "__meta__", que no
+        # choca con los ids de producto.
+        if "nota_general" in request.data or "tiene_novedad_general" in request.data:
+            borrador["__meta__"] = {
+                "tiene_novedad_general": bool(request.data.get("tiene_novedad_general")),
+                "nota_general": str(request.data.get("nota_general") or ""),
+            }
+
         envio.borrador_recepcion = borrador
         envio.save(update_fields=["borrador_recepcion"])
         return Response({"ok": True}, status=status.HTTP_200_OK)

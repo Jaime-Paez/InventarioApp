@@ -2670,6 +2670,48 @@ _last_inspection_check_by_user = {}
 _ALL_USERS_INSPECTION_CHECK_KEY = "__todos__"
 
 
+def _annotate_random_inspection_progress(reminders):
+    """Marca `context.en_progreso` en los recordatorios de inspeccion aleatoria.
+
+    Se calcula al leer, desde la base (borrador guardado en el servidor), y no
+    se escribe en ReminderState: antes salia de un borrador en localStorage
+    que ya no existe, asi que el aviso "en progreso" nunca se encendia.
+    """
+    inspection_ids = set()
+    for reminder in reminders:
+        context = reminder.get("context") if isinstance(reminder, dict) else None
+        if not isinstance(context, dict):
+            continue
+        if _normalize_id(context.get("type")) != RANDOM_INSPECTION_CONTEXT_TYPE:
+            continue
+        inspection_id = _normalize_int(context.get("id"), 0)
+        if inspection_id > 0:
+            inspection_ids.add(inspection_id)
+    if not inspection_ids:
+        return reminders
+
+    in_progress_ids = {
+        int(pk)
+        for pk in InspeccionAleatoriaDiaria.objects.filter(
+            pk__in=inspection_ids, borrador_version__gt=0
+        ).values_list("pk", flat=True)
+    }
+    annotated = []
+    for reminder in reminders:
+        context = reminder.get("context") if isinstance(reminder, dict) else None
+        if (
+            isinstance(context, dict)
+            and _normalize_id(context.get("type")) == RANDOM_INSPECTION_CONTEXT_TYPE
+        ):
+            inspection_id = _normalize_int(context.get("id"), 0)
+            reminder = {
+                **reminder,
+                "context": {**context, "en_progreso": inspection_id in in_progress_ids},
+            }
+        annotated.append(reminder)
+    return annotated
+
+
 class ReminderStateAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -2758,7 +2800,7 @@ class ReminderStateAPIView(APIView):
 
         return Response(
             {
-                "reminders": reminders,
+                "reminders": _annotate_random_inspection_progress(reminders),
                 "updated_at": store.updated_at,
             },
             status=status.HTTP_200_OK,
@@ -2829,7 +2871,7 @@ class ReminderStateAPIView(APIView):
 
         return Response(
             {
-                "reminders": merged,
+                "reminders": _annotate_random_inspection_progress(merged),
                 "updated_at": store.updated_at,
             },
             status=status.HTTP_200_OK,

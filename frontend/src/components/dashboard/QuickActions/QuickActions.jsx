@@ -512,6 +512,9 @@ function QuickActions({
   const inTransitShipmentsPollInFlightRef = useRef(false)
   const receiveShipmentLoadRequestRef = useRef(0)
   const receiveShipmentDraftSaveDebounceRef = useRef(null)
+  // Guardado del borrador de recepcion que aun esta esperando el debounce:
+  // si la pagina se cierra o se oculta antes, se manda de inmediato.
+  const receiveShipmentPendingDraftSaveRef = useRef(null)
   const receiveLocationSearchDebounceRef = useRef({})
   const receiveLocationDropdownRefs = useRef({})
   const audioContextRef = useRef(null)
@@ -2994,7 +2997,8 @@ function QuickActions({
     if (!shipmentId || !isReceiveShipmentModalOpen) return
 
     clearTimeout(receiveShipmentDraftSaveDebounceRef.current)
-    receiveShipmentDraftSaveDebounceRef.current = setTimeout(() => {
+    const saveDraft = ({ keepalive = false } = {}) => {
+      receiveShipmentPendingDraftSaveRef.current = null
       if (!token || !shipmentId) return
       const items = {}
       Object.values(receiveShipmentDraftByProductId).forEach((row) => {
@@ -3024,22 +3028,69 @@ function QuickActions({
       const draftUrl = isImportacionEnvio
         ? `${API_URL}/importaciones/importaciones/envios/${encodeURIComponent(normalizeId(activeInTransitShipment?.envio_id) || shipmentId)}/borrador-recepcion/`
         : `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(shipmentId)}/borrador-recepcion/`
-      void authFetch(draftUrl, { method: 'PATCH', body: JSON.stringify({ items }) }, token)
+      const meta = {
+        tiene_novedad_general: Boolean(receiveShipmentHasGeneralIssue),
+        nota_general: String(receiveShipmentGeneralNote || ''),
+      }
+      void authFetch(
+        draftUrl,
+        { method: 'PATCH', body: JSON.stringify({ items, ...meta }), keepalive },
+        token
+      )
         .then((response) => {
           if (!response?.ok) return
+          // Ya esta en el servidor: el avance que se rescato del navegador
+          // (version vieja de la app) ya no hace falta alli.
+          // (No mientras quede alguna ubicacion del respaldo sin aplicar.)
+          const legacyPending = Object.values(receiveShipmentDraftByProductId || {}).some(
+            (row) => normalizeId(row?.legacy_location_subdivision_id)
+          )
+          if (!legacyPending) {
+            try { localStorage.removeItem(`rs_draft_${shipmentId}`) } catch { /* noop */ }
+          }
           // Mantener la lista en memoria al dia para que al reabrir el envio
           // sin recargar se vea el ultimo avance guardado.
           setInTransitShipments((prev) => (Array.isArray(prev)
             ? prev.map((row) => (
               normalizeId(row?.id) === shipmentId && row?._source === activeInTransitShipment?._source
-                ? { ...row, borrador_recepcion: items }
+                ? { ...row, borrador_recepcion: { ...items, __meta__: meta } }
                 : row
             ))
             : prev))
         })
         .catch(() => {})
-    }, 1500)
-  }, [receiveShipmentDraftByProductId, activeInTransitShipment, isReceiveShipmentModalOpen, token])
+    }
+    receiveShipmentPendingDraftSaveRef.current = saveDraft
+    receiveShipmentDraftSaveDebounceRef.current = setTimeout(saveDraft, 1500)
+  }, [
+    receiveShipmentDraftByProductId,
+    receiveShipmentHasGeneralIssue,
+    receiveShipmentGeneralNote,
+    activeInTransitShipment,
+    isReceiveShipmentModalOpen,
+    token,
+  ])
+
+  // Cerrar la pestana, recargar o mandar la app al fondo (telefono) dentro de
+  // la espera del debounce ya no pierde los ultimos cambios.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const flushPendingDraft = () => {
+      const pending = receiveShipmentPendingDraftSaveRef.current
+      if (!pending) return
+      clearTimeout(receiveShipmentDraftSaveDebounceRef.current)
+      pending({ keepalive: true })
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') flushPendingDraft()
+    }
+    window.addEventListener('pagehide', flushPendingDraft)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flushPendingDraft)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [])
 
   const openReceiveShipmentModalShell = useCallback(({ shipmentId, shipment, draftByProductId = {} }) => {
     const nextLoadRequestId = receiveShipmentLoadRequestRef.current + 1
@@ -3075,6 +3126,7 @@ function QuickActions({
       meta = null,
       reveal = false,
       includeInspection = false,
+      keepalive = false,
     } = options
     if (randomInspectionSaveTimerRef.current) {
       clearTimeout(randomInspectionSaveTimerRef.current)
@@ -3120,6 +3172,7 @@ function QuickActions({
           {
             method: 'PATCH',
             body: JSON.stringify({ ...body, version }),
+            keepalive,
           },
           token
         )
@@ -3161,6 +3214,25 @@ function QuickActions({
     randomInspectionSaveQueueRef.current = next
     return next
   }, [token])
+
+  // Cerrar la pestana, recargar o mandar la app al fondo con cambios aun en
+  // espera del debounce: se guardan de inmediato.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const flushPending = () => {
+      if (!randomInspectionSaveTimerRef.current && randomInspectionDirtyItemsRef.current.size === 0) return
+      void flushRandomInspectionDraft({ keepalive: true })
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') flushPending()
+    }
+    window.addEventListener('pagehide', flushPending)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flushPending)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [flushRandomInspectionDraft])
 
   const scheduleRandomInspectionDraftSave = useCallback(() => {
     if (randomInspectionSaveTimerRef.current) clearTimeout(randomInspectionSaveTimerRef.current)
@@ -3911,16 +3983,28 @@ function QuickActions({
         return saved.cantidad_recibida != null
           && Number(saved.cantidad_recibida) !== Number(initialDraft[productId].cantidad_enviada)
       })
+      let legacyDraft = null
+      try {
+        const legacyRaw = localStorage.getItem(`rs_draft_${shipmentId}`)
+        const parsedLegacy = legacyRaw ? JSON.parse(legacyRaw) : null
+        if (parsedLegacy && typeof parsedLegacy === 'object') legacyDraft = parsedLegacy
+      } catch {
+        // sin acceso a localStorage: se sigue sin borrador local
+      }
+      const getLegacyRow = (productId) => {
+        const row = legacyDraft?.[productId]
+        if (!row || typeof row !== 'object') return null
+        if (normalizeId(row.producto_id) && normalizeId(row.producto_id) !== productId) return null
+        return row
+      }
+
       if (shipment?._source === 'importacion' && !serverDraftHasProgress) {
         try {
-          const legacyRaw = localStorage.getItem(`rs_draft_${shipmentId}`)
-          const legacyDraft = legacyRaw ? JSON.parse(legacyRaw) : null
-          if (legacyDraft && typeof legacyDraft === 'object') {
+          if (legacyDraft) {
             const recovered = {}
             Object.keys(initialDraft).forEach((productId) => {
-              const row = legacyDraft[productId]
-              if (!row || typeof row !== 'object') return
-              if (normalizeId(row.producto_id) && normalizeId(row.producto_id) !== productId) return
+              const row = getLegacyRow(productId)
+              if (!row) return
               recovered[productId] = {
                 cantidad_recibida: row.cantidad_recibida ?? null,
                 recepcion_revisada: Boolean(row.recepcion_revisada),
@@ -3953,11 +4037,32 @@ function QuickActions({
         })
       }
 
+      // Ubicaciones elegidas en el selector que nunca llegaron al servidor
+      // (antes solo se guardaba la sugerida) pero si quedaron en el respaldo
+      // del navegador de la version anterior de la app. Se aplican al hidratar
+      // el selector (ahi se conoce la sugerencia) y el guardado automatico las
+      // sube; el respaldo se borra al guardar, asi que solo pasa una vez.
+      if (legacyDraft) {
+        Object.keys(initialDraft).forEach((productId) => {
+          const legacySubdivisionId = normalizeId(getLegacyRow(productId)?.location_draft_subdivision_id)
+          if (!legacySubdivisionId) return
+          initialDraft[productId] = {
+            ...initialDraft[productId],
+            legacy_location_subdivision_id: legacySubdivisionId,
+          }
+        })
+      }
+
       const loadRequestId = openReceiveShipmentModalShell({
         shipmentId,
         shipment,
         draftByProductId: initialDraft,
       })
+      const savedMeta = shipment?.borrador_recepcion?.__meta__
+      if (savedMeta && typeof savedMeta === 'object') {
+        setReceiveShipmentHasGeneralIssue(Boolean(savedMeta.tiene_novedad_general))
+        setReceiveShipmentGeneralNote(String(savedMeta.nota_general || ''))
+      }
 
       // Open first and hydrate catalogs afterwards so the modal feels instant.
       void (async () => {
@@ -4044,6 +4149,31 @@ function QuickActions({
                 ''
             )
             const alreadyHasUbicaciones = Array.isArray(updated[productId]?.ubicaciones) && updated[productId].ubicaciones.length > 0
+            // Rescate del respaldo viejo: solo si lo guardado en el servidor
+            // esta vacio o es la ubicacion sugerida (lo unico que se guardaba
+            // antes). Si el servidor ya tiene otra, la eligio el usuario
+            // despues del arreglo y esa manda.
+            const legacySubdivisionId = normalizeId(updated[productId]?.legacy_location_subdivision_id)
+            const legacySubdivision = legacySubdivisionId ? localSubdivisionsById.get(legacySubdivisionId) : null
+            const savedSubdivisionId = normalizeId(updated[productId]?.ubicaciones?.[0]?.subdivision_id)
+            if (legacySubdivision && (!savedSubdivisionId || savedSubdivisionId === suggestedSubdivisionId)) {
+              updated[productId] = {
+                ...updated[productId],
+                legacy_location_subdivision_id: '',
+                location_draft_bodega_id: normalizeId(
+                  legacySubdivision?.division?.bodega?.id || legacySubdivision?.division?.bodega_id || ''
+                ),
+                location_draft_division_id: normalizeId(
+                  legacySubdivision?.division?.id || legacySubdivision?.division_id || ''
+                ),
+                location_draft_subdivision_id: legacySubdivisionId,
+              }
+              return
+            }
+            if (legacySubdivisionId) {
+              // No aplica (el usuario ya eligio otra o la ubicacion ya no existe).
+              updated[productId] = { ...updated[productId], legacy_location_subdivision_id: '' }
+            }
             if (suggestedSubdivisionId && suggestedDivisionId && suggestedBodegaId && !alreadyHasUbicaciones) {
               const cantidadEnviada = toPositiveInt(detail?.cantidad_enviada, 0)
               updated[productId] = {

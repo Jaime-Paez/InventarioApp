@@ -123,6 +123,11 @@ const sanitizeReminderContext = (rawContext) => {
   if (rawContext?.urgente !== undefined) {
     result.urgente = Boolean(rawContext.urgente)
   }
+  // Inspeccion aleatoria con avance guardado en el servidor (lo calcula el
+  // backend al leer los recordatorios).
+  if (rawContext?.en_progreso !== undefined) {
+    result.en_progreso = Boolean(rawContext.en_progreso)
+  }
   const solicitanteId = normalizeId(rawContext?.sucursal_solicitante_id)
   if (solicitanteId) result.sucursal_solicitante_id = solicitanteId
   const proveedoraId = normalizeId(rawContext?.sucursal_proveedora_id)
@@ -389,15 +394,19 @@ export const sanitizeReminder = (reminder) => {
   }
 }
 
+// Copia en memoria de los recordatorios del servidor (antes se guardaba en
+// localStorage). La fuente de verdad es siempre la base de datos: esta copia
+// solo evita parpadeos entre consultas y se pierde al recargar la pagina.
+let remindersMemoryCache = '[]'
+
+if (typeof window !== 'undefined') {
+  // Limpia la copia vieja que dejaban las versiones anteriores.
+  try { window.localStorage.removeItem(REMINDERS_STORAGE_KEY) } catch { /* noop */ }
+}
+
 const writeRemindersToLocalCache = (reminders) => {
   const normalized = (Array.isArray(reminders) ? reminders : []).map(sanitizeReminder).filter(Boolean)
-  if (typeof window === 'undefined') return normalized
-
-  try {
-    window.localStorage.setItem(REMINDERS_STORAGE_KEY, JSON.stringify(normalized))
-  } catch {
-    // Ignore storage errors (quota/private mode).
-  }
+  remindersMemoryCache = JSON.stringify(normalized)
 
   return normalized
 }
@@ -509,12 +518,8 @@ export const fetchRemindersFromBackend = async (token) => {
 }
 
 export const readRemindersFromStorage = () => {
-  if (typeof window === 'undefined') return []
-
   try {
-    const raw = window.localStorage.getItem(REMINDERS_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
+    const parsed = JSON.parse(remindersMemoryCache || '[]')
     if (!Array.isArray(parsed)) return []
     return parsed.map(sanitizeReminder).filter(Boolean)
   } catch {
@@ -1214,14 +1219,9 @@ export const getReminderDateTimeTimestamp = (reminder) => {
   return Number.isFinite(timestamp) ? timestamp : Number.NaN
 }
 
-export const hasRandomInspectionDraft = (inspectionId) => {
-  if (!inspectionId) return false
-  try {
-    return !!localStorage.getItem(`ri_draft_${inspectionId}`)
-  } catch {
-    return false
-  }
-}
+// La inspeccion ya tiene avance guardado en el servidor (antes se miraba un
+// borrador en localStorage que ya no existe y el aviso nunca se encendia).
+export const hasRandomInspectionDraft = (reminder) => Boolean(reminder?.context?.en_progreso)
 
 export const getResolvedTransferIssuesBySolicitudId = (reminders) => {
   const source = Array.isArray(reminders) ? reminders : []
@@ -1375,7 +1375,7 @@ export const getReminderActionSeverity = (reminder, {
   const isInspectionInProgress = (
     isPendingInspectionAlert &&
     !isRandomInspectionAdminSummaryReminder(reminder) &&
-    hasRandomInspectionDraft(solicitudId)
+    hasRandomInspectionDraft(reminder)
   )
 
   if (

@@ -416,9 +416,10 @@ const shortSucursalLabel = (nombre) => {
   return abbr ? `${match[1]} ${abbr}` : value
 }
 
-// El progreso del asistente de llegada se guarda en la base de datos
-// (Importacion.borrador_llegada) para sobrevivir a cerrar el modal o recargar la
-// página; localStorage queda como respaldo mientras esa data no ha llegado aún.
+// El progreso del asistente de llegada se guarda SOLO en la base de datos
+// (Importacion.borrador_llegada), automaticamente con cada cambio. La lectura de
+// localStorage es solo para rescatar el avance que dejaron versiones anteriores
+// de la app: se sube al servidor con el primer guardado y se borra del navegador.
 const getSavedDraft = (impData) => {
   if (impData?.borrador_llegada) return impData.borrador_llegada
   try {
@@ -937,11 +938,40 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   // resuelve el efecto de "fetch fresh importacion data" de arriba (usa el borrador
   // recién llegado del servidor en vez del step inicial, que podría estar desactualizado).
 
+  // Guardado automatico en el servidor con cada cambio (antes solo al cerrar el
+  // modal, y mientras tanto el avance vivia unicamente en este navegador). Se
+  // espera a que termine la carga inicial para no pisar el borrador del
+  // servidor con datos viejos del listado.
+  const draftAutosaveTimerRef = useRef(null)
+  const draftAutosavePendingRef = useRef(null)
   useEffect(() => {
-    const checkedIds = rows.filter(r => r.checked).map(r => r.id)
-    const cantidadesRecibidas = Object.fromEntries(rows.map(r => [r.id, r.cantidadRecibida]))
-    localStorage.setItem(storageKey, JSON.stringify({ checkedIds, step, fechaLlegada, distribution, cantidadesRecibidas, recipientsBySucursal }))
-  }, [rows, step, fechaLlegada, distribution, recipientsBySucursal, storageKey])
+    if (loadingData || submitting) return undefined
+    const run = ({ keepalive = false } = {}) => {
+      draftAutosavePendingRef.current = null
+      void saveDraftToServer(undefined, { keepalive })
+    }
+    draftAutosavePendingRef.current = run
+    draftAutosaveTimerRef.current = setTimeout(run, 1500)
+    return () => clearTimeout(draftAutosaveTimerRef.current)
+  }, [rows, step, fechaLlegada, distribution, recipientsBySucursal, loadingData, submitting]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cerrar la pestana o mandar la app al fondo con un guardado pendiente: se
+  // manda de inmediato.
+  useEffect(() => {
+    const flush = () => {
+      const pending = draftAutosavePendingRef.current
+      if (!pending) return
+      clearTimeout(draftAutosaveTimerRef.current)
+      pending({ keepalive: true })
+    }
+    const handleVisibility = () => { if (document.visibilityState === 'hidden') flush() }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [])
 
   const toggleRow = useCallback((id) => {
     setRows(prev => prev.map(r => r.id === id ? { ...r, checked: !r.checked } : r))
@@ -1556,7 +1586,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         token
       )
       if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo marcar la llegada.'))
-      localStorage.removeItem(storageKey)
+      clearTimeout(draftAutosaveTimerRef.current)
+      draftAutosavePendingRef.current = null
+      try { localStorage.removeItem(storageKey) } catch { /* noop */ }
       onConfirmed?.(await resp.json())
     } catch (e) {
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 })
@@ -1565,27 +1597,35 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     }
   }
 
-  // Guarda el progreso actual en la base de datos (no solo en localStorage) para que
-  // sobreviva a cerrar el modal, recargar la página o reabrirlo en otro dispositivo.
-  const saveDraftToServer = async (rowsOverride) => {
+  // Guarda el progreso actual en la base de datos para que sobreviva a cerrar el
+  // modal, recargar la página o reabrirlo en otro dispositivo.
+  const saveDraftToServer = async (rowsOverride, { keepalive = false } = {}) => {
     const source = rowsOverride || rows
     const checkedIds = source.filter(r => r.checked).map(r => r.id)
     const cantidadesRecibidas = Object.fromEntries(source.map(r => [r.id, r.cantidadRecibida]))
     const borrador = { step, fechaLlegada, checkedIds, cantidadesRecibidas, distribution, recipientsBySucursal }
     try {
-      await authFetch(
+      const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/guardar-borrador-llegada/`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ borrador }) },
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ borrador }), keepalive },
         token
       )
+      if (resp.ok) {
+        // Ya esta en el servidor: se borra el respaldo de versiones anteriores.
+        try { localStorage.removeItem(storageKey) } catch { /* noop */ }
+      }
     } catch {
-      // Si falla, el progreso sigue disponible en localStorage para este navegador.
+      // Sin conexion: se reintenta con el siguiente cambio o al cerrar.
     }
   }
 
   const handleClose = () => {
     if (submitting) return
-    saveDraftToServer()
+    clearTimeout(draftAutosaveTimerRef.current)
+    draftAutosavePendingRef.current = null
+    // Si se cierra antes de que termine la carga inicial no se guarda: el
+    // estado aun no refleja el borrador del servidor y lo pisaria.
+    if (!loadingData) saveDraftToServer()
     onClose()
   }
 
