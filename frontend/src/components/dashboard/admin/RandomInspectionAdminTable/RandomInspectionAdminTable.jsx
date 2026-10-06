@@ -249,9 +249,16 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [sendNowDialogLoading, setSendNowDialogLoading] = useState(false)
   const [sendNowParams, setSendNowParams] = useState({ cantidad_productos: '', hora_recordatorio: '' })
   const [sendNowSelectedUserIds, setSendNowSelectedUserIds] = useState(new Set())
-  // "Enviar ahora" ya no ofrece la muestra aleatoria (esa sale sola cada
-  // dia): solo division especifica o lista especifica.
-  const [sendNowMode, setSendNowMode] = useState('division')
+  const [sendNowMode, setSendNowMode] = useState('aleatorio')
+  // "Enviar ahora mismo": ignora la hora elegida y usa la hora actual.
+  const [sendNowImmediate, setSendNowImmediate] = useState(false)
+  const resolveSendNowHour = useCallback(() => {
+    if (sendNowImmediate) {
+      const now = new Date()
+      return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    }
+    return String(sendNowParams?.hora_recordatorio || '').trim()
+  }, [sendNowImmediate, sendNowParams?.hora_recordatorio])
   const [divisionSucursalId, setDivisionSucursalId] = useState('')
   const [divisionBodegaId, setDivisionBodegaId] = useState('')
   const [divisionId, setDivisionId] = useState('')
@@ -362,7 +369,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       return
     }
 
-    const hora = String(sendNowParams?.hora_recordatorio || '').trim()
+    const hora = resolveSendNowHour()
     if (!hora) {
       notifyError('Debes seleccionar la hora del recordatorio.')
       return
@@ -390,7 +397,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     try {
       const response = await authFetch(
         `${API_URL}/recordatorios/inspeccion-aleatoria/enviar-ahora/`,
-        { method: 'POST', body: JSON.stringify({ ...sendNowParams, usuario_ids: [...sendNowSelectedUserIds] }) },
+        { method: 'POST', body: JSON.stringify({ ...sendNowParams, hora_recordatorio: hora, usuario_ids: [...sendNowSelectedUserIds] }) },
         token
       )
       const payload = await response.json().catch(() => ({}))
@@ -402,7 +409,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     } finally {
       setSendNowLoading(false)
     }
-  }, [token, sendNowParams, notifyError, notifySuccess])
+  }, [token, sendNowParams, sendNowSelectedUserIds, notifyError, notifySuccess, resolveSendNowHour])
 
   useEffect(() => {
     if (!token || sendNowMode !== 'division' || !divisionSucursalId) {
@@ -495,7 +502,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     if (!divisionId) { notifyError('Debes seleccionar una division.'); return }
     if (!divisionUsuarioId) { notifyError('Debes seleccionar un revisor.'); return }
 
-    const hora = String(sendNowParams?.hora_recordatorio || '').trim()
+    const hora = resolveSendNowHour()
     if (!hora) { notifyError('Debes seleccionar la hora del recordatorio.'); return }
 
     const proceed = await askIfRecentlyCounted({
@@ -530,7 +537,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     } finally {
       setDivisionSending(false)
     }
-  }, [token, divisionId, divisionSubdivisionId, divisionUsuarioId, sendNowParams, notifyError, notifySuccess, askIfRecentlyCounted])
+  }, [token, divisionId, divisionSubdivisionId, divisionUsuarioId, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
 
   // Ubicaciones (Bodega / Division / Subdivision) del producto dentro de la
   // sucursal elegida, para la columna "Ubicacion" de la lista.
@@ -736,7 +743,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     if (!listUsuarioId) { notifyError('Debes seleccionar un revisor.'); return }
     if (!listProducts.length) { notifyError('Agrega al menos un producto a la lista.'); return }
 
-    const hora = String(sendNowParams?.hora_recordatorio || '').trim()
+    const hora = resolveSendNowHour()
     if (!hora) { notifyError('Debes seleccionar la hora del recordatorio.'); return }
 
     const proceed = await askIfRecentlyCounted({
@@ -769,7 +776,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     } finally {
       setListSending(false)
     }
-  }, [token, listSucursalId, listUsuarioId, listProducts, sendNowParams, notifyError, notifySuccess, askIfRecentlyCounted])
+  }, [token, listSucursalId, listUsuarioId, listProducts, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
 
   // Desde el mapa: mandar a revisar los productos que faltan de una percha.
   const sendProductListToReviewer = useCallback(async ({ sucursalId, usuarioId, productIds }) => {
@@ -1559,7 +1566,8 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 // estaba pasando.
                 setShowSendNowDialog(true)
                 setSendNowDialogLoading(true)
-                setSendNowMode('division')
+                setSendNowMode('aleatorio')
+                setSendNowImmediate(false)
                 setDivisionSucursalId('')
                 setDivisionBodegaId('')
                 setDivisionId('')
@@ -2297,6 +2305,14 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             <div className="create-user__tabs" role="tablist">
               <button
                 type="button"
+                className={`create-user__tab${sendNowMode === 'aleatorio' ? ' create-user__tab--active' : ''}`}
+                onClick={() => setSendNowMode('aleatorio')}
+                disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
+              >
+                Aleatorio
+              </button>
+              <button
+                type="button"
                 className={`create-user__tab${sendNowMode === 'division' ? ' create-user__tab--active' : ''}`}
                 onClick={() => setSendNowMode('division')}
                 disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
@@ -2330,15 +2346,26 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                     />
                   </label>
                 )}
-                <label className="create-user__field">
-                  <span>Hora del recordatorio</span>
+                <div className="create-user__field">
+                  <label htmlFor="inspection-send-hour">Hora del recordatorio</label>
                   <input
+                    id="inspection-send-hour"
                     type="time"
                     value={sendNowParams.hora_recordatorio}
                     onChange={(e) => setSendNowParams((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
-                    disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
+                    disabled={sendNowImmediate || sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
                   />
-                </label>
+                  <span className="inspection-admin__send-immediate">
+                    <input
+                      type="checkbox"
+                      id="inspection-send-immediate"
+                      checked={sendNowImmediate}
+                      onChange={(e) => setSendNowImmediate(e.target.checked)}
+                      disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
+                    />
+                    <label htmlFor="inspection-send-immediate">Enviar ahora mismo</label>
+                  </span>
+                </div>
               </div>
 
               {sendNowMode === 'lista' ? (

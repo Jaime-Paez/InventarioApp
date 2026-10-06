@@ -1553,3 +1553,25 @@ body.app-theme-dark .inspection-admin__notfound-tag {
   background: rgba(251, 191, 36, 0.14);
   color: #fcd34d;
 }
+
+/* "Enviar ahora mismo" junto a la hora del recordatorio */
+.inspection-admin__send-immediate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inspection-admin__send-immediate input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.inspection-admin__send-immediate label {
+  cursor: pointer;
+}
