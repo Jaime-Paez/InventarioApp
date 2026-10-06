@@ -808,3 +808,60 @@ class InspeccionPorDivisionOrdenTests(InspeccionAleatoriaBaseTestCase):
         codigos = list(inspection.items.order_by("id").values_list("producto__codigo", flat=True))
         # Nivel 1 (P-1, P-2), Nivel 2 (A-2, B-2), Nivel 10 (A-10).
         self.assertEqual(codigos, ["P-1", "P-2", "A-2", "B-2", "A-10"])
+
+
+class CroquisConteoTests(InspeccionAleatoriaBaseTestCase):
+    """Croquis: cuanto de cada percha (division) y nivel ya se conto."""
+
+    URL = f"{BASE_URL}/admin/croquis/"
+
+    def _divisiones(self, **params):
+        response = self.admin_client.get(self.URL, {"sucursal_id": self.sucursal.id, **params})
+        self.assertEqual(response.status_code, 200, response.data)
+        return {division["nombre"]: division for division in response.data["divisiones"]}
+
+    def _contar(self, inspection, producto, cantidad):
+        item = inspection.items.get(producto=producto)
+        InspeccionAleatoriaItem.objects.filter(pk=item.pk).update(
+            estado_revision=InspeccionAleatoriaItem.EstadosRevision.COINCIDE,
+            cantidad_reportada=cantidad,
+            revisado_en=timezone.now(),
+        )
+
+    def test_conteo_de_sucursal_cubre_todas_las_perchas(self):
+        Inventario.objects.create(producto=self.producto, subdivision=self.sub_b, cantidad=2)
+        divisiones = self._divisiones()
+        self.assertEqual((divisiones["Percha A"]["contados"], divisiones["Percha A"]["total"]), (0, 2))
+
+        inspection = self._crear_inspeccion(productos=[self.producto], sucursal=self.sucursal)
+        self._contar(inspection, self.producto, 12)
+        divisiones = self._divisiones()
+        # P-1 contado en toda la sucursal: cuenta en Percha A y Percha B.
+        self.assertEqual(divisiones["Percha A"]["contados"], 1)
+        self.assertEqual(divisiones["Percha B"]["contados"], 1)
+        nivel = divisiones["Percha A"]["subdivisiones"][0]
+        self.assertEqual([p["codigo"] for p in nivel["pendientes"]], ["P-2"])
+
+    def test_conteo_por_division_solo_cubre_esa_percha(self):
+        Inventario.objects.create(producto=self.producto, subdivision=self.sub_b, cantidad=2)
+        response = self.admin_client.post(
+            f"{BASE_URL}/enviar-division/",
+            {"division_id": self.division_b.id, "usuario_id": self.revisor.id, "hora_recordatorio": "23:59"},
+            format="json",
+        )
+        inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
+        self._contar(inspection, self.producto, 2)
+        divisiones = self._divisiones()
+        self.assertEqual(divisiones["Percha B"]["contados"], 1)
+        self.assertEqual(divisiones["Percha A"]["contados"], 0)
+
+    def test_rango_de_fechas(self):
+        inspection = self._crear_inspeccion(productos=[self.producto], sucursal=self.sucursal)
+        self._contar(inspection, self.producto, 10)
+        manana = (timezone.localdate() + timezone.timedelta(days=1)).isoformat()
+        self.assertEqual(self._divisiones()["Percha A"]["contados"], 1)
+        self.assertEqual(self._divisiones(desde=manana)["Percha A"]["contados"], 0)
+
+    def test_revisor_sin_permiso(self):
+        response = self.revisor_client.get(self.URL, {"sucursal_id": self.sucursal.id})
+        self.assertEqual(response.status_code, 403)

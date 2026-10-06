@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Eye, Loader2, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
 import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -11,6 +11,7 @@ import '../CreateUsuario/CreateUsuario.css'
 import '../../QuickActions/QuickActions.css'
 import '../../movimientos/CreateSalida.css'
 import './RandomInspectionAdminTable.css'
+import InspectionCoverageMap from './InspectionCoverageMap'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeId = (value) => (value == null ? '' : String(value).trim())
@@ -205,6 +206,8 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const canRead = moduleActions?.puede_leer ?? true
   const canUpdate = moduleActions?.puede_actualizar ?? true
   const [isDarkTheme, setIsDarkTheme] = useState(detectDarkTheme)
+  // Sucursal cuyo croquis de conteo esta abierto ({ id, nombre } o null).
+  const [coverageMapBranch, setCoverageMapBranch] = useState(null)
 
   const [summaryRows, setSummaryRows] = useState([])
   const [summaryLoading, setSummaryLoading] = useState(false)
@@ -1503,6 +1506,15 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         </div>
       </header>
 
+      {coverageMapBranch && (
+        <InspectionCoverageMap
+          sucursal={coverageMapBranch}
+          token={token}
+          darkMode={isDarkTheme}
+          onClose={() => setCoverageMapBranch(null)}
+        />
+      )}
+
       <div className="inspection-admin__block">
         <div className="inspection-admin__block-head">
           <h4>Sucursales</h4>
@@ -1530,12 +1542,13 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 <th>Diferencias</th>
                 <th>Pendientes verificacion</th>
                 <th>Ultima revision</th>
+                <th className="inspection-admin__map-col">Croquis</th>
               </tr>
             </thead>
             <tbody>
               {!summaryRows.length ? (
                 <tr className="inspection-admin__empty-row">
-                  <td colSpan={7} />
+                  <td colSpan={8} />
                 </tr>
               ) : summaryRows.map((row) => {
                 const rowId = normalizeId(row?.sucursal_id)
@@ -1553,6 +1566,23 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                     <td>{Number.parseInt(String(row?.diferencias_reportadas || 0), 10) || 0}</td>
                     <td>{Number.parseInt(String(row?.pendientes_verificacion || 0), 10) || 0}</td>
                     <td>{formatDateTime(row?.ultima_revision)}</td>
+                    <td className="inspection-admin__map-col">
+                      <button
+                        type="button"
+                        className="inspection-admin__map-btn"
+                        title="Ver croquis de conteo"
+                        aria-label={`Ver croquis de conteo de ${String(row?.sucursal_nombre || '').trim() || 'la sucursal'}`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setCoverageMapBranch({
+                            id: rowId,
+                            nombre: String(row?.sucursal_nombre || `Sucursal ${rowId}`).trim(),
+                          })
+                        }}
+                      >
+                        <MapIcon size={15} />
+                      </button>
+                    </td>
                   </tr>
                 )
               })}

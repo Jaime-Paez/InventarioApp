@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from configuracion.models import ConfiguracionSistema
-from inventario.models import Division, Inventario, SubDivision
+from inventario.models import Bodega, Division, Inventario, SubDivision
 from usuarios.models import RolPermiso
 from usuarios.sucursal_scope import get_allowed_sucursal_ids
 from usuarios.utils import (
@@ -3898,6 +3898,204 @@ class RandomInspectionAdminExcuseAPIView(APIView):
             store.save(update_fields=["payload", "updated_at"])
 
         return Response({"detail": "Disculpa aplicada correctamente."}, status=status.HTTP_200_OK)
+
+
+def _parse_optional_date(value):
+    text = _normalize_text(value)
+    if not text:
+        return None
+    try:
+        return dt_date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+class RandomInspectionCoverageMapAPIView(APIView):
+    """Croquis de conteo por sucursal: por percha (division) y nivel
+    (subdivision), cuantos productos con stock hay y cuantos ya se contaron.
+
+    Un producto de una ubicacion cuenta como contado si un revisor lo conto
+    (en el rango de fechas, si se pide) en una revision que cubria esa
+    ubicacion: la de toda la sucursal o una lista cubren todas; una por
+    division, esa division; una por subdivision, esa subdivision.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para consultar inspecciones aleatorias."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        sucursal_id = _normalize_int(request.query_params.get("sucursal_id"), 0)
+        if sucursal_id <= 0:
+            return Response({"detail": "Debes indicar la sucursal."}, status=status.HTTP_400_BAD_REQUEST)
+        allowed_branch_ids = _get_allowed_inventory_branch_ids_for_user(request.user)
+        if allowed_branch_ids is not None and sucursal_id not in set(allowed_branch_ids):
+            return Response({"detail": "No tienes acceso a esa sucursal."}, status=status.HTTP_403_FORBIDDEN)
+
+        desde = _parse_optional_date(request.query_params.get("desde"))
+        hasta = _parse_optional_date(request.query_params.get("hasta"))
+
+        counted_qs = InspeccionAleatoriaItem.objects.filter(sucursal_id=sucursal_id).exclude(
+            estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
+        )
+        if desde:
+            counted_qs = counted_qs.filter(revisado_en__date__gte=desde)
+        if hasta:
+            counted_qs = counted_qs.filter(revisado_en__date__lte=hasta)
+
+        branch_wide = {}
+        by_division = {}
+        by_subdivision = {}
+
+        def remember(target, product_id, revisado_en):
+            previous = target.get(product_id)
+            if previous is None or (revisado_en and revisado_en > previous):
+                target[product_id] = revisado_en
+
+        for row in counted_qs.values(
+            "producto_id",
+            "revisado_en",
+            "inspeccion__es_por_division",
+            "inspeccion__division_id",
+            "inspeccion__es_por_subdivision",
+            "inspeccion__subdivision_id",
+        ):
+            product_id = _normalize_int(row.get("producto_id"), 0)
+            revisado_en = row.get("revisado_en")
+            if row.get("inspeccion__es_por_division"):
+                if row.get("inspeccion__es_por_subdivision") and row.get("inspeccion__subdivision_id"):
+                    remember(
+                        by_subdivision.setdefault(int(row["inspeccion__subdivision_id"]), {}),
+                        product_id,
+                        revisado_en,
+                    )
+                elif row.get("inspeccion__division_id"):
+                    remember(
+                        by_division.setdefault(int(row["inspeccion__division_id"]), {}),
+                        product_id,
+                        revisado_en,
+                    )
+                continue
+            remember(branch_wide, product_id, revisado_en)
+
+        def counted_at(product_id, division_id, subdivision_id):
+            dates = [
+                source.get(product_id)
+                for source in (
+                    branch_wide,
+                    by_division.get(division_id, {}),
+                    by_subdivision.get(subdivision_id, {}),
+                )
+                if product_id in source
+            ]
+            if not dates:
+                return False, None
+            stamped = [value for value in dates if value]
+            return True, (max(stamped) if stamped else None)
+
+        bodegas = list(
+            Bodega.objects.filter(sucursal_id=sucursal_id).order_by("nombre", "id")
+        )
+        divisions = {}
+        for division in Division.objects.filter(bodega__sucursal_id=sucursal_id).order_by("nombre", "id"):
+            divisions[int(division.id)] = {
+                "id": int(division.id),
+                "nombre": division.nombre,
+                "bodega_id": int(division.bodega_id),
+                "total": 0,
+                "contados": 0,
+                "ultimo_conteo": None,
+                "subdivisiones": {},
+            }
+
+        rows = (
+            Inventario.objects.filter(
+                cantidad__gt=0, subdivision__division__bodega__sucursal_id=sucursal_id
+            )
+            .values(
+                "producto_id",
+                "producto__codigo",
+                "producto__nombre",
+                "subdivision_id",
+                "subdivision__nombre",
+                "subdivision__division_id",
+            )
+            .annotate(total=Sum("cantidad"))
+        )
+        for row in rows:
+            division = divisions.get(_normalize_int(row.get("subdivision__division_id"), 0))
+            if division is None:
+                continue
+            subdivision_id = _normalize_int(row.get("subdivision_id"), 0)
+            product_id = _normalize_int(row.get("producto_id"), 0)
+            subdivision = division["subdivisiones"].setdefault(
+                subdivision_id,
+                {
+                    "id": subdivision_id,
+                    "nombre": _normalize_text(row.get("subdivision__nombre")),
+                    "total": 0,
+                    "contados": 0,
+                    "pendientes": [],
+                },
+            )
+            is_counted, when = counted_at(product_id, division["id"], subdivision_id)
+            division["total"] += 1
+            subdivision["total"] += 1
+            if is_counted:
+                division["contados"] += 1
+                subdivision["contados"] += 1
+                if when and (division["ultimo_conteo"] is None or when > division["ultimo_conteo"]):
+                    division["ultimo_conteo"] = when
+            else:
+                subdivision["pendientes"].append(
+                    {
+                        "producto_id": product_id,
+                        "codigo": _normalize_text(row.get("producto__codigo")),
+                        "nombre": _normalize_text(row.get("producto__nombre")),
+                        "cantidad": _normalize_int(row.get("total"), 0),
+                    }
+                )
+
+        divisions_payload = []
+        for division in divisions.values():
+            subdivisions = sorted(
+                division["subdivisiones"].values(),
+                key=lambda item: (_natural_sort_key(item["nombre"]), item["id"]),
+            )
+            for subdivision in subdivisions:
+                subdivision["pendientes"].sort(key=lambda item: _natural_sort_key(item["codigo"]))
+            divisions_payload.append(
+                {
+                    **division,
+                    "ultimo_conteo": _parse_iso_timestamp(division["ultimo_conteo"])
+                    if division["ultimo_conteo"]
+                    else "",
+                    "subdivisiones": subdivisions,
+                }
+            )
+
+        return Response(
+            {
+                "sucursal_id": sucursal_id,
+                "desde": desde.isoformat() if desde else "",
+                "hasta": hasta.isoformat() if hasta else "",
+                "bodegas": [
+                    {
+                        "id": int(bodega.id),
+                        "nombre": bodega.nombre,
+                        "ancho_metros": float(bodega.ancho_metros or 0),
+                        "alto_metros": float(bodega.alto_metros or 0),
+                        "ubicaciones": bodega.ubicaciones if isinstance(bodega.ubicaciones, list) else [],
+                    }
+                    for bodega in bodegas
+                ],
+                "divisiones": divisions_payload,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class RandomInspectionAdminSummaryAPIView(APIView):

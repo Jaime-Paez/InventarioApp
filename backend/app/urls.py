@@ -42,6 +42,11 @@ urlpatterns = [
         name="recordatorios-inspeccion-aleatoria-admin-disculpar",
     ),
     path(
+        "recordatorios/inspeccion-aleatoria/admin/croquis/",
+        views.RandomInspectionCoverageMapAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-admin-croquis",
+    ),
+    path(
         "recordatorios/inspeccion-aleatoria/admin/resumen/",
         views.RandomInspectionAdminSummaryAPIView.as_view(),
         name="recordatorios-inspeccion-aleatoria-admin-resumen",

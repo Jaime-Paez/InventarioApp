@@ -1461,3 +1461,33 @@
 .quick-actions__inspection-overlay.dark .inspection-admin__verify-confirm-list li {
   background: rgba(245, 158, 11, 0.14);
 }
+
+/* Boton del croquis de conteo en la tabla de sucursales */
+.inspection-admin__table th.inspection-admin__map-col,
+.inspection-admin__table td.inspection-admin__map-col {
+  width: 72px;
+  text-align: center;
+}
+
+.inspection-admin__map-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.inspection-admin__map-btn:hover {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__map-btn {
+  color: #fff;
+  border-color: color-mix(in srgb, #ffffff 30%, var(--color-border));
+}
