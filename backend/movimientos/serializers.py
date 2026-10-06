@@ -411,6 +411,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
     recibido_por_nombre = serializers.SerializerMethodField(read_only=True)
     factura_referencia = serializers.SerializerMethodField(read_only=True)
     recepcion_progreso = serializers.SerializerMethodField(read_only=True)
+    nota_envio = serializers.SerializerMethodField(read_only=True)
     recordatorio_destinatario_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         write_only=True,
@@ -438,6 +439,7 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "historial_transfer",
             "borrador_recepcion",
             "recepcion_progreso",
+            "nota_envio",
             "motivo_rechazo",
             "rechazada_por",
             "rechazada_por_nombre",
@@ -475,6 +477,10 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_nota_envio(self, obj):
+        salida = getattr(obj, "movimiento_salida", None)
+        return str(getattr(salida, "descripcion", "") or "").strip()
 
     def get_recepcion_progreso(self, obj):
         from inventario.por_ubicar import serialize_progress

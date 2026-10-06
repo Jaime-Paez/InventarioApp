@@ -3307,3 +3307,19 @@
 .quick-actions__receive-dialog.dark .quick-actions__receive-item-meta-store {
   color: #93c5fd;
 }
+
+/* Nota de quien despacho el traslado, bajo el numero */
+.quick-actions__receive-head-note {
+  margin: 4px 0 0;
+  max-width: 70ch;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  opacity: 0.85;
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-head-note {
+  color: var(--color-text-dark);
+}

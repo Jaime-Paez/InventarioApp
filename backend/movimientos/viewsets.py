@@ -4274,6 +4274,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "factura_referencia": str(
                         getattr(solicitud.movimiento_salida, "factura_referencia", "") or ""
                     ).strip(),
+                    # Nota que escribio quien despacho la salida (como se envio,
+                    # empaque, vehiculo...): se muestra al recibir.
+                    "nota_envio": str(
+                        getattr(solicitud.movimiento_salida, "descripcion", "") or ""
+                    ).strip(),
                     "estado_entrada": str(getattr(movimiento_entrada.estado_movimiento, "nombre", "") or "").strip(),
                     "descripcion": str(solicitud.descripcion or "").strip(),
                     "detalles": detalles_payload,

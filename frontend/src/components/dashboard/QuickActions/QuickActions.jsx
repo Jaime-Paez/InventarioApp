@@ -4306,6 +4306,8 @@ function QuickActions({
             factura_referencia: String(detail?.factura_referencia || '').trim(),
             descripcion: String(detail?.descripcion || '').trim(),
             borrador_recepcion: detail?.borrador_recepcion || {},
+            recepcion_progreso: detail?.recepcion_progreso || {},
+            nota_envio: String(detail?.nota_envio || '').trim(),
             detalles: detail.detalles.map((row) => ({
               producto_id: toPositiveInt(row?.producto_id, 0),
               producto_codigo: String(row?.producto_codigo || '').trim(),
@@ -5899,6 +5901,11 @@ function QuickActions({
                       receiveShipmentTransferCode ? `#${receiveShipmentTransferCode.replace(/^#/, '')}` : 'sin codigo'
                     }`}
                   </h4>
+                  {!!String(activeInTransitShipment?.nota_envio || '').trim() && (
+                    <p className="quick-actions__receive-head-note">
+                      <strong>Nota:</strong> {String(activeInTransitShipment.nota_envio).trim()}
+                    </p>
+                  )}
                 </div>
                 {!!receiveShipmentFacturaReferencia && (
                   <div className="quick-actions__receive-head-col">
