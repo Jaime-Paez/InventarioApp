@@ -1007,6 +1007,12 @@ class InventarioViewSet(viewsets.ModelViewSet):
             [int(branch.id or 0) for branch in location_branches],
         )
 
+        # Unidades en camino hacia cada sucursal (traslados despachados y envios
+        # de importacion aun no recibidos), solo para los productos de la pagina.
+        from .por_ubicar import in_transit_by_product_branch
+
+        in_transit = in_transit_by_product_branch(product_ids)
+
         products = (
             Producto.objects.filter(id__in=product_ids)
             .prefetch_related("casas_comerciales", "oem_productos__oem", "referencias")
@@ -1061,6 +1067,9 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 item[field_name] = int(row.get(field_name) or 0)
                 location_field_name = f"ubicacion_sucursal_{branch.id}"
                 item[location_field_name] = branch_locations.get(int(branch.id))
+                transit = in_transit.get((product_id, int(branch.id)))
+                if transit:
+                    item[f"en_camino_sucursal_{branch.id}"] = transit
             serialized.append(item)
 
         return serialized

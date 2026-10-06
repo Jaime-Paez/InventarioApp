@@ -1052,13 +1052,36 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         ? permittedBranchIds.has(String(branchId))
         : true
     )
+    // Unidades en camino hacia esta sucursal (traslado o importacion aun sin
+    // recibir): "(5)" en azul; al pasar el mouse, de que documentos vienen.
+    const transit = branchId != null ? rowData?.[`en_camino_sucursal_${branchId}`] : null
+    const transitTotal = Number(transit?.total || 0)
+    const transitTooltip = transitTotal > 0
+      ? [
+        `En camino: ${transitTotal}`,
+        ...(Array.isArray(transit?.documentos) ? transit.documentos : []).map((doc) => (
+          `${doc?.tipo === 'importacion' ? 'Importación' : 'Traslado'} ${String(doc?.codigo || `#${doc?.id}`).trim()}: ${Number(doc?.cantidad || 0)}`
+        )),
+      ].join(' · ')
+      : ''
     return (
-      <span
-        className={`inventario-v2__quantity${
-          isEmpty ? ' inventario-v2__quantity--empty' : ' inventario-v2__quantity--has-value'
-        }${isScoped ? ' inventario-v2__quantity--scoped' : ''}`}
-      >
-        {Number.isFinite(n) ? n : 0}
+      <span className="inventario-v2__quantity-wrap">
+        <span
+          className={`inventario-v2__quantity${
+            isEmpty ? ' inventario-v2__quantity--empty' : ' inventario-v2__quantity--has-value'
+          }${isScoped ? ' inventario-v2__quantity--scoped' : ''}`}
+        >
+          {Number.isFinite(n) ? n : 0}
+        </span>
+        {transitTotal > 0 && (
+          <span
+            className="inventario-v2__in-transit"
+            data-pr-tooltip={transitTooltip}
+            aria-label={transitTooltip}
+          >
+            {`(${transitTotal})`}
+          </span>
+        )}
       </span>
     )
   }, [permittedBranchIds])
@@ -2164,6 +2187,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   return (
     <div className="users-page">
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
+      <Tooltip position="top" showDelay={120} target=".inventario-v2__in-transit" style={{ maxWidth: '360px' }} />
       <Toast ref={toast} />
 
       <div className="users-page__top">

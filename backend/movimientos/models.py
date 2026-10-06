@@ -203,6 +203,13 @@ class SolicitudTraslado(models.Model):
     )
     historial_transfer = models.JSONField(default=list, blank=True)
     borrador_recepcion = models.JSONField(default=dict, blank=True)
+    # Recepcion por partes: {"<producto_id>": {"recibido", "por_ubicar"}} (ver
+    # inventario/por_ubicar.py). Lo recibido ya esta en el stock de la sucursal.
+    recepcion_progreso = models.JSONField(
+        default=dict,
+        blank=True,
+        db_default=models.Value({}, output_field=models.JSONField()),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

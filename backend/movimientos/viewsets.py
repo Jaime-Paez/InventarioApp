@@ -40,6 +40,14 @@ from app.views import (
     _sanitize_transfer_history,
 )
 from inventario.models import Inventario, SubDivision, Sucursal
+from inventario.por_ubicar import (
+    RecepcionError,
+    pending_to_store,
+    received_by_product,
+    receive_items,
+    serialize_progress,
+    store_items,
+)
 from solicitudes.models import Cliente
 
 from tipos.models import SubTipoMovimiento, TipoMovimiento
@@ -4270,10 +4278,106 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "descripcion": str(solicitud.descripcion or "").strip(),
                     "detalles": detalles_payload,
                     "inconvenientes_pendientes": pending_issue_count_by_solicitud.get(int(solicitud.id), 0),
+                    "recepcion_progreso": serialize_progress(
+                        solicitud.recepcion_progreso, solicitud.sucursal_solicitante_id
+                    ),
                 }
             )
 
         return Response(payload, status=status.HTTP_200_OK)
+
+    def _get_open_transfer_for_reception(self, request, solicitud_id, *, lock=False):
+        """Solicitud aprobada con entrada aun sin recibir, con permiso del usuario."""
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return None, None, Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+            solicitud.sucursal_solicitante_id,
+            field_label="sucursal de destino",
+            action_key=("puede_crear", "puede_actualizar"),
+        )
+        if lock:
+            solicitud = SolicitudTraslado.objects.select_for_update(of=("self",)).get(pk=solicitud.pk)
+        if solicitud.estado != SolicitudTraslado.Estados.APROBADA or not solicitud.movimiento_entrada_id:
+            return None, None, Response(
+                {"detail": "Este traslado no esta pendiente de recepcion."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        entrada = (
+            MovimientoInventario.objects.select_related("estado_movimiento")
+            .filter(pk=solicitud.movimiento_entrada_id)
+            .first()
+        )
+        estado = self._normalize_state_name(getattr(getattr(entrada, "estado_movimiento", None), "nombre", ""))
+        if entrada is None or "recib" in estado or "parcial" in estado:
+            return None, None, Response(
+                {"detail": "La recepcion de este traslado ya fue cerrada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return solicitud, entrada, None
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/recibir-parcial",
+    )
+    def recibir_parcial_traslado(self, request, solicitud_id=None):
+        """Recibe por partes: lo marcado entra ya al stock (en su ubicacion o
+        en POR UBICAR) y se puede vender aunque falte guardarlo."""
+        with transaction.atomic():
+            solicitud, entrada, error = self._get_open_transfer_for_reception(request, solicitud_id, lock=True)
+            if error is not None:
+                return error
+            sent = {
+                int(detalle.producto_id): int(detalle.cantidad or 0)
+                for detalle in entrada.detalles.all()
+            }
+            try:
+                progreso = receive_items(
+                    progress=solicitud.recepcion_progreso,
+                    sucursal_id=solicitud.sucursal_solicitante_id,
+                    items=request.data.get("items"),
+                    sent_by_product=sent,
+                )
+            except RecepcionError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            solicitud.recepcion_progreso = progreso
+            solicitud.save(update_fields=["recepcion_progreso", "updated_at"])
+        return Response(
+            {"recepcion_progreso": serialize_progress(progreso, solicitud.sucursal_solicitante_id)},
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/guardar-ubicaciones",
+    )
+    def guardar_ubicaciones_traslado(self, request, solicitud_id=None):
+        """Mueve desde POR UBICAR a la ubicacion definitiva lo ya recibido."""
+        with transaction.atomic():
+            solicitud, _entrada, error = self._get_open_transfer_for_reception(request, solicitud_id, lock=True)
+            if error is not None:
+                return error
+            try:
+                progreso, _moved = store_items(
+                    progress=solicitud.recepcion_progreso,
+                    sucursal_id=solicitud.sucursal_solicitante_id,
+                    items=request.data.get("items"),
+                )
+            except RecepcionError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            solicitud.recepcion_progreso = progreso
+            solicitud.save(update_fields=["recepcion_progreso", "updated_at"])
+        return Response(
+            {"recepcion_progreso": serialize_progress(progreso, solicitud.sucursal_solicitante_id)},
+            status=status.HTTP_200_OK,
+        )
 
     @action(
         detail=False,
@@ -4406,6 +4510,15 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Lo recibido por partes ya esta en el stock: al cerrar solo se suma la
+        # diferencia (cantidad recibida total - ya recibido).
+        ya_recibido_por_producto = received_by_product(solicitud.recepcion_progreso)
+        if pending_to_store(solicitud.recepcion_progreso, solicitud.sucursal_solicitante_id) > 0:
+            return Response(
+                {"detail": "Guarda en su ubicacion los productos que quedaron en POR UBICAR antes de cerrar la recepcion."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         processed_items = []
         seen_product_ids = set()
         total_faltante = 0
@@ -4495,7 +4608,20 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 )
                 cantidad_ubicada += cantidad_ubicacion
 
-            if cantidad_recibida > 0 and not ubicaciones:
+            ya_recibido = int(ya_recibido_por_producto.get(product_id, 0))
+            if cantidad_recibida < ya_recibido:
+                return Response(
+                    {
+                        "detail": (
+                            f"La cantidad recibida para producto {product_id} no puede ser menor "
+                            f"a lo que ya se recibio ({ya_recibido})."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            cantidad_por_sumar = cantidad_recibida - ya_recibido
+
+            if cantidad_por_sumar > 0 and not ubicaciones:
                 return Response(
                     {
                         "detail": (
@@ -4505,12 +4631,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if cantidad_ubicada != cantidad_recibida:
+            if cantidad_ubicada != cantidad_por_sumar:
                 return Response(
                     {
                         "detail": (
                             f"La suma de ubicaciones para producto {product_id} ({cantidad_ubicada}) "
-                            f"debe coincidir con la cantidad recibida ({cantidad_recibida})."
+                            f"debe coincidir con la cantidad por recibir ({cantidad_por_sumar})."
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,

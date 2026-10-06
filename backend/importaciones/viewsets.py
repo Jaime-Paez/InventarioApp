@@ -24,6 +24,14 @@ from django.db.models import F, Func, Q
 from app.models import ReminderState
 from configuracion.models import ConfiguracionSistema
 from inventario.models import Inventario, SubDivision
+from inventario.por_ubicar import (
+    RecepcionError,
+    pending_to_store,
+    received_by_product,
+    receive_items,
+    serialize_progress,
+    store_items,
+)
 from productos.models import OEMProducto, Producto, add_producto_referencia
 
 from .models import (
@@ -441,6 +449,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if self.action in (
             "envios_pendientes",
             "guardar_borrador_recepcion_envio",
+            "recibir_parcial_envio",
+            "guardar_ubicaciones_envio",
             "confirmar_recepcion_envio",
             "importacion_inconvenientes",
             "resolver_importacion_inconveniente",
@@ -1398,10 +1408,82 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "detalles": detalles_payload,
                 "inconvenientes_pendientes": 0,
                 "borrador_recepcion": envio.borrador_recepcion or {},
+                "recepcion_progreso": serialize_progress(envio.recepcion_progreso, envio.sucursal_id),
                 "_source": "importacion",
             })
 
         return Response(payload, status=status.HTTP_200_OK)
+
+    def _get_pending_envio_for_user(self, request, envio_id, *, lock=False):
+        queryset = ImportacionEnvio.objects.filter(pk=envio_id, estado=ImportacionEnvio.ESTADO_PENDIENTE)
+        if lock:
+            queryset = queryset.select_for_update()
+        envio = queryset.first()
+        if envio is None:
+            return None, Response(
+                {"detail": "Envío no encontrado o ya recibido."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not is_app_admin(request.user):
+            allowed_ids = get_readable_sucursal_ids(
+                request.user, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS
+            )
+            if allowed_ids is not None and int(envio.sucursal_id) not in set(allowed_ids):
+                return None, Response(
+                    {"detail": "Envío no encontrado o ya recibido."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        return envio, None
+
+    @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/recibir-parcial")
+    def recibir_parcial_envio(self, request, envio_id=None):
+        """Recibe por partes: lo marcado entra ya al stock (en su ubicacion o
+        en POR UBICAR) y se puede vender aunque falte guardarlo."""
+        with transaction.atomic():
+            envio, error = self._get_pending_envio_for_user(request, envio_id, lock=True)
+            if error is not None:
+                return error
+            sent = {
+                int(row["producto_id"]): int(row["cantidad"] or 0)
+                for row in envio.detalles.values("producto_id", "cantidad")
+            }
+            try:
+                progreso = receive_items(
+                    progress=envio.recepcion_progreso,
+                    sucursal_id=envio.sucursal_id,
+                    items=request.data.get("items"),
+                    sent_by_product=sent,
+                )
+            except RecepcionError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            envio.recepcion_progreso = progreso
+            envio.save(update_fields=["recepcion_progreso"])
+        return Response(
+            {"recepcion_progreso": serialize_progress(progreso, envio.sucursal_id)},
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/guardar-ubicaciones")
+    def guardar_ubicaciones_envio(self, request, envio_id=None):
+        """Mueve desde POR UBICAR a la ubicacion definitiva lo ya recibido."""
+        with transaction.atomic():
+            envio, error = self._get_pending_envio_for_user(request, envio_id, lock=True)
+            if error is not None:
+                return error
+            try:
+                progreso, _moved = store_items(
+                    progress=envio.recepcion_progreso,
+                    sucursal_id=envio.sucursal_id,
+                    items=request.data.get("items"),
+                )
+            except RecepcionError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            envio.recepcion_progreso = progreso
+            envio.save(update_fields=["recepcion_progreso"])
+        return Response(
+            {"recepcion_progreso": serialize_progress(progreso, envio.sucursal_id)},
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=["patch"], url_path=r"envios/(?P<envio_id>\d+)/borrador-recepcion")
     def guardar_borrador_recepcion_envio(self, request, envio_id=None):
@@ -1520,11 +1602,33 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     {"detail": "El envío ya fue recibido."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            if pending_to_store(envio_locked.recepcion_progreso, envio_locked.sucursal_id) > 0:
+                return Response(
+                    {"detail": "Guarda en su ubicacion los productos que quedaron en POR UBICAR antes de cerrar la recepcion."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Lo recibido por partes ya esta en el stock: solo se suma la diferencia.
+            ya_recibido_por_producto = received_by_product(envio_locked.recepcion_progreso)
 
             for raw_item in items:
                 product_id = int(raw_item.get("producto_id"))
                 cantidad_recibida = int(raw_item.get("cantidad_recibida") or 0)
+                ya_recibido = int(ya_recibido_por_producto.get(product_id, 0))
+                if cantidad_recibida < ya_recibido:
+                    transaction.set_rollback(True)
+                    return Response(
+                        {
+                            "detail": (
+                                f"La cantidad recibida del producto {product_id} no puede ser menor "
+                                f"a lo que ya se recibio ({ya_recibido})."
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                cantidad_recibida -= ya_recibido
                 ubicaciones_raw = raw_item.get("ubicaciones") or []
+                if ya_recibido and cantidad_recibida <= 0:
+                    ubicaciones_raw = []
 
                 if isinstance(ubicaciones_raw, list) and ubicaciones_raw:
                     for ub in ubicaciones_raw:

@@ -170,6 +170,13 @@ class ImportacionEnvio(models.Model):
         blank=True,
         db_default=models.Value({}, output_field=models.JSONField()),
     )
+    # Recepcion por partes: {"<producto_id>": {"recibido", "por_ubicar"}} (ver
+    # inventario/por_ubicar.py). Lo recibido ya esta en el stock de la sucursal.
+    recepcion_progreso = models.JSONField(
+        default=dict,
+        blank=True,
+        db_default=models.Value({}, output_field=models.JSONField()),
+    )
 
     class Meta:
         ordering = ["-fecha", "-id"]

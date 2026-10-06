@@ -2342,6 +2342,15 @@ function QuickActions({
     return map
   }, [inTransitSubdivisions])
 
+  // Avance de la recepcion por partes, guardado en el servidor:
+  // { producto_id: { recibido, por_ubicar, pendiente_guardar } }.
+  const receiveShipmentProgress = useMemo(
+    () => (activeInTransitShipment?.recepcion_progreso && typeof activeInTransitShipment.recepcion_progreso === 'object'
+      ? activeInTransitShipment.recepcion_progreso
+      : {}),
+    [activeInTransitShipment]
+  )
+
   const receiveShipmentRows = useMemo(() => {
     const rows = Object.values(receiveShipmentDraftByProductId || {}).sort(
       (first, second) => Number(first?.orden || 0) - Number(second?.orden || 0)
@@ -2349,14 +2358,22 @@ function QuickActions({
 
     return rows.map((row) => {
         const sentQty = toPositiveInt(row?.cantidad_enviada, 0)
-        const receivedQty = toPositiveInt(row?.cantidad_recibida, 0)
-        const receivedQtyInput = Object.prototype.hasOwnProperty.call(row, 'cantidad_recibida_input')
-          ? String(row?.cantidad_recibida_input ?? '')
-          : String(receivedQty)
+        const progress = receiveShipmentProgress?.[normalizeId(row?.producto_id)] || null
+        const alreadyReceived = toPositiveInt(progress?.recibido, 0)
+        const pendingToStore = toPositiveInt(progress?.pendiente_guardar, 0)
+        // Ya recibido por partes: su cantidad queda fija (ya esta en el stock)
+        // y al cerrar no se vuelve a sumar (sin ubicaciones nuevas).
+        const isRegistered = alreadyReceived > 0
+        const receivedQty = isRegistered ? alreadyReceived : toPositiveInt(row?.cantidad_recibida, 0)
+        const receivedQtyInput = isRegistered
+          ? String(alreadyReceived)
+          : Object.prototype.hasOwnProperty.call(row, 'cantidad_recibida_input')
+            ? String(row?.cantidad_recibida_input ?? '')
+            : String(receivedQty)
         const missingQty = Math.max(0, sentQty - receivedQty)
         const surplusQty = Math.max(0, receivedQty - sentQty)
         const selectedSubdivisionId = normalizeId(row?.location_draft_subdivision_id)
-        const locations = selectedSubdivisionId && receivedQty > 0
+        const locations = !isRegistered && selectedSubdivisionId && receivedQty > 0
           ? [{ subdivision_id: selectedSubdivisionId, cantidad: receivedQty }]
           : []
         const assignedQty = locations.reduce(
@@ -2371,10 +2388,14 @@ function QuickActions({
           cantidad_faltante: missingQty,
           cantidad_sobrante: surplusQty,
           ubicaciones: locations,
-          cantidad_asignada: assignedQty,
+          cantidad_asignada: isRegistered ? receivedQty : assignedQty,
+          recepcion_registrada: isRegistered,
+          ya_recibido: alreadyReceived,
+          pendiente_guardar: pendingToStore,
+          ...(isRegistered ? { recepcion_revisada: true } : {}),
         }
       })
-  }, [receiveShipmentDraftByProductId])
+  }, [receiveShipmentDraftByProductId, receiveShipmentProgress])
 
   const filteredReceiveShipmentRows = useMemo(() => {
     const term = receiveShipmentFilter.trim().toLowerCase()
@@ -2435,6 +2456,12 @@ function QuickActions({
       const receivedQty = toPositiveInt(row?.cantidad_recibida, 0)
       const assignedQty = toPositiveInt(row?.cantidad_asignada, 0)
 
+      if (row?.recepcion_registrada) {
+        // Ya esta en el stock; para cerrar solo falta guardar lo de POR UBICAR.
+        return requireReviewed && toPositiveInt(row?.pendiente_guardar, 0) > 0
+          ? `Guarda en su ubicacion ${productLabel} (esta en POR UBICAR).`
+          : ''
+      }
       if (requireReviewed && !row?.recepcion_revisada) {
         return `Debes marcar como revisado ${productLabel}.`
       }
@@ -4108,8 +4135,19 @@ function QuickActions({
         const subdivisionsPayload = await subdivisionsResponse.json().catch(() => ({}))
         if (receiveShipmentLoadRequestRef.current !== loadRequestId) return
         const bodegas = parseApiList(bodegasPayload)
-        const divisions = parseApiList(divisionsPayload)
-        const subdivisions = parseApiList(subdivisionsPayload)
+        // POR UBICAR es la ubicacion temporal de la recepcion por partes: no se
+        // ofrece como destino ni como sugerencia (sin ubicacion ya va ahi).
+        const isPorUbicar = (name) => normalizeSearchText(name) === 'por ubicar'
+        const divisions = parseApiList(divisionsPayload).filter((division) => !isPorUbicar(division?.nombre))
+        const porUbicarDivisionIds = new Set(
+          parseApiList(divisionsPayload)
+            .filter((division) => isPorUbicar(division?.nombre))
+            .map((division) => normalizeId(division?.id))
+        )
+        const subdivisions = parseApiList(subdivisionsPayload).filter((subdivision) => (
+          !porUbicarDivisionIds.has(normalizeId(subdivision?.division?.id || subdivision?.division_id || '')) &&
+          !isPorUbicar(subdivision?.division?.nombre)
+        ))
 
         const preferredSubdivisionByProductId = await fetchPreferredReceiveSubdivisions({
           sucursalSolicitanteId,
@@ -4809,6 +4847,117 @@ function QuickActions({
       token,
     ]
   )
+
+  const receiveShipmentActionUrl = useCallback((action) => {
+    const isImportacionEnvio = activeInTransitShipment?._source === 'importacion'
+    return isImportacionEnvio
+      ? `${API_URL}/importaciones/importaciones/envios/${encodeURIComponent(normalizeId(activeInTransitShipment?.envio_id) || normalizeId(activeInTransitShipment?.id))}/${action}/`
+      : `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(normalizeId(activeInTransitShipment?.id))}/${action}/`
+  }, [activeInTransitShipment])
+
+  const applyReceiveShipmentProgress = useCallback((progress) => {
+    const nextProgress = progress && typeof progress === 'object' ? progress : {}
+    const shipmentId = normalizeId(activeInTransitShipment?.id)
+    const source = activeInTransitShipment?._source
+    setActiveInTransitShipment((prev) => (prev ? { ...prev, recepcion_progreso: nextProgress } : prev))
+    setInTransitShipments((prev) => (Array.isArray(prev)
+      ? prev.map((item) => (
+        normalizeId(item?.id) === shipmentId && item?._source === source
+          ? { ...item, recepcion_progreso: nextProgress }
+          : item
+      ))
+      : prev))
+  }, [activeInTransitShipment])
+
+  // Recibir por partes: lo marcado entra ya al stock (en la ubicacion elegida
+  // o, si no hay, en POR UBICAR) y la sucursal puede venderlo enseguida.
+  const receiveShipmentReceivableRows = useMemo(
+    () => receiveShipmentRows.filter((row) => (
+      !row?.recepcion_registrada && row?.recepcion_revisada && toPositiveInt(row?.cantidad_recibida, 0) > 0
+    )),
+    [receiveShipmentRows]
+  )
+  const receiveShipmentStorableRows = useMemo(
+    () => receiveShipmentRows.filter((row) => (
+      row?.recepcion_registrada &&
+      toPositiveInt(row?.pendiente_guardar, 0) > 0 &&
+      normalizeId(row?.location_draft_subdivision_id)
+    )),
+    [receiveShipmentRows]
+  )
+
+  const handleReceiveMarkedRows = useCallback(async () => {
+    if (!token || !activeInTransitShipment || !receiveShipmentReceivableRows.length) return
+    setReceiveShipmentError('')
+    setReceiveShipmentSubmitting(true)
+    try {
+      const response = await authFetch(
+        receiveShipmentActionUrl('recibir-parcial'),
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            items: receiveShipmentReceivableRows.map((row) => ({
+              producto_id: toPositiveInt(row?.producto_id, 0),
+              cantidad: toPositiveInt(row?.cantidad_recibida, 0),
+              ...(normalizeId(row?.location_draft_subdivision_id)
+                ? { subdivision_id: toPositiveInt(row.location_draft_subdivision_id, 0) }
+                : {}),
+            })),
+          }),
+        },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron recibir los productos.')
+      applyReceiveShipmentProgress(payload?.recepcion_progreso)
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Recibido',
+        detail: `${receiveShipmentReceivableRows.length} producto(s) ya estan en stock y se pueden vender.`,
+        life: 3200,
+      })
+    } catch (error) {
+      setReceiveShipmentError(error?.message || 'No se pudieron recibir los productos.')
+    } finally {
+      setReceiveShipmentSubmitting(false)
+    }
+  }, [activeInTransitShipment, applyReceiveShipmentProgress, receiveShipmentActionUrl, receiveShipmentReceivableRows, token])
+
+  // Guardar: mueve desde POR UBICAR a la ubicacion elegida.
+  const handleStoreReceivedRows = useCallback(async (rowsToStore) => {
+    const rows = (Array.isArray(rowsToStore) ? rowsToStore : []).filter((row) => normalizeId(row?.location_draft_subdivision_id))
+    if (!token || !activeInTransitShipment || !rows.length) return
+    setReceiveShipmentError('')
+    setReceiveShipmentSubmitting(true)
+    try {
+      const response = await authFetch(
+        receiveShipmentActionUrl('guardar-ubicaciones'),
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            items: rows.map((row) => ({
+              producto_id: toPositiveInt(row?.producto_id, 0),
+              subdivision_id: toPositiveInt(row?.location_draft_subdivision_id, 0),
+            })),
+          }),
+        },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron guardar las ubicaciones.')
+      applyReceiveShipmentProgress(payload?.recepcion_progreso)
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Guardado',
+        detail: `${rows.length} producto(s) guardados en su ubicacion.`,
+        life: 2600,
+      })
+    } catch (error) {
+      setReceiveShipmentError(error?.message || 'No se pudieron guardar las ubicaciones.')
+    } finally {
+      setReceiveShipmentSubmitting(false)
+    }
+  }, [activeInTransitShipment, applyReceiveShipmentProgress, receiveShipmentActionUrl, token])
 
   const handleSubmitShipmentReception = useCallback(
     async () => {
@@ -5974,7 +6123,6 @@ function QuickActions({
                       const sentQty = toPositiveInt(row?.cantidad_enviada, 0)
                       const receivedQty = toPositiveInt(row?.cantidad_recibida, 0)
                       const isReviewed = Boolean(row?.recepcion_revisada)
-                      const rowValidationMessage = getReceiveShipmentRowValidationMessage(row)
                       const rowSummaryValidationMessage = receiveShipmentShowErrors
                         ? getReceiveShipmentRowValidationMessage(row, { requireReviewed: true })
                         : ''
@@ -5990,20 +6138,28 @@ function QuickActions({
                       const selectedBodega = inTransitBodegaById.get(selectedBodegaId) || null
                       const selectedDivision = inTransitDivisionById.get(selectedDivisionId) || null
                       const selectedSubdivision = inTransitSubdivisionById.get(selectedSubdivisionId) || null
-                      const statusLabel = !isReviewed
-                        ? 'Por revisar'
-                        : rowValidationMessage
-                          ? 'Falta info'
-                          : 'Listo'
+                      const isRegistered = Boolean(row?.recepcion_registrada)
+                      const pendingToStore = toPositiveInt(row?.pendiente_guardar, 0)
+                      const statusLabel = isRegistered
+                        ? (pendingToStore > 0 ? 'Por guardar' : 'Recibido')
+                        : !isReviewed
+                          ? 'Por revisar'
+                          : 'Listo para recibir'
                       const hintMessage = rowSummaryValidationMessage
-                        || (!isReviewed
-                          ? 'Marca esta linea cuando termines de revisar el producto.'
-                          : rowValidationMessage)
+                        || (isRegistered
+                          ? (pendingToStore > 0
+                            ? `Ya esta en stock (en POR UBICAR). Elige su ubicacion y guardalo.`
+                            : '')
+                          : !isReviewed
+                            ? 'Marca esta linea cuando termines de revisar el producto.'
+                            : selectedSubdivisionId
+                              ? ''
+                              : 'Sin ubicacion: al recibirlo queda en POR UBICAR y ya se puede vender.')
 
                       return (
                         <article
                           key={`receive-item-${rowProductId}`}
-                          className={`quick-actions__receive-item${isReviewed ? ' is-reviewed' : ''}${!isReviewed || rowValidationMessage ? ' is-pending' : ' is-ready'}${rowSummaryValidationMessage ? ' has-validation-error' : ''}`}
+                          className={`quick-actions__receive-item${isReviewed ? ' is-reviewed' : ''}${!isReviewed || (isRegistered && pendingToStore > 0) ? ' is-pending' : ' is-ready'}${isRegistered ? ' is-registered' : ''}${rowSummaryValidationMessage ? ' has-validation-error' : ''}`}
                         >
                           <div className="quick-actions__receive-item-head quick-actions__receive-item-head--check">
                             <label className="quick-actions__receive-check quick-actions__receive-check--row">
@@ -6014,7 +6170,7 @@ function QuickActions({
                                 onChange={(event) =>
                                   handleReceiveShipmentReviewToggle(rowProductId, event.checked)
                                 }
-                                disabled={receiveShipmentSubmitting}
+                                disabled={receiveShipmentSubmitting || isRegistered}
                                 aria-label={`Marcar ${getReceiveShipmentRowLabel(row)} como revisado`}
                               />
                             </label>
@@ -6032,7 +6188,7 @@ function QuickActions({
                               )}
                             </div>
 
-                            <div className={`quick-actions__receive-item-badge${!isReviewed || rowValidationMessage ? ' is-pending' : ' is-ready'}`}>
+                            <div className={`quick-actions__receive-item-badge${isRegistered ? (pendingToStore > 0 ? ' is-to-store' : ' is-received') : !isReviewed ? ' is-pending' : ' is-ready'}`}>
                               {statusLabel}
                             </div>
                           </div>
@@ -6050,6 +6206,12 @@ function QuickActions({
                               <span className="quick-actions__receive-item-meta-alert">
                                 Faltan
                                 <strong>{missingQty}</strong>
+                              </span>
+                            )}
+                            {pendingToStore > 0 && (
+                              <span className="quick-actions__receive-item-meta-store">
+                                Por guardar
+                                <strong>{pendingToStore}</strong>
                               </span>
                             )}
                           </div>
@@ -6076,7 +6238,8 @@ function QuickActions({
                                     event.target.value
                                   )
                                 }
-                                disabled={receiveShipmentSubmitting}
+                                disabled={receiveShipmentSubmitting || isRegistered}
+                                title={isRegistered ? 'Ya recibido: esta cantidad ya entro al stock.' : undefined}
                                 autoFocus={index === 0}
                               />
                             </label>
@@ -6087,6 +6250,7 @@ function QuickActions({
                             </div>
                           </div>
 
+                          {(!isRegistered || pendingToStore > 0) && (
                           <div className="quick-actions__receive-location-row quick-actions__receive-location-row--review">
                             <div className="quick-actions__receive-location-field">
                               <small>Bodega</small>
@@ -6139,8 +6303,42 @@ function QuickActions({
                               </div>
                             </div>
                           </div>
+                          )}
 
-                          {missingQty > 0 && (
+                          {/* Estado de la recepcion por partes (visible tambien en la lista). */}
+                          {(isRegistered || (isReviewed && !selectedSubdivisionId)) && (
+                            <div
+                              className={`quick-actions__receive-item-state${
+                                isRegistered ? (pendingToStore > 0 ? ' is-to-store' : ' is-received') : ' is-no-location'
+                              }`}
+                            >
+                              {isRegistered ? (
+                                pendingToStore > 0 ? (
+                                  <>
+                                    <span>
+                                      <strong>{`Recibido · ${pendingToStore} en POR UBICAR`}</strong>
+                                      {' — ya se puede vender. Elige su ubicacion y guardalo.'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="quick-actions__receive-btn quick-actions__receive-btn--primary quick-actions__receive-store-btn"
+                                      onClick={() => void handleStoreReceivedRows([row])}
+                                      disabled={receiveShipmentSubmitting || !selectedSubdivisionId}
+                                      title={selectedSubdivisionId ? 'Mover desde POR UBICAR a esta ubicacion' : 'Elige primero la ubicacion'}
+                                    >
+                                      Guardar
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span><strong>{`Recibido · ${row?.ya_recibido} en stock`}</strong>{' — guardado en su ubicacion.'}</span>
+                                )
+                              ) : (
+                                <span>Sin ubicacion: al recibirlo queda en <strong>POR UBICAR</strong> y ya se puede vender.</span>
+                              )}
+                            </div>
+                          )}
+
+                          {missingQty > 0 && !isRegistered && (
                             <label className="quick-actions__receive-note">
                               <span>Novedad del faltante (obligatoria)</span>
                               <textarea
@@ -6513,6 +6711,28 @@ function QuickActions({
                 </>
               ) : (
                 <>
+                  {receiveShipmentStorableRows.length > 0 && (
+                    <button
+                      type="button"
+                      className="quick-actions__receive-btn quick-actions__receive-btn--ghost"
+                      onClick={() => void handleStoreReceivedRows(receiveShipmentStorableRows)}
+                      disabled={receiveShipmentSubmitting}
+                      title="Mover a su ubicacion los productos recibidos que estan en POR UBICAR"
+                    >
+                      {`Guardar ubicaciones (${receiveShipmentStorableRows.length})`}
+                    </button>
+                  )}
+                  {receiveShipmentReceivableRows.length > 0 && (
+                    <button
+                      type="button"
+                      className="quick-actions__receive-btn quick-actions__receive-btn--success"
+                      onClick={() => void handleReceiveMarkedRows()}
+                      disabled={receiveShipmentSubmitting}
+                      title="Los productos marcados entran ya al stock (sin ubicacion: a POR UBICAR) y se pueden vender"
+                    >
+                      {receiveShipmentSubmitting ? 'Guardando...' : `Recibir marcados (${receiveShipmentReceivableRows.length})`}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="quick-actions__receive-btn quick-actions__receive-btn--primary"
