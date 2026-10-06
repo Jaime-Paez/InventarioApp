@@ -5146,13 +5146,26 @@ function QuickActions({
     }
     if (autoReceivedShipmentRef.current === activeInTransitShipmentKey) return
     if (receiveShipmentSubmitting || !receiveShipmentRows.length) return
+    // Esperar a que carguen las ubicaciones guardadas (llegan despues de
+    // abrir); si se recibe antes, todo se iba a POR UBICAR. Si la carga
+    // fallo no se hace nada automatico.
+    if (inTransitSubdivisionsLoading || openingInTransitShipmentId || !inTransitSubdivisions.length) return
     autoReceivedShipmentRef.current = activeInTransitShipmentKey
-    if (receiveShipmentReceivableRows.length) {
-      void receiveRowsNow(receiveShipmentReceivableRows, { blocking: true })
+    const withLocation = receiveShipmentReceivableRows.filter((row) => normalizeId(row?.location_draft_subdivision_id))
+    // Marcados sin ubicacion: se les quita el check (no se reciben solos).
+    receiveShipmentReceivableRows
+      .filter((row) => !normalizeId(row?.location_draft_subdivision_id))
+      .forEach((row) => handleReceiveShipmentReviewToggle(normalizeId(row?.producto_id), false))
+    if (withLocation.length) {
+      void receiveRowsNow(withLocation, { blocking: true })
     }
   }, [
     activeInTransitShipmentKey,
+    handleReceiveShipmentReviewToggle,
+    inTransitSubdivisions.length,
+    inTransitSubdivisionsLoading,
     isReceiveShipmentModalOpen,
+    openingInTransitShipmentId,
     receiveRowsNow,
     receiveShipmentReceivableRows,
     receiveShipmentRows.length,
