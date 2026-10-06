@@ -770,14 +770,16 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     }
   }, [canUpdate, notifyError, token])
 
-  const loadSummary = useCallback(async () => {
+  // `silent`: refresco automatico de fondo. No muestra el loader (la tabla
+  // saltaba cada 5 s) ni borra lo que ya se ve si una consulta falla.
+  const loadSummary = useCallback(async ({ silent = false } = {}) => {
     if (!token || !canRead) {
       setSummaryRows([])
       setSelectedBranchId('')
       return []
     }
 
-    setSummaryLoading(true)
+    if (!silent) setSummaryLoading(true)
     try {
       const response = await authFetch(
         `${API_URL}/recordatorios/inspeccion-aleatoria/admin/resumen/`,
@@ -799,16 +801,17 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       })
       return rows
     } catch (error) {
+      if (silent) return []
       setSummaryRows([])
       setSelectedBranchId('')
       notifyError(error?.message || 'No se pudo cargar el resumen por sucursal.')
       return []
     } finally {
-      setSummaryLoading(false)
+      if (!silent) setSummaryLoading(false)
     }
   }, [canRead, notifyError, token])
 
-  const loadItems = useCallback(async () => {
+  const loadItems = useCallback(async ({ silent = false } = {}) => {
     const branchId = normalizeId(selectedBranchId)
     if (!token || !canRead || !branchId) {
       setItemsRows([])
@@ -816,7 +819,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       return []
     }
 
-    setItemsLoading(true)
+    if (!silent) setItemsLoading(true)
     try {
       const endpoint = new URL(`${API_URL}/recordatorios/inspeccion-aleatoria/admin/items/`)
       endpoint.searchParams.set('sucursal_id', branchId)
@@ -839,12 +842,13 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       }
       return rows
     } catch (error) {
+      if (silent) return []
       setItemsRows([])
       setItemsTotalCount(0)
       notifyError(error?.message || 'No se pudieron cargar las diferencias.')
       return []
     } finally {
-      setItemsLoading(false)
+      if (!silent) setItemsLoading(false)
     }
   }, [canRead, itemsFilter, itemsPage, itemsPageSize, notifyError, selectedBranchId, token])
 
@@ -866,8 +870,8 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     if (!canRead) return undefined
     const intervalId = setInterval(() => {
       if (verifyWizardOpen) return
-      void loadSummary()
-      void loadItems()
+      void loadSummary({ silent: true })
+      void loadItems({ silent: true })
     }, 5000)
     return () => clearInterval(intervalId)
   }, [canRead, verifyWizardOpen, loadItems, loadSummary])
