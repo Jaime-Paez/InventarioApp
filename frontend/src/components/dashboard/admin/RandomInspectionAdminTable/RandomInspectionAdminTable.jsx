@@ -248,7 +248,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [sendNowDialogLoading, setSendNowDialogLoading] = useState(false)
   const [sendNowParams, setSendNowParams] = useState({ cantidad_productos: '', hora_recordatorio: '' })
   const [sendNowSelectedUserIds, setSendNowSelectedUserIds] = useState(new Set())
-  const [sendNowMode, setSendNowMode] = useState('aleatorio')
+  // "Enviar ahora" ya no ofrece la muestra aleatoria (esa sale sola cada
+  // dia): solo division especifica o lista especifica.
+  const [sendNowMode, setSendNowMode] = useState('division')
   const [divisionSucursalId, setDivisionSucursalId] = useState('')
   const [divisionBodegaId, setDivisionBodegaId] = useState('')
   const [divisionId, setDivisionId] = useState('')
@@ -1445,7 +1447,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 // estaba pasando.
                 setShowSendNowDialog(true)
                 setSendNowDialogLoading(true)
-                setSendNowMode('aleatorio')
+                setSendNowMode('division')
                 setDivisionSucursalId('')
                 setDivisionBodegaId('')
                 setDivisionId('')
@@ -2119,14 +2121,6 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             </header>
 
             <div className="create-user__tabs" role="tablist">
-              <button
-                type="button"
-                className={`create-user__tab${sendNowMode === 'aleatorio' ? ' create-user__tab--active' : ''}`}
-                onClick={() => setSendNowMode('aleatorio')}
-                disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
-              >
-                Aleatorio
-              </button>
               <button
                 type="button"
                 className={`create-user__tab${sendNowMode === 'division' ? ' create-user__tab--active' : ''}`}
