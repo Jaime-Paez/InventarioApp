@@ -4858,10 +4858,24 @@ function QuickActions({
   }, [activeInTransitShipment])
 
   const applyReceiveShipmentProgress = useCallback((progress) => {
-    const nextProgress = progress && typeof progress === 'object' ? progress : {}
+    const incoming = progress && typeof progress === 'object' ? progress : {}
     const shipmentId = normalizeId(activeInTransitShipment?.id)
     const source = activeInTransitShipment?._source
-    setActiveInTransitShipment((prev) => (prev ? { ...prev, recepcion_progreso: nextProgress } : prev))
+    // Al marcar varios checks seguidos las respuestas pueden llegar en otro
+    // orden: lo recibido solo crece, asi que por producto gana el que tenga
+    // mas recibido (a igualdad, el que acaba de llegar).
+    const merge = (current) => {
+      const merged = { ...(current && typeof current === 'object' ? current : {}) }
+      Object.entries(incoming).forEach(([productId, entry]) => {
+        const previous = merged[productId]
+        if (!previous || Number(entry?.recibido || 0) >= Number(previous?.recibido || 0)) {
+          merged[productId] = entry
+        }
+      })
+      return merged
+    }
+    const nextProgress = merge(activeInTransitShipment?.recepcion_progreso)
+    setActiveInTransitShipment((prev) => (prev ? { ...prev, recepcion_progreso: merge(prev.recepcion_progreso) } : prev))
     setInTransitShipments((prev) => (Array.isArray(prev)
       ? prev.map((item) => (
         normalizeId(item?.id) === shipmentId && item?._source === source
@@ -4888,17 +4902,27 @@ function QuickActions({
     [receiveShipmentRows]
   )
 
-  const handleReceiveMarkedRows = useCallback(async () => {
-    if (!token || !activeInTransitShipment || !receiveShipmentReceivableRows.length) return
+  const [receivingProductIds, setReceivingProductIds] = useState(() => new Set())
+
+  // Recibe ya estas filas (entran al stock). `blocking` deshabilita la
+  // ventana mientras tanto (boton masivo); al marcar un check no se bloquea
+  // para poder seguir marcando.
+  const receiveRowsNow = useCallback(async (rowsToReceive, { blocking = false } = {}) => {
+    const rows = (Array.isArray(rowsToReceive) ? rowsToReceive : []).filter((row) => (
+      !row?.recepcion_registrada && toPositiveInt(row?.cantidad_recibida, 0) > 0
+    ))
+    if (!token || !activeInTransitShipment || !rows.length) return
+    const ids = rows.map((row) => normalizeId(row?.producto_id))
     setReceiveShipmentError('')
-    setReceiveShipmentSubmitting(true)
+    if (blocking) setReceiveShipmentSubmitting(true)
+    setReceivingProductIds((prev) => new Set([...prev, ...ids]))
     try {
       const response = await authFetch(
         receiveShipmentActionUrl('recibir-parcial'),
         {
           method: 'POST',
           body: JSON.stringify({
-            items: receiveShipmentReceivableRows.map((row) => ({
+            items: rows.map((row) => ({
               producto_id: toPositiveInt(row?.producto_id, 0),
               cantidad: toPositiveInt(row?.cantidad_recibida, 0),
               ...(normalizeId(row?.location_draft_subdivision_id)
@@ -4912,18 +4936,61 @@ function QuickActions({
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron recibir los productos.')
       applyReceiveShipmentProgress(payload?.recepcion_progreso)
-      toast.current?.show({
-        severity: 'success',
-        summary: 'Recibido',
-        detail: `${receiveShipmentReceivableRows.length} producto(s) ya estan en stock y se pueden vender.`,
-        life: 3200,
-      })
+      if (blocking || rows.length > 1) {
+        toast.current?.show({
+          severity: 'success',
+          summary: 'Recibido',
+          detail: `${rows.length} producto(s) ya estan en stock y se pueden vender.`,
+          life: 3200,
+        })
+      }
     } catch (error) {
       setReceiveShipmentError(error?.message || 'No se pudieron recibir los productos.')
     } finally {
-      setReceiveShipmentSubmitting(false)
+      if (blocking) setReceiveShipmentSubmitting(false)
+      setReceivingProductIds((prev) => {
+        const next = new Set(prev)
+        ids.forEach((id) => next.delete(id))
+        return next
+      })
     }
-  }, [activeInTransitShipment, applyReceiveShipmentProgress, receiveShipmentActionUrl, receiveShipmentReceivableRows, token])
+  }, [activeInTransitShipment, applyReceiveShipmentProgress, receiveShipmentActionUrl, token])
+
+  const handleReceiveMarkedRows = useCallback(
+    () => receiveRowsNow(receiveShipmentReceivableRows, { blocking: true }),
+    [receiveRowsNow, receiveShipmentReceivableRows]
+  )
+
+  // Marcar el check = ya se recibe ese producto (no hace falta terminar el
+  // envio para que entre al stock).
+  const handleReceiveRowCheck = useCallback((productId, checked) => {
+    handleReceiveShipmentReviewToggle(productId, checked)
+    if (!checked) return
+    const row = receiveShipmentRows.find((item) => normalizeId(item?.producto_id) === normalizeId(productId))
+    if (row) void receiveRowsNow([row])
+  }, [handleReceiveShipmentReviewToggle, receiveRowsNow, receiveShipmentRows])
+
+  const handleReceiveAllCheck = useCallback((checked) => {
+    handleReceiveShipmentToggleAllReviewed(checked)
+    if (checked) void receiveRowsNow(receiveShipmentRows, { blocking: true })
+  }, [handleReceiveShipmentToggleAllReviewed, receiveRowsNow, receiveShipmentRows])
+
+  // Avance de la recepcion (barra arriba de la lista).
+  const receiveShipmentProgressSummary = useMemo(() => {
+    const total = receiveShipmentRows.length
+    const received = receiveShipmentRows.filter((row) => row?.recepcion_registrada).length
+    const unitsSent = receiveShipmentRows.reduce((sum, row) => sum + toPositiveInt(row?.cantidad_enviada, 0), 0)
+    const unitsReceived = receiveShipmentRows.reduce((sum, row) => sum + toPositiveInt(row?.ya_recibido, 0), 0)
+    const toStore = receiveShipmentRows.filter((row) => toPositiveInt(row?.pendiente_guardar, 0) > 0).length
+    return {
+      total,
+      received,
+      unitsSent,
+      unitsReceived,
+      toStore,
+      percent: total ? Math.round((received / total) * 100) : 0,
+    }
+  }, [receiveShipmentRows])
 
   // Guardar: mueve desde POR UBICAR a la ubicacion elegida.
   const handleStoreReceivedRows = useCallback(async (rowsToStore) => {
@@ -5997,7 +6064,7 @@ function QuickActions({
                               }
                             }}
                             onChange={(event) =>
-                              handleReceiveShipmentToggleAllReviewed(event.target.checked)
+                              handleReceiveAllCheck(event.target.checked)
                             }
                             disabled={receiveShipmentSubmitting}
                           />
@@ -6031,6 +6098,30 @@ function QuickActions({
                       </div>
                     </div>
                   </article>
+
+                  <div
+                    className="quick-actions__receive-progressbar"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={receiveShipmentProgressSummary.total}
+                    aria-valuenow={receiveShipmentProgressSummary.received}
+                  >
+                    <div className="quick-actions__receive-progressbar-head">
+                      <strong>
+                        {`Recibidos ${receiveShipmentProgressSummary.received} de ${receiveShipmentProgressSummary.total} productos`}
+                      </strong>
+                      <span>
+                        {`${receiveShipmentProgressSummary.unitsReceived} de ${receiveShipmentProgressSummary.unitsSent} unidades · ${receiveShipmentProgressSummary.percent}%`}
+                        {receiveShipmentProgressSummary.toStore > 0 ? ` · ${receiveShipmentProgressSummary.toStore} por guardar` : ''}
+                      </span>
+                    </div>
+                    <div className="quick-actions__receive-progressbar-track">
+                      <div
+                        className="quick-actions__receive-progressbar-fill"
+                        style={{ width: `${receiveShipmentProgressSummary.percent}%` }}
+                      />
+                    </div>
+                  </div>
 
                   <div className="quick-actions__receive-search-bar">
                     <div className="quick-actions__receive-search">
@@ -6175,9 +6266,9 @@ function QuickActions({
                                 inputId={`receive-reviewed-${rowProductId}`}
                                 checked={isReviewed}
                                 onChange={(event) =>
-                                  handleReceiveShipmentReviewToggle(rowProductId, event.checked)
+                                  handleReceiveRowCheck(rowProductId, event.checked)
                                 }
-                                disabled={receiveShipmentSubmitting || isRegistered}
+                                disabled={receiveShipmentSubmitting || isRegistered || receivingProductIds.has(rowProductId)}
                                 aria-label={`Marcar ${getReceiveShipmentRowLabel(row)} como revisado`}
                               />
                             </label>

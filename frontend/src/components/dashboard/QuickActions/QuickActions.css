@@ -3323,3 +3323,50 @@
 .quick-actions__receive-dialog.dark .quick-actions__receive-head-note {
   color: var(--color-text-dark);
 }
+
+/* Barra de avance de la recepcion */
+.quick-actions__receive-progressbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.quick-actions__receive-progressbar-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 0.85rem;
+}
+
+.quick-actions__receive-progressbar-head span {
+  opacity: 0.8;
+}
+
+.quick-actions__receive-progressbar-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border) 55%, transparent);
+}
+
+.quick-actions__receive-progressbar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #16a34a;
+  transition: width 240ms ease-out;
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-progressbar-head {
+  color: var(--color-text-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-progressbar-head strong {
+  color: var(--color-text-title-dark);
+}
+
+.quick-actions__receive-dialog.dark .quick-actions__receive-progressbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
