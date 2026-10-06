@@ -27,6 +27,7 @@ import {
   upsertTransferReminder,
   writeRemindersToStorage,
 } from '../common/reminders/remindersStorage'
+import { TIPO_ENVIO_OPTIONS } from './tipoEnvio'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -52,6 +53,7 @@ const initialForm = {
   iva_rate: String(DEFAULT_IVA_RATE),
   solicitudTrasladoId: '',
   tipo_pago: '',
+  tipo_envio: 'traslado_normal',
 }
 
 const TIPO_PAGO_OPTIONS = [
@@ -3480,6 +3482,7 @@ function CreateSalida({
           : undefined,
         descripcion: buildDescripcion(ventaClienteLabel),
         factura_referencia: isVenta || isDevolucion || isTraslado ? String(formData.factura_referencia || '').trim() : '',
+        ...(isTraslado ? { tipo_envio: formData.tipo_envio || 'traslado_normal' } : {}),
         funcional: true,
         sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
         estado_movimiento_id: Number(estadoMovimientoId),
@@ -3842,7 +3845,7 @@ function CreateSalida({
                       <div className="create-salida__field-groups">
                           <div className="create-salida__field-group create-salida__field-group--defined create-salida__field-group--paired">
                             <div
-                              className={`create-user__grid create-user__grid--${isVenta || isTraslado ? 'three' : 'two'}${
+                              className={`create-user__grid create-user__grid--${isTraslado ? 'four' : isVenta ? 'three' : 'two'}${
                                 isPrefilledTransfer ? ' create-salida__prefill-grid' : ''
                               }`}
                             >
@@ -3895,6 +3898,23 @@ function CreateSalida({
                                     </select>
                                   </label>
                                 )}
+
+                              {isTraslado && (
+                                <label className="create-user__field create-user__field--required">
+                                  <span>Tipo de salida</span>
+                                  <select
+                                    name="tipo_envio"
+                                    value={formData.tipo_envio || 'traslado_normal'}
+                                    onChange={handleChange}
+                                    disabled={loading}
+                                    required
+                                  >
+                                    {TIPO_ENVIO_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )}
 
                               {isVenta && (
                                 <>

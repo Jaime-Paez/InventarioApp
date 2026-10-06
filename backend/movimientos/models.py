@@ -65,6 +65,20 @@ class MovimientoInventario(models.Model):
         help_text="True si es una salida de garantia creada por no-admin que requiere aprobacion.",
     )
 
+    class TipoEnvio(models.TextChoices):
+        TRASLADO_NORMAL = "traslado_normal", "Traslado normal"
+        ENVIO_CLIENTE = "envio_cliente", "Envio cliente"
+        ENVIO_PROVINCIA = "envio_provincia", "Envio provincia"
+
+    # Solo salidas a otra sucursal (traslado): como se manda. Vacio en el resto.
+    tipo_envio = models.CharField(
+        max_length=20,
+        choices=TipoEnvio.choices,
+        blank=True,
+        default="",
+        db_default="",
+    )
+
     class EstadoGarantia(models.TextChoices):
         SOLICITADA = "solicitada", "Solicitada"
         REALIZADA = "realizada", "Realizada"

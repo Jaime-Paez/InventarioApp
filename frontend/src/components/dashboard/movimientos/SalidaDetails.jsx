@@ -11,6 +11,7 @@ import useTableCellHover from '../common/useTableCellHover.jsx'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import { normalizeId } from '../common/reminders/remindersStorage'
 import StaticFieldDisplay from './StaticFieldDisplay'
+import { tipoEnvioLabel } from './tipoEnvio'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -816,6 +817,7 @@ function SalidaDetails({
         fecha: salida?.fecha || todayISO(),
         no_documento: salida?.no_documento ?? '',
         factura_referencia: salida?.factura_referencia ?? '',
+        tipo_envio: salida?.tipo_envio ?? '',
         descripcion,
         funcional: Boolean(salida?.funcional),
         sucursalObjetivoId: sucursalObjetivoId ? String(sucursalObjetivoId) : '',
@@ -1981,6 +1983,13 @@ function SalidaDetails({
                         )}
 
                         <StaticFieldDisplay label="Estado del movimiento" value={selectedEstadoName} />
+
+                        {isTraslado && (
+                          <StaticFieldDisplay
+                            label="Tipo de salida"
+                            value={tipoEnvioLabel(formData.tipo_envio)}
+                          />
+                        )}
                       </div>
                     </div>
 

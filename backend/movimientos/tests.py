@@ -192,6 +192,54 @@ class MovimientoInventarioStockRulesTests(TestCase):
         self.assertEqual(after, before - 3)
 
 
+    def _traslado_payload(self, **extra):
+        subtipo_traslado, _ = SubTipoMovimiento.objects.get_or_create(
+            tipo_movimiento=self.tipo_salida,
+            nombre="Traslado",
+        )
+        estado_enviado, _ = EstadoMovimiento.objects.get_or_create(nombre="Enviado")
+        payload = {
+            "sucursal_id": self.sucursal.id,
+            "tipo_movimiento_id": self.tipo_salida.id,
+            "sub_tipo_movimiento_id": subtipo_traslado.id,
+            "estado_movimiento_id": estado_enviado.id,
+            "sucursal_objetivo_id": self.sucursal_secundaria.id,
+            "no_documento": "TR-TIPO-1",
+            "factura_referencia": "FAC-TR-1",
+            "descripcion": "Salida a sucursal",
+            "fecha": "2026-10-06",
+            "detalles": self._build_detail(cantidad=2),
+        }
+        payload.update(extra)
+        return payload
+
+    def test_salida_a_sucursal_guarda_tipo_de_salida(self):
+        movimiento = self._create_movement(self._traslado_payload(tipo_envio="envio_provincia"))
+        self.assertEqual(movimiento.tipo_envio, "envio_provincia")
+
+    def test_salida_a_sucursal_sin_tipo_queda_traslado_normal(self):
+        movimiento = self._create_movement(self._traslado_payload())
+        self.assertEqual(movimiento.tipo_envio, "traslado_normal")
+
+    def test_salida_a_sucursal_tipo_invalido(self):
+        serializer = MovimientoInventarioSerializer(data=self._traslado_payload(tipo_envio="avion"))
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("tipo_envio", serializer.errors)
+
+    def test_venta_no_tiene_tipo_de_salida(self):
+        payload = {
+            "sucursal_id": self.sucursal.id,
+            "tipo_movimiento_id": self.tipo_salida.id,
+            "sub_tipo_movimiento_id": self.subtipo_venta.id,
+            "estado_movimiento_id": self.estado_vendido.id,
+            "no_documento": "SAL-TIPO",
+            "descripcion": "Venta",
+            "fecha": "2026-10-06",
+            "tipo_envio": "envio_cliente",
+            "detalles": self._build_detail(cantidad=1),
+        }
+        self.assertEqual(self._create_movement(payload).tipo_envio, "")
+
 class DocumentNumberConcurrencyTests(TransactionTestCase):
     """
     Dos usuarios creando entradas/salidas al mismo tiempo terminaban
