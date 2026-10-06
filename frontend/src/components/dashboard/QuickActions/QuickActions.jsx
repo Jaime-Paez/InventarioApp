@@ -3000,11 +3000,22 @@ function QuickActions({
       Object.values(receiveShipmentDraftByProductId).forEach((row) => {
         const pid = normalizeId(row?.producto_id)
         if (!pid) return
+        // La ubicacion que cuenta es la del selector de la fila (igual que al
+        // confirmar, ver receiveShipmentRows). Antes se guardaba `ubicaciones`
+        // del borrador, que solo traia la sugerencia inicial: lo que el
+        // usuario elegia nunca llegaba al servidor y al reabrir se perdia.
+        // Mientras el selector aun no se hidrata (catalogos cargando) se
+        // conserva lo ya guardado para no borrarlo.
+        const selectedSubdivisionId = normalizeId(row?.location_draft_subdivision_id)
+        const receivedQty = toPositiveInt(row?.cantidad_recibida, 0)
+        const ubicaciones = selectedSubdivisionId
+          ? (receivedQty > 0 ? [{ subdivision_id: selectedSubdivisionId, cantidad: receivedQty }] : [])
+          : (Array.isArray(row?.ubicaciones) ? row.ubicaciones : [])
         items[pid] = {
           cantidad_recibida: row?.cantidad_recibida ?? null,
           recepcion_revisada: Boolean(row?.recepcion_revisada),
           novedad: String(row?.novedad || '').trim(),
-          ubicaciones: Array.isArray(row?.ubicaciones) ? row.ubicaciones : [],
+          ubicaciones,
         }
       })
       // Los envios de importacion tienen su propio borrador: antes se mandaban
@@ -4042,8 +4053,10 @@ function QuickActions({
                 location_draft_division_id: suggestedDivisionId,
                 location_draft_subdivision_id: suggestedSubdivisionId,
               }
-            } else if (alreadyHasUbicaciones && suggestedBodegaId && !updated[productId].location_draft_bodega_id) {
-              // Restore location picker state from the saved subdivision ID
+            } else if (alreadyHasUbicaciones && !updated[productId].location_draft_subdivision_id) {
+              // Restaurar el selector desde la ubicacion guardada. Antes solo
+              // pasaba si el producto tenia ubicacion sugerida, asi que los
+              // productos nuevos en la sucursal reabrian sin ubicacion.
               const savedSubId = normalizeId(updated[productId]?.ubicaciones?.[0]?.subdivision_id)
               const savedSub = localSubdivisionsById.get(savedSubId) || null
               if (savedSub) {
