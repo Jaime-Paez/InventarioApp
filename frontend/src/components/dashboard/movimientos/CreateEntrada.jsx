@@ -1959,31 +1959,30 @@ function CreateEntrada({
     const trigger = locationTriggerRefs.current[`${locationDropdownProductId}:${locationDropdownField}`]
     if (!trigger) return
     const triggerRect = trigger.getBoundingClientRect()
-    const spacing = 10
-    const availableAbove = Math.max(
-      Math.floor(triggerRect.top - VIEWPORT_PADDING - spacing),
+    const spacing = 6
+    const availableAbove = Math.max(Math.floor(triggerRect.top - VIEWPORT_PADDING - spacing), 0)
+    const availableBelow = Math.max(
+      Math.floor(window.innerHeight - triggerRect.bottom - VIEWPORT_PADDING - spacing),
       0
     )
-    // Siempre se abre hacia arriba (nunca hacia abajo), sin importar el
-    // espacio disponible debajo del trigger. El alto se limita al espacio
-    // real disponible arriba (sin forzar un minimo mayor a eso): forzar un
-    // minimo como 140px aqui empujaba el panel por encima del viewport
-    // cuando el trigger (p. ej. Bodega, el primer campo) esta cerca del
-    // borde superior, dejandolo invisible/inalcanzable.
-    const nextMaxHeight = Math.max(1, Math.min(320, availableAbove))
+    // Abre hacia abajo si cabe (antes siempre abria hacia arriba y tapaba el
+    // titulo y el texto de la ventana); hacia arriba solo si abajo no hay
+    // espacio y arriba hay mas. Se renderiza con un portal a document.body
+    // para que no quede detras de las filas siguientes.
+    const desired = 260
+    const openDown = availableBelow >= Math.min(desired, 180) || availableBelow >= availableAbove
+    const nextMaxHeight = Math.max(1, Math.min(320, openDown ? availableBelow : availableAbove))
     setLocationDropdownMaxHeight((prev) => (prev === nextMaxHeight ? prev : nextMaxHeight))
-    // Se renderiza con un portal a document.body (como el resto de dropdowns)
-    // para que no quede detras de las filas de Bodega/Division/Subdivision
-    // que le siguen dentro del mismo contenedor.
     setLocationDropdownStyle({
       position: 'fixed',
-      top: 'auto',
       right: 'auto',
       left: triggerRect.left,
-      width: triggerRect.width,
+      width: Math.max(triggerRect.width, 220),
       maxHeight: `${nextMaxHeight}px`,
       zIndex: 9999,
-      bottom: Math.max(window.innerHeight - triggerRect.top + spacing, VIEWPORT_PADDING),
+      ...(openDown
+        ? { top: triggerRect.bottom + spacing, bottom: 'auto' }
+        : { top: 'auto', bottom: Math.max(window.innerHeight - triggerRect.top + spacing, VIEWPORT_PADDING) }),
     })
   }, [locationDropdownField, locationDropdownProductId, showLocationResolver])
 

@@ -33,5 +33,5 @@ Estados: ⬜ pendiente · 🔄 en curso · ✅ aplicado y subido
 
 | # | Pedido | Cómo se entendió | Estado |
 |---|---|---|---|
-| 11 | Tabla "Asignar ubicaciones faltantes" | Corregir la ventana de **ubicaciones faltantes** al crear una entrada: la lista de bodegas se abre encima del texto y tapa la ventana. | ⬜ |
+| 11 | Tabla "Asignar ubicaciones faltantes" | Corregir la ventana de **ubicaciones faltantes** al crear una entrada: la lista de bodegas se abre encima del texto y tapa la ventana. | ✅ (la lista ahora abre hacia abajo si cabe; no se probó en pantalla) |
 | 12 | Traslados desde una compra local | Desde una **compra local**, opción para **repartir** a otras sucursales (crear los traslados) desde la misma compra, como se hace con las importaciones. | ⬜ |
