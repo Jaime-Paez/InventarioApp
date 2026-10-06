@@ -187,6 +187,9 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
           </button>
         </header>
 
+        {/* Hasta que llega el mapa solo se ve el titulo, la X y el icono de
+            carga: nada de controles a medio armar. */}
+        {data && (
         <div className="coverage-map__toolbar">
           <label className="coverage-map__date">
             <span>Desde</span>
@@ -207,6 +210,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
             <span className="coverage-map__legend-item coverage-map__legend-item--none">Sin contar</span>
           </div>
         </div>
+        )}
 
         {bodegas.length > 1 && (
           <div className="coverage-map__tabs" role="tablist">
@@ -226,8 +230,10 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
         )}
 
         <div className="coverage-map__body">
-          {loading && !data ? (
-            <p className="coverage-map__hint"><Loader2 size={14} className="coverage-map__spin" /> Cargando mapa...</p>
+          {loading ? (
+            <div className="coverage-map__loading" role="status" aria-label="Cargando mapa">
+              <Loader2 size={30} className="coverage-map__spin" />
+            </div>
           ) : error ? (
             <p className="coverage-map__hint coverage-map__hint--error">{error}</p>
           ) : (
@@ -236,7 +242,6 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
                 <p className="coverage-map__summary">
                   {`${totals.completas} de ${totals.perchas} perchas completas · ${totals.contados} de ${totals.total} productos contados`}
                   {totals.total > 0 ? ` (${Math.floor((totals.contados / totals.total) * 100)}%)` : ''}
-                  {loading && <Loader2 size={13} className="coverage-map__spin" />}
                 </p>
                 {hasPlan ? (
                   <div className="coverage-map__plan-scroll">

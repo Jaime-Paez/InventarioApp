@@ -415,6 +415,22 @@
   opacity: 1;
 }
 
+/* Carga inicial: solo el icono, centrado en todo el cuerpo del mapa. */
+.coverage-map__loading {
+  grid-column: 1 / -1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  height: 100%;
+  color: var(--color-primary);
+}
+
+.coverage-map--dark .coverage-map__loading {
+  color: var(--color-primary-dark);
+}
+
 .coverage-map__spin {
   animation: coverage-map-spin 0.9s linear infinite;
 }
@@ -443,6 +459,12 @@
 
   .coverage-map__main {
     overflow: visible;
+  }
+
+  /* En telefono el plano es mas ancho que la pantalla (se desplaza de lado)
+     para que los nombres de las perchas pequenas no queden cortados. */
+  .coverage-map__plan {
+    min-width: 1000px;
   }
 
   .coverage-map__side {
