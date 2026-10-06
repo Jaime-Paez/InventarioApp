@@ -1,0 +1,66 @@
+/* Recepcion completa: popup con confeti */
+.receive-complete__confetti {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+}
+
+.receive-complete__card {
+  position: relative;
+  align-items: center;
+  text-align: center;
+  padding: 26px 22px 20px;
+}
+
+.receive-complete__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.14);
+  color: #16a34a;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.receive-complete__card h4 {
+  font-size: 1.2rem;
+}
+
+.receive-complete__missing {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+  font-size: 0.9rem;
+}
+
+.receive-complete__actions {
+  justify-content: center;
+  width: 100%;
+}
+
+.receive-complete__done {
+  min-width: 140px;
+  border-color: #16a34a;
+  background: #16a34a;
+}
+
+body.app-theme-dark .receive-complete__icon {
+  background: rgba(74, 222, 128, 0.16);
+  color: #4ade80;
+}
+
+body.app-theme-dark .receive-complete__missing {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
+}
+
+body.app-theme-dark .receive-complete__done {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: #fff;
+}

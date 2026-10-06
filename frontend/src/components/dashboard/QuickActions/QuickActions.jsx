@@ -5,6 +5,7 @@ import { Checkbox } from 'primereact/checkbox'
 import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
+import ReceiveCompleteDialog from './ReceiveCompleteDialog'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
 import urgentNotificationAudioSrc from '../common/reminders/urgentnotifications.mp3'
 import { API_URL, authFetch } from '../../../utils/api'
@@ -5396,9 +5397,46 @@ function QuickActions({
     [fetchPendingTransferShipments, handleOpenPendingShipment, isPendingShipmentsOpen, openReminderModal]
   )
 
+  // Todo recibido (y nada en POR UBICAR): popup de "completo" con confeti;
+  // "Listo" confirma la recepcion y cierra el envio.
+  const [receiveCompleteDismissedKey, setReceiveCompleteDismissedKey] = useState('')
+  const receiveCompleteStats = useMemo(() => {
+    const rows = receiveShipmentRows
+    const allDone = rows.length > 0 && rows.every((row) => (
+      row?.recepcion_registrada && toPositiveInt(row?.pendiente_guardar, 0) === 0
+    ))
+    const missingRows = rows.filter((row) => toPositiveInt(row?.cantidad_faltante, 0) > 0)
+    return {
+      allDone,
+      productCount: rows.length,
+      unitCount: rows.reduce((sum, row) => sum + toPositiveInt(row?.ya_recibido, 0), 0),
+      missingUnits: missingRows.reduce((sum, row) => sum + toPositiveInt(row?.cantidad_faltante, 0), 0),
+      missingProducts: missingRows.length,
+    }
+  }, [receiveShipmentRows])
+  const showReceiveComplete = (
+    isReceiveShipmentModalOpen &&
+    Boolean(activeInTransitShipmentKey) &&
+    receiveCompleteStats.allDone &&
+    !receivingProductIds.size &&
+    receiveCompleteDismissedKey !== activeInTransitShipmentKey
+  )
+
   return (
     <>
       <Toast ref={toast} />
+      <ReceiveCompleteDialog
+        open={showReceiveComplete}
+        title={activeInTransitShipment?._source === 'importacion' ? '¡Esta importación está completa!' : '¡Este traslado está completo!'}
+        productCount={receiveCompleteStats.productCount}
+        unitCount={receiveCompleteStats.unitCount}
+        missingUnits={receiveCompleteStats.missingUnits}
+        missingProducts={receiveCompleteStats.missingProducts}
+        busy={receiveShipmentSubmitting}
+        error={receiveShipmentError}
+        onDone={() => void handleSubmitShipmentReception()}
+        onBack={() => setReceiveCompleteDismissedKey(activeInTransitShipmentKey)}
+      />
       {urgentShieldStyles.map((shield) => (
         <button
           key={`quick-actions-urgent-shield-${shield.id}`}
