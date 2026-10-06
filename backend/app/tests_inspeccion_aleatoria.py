@@ -782,3 +782,29 @@ class TemaUsuarioTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(self.revisor_client.put(url, {"tema": "rosado"}, format="json").status_code, 400)
         # Cada usuario tiene el suyo.
         self.assertEqual(self.admin_client.get(url).data["tema"], "")
+
+
+class InspeccionPorDivisionOrdenTests(InspeccionAleatoriaBaseTestCase):
+    """Por division: los productos salen en el orden de la percha, no al azar."""
+
+    def test_productos_en_orden_de_subdivision_y_codigo(self):
+        sub_10 = SubDivision.objects.create(division=self.division, nombre="Nivel 10")
+        sub_2 = SubDivision.objects.create(division=self.division, nombre="Nivel 2")
+        # Creados a proposito en desorden (ids altos para los primeros niveles).
+        en_10 = Producto.objects.create(codigo="A-10", nombre="En nivel 10", precio=Decimal("1"))
+        en_2_b = Producto.objects.create(codigo="B-2", nombre="En nivel 2 B", precio=Decimal("1"))
+        en_2_a = Producto.objects.create(codigo="A-2", nombre="En nivel 2 A", precio=Decimal("1"))
+        Inventario.objects.create(producto=en_10, subdivision=sub_10, cantidad=1)
+        Inventario.objects.create(producto=en_2_b, subdivision=sub_2, cantidad=1)
+        Inventario.objects.create(producto=en_2_a, subdivision=sub_2, cantidad=1)
+
+        response = self.admin_client.post(
+            f"{BASE_URL}/enviar-division/",
+            {"division_id": self.division.id, "usuario_id": self.revisor.id, "hora_recordatorio": "23:59"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
+        codigos = list(inspection.items.order_by("id").values_list("producto__codigo", flat=True))
+        # Nivel 1 (P-1, P-2), Nivel 2 (A-2, B-2), Nivel 10 (A-10).
+        self.assertEqual(codigos, ["P-1", "P-2", "A-2", "B-2", "A-10"])

@@ -1010,6 +1010,56 @@ def _collect_branch_inspection_candidates(branch_id):
     return _collect_inspection_candidates(branch_ids={int(branch_id)})
 
 
+def _natural_sort_key(value):
+    """"Nivel 2" antes que "Nivel 10" (los numeros se comparan como numeros)."""
+    parts = re.split(r"(\d+)", _normalize_text(value).lower())
+    return tuple((0, int(part), "") if part.isdigit() else (1, 0, part) for part in parts if part)
+
+
+def _sort_candidates_by_location(candidates, *, division_id, subdivision_id=None):
+    """Ordena los productos como estan en la percha: por division y
+    subdivision (orden natural de sus nombres) y dentro de cada una por codigo.
+
+    Las revisiones por division/subdivision se recorren fisicamente de la
+    primera ubicacion a la ultima; con el orden por id de producto el revisor
+    saltaba de un lado a otro.
+    """
+    product_ids = {int(candidate["producto_id"]) for candidate in candidates}
+    if not product_ids:
+        return list(candidates)
+    rows = Inventario.objects.filter(
+        producto_id__in=sorted(product_ids), subdivision__division_id=int(division_id)
+    )
+    if subdivision_id:
+        rows = rows.filter(subdivision_id=int(subdivision_id))
+    stocked_keys = {}
+    any_keys = {}
+    for row in rows.values(
+        "producto_id", "cantidad", "subdivision_id", "subdivision__nombre", "subdivision__division__nombre"
+    ):
+        key = (
+            _natural_sort_key(row.get("subdivision__division__nombre")),
+            _natural_sort_key(row.get("subdivision__nombre")),
+            _normalize_int(row.get("subdivision_id"), 0),
+        )
+        product_id = _normalize_int(row.get("producto_id"), 0)
+        target = stocked_keys if _normalize_int(row.get("cantidad"), 0) > 0 else any_keys
+        if product_id not in target or key < target[product_id]:
+            target[product_id] = key
+
+    def sort_key(candidate):
+        product_id = int(candidate["producto_id"])
+        location_key = stocked_keys.get(product_id) or any_keys.get(product_id)
+        return (
+            0 if location_key else 1,
+            location_key or (),
+            _natural_sort_key(candidate.get("producto_codigo")),
+            product_id,
+        )
+
+    return sorted(candidates, key=sort_key)
+
+
 def _collect_division_inspection_candidates(division_id, subdivision_id=None):
     """Candidatos de una division (todas sus subdivisiones, o solo una)."""
     return _collect_inspection_candidates(
@@ -4522,6 +4572,10 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 inspection.total_items = inspection.total_items + len(new_items)
                 inspection.save(update_fields=["total_items"])
 
+            # Los items se muestran por id: se crean ya en el orden de la percha.
+            new_items = _sort_candidates_by_location(
+                new_items, division_id=division_id, subdivision_id=subdivision_id
+            )
             InspeccionAleatoriaItem.objects.bulk_create(
                 [
                     _build_random_inspection_item(inspection, item, sucursal_id=sucursal_id)
