@@ -582,6 +582,7 @@ function QuickActions({
   const [randomInspectionError, setRandomInspectionError] = useState('')
   const [randomInspectionHasGeneralIssue, setRandomInspectionHasGeneralIssue] = useState(false)
   const [randomInspectionGeneralNote, setRandomInspectionGeneralNote] = useState('')
+  const [randomInspectionSearch, setRandomInspectionSearch] = useState('')
   // Sincronizacion del borrador entre dispositivos (misma cuenta en la compu
   // y en la tablet): version del servidor que tiene este dispositivo, que
   // productos cambiaron aca y todavia no se guardaron, y una cola para que
@@ -3330,6 +3331,7 @@ function QuickActions({
     setRandomInspectionMode('review')
     setRandomInspectionStepIndex(0)
     setRandomInspectionShowSummary(false)
+    setRandomInspectionSearch('')
     setRandomInspectionError('')
     setRandomInspectionSubmitting(false)
     setRandomInspectionLoading(false)
@@ -4587,6 +4589,28 @@ function QuickActions({
     saveInspectionDraftToBackend,
   ])
 
+  // Buscador del revisor: encuentra un producto (contado o no) y salta a el.
+  const randomInspectionSearchMatches = useMemo(() => {
+    const term = String(randomInspectionSearch || '').trim().toLowerCase()
+    if (!term) return []
+    return randomInspectionRows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => (
+        String(row?.producto_codigo || '').toLowerCase().includes(term) ||
+        String(row?.producto_nombre || '').toLowerCase().includes(term)
+      ))
+      .slice(0, 8)
+  }, [randomInspectionRows, randomInspectionSearch])
+
+  const jumpToRandomInspectionStep = useCallback((index) => {
+    if (randomInspectionSubmitting) return
+    setRandomInspectionError('')
+    setRandomInspectionSearch('')
+    setRandomInspectionShowSummary(false)
+    setRandomInspectionStepIndex(index)
+    void saveInspectionDraftToBackend(index)
+  }, [randomInspectionSubmitting, saveInspectionDraftToBackend])
+
   const handleRandomInspectionLocationCountChange = useCallback((itemId, locationKey, value) => {
     const normalizedItemId = normalizeId(itemId)
     const normalizedLocationKey = String(locationKey || '').trim()
@@ -5619,6 +5643,53 @@ function QuickActions({
                 <div className="quick-actions__inspection-list">
                   {!randomInspectionRows.length && (
                     <p className="quick-actions__inspection-empty">No hay productos por revisar.</p>
+                  )}
+
+                  {randomInspectionRows.length > 1 && (
+                    <div className="quick-actions__inspection-search">
+                      <Search size={14} aria-hidden="true" />
+                      <input
+                        type="search"
+                        value={randomInspectionSearch}
+                        onChange={(event) => setRandomInspectionSearch(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') setRandomInspectionSearch('')
+                          if (event.key === 'Enter' && randomInspectionSearchMatches.length) {
+                            event.preventDefault()
+                            jumpToRandomInspectionStep(randomInspectionSearchMatches[0].index)
+                          }
+                        }}
+                        placeholder={`Buscar entre los ${randomInspectionRows.length} productos (${randomInspectionAnsweredCount} contados)`}
+                        aria-label="Buscar producto en la revision"
+                        disabled={randomInspectionSubmitting}
+                      />
+                      {String(randomInspectionSearch).trim() !== '' && (
+                        <div className="quick-actions__inspection-search-results" role="listbox">
+                          {!randomInspectionSearchMatches.length && (
+                            <small className="quick-actions__inspection-search-empty">Ningun producto coincide.</small>
+                          )}
+                          {randomInspectionSearchMatches.map(({ row, index }) => (
+                            <button
+                              key={`inspection-search-${normalizeId(row?.row_id || row?.id)}`}
+                              type="button"
+                              className="quick-actions__inspection-search-row"
+                              onClick={() => jumpToRandomInspectionStep(index)}
+                            >
+                              <span className="quick-actions__inspection-search-step">{index + 1}</span>
+                              <span className="quick-actions__inspection-search-text">
+                                <strong>{row?.producto_codigo || `Producto ${row?.row_id}`}</strong>
+                                <small>{String(row?.producto_nombre || '').trim()}</small>
+                              </span>
+                              <span
+                                className={`quick-actions__inspection-search-state${row?.cantidad_reportada == null ? '' : ' quick-actions__inspection-search-state--done'}`}
+                              >
+                                {row?.cantidad_reportada == null ? 'Sin contar' : `Contado: ${row.cantidad_reportada}`}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   {!!randomInspectionRows.length && !isRandomInspectionSummaryVisible && activeRandomInspectionRow && (
