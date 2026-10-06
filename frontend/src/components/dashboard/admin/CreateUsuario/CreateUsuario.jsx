@@ -5,6 +5,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../../common/useModalAnimation'
+import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
@@ -793,6 +794,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       setPermissionsMatrix({})
       setModuleBranchMatrix({})
       onCreated?.({ ...data, password })
+      submitSucceededRef.current = true
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al crear el usuario.')
     } finally {
@@ -981,13 +983,29 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
   )
   const { shouldRender, isClosing } = useModalAnimation(open)
 
+  // "¿Guardar cambios?" al cerrar con datos ingresados (tambien al cerrar la
+  // pestana). Guardar = el mismo boton de crear.
+  const submitSucceededRef = useRef(false)
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: { formData, password, permissionsMatrix, moduleBranchMatrix },
+    enabled: Boolean(open),
+    onSave: async () => {
+      submitSucceededRef.current = false
+      await handleSubmit({ preventDefault() {} })
+      return submitSucceededRef.current
+    },
+    onClose,
+    label: 'Nuevo usuario',
+  })
+
   if (!shouldRender) return null
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true">
+      {unsavedGuard.dialog}
       <div
         className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
-        ref={modalRef}
+        ref={modalRef} {...unsavedGuard.interactionProps}
         style={{ top: position.y, left: position.x, width: size.width, height: size.height }}
       >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
@@ -1008,7 +1026,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
               type="button"
               className="create-user__icon-button"
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={onClose}
+              onClick={unsavedGuard.requestClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />
@@ -1286,7 +1304,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
           </div>
 
           <div className="create-user__footer">
-            <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>
+            <button type="button" className="create-user__action create-user__action--cancel" onClick={unsavedGuard.requestClose}>
               Cancelar
             </button>
             <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>

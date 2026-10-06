@@ -20,6 +20,7 @@ import {
   isReminderForContext,
   reminderCompletedByIds,
 } from '../../common/reminders/remindersStorage'
+import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -1157,6 +1158,7 @@ function SolicitudDetails({
       await fetchGroupItems(data)
       setIsEditing(false)
       onUpdated?.(data)
+      submitSucceededRef.current = true
     } catch (err) {
       notifyError(err?.message || 'No se pudo actualizar la solicitud.')
     } finally {
@@ -1585,6 +1587,21 @@ function SolicitudDetails({
   )
 
   const { shouldRender, isClosing } = useModalAnimation(open)
+  // "¿Guardar cambios?" al cerrar con cambios en modo edicion (tambien al
+  // cerrar la pestana). Guardar = el mismo boton de guardar.
+  const submitSucceededRef = useRef(false)
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: { formData, clienteData },
+    enabled: Boolean(isEditing),
+    onSave: async () => {
+      submitSucceededRef.current = false
+      await handleSave()
+      return submitSucceededRef.current
+    },
+    onClose: onClose,
+    label: 'Solicitud',
+  })
+
   if (!shouldRender) return null
 
   const editorDisabled = loading || saving || !isEditing
@@ -2302,9 +2319,10 @@ function SolicitudDetails({
           userSelect: isCreateProductModalOpen || isCatalogProductModalOpen ? 'none' : undefined,
         }}
       >
+        {unsavedGuard.dialog}
         <div
           className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
-          ref={modalRef}
+          ref={modalRef} {...unsavedGuard.interactionProps}
           style={modalStyle}
         >
         {openingProductSelection ? (
@@ -2344,7 +2362,7 @@ function SolicitudDetails({
               type="button"
               className="create-user__icon-button"
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={onClose}
+              onClick={unsavedGuard.requestClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />
@@ -2534,7 +2552,7 @@ function SolicitudDetails({
             <button
               type="button"
               className="create-user__action create-user__action--cancel"
-              onClick={onClose}
+              onClick={unsavedGuard.requestClose}
               disabled={loading || deleteLoading}
             >
               Cerrar

@@ -5,6 +5,7 @@ import '../../admin/UsersDetails/UsersDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import BodegaLayoutEditor from '../BodegaLayoutEditor/BodegaLayoutEditor'
 import useModalAnimation from '../../common/useModalAnimation'
+import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
 
 const MIN_WIDTH = 820
 const MIN_HEIGHT = 540
@@ -600,6 +601,7 @@ function BodegaDetails({
       setOriginalData(normalized)
       setIsEditing(false)
       onUpdated?.(data)
+      submitSucceededRef.current = true
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al actualizar la bodega.')
     } finally {
@@ -801,6 +803,21 @@ function BodegaDetails({
   }
   const { shouldRender, isClosing } = useModalAnimation(open)
 
+  // "¿Guardar cambios?" al cerrar con cambios en modo edicion (tambien al
+  // cerrar la pestana). Guardar = el mismo boton de guardar.
+  const submitSucceededRef = useRef(false)
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: { formData },
+    enabled: Boolean(isEditing),
+    onSave: async () => {
+      submitSucceededRef.current = false
+      await handleSave()
+      return submitSucceededRef.current
+    },
+    onClose: handleClose,
+    label: 'Bodega',
+  })
+
   if (!shouldRender) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
@@ -816,7 +833,8 @@ function BodegaDetails({
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
-      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
+      {unsavedGuard.dialog}
+      <div className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} {...unsavedGuard.interactionProps} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>{modalTitle}</h3>
@@ -835,7 +853,7 @@ function BodegaDetails({
               type="button"
               className="create-user__icon-button"
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={handleClose}
+              onClick={unsavedGuard.requestClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />
@@ -965,7 +983,7 @@ function BodegaDetails({
             <button
               type="button"
               className="create-user__action create-user__action--cancel"
-              onClick={handleClose}
+              onClick={unsavedGuard.requestClose}
             >
               Cancelar
             </button>

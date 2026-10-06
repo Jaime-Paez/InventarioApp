@@ -12,6 +12,7 @@ import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import { normalizeId } from '../common/reminders/remindersStorage'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import { tipoEnvioLabel } from './tipoEnvio'
+import useUnsavedChangesGuard from '../common/unsavedChanges/useUnsavedChangesGuard'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -1794,6 +1795,7 @@ function SalidaDetails({
       setClienteLoading(false)
       setIsEditing(false)
       onUpdated?.(data)
+      submitSucceededRef.current = true
     } catch (err) {
       notifyError(err?.message || 'Ocurrio un error al actualizar la salida.')
     } finally {
@@ -1845,6 +1847,21 @@ function SalidaDetails({
 
   const { shouldRender, isClosing } = useModalAnimation(open)
 
+  // "¿Guardar cambios?" al cerrar con cambios en modo edicion (tambien al
+  // cerrar la pestana). Guardar = el mismo boton de guardar.
+  const submitSucceededRef = useRef(false)
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: { formData, details },
+    enabled: Boolean(isEditing),
+    onSave: async () => {
+      submitSucceededRef.current = false
+      await handleSave()
+      return submitSucceededRef.current
+    },
+    onClose: onClose,
+    label: 'Salida',
+  })
+
   if (!shouldRender) return null
 
   const editorDisabled = !isEditing || saving || loadingData || isReadOnlyMode
@@ -1882,7 +1899,8 @@ function SalidaDetails({
       aria-modal="true"
       style={overlayStyle}
     >
-      <div ref={modalRef} className={modalClassName} style={modalStyle}>
+      {unsavedGuard.dialog}
+      <div ref={modalRef} {...unsavedGuard.interactionProps} className={modalClassName} style={modalStyle}>
         {showRibbon && (
           <div
             className={`entrada-details__pending-ribbon${
@@ -1914,7 +1932,7 @@ function SalidaDetails({
               type="button"
               className="create-user__icon-button"
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={onClose}
+              onClick={unsavedGuard.requestClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />

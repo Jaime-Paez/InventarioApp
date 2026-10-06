@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import WorkspaceTabs from '../tabs/WorkspaceTabs/WorkspaceTabs'
+import { UnsavedTabScope } from '../common/unsavedChanges/unsavedChanges'
 import QuickActions from '../QuickActions/QuickActions'
 import UsersTable from '../admin/UsersTable/UsersTable'
 import RandomInspectionAdminTable from '../admin/RandomInspectionAdminTable/RandomInspectionAdminTable'
@@ -627,7 +628,7 @@ function Workspace({
           className={`workspace__tab-panel ${isActive ? 'active' : ''}`}
           aria-hidden={!isActive}
         >
-          {renderTabContent(tab, isActive)}
+          <UnsavedTabScope tab={tab}>{renderTabContent(tab, isActive)}</UnsavedTabScope>
         </div>
       )
     })

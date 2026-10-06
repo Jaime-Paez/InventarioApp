@@ -4,6 +4,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
 import { formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
 import { toUpperCode } from '../../../../utils/textInput'
+import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
@@ -1587,6 +1588,7 @@ function CreateProducto({
       })
       setSubmitAttempted(false)
       await onCreated?.(data)
+      submitSucceededRef.current = true
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al crear el producto.')
     } finally {
@@ -1746,6 +1748,21 @@ function CreateProducto({
   }
   const { shouldRender, isClosing } = useModalAnimation(open)
 
+  // "¿Guardar cambios?" al cerrar con datos ingresados (tambien al cerrar la
+  // pestana). Guardar = el mismo boton de crear.
+  const submitSucceededRef = useRef(false)
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: { formData, alternosSelected, oemItems, referenciaItems, locations, selectedCasa },
+    enabled: Boolean(open),
+    onSave: async () => {
+      submitSucceededRef.current = false
+      await handleSubmit({ preventDefault() {} })
+      return submitSucceededRef.current
+    },
+    onClose,
+    label: 'Nuevo producto',
+  })
+
   if (!shouldRender) return null
 
   const overlayStyle = {
@@ -1781,7 +1798,8 @@ function CreateProducto({
       onMouseDown={lockModal ? (event) => event.stopPropagation() : undefined}
       onClick={lockModal ? (event) => event.stopPropagation() : undefined}
     >
-      <div className={`create-user__modal${submitAttempted ? ' create-user__modal--submitted' : ''}${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
+      {unsavedGuard.dialog}
+      <div className={`create-user__modal${submitAttempted ? ' create-user__modal--submitted' : ''}${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} {...unsavedGuard.interactionProps} style={modalStyle}>
         {loading ? (
           <div className="create-user__loading-overlay" role="status" aria-live="polite">
             <i className="pi pi-spin pi-spinner" aria-hidden="true" />
@@ -1818,7 +1836,7 @@ function CreateProducto({
               className="create-user__icon-button"
               disabled={loading}
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={onClose}
+              onClick={unsavedGuard.requestClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />
@@ -2664,7 +2682,7 @@ function CreateProducto({
             <button
               type="button"
               className="create-user__action create-user__action--cancel"
-              onClick={onClose}
+              onClick={unsavedGuard.requestClose}
               disabled={loading}
             >
               Cancelar

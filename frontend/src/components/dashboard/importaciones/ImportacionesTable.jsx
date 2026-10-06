@@ -23,6 +23,7 @@ import '../admin/UsersTable/UsersTable.css'
 import '../movimientos/CreateSalida.css'
 import '../QuickActions/QuickActions.css'
 import './ImportacionesTable.css'
+import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
 
 const getPortalRoot = () => getAppPortalRoot()
 
@@ -3756,7 +3757,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       const inCasa = casaDropdownRef.current?.contains(e.target) || e.target.closest?.('[data-casa-portal]')
       if (!inCasa) setShowCasaDropdown(false)
     }
-    const handleKeyDown = (e) => { if (e.key === 'Escape') onClose?.() }
+    const handleKeyDown = (e) => { if (e.key === 'Escape') excelRequestCloseRef.current?.() }
     document.addEventListener('mousedown', handleMouseDown)
     window.addEventListener('keydown', handleKeyDown)
     return () => {
@@ -4080,6 +4081,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       const data = await resp.json().catch(() => ({}))
       if (!resp.ok) throw new Error(data.detail || 'No se pudo crear la importación.')
       onCreated?.(data)
+      excelSavedRef.current = true
       onClose()
     } catch (e) {
       setSubmitError(e.message)
@@ -4195,6 +4197,28 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // No se desmonta al cambiar de pestaña del workspace (eso perdería el
   // progreso del wizard) — solo deja de pintarse mientras esa pestaña no
   // está activa, igual que ImportacionDetailsModal más abajo en este archivo.
+  // "¿Guardar cambios?" al cerrar con un Excel ya procesado (tambien al
+  // cerrar la pestana). Guardar = crear la importacion.
+  const excelSavedRef = useRef(false)
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: {
+      casa: selectedCasa?.id || null,
+      archivo: selectedFile?.name || '',
+      filas: parsedRows.length,
+      decisiones: referenciaDecisions,
+    },
+    enabled: true,
+    onSave: async () => {
+      excelSavedRef.current = false
+      await handleCreate()
+      return excelSavedRef.current
+    },
+    onClose,
+    label: 'Importación desde Excel',
+  })
+  const excelRequestCloseRef = useRef(unsavedGuard.requestClose)
+  excelRequestCloseRef.current = unsavedGuard.requestClose
+
   if (isTabActive === false) return null
 
   return createPortal(
@@ -4206,8 +4230,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         aria-modal="true"
         style={{ padding: `${VIEWPORT_PADDING}px`, zIndex: 2100 }}
       >
+        {unsavedGuard.dialog}
         <div
           ref={modalRef}
+          {...unsavedGuard.interactionProps}
           className={`create-user__modal${isCompactHeight ? ' importaciones-modal--wizard' : ''}${isCasaStep ? ' importaciones-modal--selector' : ''}`}
           style={{
             top: modalPosition.y,
@@ -4243,7 +4269,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 type="button"
                 className="create-user__icon-button"
                 onMouseDown={(e) => e.stopPropagation()}
-                onClick={onClose}
+                onClick={unsavedGuard.requestClose}
                 aria-label="Cerrar"
               >
                 <i className="pi pi-times" aria-hidden="true" />
@@ -4346,7 +4372,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
 
               <div className="create-user__footer">
                 <div className="user-details__footer-left">
-                  <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cancelar</button>
+                  <button type="button" className="create-user__action create-user__action--cancel" onClick={unsavedGuard.requestClose}>Cancelar</button>
                 </div>
                 <div className="user-details__footer-right">
                   <button
@@ -5281,7 +5307,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       if (!inProduct) setShowProductDropdown(false)
     }
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onClose?.()
+      if (event.key === 'Escape') requestCloseRef.current?.()
     }
     document.addEventListener('mousedown', handleMouseDown)
     window.addEventListener('keydown', handleKeyDown)
@@ -5446,12 +5472,29 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       const payload = await response.json()
       onCreated?.(payload)
       onClose?.()
+      return true
     } catch (error) {
       notifyError(error.message)
+      return false
     } finally {
       setSubmitting(false)
     }
   }
+
+  // "¿Guardar cambios?" al cerrar con productos agregados (tambien al cerrar
+  // la pestana). Guardar = crear la sugerencia.
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: {
+      casa: selectedCasa?.id || null,
+      detalles: details.map((item) => [item._key, item.producto?.id || item.codigo || '', item.cantidad, item.comentario || '']),
+    },
+    enabled: Boolean(open),
+    onSave: async () => (await handleSubmit()) === true,
+    onClose,
+    label: 'Nueva sugerencia de importación',
+  })
+  const requestCloseRef = useRef(unsavedGuard.requestClose)
+  requestCloseRef.current = unsavedGuard.requestClose
 
   const alreadyAddedIds = useMemo(
     () => new Set(details.filter((d) => d.producto?.id).map((d) => String(d.producto.id))),
@@ -5684,6 +5727,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   return (
     <>
     <Toast ref={toastRef} baseZIndex={12100} />
+    {unsavedGuard.dialog}
     <div
       className="create-user__overlay"
       role="dialog"
@@ -5692,6 +5736,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     >
       <div
         ref={modalRef}
+        {...unsavedGuard.interactionProps}
         className={`create-user__modal${step === 'casa' ? ' importaciones-modal--selector' : ''}`}
         style={{
           top: modalPosition.y,
@@ -5724,7 +5769,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
               type="button"
               className="create-user__icon-button"
               onMouseDown={(e) => e.stopPropagation()}
-              onClick={onClose}
+              onClick={unsavedGuard.requestClose}
               disabled={submitting}
               aria-label="Cerrar"
             >
@@ -6170,7 +6215,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
               <button
                 type="button"
                 className="create-user__action create-user__action--cancel"
-                onClick={onClose}
+                onClick={unsavedGuard.requestClose}
                 disabled={submitting}
               >
                 Cancelar
@@ -7380,15 +7425,19 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
   }
 
+  const isEditableForClose = imp?.estado === 'borrador' || imp?.estado === 'cotizacion' || imp?.estado === 'confirmacion'
+  const hasUnsavedEdits = Boolean(open && imp && isEditableForClose && (
+    serializeDetailsForDirty(details) !== serializeDetailsForDirty(initialDetailsRef.current)
+    || serializeCheckStatesForDirty(itemCheckStates) !== serializeCheckStatesForDirty(initialItemCheckStatesRef.current)
+  ))
+
   const handleCloseWithSave = () => {
-    const isEditable = imp?.estado === 'borrador' || imp?.estado === 'cotizacion' || imp?.estado === 'confirmacion'
-    if (!isEditable || submitting || importarSubmitting) { onClose?.(); return }
-    const hasChanges = serializeDetailsForDirty(details) !== serializeDetailsForDirty(initialDetailsRef.current)
-      || serializeCheckStatesForDirty(itemCheckStates) !== serializeCheckStatesForDirty(initialItemCheckStatesRef.current)
-    if (!hasChanges) { onClose?.(); return }
+    if (!isEditableForClose || submitting || importarSubmitting) { onClose?.(); return }
+    if (!hasUnsavedEdits) { onClose?.(); return }
     setShowSaveOnCloseModal(true)
   }
 
+  // Devuelve true si se guardo (lo usa tambien cerrar la pestana).
   const handleSaveAndClose = async () => {
     setShowSaveOnCloseModal(false)
     setSubmitting(true)
@@ -7414,12 +7463,21 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const payload = await response.json()
       onSaved?.(payload)
       onClose?.()
+      return true
     } catch (error) {
       toastRef.current?.show({ severity: 'error', summary: 'Error al guardar', detail: error.message, life: 4000 })
+      return false
     } finally {
       setSubmitting(false)
     }
   }
+
+  // Cerrar la pestana Importaciones con cambios sin guardar aqui tambien pregunta.
+  useUnsavedChangesRegistration({
+    dirty: hasUnsavedEdits,
+    onSave: handleSaveAndClose,
+    label: `Importación ${imp?.codigo || ''}`.trim(),
+  })
 
   const handleDeleteBorrador = async () => {
     setDeleteSubmitting(true)

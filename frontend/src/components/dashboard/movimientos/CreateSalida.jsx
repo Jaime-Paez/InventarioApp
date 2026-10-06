@@ -28,6 +28,7 @@ import {
   writeRemindersToStorage,
 } from '../common/reminders/remindersStorage'
 import { TIPO_ENVIO_OPTIONS } from './tipoEnvio'
+import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -3584,6 +3585,25 @@ function CreateSalida({
     setShowClienteDropdown(false)
   }
 
+  // Salida a sucursal (traslado manual): su propio "¿Guardar cambios?" con
+  // guardar como borrador. Cerrar la pestana tambien lo ofrece.
+  useUnsavedChangesRegistration({
+    dirty: Boolean(open) && hasUnsavedProgress,
+    onSave: async () => {
+      setFormSubmitted(true)
+      return (await submitSalida({ guardarBorrador: true })) === true
+    },
+    label: 'Nueva salida a sucursal',
+  })
+  // Resto de salidas (venta, garantia...): no hay borrador; "guardar" seria
+  // registrar la venta, asi que solo se pregunta antes de perder lo ingresado.
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: { formData, details },
+    enabled: Boolean(open) && !isManualTransferMode,
+    onClose,
+    label: 'Nueva salida',
+  })
+
   const attemptClose = () => {
     if (loading) return
     if (hasUnsavedProgress) {
@@ -3591,7 +3611,7 @@ function CreateSalida({
       setShowCloseConfirm(true)
       return
     }
-    onClose?.()
+    unsavedGuard.requestClose()
   }
 
   const handleConfirmTransferSend = () => {
@@ -3736,7 +3756,8 @@ function CreateSalida({
       aria-modal="true"
       style={overlayStyle}
     >
-      <div ref={modalRef} className={modalClassName} style={modalStyle}>
+      {unsavedGuard.dialog}
+      <div ref={modalRef} {...unsavedGuard.interactionProps} className={modalClassName} style={modalStyle}>
         {catalogsLoading && (
           <div className="create-user__modal-loading">
             <div className="spinner" />

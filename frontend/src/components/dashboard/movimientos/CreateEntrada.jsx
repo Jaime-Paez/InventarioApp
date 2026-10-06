@@ -20,6 +20,7 @@ import {
   normalizeId,
   sanitizeRecipient,
 } from '../common/reminders/remindersStorage'
+import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -3492,6 +3493,7 @@ function CreateEntrada({
 
         emitRemindersSync()
         onCreated?.(data)
+        entradaSavedRef.current = true
       } catch (err) {
         notifyError(err.message || 'Ocurrió un error al crear la solicitud de traslado.')
       } finally {
@@ -3525,6 +3527,35 @@ function CreateEntrada({
   }
 
   const { shouldRender, isClosing } = useModalAnimation(open)
+
+  // Pedido a sucursal: tiene borrador ("Guardar solicitud y cerrar"); cerrar la
+  // pestana tambien lo ofrece. Resto de entradas: no hay borrador, solo se
+  // pregunta antes de perder lo ingresado.
+  const entradaSavedRef = useRef(false)
+  const trasladoHasUnsavedProgress = isTraslado && Boolean(formData.subTipoId) && (
+    details.length > 0 ||
+    Boolean(String(formData.sucursalObjetivoId || '').trim()) ||
+    Boolean(String(formData.descripcion || '').trim()) ||
+    Boolean(formData.urgente) ||
+    Boolean(String(formData.factura_referencia || '').trim()) ||
+    Boolean(String(formData.cliente || '').trim()) ||
+    selectedReminderUserIds.length > 0
+  )
+  useUnsavedChangesRegistration({
+    dirty: Boolean(open) && trasladoHasUnsavedProgress,
+    onSave: async () => {
+      entradaSavedRef.current = false
+      await handleSubmit({ preventDefault: () => {} }, { guardarBorrador: true })
+      return entradaSavedRef.current
+    },
+    label: 'Nuevo pedido a sucursal',
+  })
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: { formData, details },
+    enabled: Boolean(open) && !isTraslado,
+    onClose,
+    label: 'Nueva entrada',
+  })
 
   if (!shouldRender) return null
 
@@ -3587,7 +3618,7 @@ function CreateEntrada({
       setShowCloseConfirm(true)
       return
     }
-    onClose?.()
+    unsavedGuard.requestClose()
   }
 
   return (
@@ -3597,7 +3628,8 @@ function CreateEntrada({
       aria-modal="true"
       style={overlayStyle}
     >
-      <div ref={modalRef} className={modalClassName} style={modalStyle}>
+      {unsavedGuard.dialog}
+      <div ref={modalRef} {...unsavedGuard.interactionProps} className={modalClassName} style={modalStyle}>
         {catalogsLoading && (
           <div className="create-user__modal-loading">
             <div className="spinner" />

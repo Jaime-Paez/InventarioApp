@@ -1,0 +1,121 @@
+/* "¿Guardar cambios?" al cerrar una ventana o una pestana con cambios. */
+.unsaved-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(2, 6, 23, 0.35);
+  animation: unsaved-dialog-fade 160ms ease-out backwards;
+}
+
+.unsaved-dialog__card {
+  width: min(460px, calc(100vw - 40px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--modal-color, #fff);
+  color: var(--color-text-primary);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+  animation: unsaved-dialog-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+.unsaved-dialog__card h4 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.unsaved-dialog__card p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.unsaved-dialog__error {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.9rem;
+}
+
+.unsaved-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.unsaved-dialog__btn {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.unsaved-dialog__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.unsaved-dialog__btn--discard {
+  border-color: rgba(220, 38, 38, 0.45);
+  color: #b91c1c;
+}
+
+.unsaved-dialog__btn--save {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+body.app-theme-dark .unsaved-dialog {
+  background: rgba(2, 6, 23, 0.6);
+}
+
+body.app-theme-dark .unsaved-dialog__card {
+  border-color: var(--color-border-dark);
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+}
+
+body.app-theme-dark .unsaved-dialog__card h4 {
+  color: var(--color-text-title-dark);
+}
+
+body.app-theme-dark .unsaved-dialog__btn {
+  border-color: var(--color-border-dark);
+}
+
+body.app-theme-dark .unsaved-dialog__btn--discard {
+  border-color: rgba(248, 113, 113, 0.5);
+  color: #fca5a5;
+}
+
+body.app-theme-dark .unsaved-dialog__btn--save {
+  border-color: var(--color-primary-dark);
+  background: var(--color-primary-dark);
+}
+
+body.app-theme-dark .unsaved-dialog__error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+}
+
+@keyframes unsaved-dialog-fade {
+  from { opacity: 0; }
+}
+
+@keyframes unsaved-dialog-in {
+  from { opacity: 0; scale: 0.98; }
+}

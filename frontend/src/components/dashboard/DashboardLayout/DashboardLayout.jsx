@@ -9,6 +9,8 @@ import './DashboardLayout.css'
 import Sidebar from '../Sidebar/Sidebar'
 import Workspace from '../Workspace/Workspace'
 import { buildModuleScopeAccessIndex, buildPermissionIndex, labelHasAccess } from '../menuConfig'
+import { UnsavedChangesHost } from '../common/unsavedChanges/unsavedChanges'
+import { requestTabClose } from '../common/unsavedChanges/unsavedStore'
 
 function DashboardLayout({
   user,
@@ -93,7 +95,17 @@ function DashboardLayout({
     }
   }
 
+  // Si la pestana tiene ventanas con cambios sin guardar, se pregunta antes
+  // de cerrarla (antes se cerraba y se perdia todo).
   const handleCloseTab = (label) => {
+    requestTabClose(label, () => closeTabNow(label))
+  }
+
+  const handleLogout = (...args) => {
+    requestTabClose(null, () => onLogout?.(...args))
+  }
+
+  const closeTabNow = (label) => {
     setOpenTabs((prev) => {
       const filteredTabs = prev.filter((tab) => tab !== label)
 
@@ -107,6 +119,7 @@ function DashboardLayout({
 
   return (
     <>
+    <UnsavedChangesHost />
     <div
       className={`dashboard-shell ${darkMode ? 'dark' : 'light'} ${isSidebarOpen ? '' : 'collapsed'} ${isLeaving ? 'leaving' : hasEntered && !entryAnimationDone ? 'enter' : ''}`}
     >
@@ -116,7 +129,7 @@ function DashboardLayout({
         openTabs={openTabs}
         user={user}
         token={token}
-        onLogout={onLogout}
+        onLogout={handleLogout}
         brandLogo={brandLogo}
         partnerLogo={partnerLogo}
         isOpen={isSidebarOpen}

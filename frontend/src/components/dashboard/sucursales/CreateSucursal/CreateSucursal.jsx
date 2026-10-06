@@ -4,6 +4,7 @@ import '../SucursalMap.css'
 import 'leaflet/dist/leaflet.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
+import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
 const MAP_ZOOM = 16
 const MIN_WIDTH = 650
 const MIN_HEIGHT = 720
@@ -212,6 +213,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
       setFormData(initialForm)
       onCreated?.(data)
+      submitSucceededRef.current = true
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al crear la sucursal.')
     } finally {
@@ -369,6 +371,21 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   }
   const { shouldRender, isClosing } = useModalAnimation(open)
 
+  // "¿Guardar cambios?" al cerrar con datos ingresados (tambien al cerrar la
+  // pestana). Guardar = el mismo boton de crear.
+  const submitSucceededRef = useRef(false)
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: { formData, location },
+    enabled: Boolean(open),
+    onSave: async () => {
+      submitSucceededRef.current = false
+      await handleSubmit({ preventDefault() {} })
+      return submitSucceededRef.current
+    },
+    onClose,
+    label: 'Nueva sucursal',
+  })
+
   if (!shouldRender) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
@@ -383,9 +400,10 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
+      {unsavedGuard.dialog}
       <div
         className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
-        ref={modalRef}
+        ref={modalRef} {...unsavedGuard.interactionProps}
         style={modalStyle}
       >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
@@ -406,7 +424,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
               type="button"
               className="create-user__icon-button"
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={onClose}
+              onClick={unsavedGuard.requestClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />
@@ -475,7 +493,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
           </div>
 
           <div className="create-user__footer">
-            <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>
+            <button type="button" className="create-user__action create-user__action--cancel" onClick={unsavedGuard.requestClose}>
               Cancelar
             </button>
             <button type="submit" className="create-user__action create-user__action--primary" disabled={loading}>

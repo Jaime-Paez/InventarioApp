@@ -6,6 +6,7 @@ import '../SucursalMap.css'
 import 'leaflet/dist/leaflet.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
+import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
 const MAP_ZOOM = 16
 const MIN_WIDTH = 650
 const MIN_HEIGHT = 720
@@ -548,6 +549,7 @@ function SucursalDetails({
       setSubmitAttempted(false)
       setIsEditing(false)
       onUpdated?.(data)
+      submitSucceededRef.current = true
     } catch (err) {
       notifyError(err.message || 'Ocurrió un error al actualizar la sucursal.')
     } finally {
@@ -592,6 +594,21 @@ function SucursalDetails({
   }
   const { shouldRender, isClosing } = useModalAnimation(open)
 
+  // "¿Guardar cambios?" al cerrar con cambios en modo edicion (tambien al
+  // cerrar la pestana). Guardar = el mismo boton de guardar.
+  const submitSucceededRef = useRef(false)
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: { formData },
+    enabled: Boolean(isEditing),
+    onSave: async () => {
+      submitSucceededRef.current = false
+      await handleSubmit({ preventDefault() {} })
+      return submitSucceededRef.current
+    },
+    onClose: handleClose,
+    label: 'Sucursal',
+  })
+
   if (!shouldRender) return null
 
   const overlayStyle = { padding: `${VIEWPORT_PADDING}px` }
@@ -607,9 +624,10 @@ function SucursalDetails({
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
+      {unsavedGuard.dialog}
       <div
         className={`create-user__modal${isClosing ? ' create-user__modal--closing' : ''}`}
-        ref={modalRef}
+        ref={modalRef} {...unsavedGuard.interactionProps}
         style={modalStyle}
       >
         <header className="create-user__header" onMouseDown={handleMouseDown}>
@@ -630,7 +648,7 @@ function SucursalDetails({
               type="button"
               className="create-user__icon-button"
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={handleClose}
+              onClick={unsavedGuard.requestClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />
@@ -719,7 +737,7 @@ function SucursalDetails({
 
           <div className="create-user__footer">
             <div className="user-details__footer-left">
-              <button type="button" className="create-user__action create-user__action--cancel" onClick={handleClose}>
+              <button type="button" className="create-user__action create-user__action--cancel" onClick={unsavedGuard.requestClose}>
                 Cancelar
               </button>
               {allowEdit && (

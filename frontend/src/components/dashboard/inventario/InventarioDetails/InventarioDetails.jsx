@@ -7,6 +7,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { emitRemindersSync } from '../../common/reminders/remindersStorage'
 import useModalAnimation from '../../common/useModalAnimation'
 import ProductoRatingTab from '../../productos/ProductoRatingTab/ProductoRatingTab'
+import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
 
 const parseNumber = (value) => {
   const parsed = Number(value)
@@ -285,6 +286,7 @@ function InventarioDetails({
       }
 
       onSaved?.()
+      submitSucceededRef.current = true
       onClose?.()
     } catch (err) {
       const message = err?.message || 'No se pudieron guardar los cambios.'
@@ -295,6 +297,21 @@ function InventarioDetails({
     }
   }, [product, saving, subdivisions, draftQuantities, entryBySubdivision, token, onClose, onError, onSaved])
   const { shouldRender, isClosing } = useModalAnimation(open)
+
+  // "¿Guardar cambios?" al cerrar con cantidades modificadas (tambien al
+  // cerrar la pestana).
+  const submitSucceededRef = useRef(false)
+  const unsavedGuard = useUnsavedChangesGuard({
+    watch: { draftQuantities },
+    enabled: Boolean(open && product),
+    onSave: async () => {
+      submitSucceededRef.current = false
+      await handleSave()
+      return submitSucceededRef.current
+    },
+    onClose,
+    label: 'Cantidades de inventario',
+  })
 
   if (!shouldRender || !product) return null
 
@@ -309,7 +326,8 @@ function InventarioDetails({
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={{ padding: `${VIEWPORT_PADDING}px` }}>
-      <div className={`create-user__modal inventario-details__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} style={modalStyle}>
+      {unsavedGuard.dialog}
+      <div className={`create-user__modal inventario-details__modal${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} {...unsavedGuard.interactionProps} style={modalStyle}>
         <header className="create-user__header" onMouseDown={handleMouseDown}>
           <div className="create-user__header-text">
             <h3>
@@ -330,7 +348,7 @@ function InventarioDetails({
               type="button"
               className="create-user__icon-button"
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={onClose}
+              onClick={unsavedGuard.requestClose}
               aria-label="Cerrar"
             >
               <i className="pi pi-times" aria-hidden="true" />
@@ -444,7 +462,7 @@ function InventarioDetails({
             <button
               type="button"
               className="create-user__action create-user__action--cancel"
-              onClick={onClose}
+              onClick={unsavedGuard.requestClose}
               disabled={saving}
             >
               Cancelar
