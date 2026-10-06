@@ -22,6 +22,7 @@ import {
   buildPrimeOrdering,
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
+import { memoryStore } from '../../../../utils/memoryStore'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -407,41 +408,41 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
   const allRowsSelected = allRowIds.length > 0 && allRowIds.every((id) => selectedRowIds.includes(id))
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('clientes-table-selected-rows')
+    const saved = memoryStore.getItem('clientes-table-selected-rows')
     if (!saved) return
     try {
       const parsed = JSON.parse(saved)
       const ids = (parsed.selectedRowIds || []).map(normId).filter(Boolean)
-      sessionStorage.setItem('clientes-table-selected-rows-pending', JSON.stringify({ ids }))
+      memoryStore.setItem('clientes-table-selected-rows-pending', JSON.stringify({ ids }))
     } catch {
-      sessionStorage.removeItem('clientes-table-selected-rows')
-      sessionStorage.removeItem('clientes-table-selected-rows-pending')
+      memoryStore.removeItem('clientes-table-selected-rows')
+      memoryStore.removeItem('clientes-table-selected-rows-pending')
     }
   }, [])
 
   useEffect(() => {
-    const pending = sessionStorage.getItem('clientes-table-selected-rows-pending')
+    const pending = memoryStore.getItem('clientes-table-selected-rows-pending')
     if (!pending) return
     try {
       const parsed = JSON.parse(pending)
       const ids = (parsed.ids || []).map(normId).filter(Boolean)
       if (!ids.length) {
         setSelectedRows([])
-        sessionStorage.removeItem('clientes-table-selected-rows-pending')
+        memoryStore.removeItem('clientes-table-selected-rows-pending')
         return
       }
       const map = new Map(clients.map((row) => [normId(row?.id), row]))
       const rows = ids.map((id) => map.get(id)).filter(Boolean)
       setSelectedRows(rows)
-      sessionStorage.removeItem('clientes-table-selected-rows-pending')
+      memoryStore.removeItem('clientes-table-selected-rows-pending')
     } catch {
-      sessionStorage.removeItem('clientes-table-selected-rows-pending')
+      memoryStore.removeItem('clientes-table-selected-rows-pending')
     }
   }, [clients])
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(
+      memoryStore.setItem(
         'clientes-table-selected-rows',
         JSON.stringify({
           selectedRowIds,

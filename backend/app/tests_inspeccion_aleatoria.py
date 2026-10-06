@@ -769,3 +769,16 @@ class RecordatorioEnProgresoTests(InspeccionAleatoriaBaseTestCase):
 
         InspeccionAleatoriaDiaria.objects.filter(pk=inspection.pk).update(borrador_version=1)
         self.assertTrue(self._contexto(inspection)["en_progreso"])
+
+
+class TemaUsuarioTests(InspeccionAleatoriaBaseTestCase):
+    """El tema claro/oscuro se guarda en la base, por usuario."""
+
+    def test_guarda_y_lee_tema(self):
+        url = "/usuarios/preferencias/tema/"
+        self.assertEqual(self.revisor_client.get(url).data["tema"], "")
+        self.assertEqual(self.revisor_client.put(url, {"tema": "dark"}, format="json").status_code, 200)
+        self.assertEqual(self.revisor_client.get(url).data["tema"], "dark")
+        self.assertEqual(self.revisor_client.put(url, {"tema": "rosado"}, format="json").status_code, 400)
+        # Cada usuario tiene el suyo.
+        self.assertEqual(self.admin_client.get(url).data["tema"], "")

@@ -27,6 +27,7 @@ import {
 import { getModuleActions, moduleHasAnyAction } from '../../menuConfig'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
+import { memoryStore } from '../../../../utils/memoryStore'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -784,41 +785,41 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const allRowsSelected = allRowIds.length > 0 && allRowIds.every((id) => selectedRowIds.includes(id))
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('inventario-v2-table-selected-rows')
+    const saved = memoryStore.getItem('inventario-v2-table-selected-rows')
     if (!saved) return
     try {
       const parsed = JSON.parse(saved)
       const ids = (parsed.selectedRowIds || []).map(normId).filter(Boolean)
-      sessionStorage.setItem('inventario-v2-table-selected-rows-pending', JSON.stringify({ ids }))
+      memoryStore.setItem('inventario-v2-table-selected-rows-pending', JSON.stringify({ ids }))
     } catch {
-      sessionStorage.removeItem('inventario-v2-table-selected-rows')
-      sessionStorage.removeItem('inventario-v2-table-selected-rows-pending')
+      memoryStore.removeItem('inventario-v2-table-selected-rows')
+      memoryStore.removeItem('inventario-v2-table-selected-rows-pending')
     }
   }, [])
 
   useEffect(() => {
-    const pending = sessionStorage.getItem('inventario-v2-table-selected-rows-pending')
+    const pending = memoryStore.getItem('inventario-v2-table-selected-rows-pending')
     if (!pending) return
     try {
       const parsed = JSON.parse(pending)
       const ids = (parsed.ids || []).map(normId).filter(Boolean)
       if (!ids.length) {
         setSelectedRows([])
-        sessionStorage.removeItem('inventario-v2-table-selected-rows-pending')
+        memoryStore.removeItem('inventario-v2-table-selected-rows-pending')
         return
       }
       const map = new Map(products.map((row) => [normId(row?.id), row]))
       const rows = ids.map((id) => map.get(id)).filter(Boolean)
       setSelectedRows(rows)
-      sessionStorage.removeItem('inventario-v2-table-selected-rows-pending')
+      memoryStore.removeItem('inventario-v2-table-selected-rows-pending')
     } catch {
-      sessionStorage.removeItem('inventario-v2-table-selected-rows-pending')
+      memoryStore.removeItem('inventario-v2-table-selected-rows-pending')
     }
   }, [products])
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(
+      memoryStore.setItem(
         'inventario-v2-table-selected-rows',
         JSON.stringify({
           selectedRowIds,

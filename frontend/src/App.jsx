@@ -11,6 +11,7 @@ import 'primereact/resources/themes/lara-light-cyan/theme.css';
 import 'primeflex/primeflex.css';
 import { API_URL, authFetch } from './utils/api'
 import { tableLayoutStore } from './utils/tableLayoutStore'
+import { memoryStore } from './utils/memoryStore'
 const LOGIN_EXIT_ANIMATION_MS = 900
 const DASHBOARD_EXIT_ANIMATION_MS = 3500
 const LOGIN_ENTER_ANIMATION_MS = LOGIN_EXIT_ANIMATION_MS
@@ -74,12 +75,9 @@ const disableAutocompleteInNode = (node) => {
 }
 
 function App() {
-  const [darkMode, setDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem('theme')
-    if (savedTheme === 'dark') return true
-    if (savedTheme === 'light') return false
-    return getSystemThemePreference()
-  })
+  // El tema elegido se guarda en la base (preferencias del usuario), no en el
+  // navegador. Antes de iniciar sesion se usa el del sistema.
+  const [darkMode, setDarkMode] = useState(() => getSystemThemePreference())
 
   const [user, setUser] = useState(null)
 
@@ -92,8 +90,27 @@ function App() {
   const loginReturnTimeoutRef = useRef(null)
 
   useEffect(() => {
-    localStorage.setItem('theme', darkMode ? 'dark' : 'light')
-  }, [darkMode])
+    // Limpia el tema que guardaban las versiones anteriores en el navegador.
+    try { localStorage.removeItem('theme') } catch { /* no-op */ }
+  }, [])
+
+  const darkModeRef = useRef(darkMode)
+  darkModeRef.current = darkMode
+
+  const saveThemeToServer = useCallback((isDark, effectiveToken) => {
+    if (!effectiveToken) return
+    void authFetch(
+      `${API_URL}/usuarios/preferencias/tema/`,
+      { method: 'PUT', body: JSON.stringify({ tema: isDark ? 'dark' : 'light' }) },
+      effectiveToken
+    ).catch(() => {})
+  }, [])
+
+  const handleToggleTheme = useCallback(() => {
+    const next = !darkModeRef.current
+    setDarkMode(next)
+    saveThemeToServer(next, token)
+  }, [saveThemeToServer, token])
 
   useEffect(() => {
     if (token) {
@@ -138,6 +155,20 @@ function App() {
           await tableLayoutStore.init(effectiveToken)
         }
 
+        // Tema guardado en la base. Si el usuario aun no tiene uno, se guarda
+        // el que esta usando ahora.
+        try {
+          const themeResponse = await authFetch(`${API_URL}/usuarios/preferencias/tema/`, {}, effectiveToken)
+          const themePayload = themeResponse.ok ? await themeResponse.json().catch(() => ({})) : {}
+          if (themePayload?.tema === 'dark' || themePayload?.tema === 'light') {
+            setDarkMode(themePayload.tema === 'dark')
+          } else if (themeResponse.ok) {
+            saveThemeToServer(darkModeRef.current, effectiveToken)
+          }
+        } catch {
+          // Sin conexion: se queda el tema actual.
+        }
+
         setUser(userData)
         setShowApp(true)
         return userData
@@ -150,7 +181,7 @@ function App() {
         return null
       }
     },
-    [token]
+    [token, saveThemeToServer]
   )
 
   useEffect(() => {
@@ -182,6 +213,7 @@ function App() {
     window.clearTimeout(loginReturnTimeoutRef.current)
 
     try { sessionStorage.clear() } catch { /* no-op */ }
+    memoryStore.clear()
     tableLayoutStore.reset()
 
     setLogoutTransitioning(true)
@@ -298,7 +330,7 @@ function App() {
       {(!showApp || loginTransitioning || loginReturning) && (
         <Login
           darkMode={darkMode}
-          onToggleTheme={() => setDarkMode((value) => !value)}
+          onToggleTheme={handleToggleTheme}
           onLoginSuccess={handleLoginSuccess}
           isCollapsing={loginTransitioning}
           isExpanding={loginTransitionState === 'expand'}
@@ -311,7 +343,7 @@ function App() {
           token={token}
           darkMode={darkMode}
           onLogout={handleLogout}
-          onToggleTheme={() => setDarkMode((value) => !value)}
+          onToggleTheme={handleToggleTheme}
           permissions={user?.permisos ?? null}
           isLeaving={logoutTransitioning}
         />

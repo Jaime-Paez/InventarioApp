@@ -2564,6 +2564,33 @@ def _sanitize_table_layout_map(raw_map):
     return cleaned
 
 
+USER_THEMES = {"light", "dark"}
+
+
+class UserThemeAPIView(APIView):
+    """Tema claro/oscuro del usuario, guardado en la base (no en el navegador)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        preference = UsuarioPreferencia.objects.filter(usuario=request.user).only("tema").first()
+        tema = str(getattr(preference, "tema", "") or "")
+        return Response({"tema": tema if tema in USER_THEMES else ""}, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        tema = _normalize_text(request.data.get("tema")).lower()
+        if tema not in USER_THEMES:
+            return Response(
+                {"detail": "El tema debe ser `light` o `dark`."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        preference, _ = UsuarioPreferencia.objects.get_or_create(usuario=request.user)
+        if preference.tema != tema:
+            preference.tema = tema
+            preference.save(update_fields=["tema", "updated_at"])
+        return Response({"tema": tema}, status=status.HTTP_200_OK)
+
+
 class UserTableLayoutsAPIView(APIView):
     permission_classes = [IsAuthenticated]
 

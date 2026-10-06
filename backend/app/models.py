@@ -56,6 +56,9 @@ class UsuarioPreferencia(models.Model):
         blank=True,
         help_text="Layouts de tablas guardados por usuario para restaurar en cualquier equipo.",
     )
+    # Tema de la interfaz ("light" / "dark"; vacio = el del sistema). Antes se
+    # guardaba en localStorage del navegador.
+    tema = models.CharField(max_length=10, blank=True, default="", db_default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

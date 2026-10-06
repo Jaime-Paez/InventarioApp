@@ -17,6 +17,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
+import { memoryStore } from '../../../../utils/memoryStore'
 
 const formatFullName = (u) =>
   [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || '-'
@@ -311,37 +312,37 @@ function UsersTable({
 
   // Restore selección (IDs) al iniciar
   useEffect(() => {
-    const saved = sessionStorage.getItem('usuarios-table-selected-rows')
+    const saved = memoryStore.getItem('usuarios-table-selected-rows')
     if (!saved) return
     try {
       const parsed = JSON.parse(saved)
       const ids = (parsed.selectedRowIds || []).map(normId).filter(Boolean)
       // guardamos IDs pendientes; los convertimos a rows cuando exista `users`
-      sessionStorage.setItem('usuarios-table-selected-rows-pending', JSON.stringify({ ids }))
+      memoryStore.setItem('usuarios-table-selected-rows-pending', JSON.stringify({ ids }))
     } catch {
-      sessionStorage.removeItem('usuarios-table-selected-rows')
-      sessionStorage.removeItem('usuarios-table-selected-rows-pending')
+      memoryStore.removeItem('usuarios-table-selected-rows')
+      memoryStore.removeItem('usuarios-table-selected-rows-pending')
     }
   }, [])
 
   // Cuando cambia users, aplica la selección pendiente (ids -> rows)
   useEffect(() => {
-    const pending = sessionStorage.getItem('usuarios-table-selected-rows-pending')
+    const pending = memoryStore.getItem('usuarios-table-selected-rows-pending')
     if (!pending) return
     try {
       const parsed = JSON.parse(pending)
       const ids = (parsed.ids || []).map(normId).filter(Boolean)
       if (!ids.length) {
         setSelectedUsers([])
-        sessionStorage.removeItem('usuarios-table-selected-rows-pending')
+        memoryStore.removeItem('usuarios-table-selected-rows-pending')
         return
       }
       const map = new Map(users.map((u) => [normId(u?.id), u]))
       const rows = ids.map((id) => map.get(id)).filter(Boolean)
       setSelectedUsers(rows)
-      sessionStorage.removeItem('usuarios-table-selected-rows-pending')
+      memoryStore.removeItem('usuarios-table-selected-rows-pending')
     } catch {
-      sessionStorage.removeItem('usuarios-table-selected-rows-pending')
+      memoryStore.removeItem('usuarios-table-selected-rows-pending')
     }
   }, [users])
 
@@ -359,7 +360,7 @@ function UsersTable({
 
   // Persistir IDs
   useEffect(() => {
-    sessionStorage.setItem(
+    memoryStore.setItem(
       'usuarios-table-selected-rows',
       JSON.stringify({
         selectedRowIds,

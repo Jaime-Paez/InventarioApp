@@ -17,6 +17,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
+import { memoryStore } from '../../../../utils/memoryStore'
 
 const normId = (v) => (v == null ? null : String(v))
 const isCheckboxSelection = (event) => {
@@ -265,35 +266,35 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('sucursales-table-selected-rows')
+    const saved = memoryStore.getItem('sucursales-table-selected-rows')
     if (!saved) return
     try {
       const parsed = JSON.parse(saved)
       const ids = (parsed.selectedRowIds || []).map(normId).filter(Boolean)
-      sessionStorage.setItem('sucursales-table-selected-rows-pending', JSON.stringify({ ids }))
+      memoryStore.setItem('sucursales-table-selected-rows-pending', JSON.stringify({ ids }))
     } catch {
-      sessionStorage.removeItem('sucursales-table-selected-rows')
-      sessionStorage.removeItem('sucursales-table-selected-rows-pending')
+      memoryStore.removeItem('sucursales-table-selected-rows')
+      memoryStore.removeItem('sucursales-table-selected-rows-pending')
     }
   }, [])
 
   useEffect(() => {
-    const pending = sessionStorage.getItem('sucursales-table-selected-rows-pending')
+    const pending = memoryStore.getItem('sucursales-table-selected-rows-pending')
     if (!pending) return
     try {
       const parsed = JSON.parse(pending)
       const ids = (parsed.ids || []).map(normId).filter(Boolean)
       if (!ids.length) {
         setSelectedRows([])
-        sessionStorage.removeItem('sucursales-table-selected-rows-pending')
+        memoryStore.removeItem('sucursales-table-selected-rows-pending')
         return
       }
       const map = new Map(branches.map((u) => [normId(u?.id), u]))
       const rows = ids.map((id) => map.get(id)).filter(Boolean)
       setSelectedRows(rows)
-      sessionStorage.removeItem('sucursales-table-selected-rows-pending')
+      memoryStore.removeItem('sucursales-table-selected-rows-pending')
     } catch {
-      sessionStorage.removeItem('sucursales-table-selected-rows-pending')
+      memoryStore.removeItem('sucursales-table-selected-rows-pending')
     }
   }, [branches])
 
@@ -308,7 +309,7 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   }, [branches])
 
   useEffect(() => {
-    sessionStorage.setItem(
+    memoryStore.setItem(
       'sucursales-table-selected-rows',
       JSON.stringify({
         selectedRowIds,

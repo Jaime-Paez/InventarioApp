@@ -17,6 +17,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
+import { memoryStore } from '../../../../utils/memoryStore'
 
 const normId = (v) => (v == null ? null : String(v))
 const isCheckboxSelection = (event) => {
@@ -277,35 +278,35 @@ function BodegasTable({ token, onSelect, moduleActions }) {
   const allRowsSelected = allRowIds.length > 0 && selectedRowIds.length === allRowIds.length
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('bodegas-table-selected-rows')
+    const saved = memoryStore.getItem('bodegas-table-selected-rows')
     if (!saved) return
     try {
       const parsed = JSON.parse(saved)
       const ids = (parsed.selectedRowIds || []).map(normId).filter(Boolean)
-      sessionStorage.setItem('bodegas-table-selected-rows-pending', JSON.stringify({ ids }))
+      memoryStore.setItem('bodegas-table-selected-rows-pending', JSON.stringify({ ids }))
     } catch {
-      sessionStorage.removeItem('bodegas-table-selected-rows')
-      sessionStorage.removeItem('bodegas-table-selected-rows-pending')
+      memoryStore.removeItem('bodegas-table-selected-rows')
+      memoryStore.removeItem('bodegas-table-selected-rows-pending')
     }
   }, [])
 
   useEffect(() => {
-    const pending = sessionStorage.getItem('bodegas-table-selected-rows-pending')
+    const pending = memoryStore.getItem('bodegas-table-selected-rows-pending')
     if (!pending) return
     try {
       const parsed = JSON.parse(pending)
       const ids = (parsed.ids || []).map(normId).filter(Boolean)
       if (!ids.length) {
         setSelectedRows([])
-        sessionStorage.removeItem('bodegas-table-selected-rows-pending')
+        memoryStore.removeItem('bodegas-table-selected-rows-pending')
         return
       }
       const map = new Map(warehouses.map((u) => [normId(u?.id), u]))
       const rows = ids.map((id) => map.get(id)).filter(Boolean)
       setSelectedRows(rows)
-      sessionStorage.removeItem('bodegas-table-selected-rows-pending')
+      memoryStore.removeItem('bodegas-table-selected-rows-pending')
     } catch {
-      sessionStorage.removeItem('bodegas-table-selected-rows-pending')
+      memoryStore.removeItem('bodegas-table-selected-rows-pending')
     }
   }, [warehouses])
 
@@ -320,7 +321,7 @@ function BodegasTable({ token, onSelect, moduleActions }) {
   }, [warehouses])
 
   useEffect(() => {
-    sessionStorage.setItem(
+    memoryStore.setItem(
       'bodegas-table-selected-rows',
       JSON.stringify({
         selectedRowIds,

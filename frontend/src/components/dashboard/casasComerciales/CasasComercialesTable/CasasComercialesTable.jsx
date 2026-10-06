@@ -23,6 +23,7 @@ import {
   buildPrimeOrdering,
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
+import { memoryStore } from '../../../../utils/memoryStore'
 
 const normId = (v) => (v == null ? null : String(v))
 const COMPANY_FILTER_FIELDS = ['nombre', 'codigo', 'tipo', 'pais_nombre', 'telefono', 'correo', 'descripcion']
@@ -350,40 +351,40 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   const allRowsSelected = allRowIds.length > 0 && allRowIds.every((id) => selectedRowIds.includes(id))
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('casas-comerciales-table-selected-rows')
+    const saved = memoryStore.getItem('casas-comerciales-table-selected-rows')
     if (!saved) return
     try {
       const parsed = JSON.parse(saved)
       const ids = (parsed.selectedRowIds || []).map(normId).filter(Boolean)
-      sessionStorage.setItem('casas-comerciales-table-selected-rows-pending', JSON.stringify({ ids }))
+      memoryStore.setItem('casas-comerciales-table-selected-rows-pending', JSON.stringify({ ids }))
     } catch {
-      sessionStorage.removeItem('casas-comerciales-table-selected-rows')
-      sessionStorage.removeItem('casas-comerciales-table-selected-rows-pending')
+      memoryStore.removeItem('casas-comerciales-table-selected-rows')
+      memoryStore.removeItem('casas-comerciales-table-selected-rows-pending')
     }
   }, [])
 
   useEffect(() => {
-    const pending = sessionStorage.getItem('casas-comerciales-table-selected-rows-pending')
+    const pending = memoryStore.getItem('casas-comerciales-table-selected-rows-pending')
     if (!pending) return
     try {
       const parsed = JSON.parse(pending)
       const ids = (parsed.ids || []).map(normId).filter(Boolean)
       if (!ids.length) {
         setSelectedRows([])
-        sessionStorage.removeItem('casas-comerciales-table-selected-rows-pending')
+        memoryStore.removeItem('casas-comerciales-table-selected-rows-pending')
         return
       }
       const map = new Map(companies.map((u) => [normId(u?.id), u]))
       const rows = ids.map((id) => map.get(id)).filter(Boolean)
       setSelectedRows(rows)
-      sessionStorage.removeItem('casas-comerciales-table-selected-rows-pending')
+      memoryStore.removeItem('casas-comerciales-table-selected-rows-pending')
     } catch {
-      sessionStorage.removeItem('casas-comerciales-table-selected-rows-pending')
+      memoryStore.removeItem('casas-comerciales-table-selected-rows-pending')
     }
   }, [companies])
 
   useEffect(() => {
-    sessionStorage.setItem(
+    memoryStore.setItem(
       'casas-comerciales-table-selected-rows',
       JSON.stringify({
         selectedRowIds,

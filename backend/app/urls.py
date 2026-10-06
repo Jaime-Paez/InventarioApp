@@ -10,6 +10,11 @@ urlpatterns = [
         views.UserTableLayoutsAPIView.as_view(),
         name="usuarios-preferencias-table-layouts",
     ),
+    path(
+        "usuarios/preferencias/tema/",
+        views.UserThemeAPIView.as_view(),
+        name="usuarios-preferencias-tema",
+    ),
     path("recordatorios/estado/", views.ReminderStateAPIView.as_view(), name="recordatorios-estado"),
     path(
         "recordatorios/inspeccion-aleatoria/configuracion/",

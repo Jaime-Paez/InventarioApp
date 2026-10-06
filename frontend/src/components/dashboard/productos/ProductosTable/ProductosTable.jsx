@@ -25,6 +25,7 @@ import {
 import { moduleHasAnyAction } from '../../menuConfig'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
+import { memoryStore } from '../../../../utils/memoryStore'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -635,41 +636,41 @@ function ProductosTable({ token, onSelect, user, moduleActions, permissionIndex 
   const allRowsSelected = allRowIds.length > 0 && allRowIds.every((id) => selectedRowIds.includes(id))
 
   useEffect(() => {
-    const saved = sessionStorage.getItem('productos-table-selected-rows')
+    const saved = memoryStore.getItem('productos-table-selected-rows')
     if (!saved) return
     try {
       const parsed = JSON.parse(saved)
       const ids = (parsed.selectedRowIds || []).map(normId).filter(Boolean)
-      sessionStorage.setItem('productos-table-selected-rows-pending', JSON.stringify({ ids }))
+      memoryStore.setItem('productos-table-selected-rows-pending', JSON.stringify({ ids }))
     } catch {
-      sessionStorage.removeItem('productos-table-selected-rows')
-      sessionStorage.removeItem('productos-table-selected-rows-pending')
+      memoryStore.removeItem('productos-table-selected-rows')
+      memoryStore.removeItem('productos-table-selected-rows-pending')
     }
   }, [])
 
   useEffect(() => {
-    const pending = sessionStorage.getItem('productos-table-selected-rows-pending')
+    const pending = memoryStore.getItem('productos-table-selected-rows-pending')
     if (!pending) return
     try {
       const parsed = JSON.parse(pending)
       const ids = (parsed.ids || []).map(normId).filter(Boolean)
       if (!ids.length) {
         setSelectedRows([])
-        sessionStorage.removeItem('productos-table-selected-rows-pending')
+        memoryStore.removeItem('productos-table-selected-rows-pending')
         return
       }
       const map = new Map(products.map((row) => [normId(row?.id), row]))
       const rows = ids.map((id) => map.get(id)).filter(Boolean)
       setSelectedRows(rows)
-      sessionStorage.removeItem('productos-table-selected-rows-pending')
+      memoryStore.removeItem('productos-table-selected-rows-pending')
     } catch {
-      sessionStorage.removeItem('productos-table-selected-rows-pending')
+      memoryStore.removeItem('productos-table-selected-rows-pending')
     }
   }, [products])
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(
+      memoryStore.setItem(
         'productos-table-selected-rows',
         JSON.stringify({
           selectedRowIds,
