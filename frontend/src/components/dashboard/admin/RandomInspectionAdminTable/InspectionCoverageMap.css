@@ -550,3 +550,81 @@
 .coverage-map--dark .coverage-map__pending li {
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
+
+/* Enviar faltantes de la percha a revisar */
+.coverage-map__send {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  font-size: var(--font-size-sm);
+}
+
+.coverage-map__send-row {
+  display: flex;
+  gap: 6px;
+}
+
+.coverage-map__send-row select {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: inherit;
+  font: inherit;
+}
+
+.coverage-map__send-btn {
+  flex: 0 0 auto;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.coverage-map__send-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.coverage-map--dark .coverage-map__send {
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--color-text-dark);
+}
+
+.coverage-map--dark .coverage-map__send strong {
+  color: var(--color-text-title-dark);
+}
+
+.coverage-map--dark .coverage-map__send-row select {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-search-dark);
+  color: var(--color-text-title-dark);
+}
+
+.coverage-map--dark .coverage-map__send-btn {
+  border-color: var(--color-primary-dark);
+  background: var(--color-primary-dark);
+}
+
+.coverage-map__send-ok {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.coverage-map--dark .coverage-map__send-ok {
+  color: #86efac;
+}

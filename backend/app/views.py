@@ -4098,6 +4098,78 @@ class RandomInspectionCoverageMapAPIView(APIView):
         )
 
 
+RECENTLY_COUNTED_DAYS = 30
+
+
+class RandomInspectionRecentlyCountedAPIView(APIView):
+    """Antes de mandar una revision: cuantos de esos productos ya se contaron
+    en la sucursal en los ultimos 30 dias (para avisar "ya fue contado").
+
+    Body: {sucursal_id, producto_ids} o {division_id[, subdivision_id]}.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta accion."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        division_id = _normalize_int(request.data.get("division_id"), 0)
+        subdivision_id = _normalize_int(request.data.get("subdivision_id"), 0) or None
+        sucursal_id = _normalize_int(request.data.get("sucursal_id"), 0)
+        product_ids = set()
+        if division_id > 0:
+            division = Division.objects.select_related("bodega").filter(pk=division_id).first()
+            if division is None:
+                return Response({"detail": "La division no existe."}, status=status.HTTP_404_NOT_FOUND)
+            sucursal_id = int(division.bodega.sucursal_id)
+            product_ids = {
+                int(candidate["producto_id"])
+                for candidate in _collect_division_inspection_candidates(division_id, subdivision_id)
+            }
+        else:
+            raw_ids = request.data.get("producto_ids") or []
+            if not isinstance(raw_ids, list):
+                return Response({"detail": "producto_ids debe ser una lista."}, status=status.HTTP_400_BAD_REQUEST)
+            product_ids = {pid for pid in (_normalize_int(raw, 0) for raw in raw_ids) if pid > 0}
+        if sucursal_id <= 0:
+            return Response({"detail": "Debes indicar la sucursal."}, status=status.HTTP_400_BAD_REQUEST)
+
+        since = timezone.now() - timedelta(days=RECENTLY_COUNTED_DAYS)
+        latest_by_product = {}
+        if product_ids:
+            rows = (
+                InspeccionAleatoriaItem.objects.filter(
+                    sucursal_id=sucursal_id,
+                    producto_id__in=sorted(product_ids),
+                    revisado_en__gte=since,
+                )
+                .exclude(estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE)
+                .values("producto_id", "producto__codigo", "revisado_en")
+            )
+            for row in rows:
+                pid = int(row["producto_id"])
+                current = latest_by_product.get(pid)
+                if current is None or row["revisado_en"] > current["revisado_en"]:
+                    latest_by_product[pid] = row
+        ordered = sorted(latest_by_product.values(), key=lambda row: row["revisado_en"], reverse=True)
+        return Response(
+            {
+                "total": len(product_ids),
+                "contados": len(latest_by_product),
+                "dias": RECENTLY_COUNTED_DAYS,
+                "ultimo_conteo": _parse_iso_timestamp(ordered[0]["revisado_en"]) if ordered else "",
+                "productos": [
+                    {"codigo": _normalize_text(row["producto__codigo"]), "revisado_en": _parse_iso_timestamp(row["revisado_en"])}
+                    for row in ordered[:10]
+                ],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class RandomInspectionAdminSummaryAPIView(APIView):
     permission_classes = [IsAuthenticated]
 

@@ -43,7 +43,9 @@ const STATUS_LABEL = {
   empty: 'Sin productos',
 }
 
-function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
+const MAX_LIST_PRODUCTS = 200
+
+function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers = [], reviewersLoading = false, onSendMissing }) {
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [data, setData] = useState(null)
@@ -51,6 +53,9 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
   const [error, setError] = useState('')
   const [bodegaId, setBodegaId] = useState('')
   const [selectedDivisionId, setSelectedDivisionId] = useState('')
+  const [missingReviewerId, setMissingReviewerId] = useState('')
+  const [sendingMissing, setSendingMissing] = useState(false)
+  const [sentMissingMessage, setSentMissingMessage] = useState('')
 
   const sucursalId = String(sucursal?.id ?? '')
 
@@ -161,6 +166,36 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
   ), [bodegaDivisions])
 
   const selectedDivision = bodegaDivisions.find((division) => String(division.id) === selectedDivisionId) || null
+  // Productos que faltan contar en la percha elegida (para mandarlos a revisar).
+  const missingProductIds = useMemo(() => {
+    const ids = new Set()
+    ;(selectedDivision?.subdivisiones || []).forEach((subdivision) => {
+      ;(subdivision.pendientes || []).forEach((product) => {
+        if (product?.producto_id) ids.add(Number(product.producto_id))
+      })
+    })
+    return Array.from(ids)
+  }, [selectedDivision])
+
+  // Al cambiar de percha se limpia el "Enviado a ..." de la anterior.
+  useEffect(() => {
+    setSentMissingMessage('')
+  }, [selectedDivisionId])
+
+  const handleSendMissing = async () => {
+    if (!onSendMissing || !missingReviewerId || !missingProductIds.length) return
+    setSendingMissing(true)
+    const ok = await onSendMissing({
+      usuarioId: missingReviewerId,
+      productIds: missingProductIds.slice(0, MAX_LIST_PRODUCTS),
+    })
+    setSendingMissing(false)
+    if (ok) {
+      const reviewer = reviewers.find((item) => String(item.id) === String(missingReviewerId))
+      setSentMissingMessage(`Enviado a ${String(reviewer?.nombre_completo || reviewer?.correo || 'el revisor').trim()}.`)
+      setMissingReviewerId('')
+    }
+  }
 
   const selectDivisionByName = (name) => {
     const division = divisionsByName.get(normalizeKey(name))
@@ -221,7 +256,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
                 role="tab"
                 aria-selected={String(item.id) === bodegaId}
                 className={`coverage-map__tab${String(item.id) === bodegaId ? ' is-active' : ''}`}
-                onClick={() => { setBodegaId(String(item.id)); setSelectedDivisionId('') }}
+                onClick={() => { setBodegaId(String(item.id)); setSelectedDivisionId(''); setSentMissingMessage('') }}
               >
                 {item.nombre}
               </button>
@@ -316,6 +351,42 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose }) {
                       {`${selectedDivision.contados} de ${selectedDivision.total} contados (${getPercent(selectedDivision)}%)`}
                       {selectedDivision.ultimo_conteo ? ` · Ultimo conteo: ${formatDateTime(selectedDivision.ultimo_conteo)}` : ''}
                     </p>
+                    {onSendMissing && missingProductIds.length > 0 && (
+                      <div className="coverage-map__send">
+                        <strong>{`Enviar faltantes a revisar (${missingProductIds.length})`}</strong>
+                        <div className="coverage-map__send-row">
+                          <select
+                            value={missingReviewerId}
+                            onChange={(event) => setMissingReviewerId(event.target.value)}
+                            disabled={sendingMissing || reviewersLoading || !reviewers.length}
+                            aria-label="Revisor"
+                          >
+                            <option value="">
+                              {reviewersLoading ? 'Cargando revisores...' : reviewers.length ? 'Selecciona un revisor' : 'Sin revisores en esta sucursal'}
+                            </option>
+                            {reviewers.map((reviewer) => (
+                              <option key={reviewer.id} value={reviewer.id}>
+                                {String(reviewer?.nombre_completo || reviewer?.correo || `Usuario ${reviewer?.id}`).trim()}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="coverage-map__send-btn"
+                            onClick={() => void handleSendMissing()}
+                            disabled={sendingMissing || !missingReviewerId}
+                          >
+                            {sendingMissing ? 'Enviando...' : 'Enviar'}
+                          </button>
+                        </div>
+                        {sentMissingMessage && (
+                          <small className="coverage-map__send-ok">{sentMissingMessage}</small>
+                        )}
+                        {missingProductIds.length > MAX_LIST_PRODUCTS && (
+                          <small>{`Se envian los primeros ${MAX_LIST_PRODUCTS}; el resto queda para otra revision.`}</small>
+                        )}
+                      </div>
+                    )}
                     {!(selectedDivision.subdivisiones || []).length ? (
                       <p className="coverage-map__hint">Esta percha no tiene productos con stock.</p>
                     ) : (

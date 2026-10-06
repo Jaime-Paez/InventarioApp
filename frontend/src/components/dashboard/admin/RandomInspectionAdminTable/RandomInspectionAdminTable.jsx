@@ -12,6 +12,7 @@ import '../../QuickActions/QuickActions.css'
 import '../../movimientos/CreateSalida.css'
 import './RandomInspectionAdminTable.css'
 import InspectionCoverageMap from './InspectionCoverageMap'
+import ConfirmDialog from '../../common/unsavedChanges/ConfirmDialog'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeId = (value) => (value == null ? '' : String(value).trim())
@@ -463,6 +464,32 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     [divisionSubdivisiones]
   )
 
+  // "Este ya fue contado": antes de mandar una revision se consulta cuantos de
+  // esos productos ya se contaron hace poco y, si hay, se pide confirmar.
+  const [recountConfirm, setRecountConfirm] = useState(null)
+  const askIfRecentlyCounted = useCallback(async (body) => {
+    try {
+      const response = await authFetch(
+        `${API_URL}/recordatorios/inspeccion-aleatoria/admin/ya-contados/`,
+        { method: 'POST', body: JSON.stringify(body) },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !Number(payload?.contados)) return true
+      return await new Promise((resolve) => {
+        setRecountConfirm({
+          message: `${payload.contados} de ${payload.total} producto(s) ya fueron contados en los ultimos ${payload.dias} dias${
+            payload.ultimo_conteo ? ` (ultimo conteo: ${formatDateTime(payload.ultimo_conteo)})` : ''
+          }. ¿Seguro quieres seguir con la revision?`,
+          codes: (Array.isArray(payload.productos) ? payload.productos : []).map((row) => row.codigo).filter(Boolean),
+          resolve,
+        })
+      })
+    } catch {
+      return true
+    }
+  }, [token])
+
   const sendDivision = useCallback(async () => {
     if (!token) return
     if (!divisionId) { notifyError('Debes seleccionar una division.'); return }
@@ -470,6 +497,12 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
 
     const hora = String(sendNowParams?.hora_recordatorio || '').trim()
     if (!hora) { notifyError('Debes seleccionar la hora del recordatorio.'); return }
+
+    const proceed = await askIfRecentlyCounted({
+      division_id: divisionId,
+      ...(divisionSubdivisionId ? { subdivision_id: divisionSubdivisionId } : {}),
+    })
+    if (!proceed) return
 
     setDivisionSending(true)
     try {
@@ -497,7 +530,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     } finally {
       setDivisionSending(false)
     }
-  }, [token, divisionId, divisionSubdivisionId, divisionUsuarioId, sendNowParams, notifyError, notifySuccess])
+  }, [token, divisionId, divisionSubdivisionId, divisionUsuarioId, sendNowParams, notifyError, notifySuccess, askIfRecentlyCounted])
 
   // Ubicaciones (Bodega / Division / Subdivision) del producto dentro de la
   // sucursal elegida, para la columna "Ubicacion" de la lista.
@@ -706,6 +739,12 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     const hora = String(sendNowParams?.hora_recordatorio || '').trim()
     if (!hora) { notifyError('Debes seleccionar la hora del recordatorio.'); return }
 
+    const proceed = await askIfRecentlyCounted({
+      sucursal_id: listSucursalId,
+      producto_ids: listProducts.map((item) => item.id),
+    })
+    if (!proceed) return
+
     setListSending(true)
     try {
       const response = await authFetch(
@@ -730,7 +769,38 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     } finally {
       setListSending(false)
     }
-  }, [token, listSucursalId, listUsuarioId, listProducts, sendNowParams, notifyError, notifySuccess])
+  }, [token, listSucursalId, listUsuarioId, listProducts, sendNowParams, notifyError, notifySuccess, askIfRecentlyCounted])
+
+  // Desde el mapa: mandar a revisar los productos que faltan de una percha.
+  const sendProductListToReviewer = useCallback(async ({ sucursalId, usuarioId, productIds }) => {
+    if (!token || !sucursalId || !usuarioId || !productIds?.length) return false
+    const proceed = await askIfRecentlyCounted({ sucursal_id: sucursalId, producto_ids: productIds })
+    if (!proceed) return false
+    const now = new Date()
+    const hora = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    try {
+      const response = await authFetch(
+        `${API_URL}/recordatorios/inspeccion-aleatoria/enviar-lista/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            sucursal_id: sucursalId,
+            usuario_id: usuarioId,
+            producto_ids: productIds,
+            hora_recordatorio: hora,
+          }),
+        },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo enviar la revision.')
+      notifySuccess(`Revision enviada: ${payload.productos} producto(s) para ${payload.nombre}.`)
+      return true
+    } catch (error) {
+      notifyError(error?.message || 'No se pudo enviar la revision.')
+      return false
+    }
+  }, [token, askIfRecentlyCounted, notifyError, notifySuccess])
 
   const loadAssignments = useCallback(async () => {
     if (!token || !canUpdate) {
@@ -1514,8 +1584,23 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
           token={token}
           darkMode={isDarkTheme}
           onClose={() => setCoverageMapBranch(null)}
+          reviewers={sendNowSummary.find((branch) => branch.id === normalizeId(coverageMapBranch.id))?.reviewers || []}
+          reviewersLoading={assignmentsLoading}
+          onSendMissing={(payload) => sendProductListToReviewer({ ...payload, sucursalId: coverageMapBranch.id })}
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(recountConfirm)}
+        title="Ya fue contado"
+        message={recountConfirm?.message}
+        details={recountConfirm?.codes?.length ? (
+          <p className="inspection-admin__recount-codes">{`Por ejemplo: ${recountConfirm.codes.slice(0, 6).join(', ')}${recountConfirm.codes.length > 6 ? '...' : ''}`}</p>
+        ) : null}
+        confirmLabel="Seguir con la revision"
+        onCancel={() => { recountConfirm?.resolve(false); setRecountConfirm(null) }}
+        onConfirm={() => { recountConfirm?.resolve(true); setRecountConfirm(null) }}
+      />
 
       <div className="inspection-admin__block">
         <div className="inspection-admin__block-head">
@@ -1576,6 +1661,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                         aria-label={`Ver mapa de conteo de ${String(row?.sucursal_nombre || '').trim() || 'la sucursal'}`}
                         onClick={(event) => {
                           event.stopPropagation()
+                          if (!assignmentRows.length) void loadAssignments()
                           setCoverageMapBranch({
                             id: rowId,
                             nombre: String(row?.sucursal_nombre || `Sucursal ${rowId}`).trim(),

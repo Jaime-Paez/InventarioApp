@@ -865,3 +865,34 @@ class CroquisConteoTests(InspeccionAleatoriaBaseTestCase):
     def test_revisor_sin_permiso(self):
         response = self.revisor_client.get(self.URL, {"sucursal_id": self.sucursal.id})
         self.assertEqual(response.status_code, 403)
+
+
+class YaContadosTests(InspeccionAleatoriaBaseTestCase):
+    URL = f"{BASE_URL}/admin/ya-contados/"
+
+    def test_cuenta_los_contados_recientes(self):
+        inspection = self._crear_inspeccion(productos=[self.producto], sucursal=self.sucursal)
+        item = inspection.items.get()
+        InspeccionAleatoriaItem.objects.filter(pk=item.pk).update(
+            estado_revision=InspeccionAleatoriaItem.EstadosRevision.COINCIDE, revisado_en=timezone.now()
+        )
+        response = self.admin_client.post(
+            self.URL, {"sucursal_id": self.sucursal.id, "producto_ids": [self.producto.id, self.producto_2.id]}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual((response.data["total"], response.data["contados"]), (2, 1))
+        self.assertEqual(response.data["productos"][0]["codigo"], "P-1")
+
+        por_division = self.admin_client.post(self.URL, {"division_id": self.division.id}, format="json")
+        self.assertEqual((por_division.data["total"], por_division.data["contados"]), (2, 1))
+
+    def test_conteo_viejo_no_cuenta(self):
+        inspection = self._crear_inspeccion(productos=[self.producto], sucursal=self.sucursal)
+        InspeccionAleatoriaItem.objects.filter(inspeccion=inspection).update(
+            estado_revision=InspeccionAleatoriaItem.EstadosRevision.COINCIDE,
+            revisado_en=timezone.now() - timezone.timedelta(days=45),
+        )
+        response = self.admin_client.post(
+            self.URL, {"sucursal_id": self.sucursal.id, "producto_ids": [self.producto.id]}, format="json"
+        )
+        self.assertEqual(response.data["contados"], 0)
