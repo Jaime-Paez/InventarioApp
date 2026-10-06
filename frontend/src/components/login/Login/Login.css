@@ -131,6 +131,12 @@ form {
 
 label {
   font-weight: 700;
+}
+
+/* El color solo en el login: sin el prefijo pintaba TODAS las etiquetas de la
+   app con el texto del modo claro, tambien en modo oscuro (quedaban gris
+   oscuro sobre fondo oscuro). */
+.login-page label {
   color: var(--color-text-primary);
 }
 
