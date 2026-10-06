@@ -1,7 +1,8 @@
 /*
  * Ajustes visuales globales (criterios de la skill "apple-design"):
  * respuesta inmediata al presionar, numeros alineados, enfoque visible,
- * profundidad en modales y respeto a "reducir movimiento".
+ * entrada suave de modales y respeto a "reducir movimiento".
+ * Sin desenfoque detras de los modales: se necesita ver lo que hay atras.
  *
  * Todo usa :where() (especificidad 0) o propiedades independientes como
  * `scale`, para no pisar estilos existentes de ningun componente.
@@ -71,22 +72,7 @@
   outline-offset: 2px;
 }
 
-/* 4. Profundidad: el fondo de los modales se desenfoca levemente para que el
-      foco quede en la ventana abierta. */
-:where(
-  .create-user__overlay,
-  .quick-actions__receive-overlay,
-  .quick-actions__inspection-overlay,
-  .inspection-admin__dialog-overlay,
-  .recordatorios-popup__overlay,
-  .inventario-map-popup,
-  .coverage-map
-) {
-  -webkit-backdrop-filter: blur(3px);
-  backdrop-filter: blur(3px);
-}
-
-/* 5. Los modales que aparecian de golpe ahora "llegan": opacidad + un leve
+/* 4. Los modales que aparecian de golpe ahora "llegan": opacidad + un leve
       cambio de escala. Solo al abrir (fill backwards), sin tocar su transform. */
 :where(
   .quick-actions__receive-dialog,
@@ -121,7 +107,7 @@
   }
 }
 
-/* 6. Accesibilidad: con "reducir movimiento" del sistema se quitan escalas y
+/* 5. Accesibilidad: con "reducir movimiento" del sistema se quitan escalas y
       animaciones (los indicadores de carga siguen girando: son informacion). */
 @media (prefers-reduced-motion: reduce) {
   *:not(.pi-spin):not([class*='spin']),
@@ -135,21 +121,5 @@
 
   :where(button):active {
     scale: none !important;
-  }
-}
-
-/* Con "reducir transparencia" el fondo de los modales no se desenfoca. */
-@media (prefers-reduced-transparency: reduce) {
-  :where(
-    .create-user__overlay,
-    .quick-actions__receive-overlay,
-    .quick-actions__inspection-overlay,
-    .inspection-admin__dialog-overlay,
-    .recordatorios-popup__overlay,
-    .inventario-map-popup,
-    .coverage-map
-  ) {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
   }
 }
