@@ -53,7 +53,7 @@ const initialForm = {
   iva_rate: String(DEFAULT_IVA_RATE),
   solicitudTrasladoId: '',
   tipo_pago: '',
-  tipo_envio: 'traslado_normal',
+  tipo_envio: '',
 }
 
 const TIPO_PAGO_OPTIONS = [
@@ -3327,6 +3327,12 @@ function CreateSalida({
       return false
     }
 
+    // Sin valor por defecto: quien envia tiene que elegir como sale.
+    if (isTraslado && !String(formData.tipo_envio || '').trim()) {
+      notifyError('Selecciona el tipo de salida.')
+      return false
+    }
+
     if (isDevolucion && !String(formData.descripcion || '').trim()) {
       notifyError('La Nota es obligatoria para solicitudes de garantía.')
       return false
@@ -3482,7 +3488,7 @@ function CreateSalida({
           : undefined,
         descripcion: buildDescripcion(ventaClienteLabel),
         factura_referencia: isVenta || isDevolucion || isTraslado ? String(formData.factura_referencia || '').trim() : '',
-        ...(isTraslado ? { tipo_envio: formData.tipo_envio || 'traslado_normal' } : {}),
+        ...(isTraslado ? { tipo_envio: formData.tipo_envio } : {}),
         funcional: true,
         sucursal_objetivo_id: requiresSucursalObjetivo ? Number(formData.sucursalObjetivoId) : null,
         estado_movimiento_id: Number(estadoMovimientoId),
@@ -3904,11 +3910,13 @@ function CreateSalida({
                                   <span>Tipo de salida</span>
                                   <select
                                     name="tipo_envio"
-                                    value={formData.tipo_envio || 'traslado_normal'}
+                                    value={formData.tipo_envio || ''}
                                     onChange={handleChange}
                                     disabled={loading}
                                     required
+                                    className={formSubmitted && !formData.tipo_envio ? 'create-salida__input--invalid' : undefined}
                                   >
+                                    <option value="" disabled>Selecciona un tipo</option>
                                     {TIPO_ENVIO_OPTIONS.map((option) => (
                                       <option key={option.value} value={option.value}>{option.label}</option>
                                     ))}

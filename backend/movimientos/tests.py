@@ -217,9 +217,10 @@ class MovimientoInventarioStockRulesTests(TestCase):
         movimiento = self._create_movement(self._traslado_payload(tipo_envio="envio_provincia"))
         self.assertEqual(movimiento.tipo_envio, "envio_provincia")
 
-    def test_salida_a_sucursal_sin_tipo_queda_traslado_normal(self):
-        movimiento = self._create_movement(self._traslado_payload())
-        self.assertEqual(movimiento.tipo_envio, "traslado_normal")
+    def test_salida_a_sucursal_exige_elegir_tipo(self):
+        serializer = MovimientoInventarioSerializer(data=self._traslado_payload())
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("tipo_envio", serializer.errors)
 
     def test_salida_a_sucursal_tipo_invalido(self):
         serializer = MovimientoInventarioSerializer(data=self._traslado_payload(tipo_envio="avion"))

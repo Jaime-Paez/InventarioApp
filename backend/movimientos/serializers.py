@@ -940,17 +940,27 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         is_entry = tipo_name.startswith("ent")
         tipo_id = getattr(tipo, "id", None)
 
-        # Tipo de salida a sucursal: solo en salidas de traslado (por defecto
-        # "traslado normal"); en el resto de movimientos queda vacio.
+        # Tipo de salida a sucursal: solo en salidas de traslado y obligatorio
+        # al crearlas (sin valor por defecto); en el resto queda vacio. Las
+        # salidas anteriores sin tipo se pueden seguir editando.
         if not is_entry and subtipo_key == "traslado":
             tipo_envio = str(
                 attrs.get("tipo_envio", getattr(self.instance, "tipo_envio", "")) or ""
-            ).strip() or MovimientoInventario.TipoEnvio.TRASLADO_NORMAL
-            if tipo_envio not in MovimientoInventario.TipoEnvio.values:
+            ).strip()
+            if not tipo_envio and not is_create and "tipo_envio" not in attrs:
+                tipo_envio = None
+            if tipo_envio is None:
+                pass
+            elif not tipo_envio:
+                raise serializers.ValidationError(
+                    {"tipo_envio": "Selecciona el tipo de salida: traslado normal, envio cliente o envio provincia."}
+                )
+            elif tipo_envio not in MovimientoInventario.TipoEnvio.values:
                 raise serializers.ValidationError(
                     {"tipo_envio": "Tipo de salida invalido: traslado normal, envio cliente o envio provincia."}
                 )
-            attrs["tipo_envio"] = tipo_envio
+            if tipo_envio is not None:
+                attrs["tipo_envio"] = tipo_envio
         elif is_create or "tipo_envio" in attrs:
             attrs["tipo_envio"] = ""
 
