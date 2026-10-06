@@ -7498,6 +7498,45 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
   }
 
+  // Encabezado y selector de codigo fijos al desplazarse por la tabla.
+  const productsHeadRef = useRef(null)
+  const [productsHeadHeight, setProductsHeadHeight] = useState(40)
+  useEffect(() => {
+    const head = productsHeadRef.current
+    if (!head || typeof ResizeObserver === 'undefined') return undefined
+    const update = () => setProductsHeadHeight(head.getBoundingClientRect().height || 40)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(head)
+    return () => observer.disconnect()
+  })
+
+  // Codigo que ya esta en la lista: en vez de no mostrarse, lleva a su fila.
+  const [highlightedDetailKey, setHighlightedDetailKey] = useState('')
+  const jumpToDetailRow = useCallback((detailKey) => {
+    if (!detailKey) return
+    setShowProductDropdown(false)
+    setProductQuery('')
+    setProductOptions([])
+    setHighlightedDetailKey(String(detailKey))
+    window.requestAnimationFrame(() => {
+      const row = document.querySelector(`[data-detail-key="${CSS.escape(String(detailKey))}"]`)
+      row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+    window.setTimeout(() => setHighlightedDetailKey((current) => (current === String(detailKey) ? '' : current)), 2600)
+  }, [])
+  const listedMatches = useMemo(() => {
+    const term = String(productQuery || '').trim().toLowerCase()
+    if (term.length < 2) return []
+    return details
+      .filter((item) => {
+        const code = String(item.producto?.codigo || item.codigo || '').toLowerCase()
+        const name = String(item.producto?.nombre || item.nombre || '').toLowerCase()
+        return code.includes(term) || name.includes(term)
+      })
+      .slice(0, 6)
+  }, [details, productQuery])
+
   const alreadyAddedIds = useMemo(
     () => new Set(details.filter((d) => d.producto?.id).map((d) => String(d.producto.id))),
     [details]
@@ -7729,7 +7768,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                     </div>
 
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`} onKeyDown={handleProductsGridKeyDown}>
-                      <div className="create-user__locations-row create-user__locations-row--head">
+                      <div className="create-user__locations-row create-user__locations-row--head imp-sticky-head" ref={productsHeadRef}>
                         <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span>
                         {!isVerificarOrConfirmacion && <span>Cantidad</span>}
                         {isVerificar ? (
@@ -7772,7 +7811,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         )}
                       </div>
 
-                      {!isVerificarOrConfirmacion && <div className="create-user__locations-row create-user__locations-row--form">
+                      {!isVerificarOrConfirmacion && <div className="create-user__locations-row create-user__locations-row--form imp-sticky-form" style={{ top: productsHeadHeight }}>
                         <span className="create-salida__product-picker create-salida__product-code-cell">
                           <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
                             <button
@@ -7802,7 +7841,25 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                 <div className="create-user__dropdown-results">
                                   {productLoading && <small className="muted">Buscando productos...</small>}
                                   {!productLoading && !productQuery.trim() && !productOptions.length && <small className="muted">Escribe para buscar.</small>}
-                                  {!productLoading && productQuery.trim() && !productOptions.length && <small className="muted">Sin resultados.</small>}
+                                  {listedMatches.length > 0 && (
+                                    <div className="imp-listed-matches">
+                                      <small className="imp-listed-matches__title">Ya en la lista — toca para ir a la fila</small>
+                                      {listedMatches.map((item) => (
+                                        <button
+                                          key={`listed-${item._key}`}
+                                          type="button"
+                                          className="create-salida__result-row imp-listed-matches__row"
+                                          onMouseDown={(e) => e.preventDefault()}
+                                          onClick={() => jumpToDetailRow(item._key)}
+                                        >
+                                          <span className="result-codigo">{String(item.producto?.codigo || item.codigo || '').trim()}</span>
+                                          <span className="result-nombre">{String(item.producto?.nombre || item.nombre || '').trim()}</span>
+                                          <span className="result-stock">{`Cant. ${Number(item.cantidad || 0)}`}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {!productLoading && productQuery.trim() && !productOptions.length && !listedMatches.length && <small className="muted">Sin resultados.</small>}
                                   {productOptions.length > 0 && (
                                     <div className="create-salida__results-header">
                                       <span>Código</span><span>Descripción</span><span>Stock</span>
@@ -7817,9 +7874,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                         type="button"
                                         className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}`}
                                         onMouseDown={(e) => e.preventDefault()}
-                                        onClick={() => { setDetailDraft({ producto: product, cantidad: '' }); setProductQuery(''); setShowProductDropdown(false); setProductOptions([]) }}
-                                        disabled={isAlreadyAdded}
-                                        title={isAlreadyAdded ? 'Ya agregado' : undefined}
+                                        onClick={() => {
+                                          if (isAlreadyAdded) {
+                                            const existing = details.find((d) => d.producto?.id && String(d.producto.id) === String(product.id))
+                                            jumpToDetailRow(existing?._key)
+                                            return
+                                          }
+                                          setDetailDraft({ producto: product, cantidad: '' }); setProductQuery(''); setShowProductDropdown(false); setProductOptions([])
+                                        }}
+                                        title={isAlreadyAdded ? 'Ya está en la lista: ir a la fila' : undefined}
                                       >
                                         <span className="result-codigo">{String(product.codigo || '').trim()}</span>
                                         <span className="result-nombre">{String(product.nombre || '').trim()}</span>
@@ -7893,7 +7956,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
-                          <div key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}`}>
+                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`}>
                             <span
                               className="imp-table-cell-tip"
                               onMouseEnter={(e) => !sinCatalogo && showCellHover(e, codigo, 'Código')}

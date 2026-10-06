@@ -26,8 +26,8 @@ Estados: ⬜ pendiente · 🔄 en curso · ✅ aplicado y subido
 
 | # | Pedido | Cómo se entendió | Estado |
 |---|---|---|---|
-| 9 | Código repetido lleva a su fila | Si en el selector de productos se escribe un código **que ya está en la lista**, en vez de no mostrar nada, **lleva a esa fila** de la tabla (y la resalta). | ⬜ |
-| 10 | Selector fijo | La fila del **selector de código** queda **fija arriba** de la tabla al desplazarse, para seguir agregando sin volver arriba. | ⬜ |
+| 9 | Código repetido lleva a su fila | Si en el selector de productos se escribe un código **que ya está en la lista**, en vez de no mostrar nada, **lleva a esa fila** de la tabla (y la resalta). | ✅ |
+| 10 | Selector fijo | La fila del **selector de código** queda **fija arriba** de la tabla al desplazarse, para seguir agregando sin volver arriba. | ✅ |
 
 ## Entradas
 

@@ -2216,3 +2216,50 @@
   font-weight: 600;
   font-size: 0.82rem;
 }
+
+/* Tabla de productos de la sugerencia: encabezado y selector fijos */
+.importaciones-modal__products-table .imp-sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.importaciones-modal__products-table .imp-sticky-form {
+  position: sticky;
+  z-index: 3;
+  background: var(--table-color, #f8f9fa);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08);
+}
+
+.dashboard-shell.dark .importaciones-modal__products-table .imp-sticky-form {
+  background: var(--table-color-dark, #232324);
+}
+
+/* Fila a la que se salto desde el selector */
+.importaciones-modal__products-table .imp-row--highlight {
+  animation: imp-row-flash 2.4s ease-out;
+}
+
+@keyframes imp-row-flash {
+  0%, 40% { box-shadow: inset 0 0 0 2px #f59e0b; background-color: rgba(245, 158, 11, 0.18); }
+  100% { box-shadow: inset 0 0 0 2px transparent; }
+}
+
+.imp-listed-matches {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--color-border);
+}
+
+.imp-listed-matches__title {
+  padding: 2px 6px;
+  font-weight: 700;
+  color: #b45309;
+}
+
+body.app-theme-dark .imp-listed-matches__title {
+  color: #fbbf24;
+}
