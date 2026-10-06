@@ -1701,8 +1701,30 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
         ),
         "conteo_ubicaciones": conteo_ubicaciones,
         "revisado_en": _parse_iso_timestamp(item.revisado_en),
+        "no_encontrado": bool(getattr(item, "no_encontrado", False)),
+        "reubicado_a": (
+            _subdivision_label(getattr(item, "reubicado_a", None))
+            if getattr(item, "reubicado_a_id", None) and not hide_expected
+            else ""
+        ),
         **serialized_result,
     }
+
+
+def _subdivision_label(subdivision):
+    if subdivision is None:
+        return ""
+    division = getattr(subdivision, "division", None)
+    bodega = getattr(division, "bodega", None)
+    return " / ".join(
+        part
+        for part in (
+            _normalize_text(getattr(bodega, "nombre", "")),
+            _normalize_text(getattr(division, "nombre", "")),
+            _normalize_text(getattr(subdivision, "nombre", "")),
+        )
+        if part
+    )
 
 
 def _attach_random_inspection_locations(items, *, division_id=None, subdivision_id=None):
@@ -2442,6 +2464,39 @@ def _relocate_random_inspection_item(item):
     return _apply_random_inspection_adjustment(item, int(item.cantidad_esperada or 0))
 
 
+def _move_inspection_item_stock(item, target_subdivision):
+    """"No lo encontre" + el admin sabe donde esta: mueve todo el stock del
+    producto que hay en el alcance revisado a `target_subdivision`."""
+    rows = list(
+        _inspection_scope_stock_rows(
+            sucursal_id=item.sucursal_id,
+            producto_id=item.producto_id,
+            division_id=_inspection_division_scope(item.inspeccion),
+            subdivision_id=_inspection_subdivision_scope(item.inspeccion),
+        ).exclude(subdivision_id=int(target_subdivision.id))
+    )
+    moved = 0
+    origins = []
+    for row in rows:
+        quantity = int(row.cantidad or 0)
+        if quantity <= 0:
+            continue
+        origins.append({"subdivision_id": int(row.subdivision_id), "cantidad": quantity})
+        moved += quantity
+        row.cantidad = 0
+        row.save(update_fields=["cantidad"])
+    if moved:
+        target_row, _ = Inventario.objects.select_for_update().get_or_create(
+            subdivision=target_subdivision,
+            producto_id=int(item.producto_id),
+            referencia="",
+            defaults={"cantidad": 0},
+        )
+        target_row.cantidad = int(target_row.cantidad or 0) + moved
+        target_row.save(update_fields=["cantidad"])
+    return {"cantidad": moved, "origenes": origins}
+
+
 def _record_random_inspection_audit(item, actor_user, detalle, valores):
     from django.contrib.contenttypes.models import ContentType
 
@@ -2961,6 +3016,8 @@ def _normalize_random_inspection_verify_action(value):
         return "aprobar"
     if normalized in {"rechazar", "rechazada", "descartar"}:
         return "rechazar"
+    if normalized in {"reubicar", "reubicada", "mover"}:
+        return "reubicar"
     return ""
 
 
@@ -3209,9 +3266,17 @@ class RandomInspectionRespondAPIView(APIView):
                     entry["cantidad_contada"] is not None for entry in location_counts
                 )
 
+                not_found = (
+                    bool(row.get("no_encontrado")) if "no_encontrado" in row else bool(item.no_encontrado)
+                )
                 reported = _parse_optional_quantity(row.get("cantidad_reportada"))
                 if locations_complete:
                     reported = sum(entry["cantidad_contada"] for entry in location_counts)
+                if not_found:
+                    # "No lo encontre" cuenta como 0 en todas las ubicaciones.
+                    reported = 0
+                    location_counts = [{**entry, "cantidad_contada": 0} for entry in location_counts]
+                    locations_complete = len(location_counts) > 1
                 if reported is None:
                     legacy_state = _normalize_random_inspection_review_state(
                         row.get("estado_revision") or row.get("estado") or row.get("resultado")
@@ -3264,6 +3329,7 @@ class RandomInspectionRespondAPIView(APIView):
                         subdivision_ids.add(int(entry["subdivision_id"]))
                 parsed_rows[int(item.id)] = {
                     "row": row,
+                    "not_found": not_found,
                     "reported": int(reported),
                     "location_counts": location_counts,
                     "locations_complete": locations_complete,
@@ -3322,6 +3388,7 @@ class RandomInspectionRespondAPIView(APIView):
                     observacion = f"{observacion}\n{note}".strip() if observacion else note
 
                 item.estado_revision = estado_revision
+                item.no_encontrado = bool(parsed["not_found"])
                 item.cantidad_esperada = system_qty
                 item.cantidad_reportada = reported
                 if item.cantidad_primer_conteo is None:
@@ -3336,6 +3403,7 @@ class RandomInspectionRespondAPIView(APIView):
                 inspection_items,
                 [
                     "estado_revision",
+                    "no_encontrado",
                     "cantidad_esperada",
                     "cantidad_reportada",
                     "cantidad_primer_conteo",
@@ -3509,10 +3577,12 @@ class RandomInspectionSaveDraftAPIView(APIView):
                         item.conteo_ubicaciones = location_counts or []
                     if "observacion" in row:
                         item.observacion = str(row.get("observacion") or "").strip()
+                    if "no_encontrado" in row:
+                        item.no_encontrado = bool(row.get("no_encontrado"))
                 if items_to_update:
                     InspeccionAleatoriaItem.objects.bulk_update(
                         items_to_update,
-                        ["cantidad_reportada", "conteo_ubicaciones", "observacion"],
+                        ["cantidad_reportada", "conteo_ubicaciones", "observacion", "no_encontrado"],
                     )
 
             update_fields = {"borrador_version", "updated_at"}
@@ -3625,7 +3695,42 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 request.data.get("nota") or request.data.get("observacion")
             )
 
-            if action == "aprobar":
+            if action == "reubicar":
+                target = (
+                    SubDivision.objects.select_related("division__bodega")
+                    .filter(
+                        pk=_normalize_int(request.data.get("subdivision_id"), 0),
+                        division__bodega__sucursal_id=int(item.sucursal_id),
+                    )
+                    .first()
+                )
+                if target is None:
+                    return Response(
+                        {"detail": "Elige la nueva ubicacion (de la misma sucursal)."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                moved = _move_inspection_item_stock(item, target)
+                if moved["cantidad"] <= 0:
+                    return Response(
+                        {"detail": "No hay stock de este producto en las ubicaciones revisadas para mover."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                target_label = _subdivision_label(target)
+                _record_random_inspection_audit(
+                    item,
+                    request.user,
+                    (
+                        f"Reubicacion por inspeccion aleatoria #{int(item.inspeccion_id)}: "
+                        f"no se encontro; {moved['cantidad']} unidad(es) movidas a {target_label}."
+                    ),
+                    {**moved, "subdivision_destino_id": int(target.id)},
+                )
+                item.reubicado_a = target
+                # El total no cambia: solo cambia donde esta.
+                item.verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.APROBADA
+                item.cantidad_confirmada = int(item.cantidad_esperada or 0)
+                note = note or f"Reubicado a {target_label}."
+            elif action == "aprobar":
                 # Cantidad confirmada por ubicacion (cuando se conto en varias):
                 # [{subdivision_id, cantidad}]. El total es la suma de ellas.
                 confirmed_by_location = {}
@@ -3724,6 +3829,7 @@ class RandomInspectionVerifyItemAPIView(APIView):
                     "verificacion_estado",
                     "cantidad_confirmada",
                     "conteo_ubicaciones",
+                    "reubicado_a",
                     "nota_verificacion",
                     "verificado_por",
                     "verificado_en",

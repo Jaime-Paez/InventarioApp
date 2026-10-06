@@ -9,7 +9,7 @@ Estados: ⬜ pendiente · 🔄 en curso · ✅ aplicado y subido
 | # | Pedido | Cómo se entendió | Estado |
 |---|---|---|---|
 | 1 | Mandar faltantes de una percha desde el mapa | En el panel de la percha del **Mapa de conteo**, botón **"Enviar faltantes a revisar"**: elige revisor y hora y le manda solo los productos que faltan contar de esa percha. | ✅ |
-| 2 | Botón "No lo encontré" | En la revisión del revisor, botón **"No lo encontré"** para un producto. El administrador lo ve marcado como *No encontrado* y puede **reubicarlo** (indicar en qué ubicación está ahora) o ajustarlo. | ⬜ |
+| 2 | Botón "No lo encontré" | En la revisión del revisor, botón **"No lo encontré"** para un producto. El administrador lo ve marcado como *No encontrado* y puede **reubicarlo** (indicar en qué ubicación está ahora) o ajustarlo. | ✅ (al reubicar se mueve todo el stock revisado a la nueva ubicación; el total no cambia) |
 | 3 | Enviar ahora sin aleatorios | En **"Enviar revisión ahora"** se quita la pestaña *Aleatorio*; quedan *División específica* y *Lista específica*. | ✅ |
 | 4 | Buscar entre productos | En la revisión del revisor, un **buscador** para encontrar un producto (contado o no) y saltar a él. | ✅ |
 | 5 | Advertencia "ya fue contado" | Al enviar una revisión (división, subdivisión, lista o faltantes del mapa) que incluye productos que ya se contaron, aviso: *"N productos ya fueron contados, ¿seguro quieres seguir con la revisión?"*. | ✅ (se consideran los contados en los últimos 30 días) |

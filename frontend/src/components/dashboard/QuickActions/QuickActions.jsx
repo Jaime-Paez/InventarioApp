@@ -157,6 +157,7 @@ const buildRandomInspectionItemDraftPayload = (row) => {
     id: Number(normalizeId(row?.row_id || row?.id)),
     cantidad_reportada: row?.cantidad_reportada ?? null,
     observacion: String(row?.observacion || '').trim(),
+    no_encontrado: Boolean(row?.no_encontrado),
   }
   if (row?.requiere_conteo_por_ubicacion) {
     payload.cantidad_por_ubicacion = (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
@@ -201,6 +202,7 @@ const mergeRandomInspectionFromServer = (localInspection, serverInspection) => {
         cantidad_primer_conteo: serverItem.cantidad_primer_conteo,
         conteo_ubicaciones: serverItem.conteo_ubicaciones,
         observacion: serverItem.observacion,
+        no_encontrado: serverItem.no_encontrado,
         estado_revision: serverItem.estado_revision,
         verificacion_estado: serverItem.verificacion_estado,
         ubicaciones_bodega: localLocations.length
@@ -2513,6 +2515,10 @@ function QuickActions({
           }))
           .filter((location) => Boolean(location.key))
         const useLocationInputs = locations.length > 1
+        // "No lo encontre" cuenta como 0 (en todas las ubicaciones).
+        const notFound = Object.prototype.hasOwnProperty.call(draft, 'no_encontrado')
+          ? Boolean(draft.no_encontrado)
+          : Boolean(item?.no_encontrado)
         const baseReportInput = item?.cantidad_reportada == null
           ? ''
           : String(toPositiveInt(item?.cantidad_reportada, expectedQty))
@@ -2524,9 +2530,11 @@ function QuickActions({
           : {}
         const locationInputs = useLocationInputs
           ? locations.map((location) => {
-            const rawInput = Object.prototype.hasOwnProperty.call(locationCountDraft, location.key)
-              ? String(locationCountDraft?.[location.key] || '')
-              : ''
+            const rawInput = notFound
+              ? '0'
+              : Object.prototype.hasOwnProperty.call(locationCountDraft, location.key)
+                ? String(locationCountDraft?.[location.key] || '')
+                : ''
             return {
               ...location,
               cantidad_contada_input: rawInput,
@@ -2541,11 +2549,13 @@ function QuickActions({
           ? (allLocationInputsAnswered
             ? String(locationInputs.reduce((total, location) => total + toPositiveInt(location?.cantidad_contada, 0), 0))
             : '')
-          : (
-            Object.prototype.hasOwnProperty.call(draft, 'cantidad_reportada_input')
-              ? String(draft?.cantidad_reportada_input || '')
-              : baseReportInput
-          )
+          : notFound
+            ? '0'
+            : (
+              Object.prototype.hasOwnProperty.call(draft, 'cantidad_reportada_input')
+                ? String(draft?.cantidad_reportada_input || '')
+                : baseReportInput
+            )
         const normalizedItemState = String(item?.estado_revision || '').trim().toLowerCase()
         const isAnswered = useLocationInputs
           ? allLocationInputsAnswered
@@ -2567,6 +2577,7 @@ function QuickActions({
           cantidad_reportada_por_ubicacion: locationCountDraft,
           ubicaciones_bodega: useLocationInputs ? locationInputs : locations,
           requiere_conteo_por_ubicacion: useLocationInputs,
+          no_encontrado: notFound,
           respondido: isAnswered,
           observacion: String(draft?.observacion || item?.observacion || '').trim(),
         }
@@ -4504,6 +4515,7 @@ function QuickActions({
           : 'coincide'
       } else if (field === 'cantidad_reportada') {
         next.cantidad_reportada_input = normalizeIntegerInputString(value)
+        next.no_encontrado = false
       } else if (field === 'observacion') {
         next.observacion = String(value || '')
       } else if (field === 'accion') {
@@ -4611,6 +4623,37 @@ function QuickActions({
     void saveInspectionDraftToBackend(index)
   }, [randomInspectionSubmitting, saveInspectionDraftToBackend])
 
+  // "No lo encontre": queda en 0 y marcado para que administracion decida
+  // (puede reubicarlo). Pasa al siguiente producto como "Siguiente".
+  const handleRandomInspectionNotFound = useCallback(() => {
+    if (randomInspectionSubmitting || !activeRandomInspectionRow) return
+    const itemId = normalizeId(activeRandomInspectionRow?.row_id || activeRandomInspectionRow?.id)
+    if (!itemId) return
+    setRandomInspectionDraftByItemId((prev) => ({
+      ...prev,
+      [itemId]: {
+        ...(prev?.[itemId] || {}),
+        id: itemId,
+        no_encontrado: true,
+        cantidad_reportada_input: '',
+        cantidad_reportada_por_ubicacion: {},
+      },
+    }))
+    markRandomInspectionItemDirty(itemId)
+    setRandomInspectionError('')
+    if (activeRandomInspectionStepIndex >= randomInspectionRows.length - 1) {
+      setRandomInspectionShowSummary(true)
+    } else {
+      setRandomInspectionStepIndex(activeRandomInspectionStepIndex + 1)
+    }
+  }, [
+    activeRandomInspectionRow,
+    activeRandomInspectionStepIndex,
+    markRandomInspectionItemDirty,
+    randomInspectionRows.length,
+    randomInspectionSubmitting,
+  ])
+
   const handleRandomInspectionLocationCountChange = useCallback((itemId, locationKey, value) => {
     const normalizedItemId = normalizeId(itemId)
     const normalizedLocationKey = String(locationKey || '').trim()
@@ -4630,6 +4673,7 @@ function QuickActions({
         [normalizedItemId]: {
           ...current,
           id: normalizedItemId,
+          no_encontrado: false,
           cantidad_reportada_por_ubicacion: {
             ...currentLocationCounts,
             [normalizedLocationKey]: normalizeQuantityInputString(value),
@@ -5683,7 +5727,9 @@ function QuickActions({
                               <span
                                 className={`quick-actions__inspection-search-state${row?.cantidad_reportada == null ? '' : ' quick-actions__inspection-search-state--done'}`}
                               >
-                                {row?.cantidad_reportada == null ? 'Sin contar' : `Contado: ${row.cantidad_reportada}`}
+                                {row?.no_encontrado
+                                  ? 'No encontrado'
+                                  : row?.cantidad_reportada == null ? 'Sin contar' : `Contado: ${row.cantidad_reportada}`}
                               </span>
                             </button>
                           ))}
@@ -5827,6 +5873,24 @@ function QuickActions({
                           </article>
                         ))}
                       </div>
+
+                      <div className="quick-actions__inspection-notfound">
+                        {activeRandomInspectionRow?.no_encontrado ? (
+                          <p className="quick-actions__inspection-notfound-state">
+                            Marcado como <strong>no encontrado</strong>. Si lo encuentras, escribe la cantidad.
+                          </p>
+                        ) : (
+                          <button
+                            type="button"
+                            className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost quick-actions__inspection-notfound-btn"
+                            onClick={handleRandomInspectionNotFound}
+                            disabled={randomInspectionSubmitting}
+                            title="Administración verá que no lo encontraste y podrá indicar su nueva ubicación"
+                          >
+                            No lo encontré
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -5892,7 +5956,9 @@ function QuickActions({
                                 )}
                               </span>
                               <span className="quick-actions__inspection-count-table-qty">
-                                {row?.cantidad_reportada == null ? '-' : toPositiveInt(row.cantidad_reportada, 0)}
+                                {row?.no_encontrado
+                                  ? <span className="quick-actions__inspection-notfound-tag">No encontrado</span>
+                                  : row?.cantidad_reportada == null ? '-' : toPositiveInt(row.cantidad_reportada, 0)}
                               </span>
                             </div>
                           )

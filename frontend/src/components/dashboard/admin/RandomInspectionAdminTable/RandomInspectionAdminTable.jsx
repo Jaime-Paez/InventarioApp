@@ -1371,6 +1371,39 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     }
   }, [token, canUpdate, assignmentRows, assignmentBranches, localAssignmentMap, configData, loadAssignments, loadConfig, notifyError, notifySuccess])
 
+  // "No lo encontre": ubicaciones de la sucursal para reubicar el producto.
+  const [relocateOptionsByBranch, setRelocateOptionsByBranch] = useState({})
+  const currentVerifyItem = verifyWizardOpen ? verifyWizardItems[verifyWizardIndex] || null : null
+  const currentVerifyBranchId = currentVerifyItem?.no_encontrado ? normalizeId(currentVerifyItem?.sucursal_id) : ''
+  const relocateRequestedRef = useRef(new Set())
+  useEffect(() => {
+    if (!token || !currentVerifyBranchId || relocateRequestedRef.current.has(currentVerifyBranchId)) return
+    const branchId = currentVerifyBranchId
+    relocateRequestedRef.current.add(branchId)
+    setRelocateOptionsByBranch((prev) => ({ ...prev, [branchId]: { loading: true, options: [] } }))
+    authFetch(`${API_URL}/inventario/subdivisiones/?page_size=2000&sucursal_id=${encodeURIComponent(branchId)}`, {}, token)
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error('error'))))
+      .then((payload) => {
+        const list = Array.isArray(payload) ? payload : (Array.isArray(payload?.results) ? payload.results : [])
+        const options = list
+          .map((subdivision) => ({
+            id: normalizeId(subdivision?.id),
+            label: [subdivision?.division?.bodega?.nombre, subdivision?.division?.nombre, subdivision?.nombre]
+              .map((part) => String(part || '').trim())
+              .filter(Boolean)
+              .join(' / '),
+          }))
+          .filter((option) => option.id && option.label)
+          .sort((left, right) => left.label.localeCompare(right.label, 'es', { numeric: true }))
+        setRelocateOptionsByBranch((prev) => ({ ...prev, [branchId]: { loading: false, options } }))
+      })
+      .catch(() => {
+        // Se puede volver a intentar al volver a este producto.
+        relocateRequestedRef.current.delete(branchId)
+        setRelocateOptionsByBranch((prev) => ({ ...prev, [branchId]: { loading: false, options: [], error: true } }))
+      })
+  }, [token, currentVerifyBranchId])
+
   const submitVerifyDecision = useCallback(async (action, options = {}) => {
     const item = verifyWizardItems[verifyWizardIndex]
     const itemId = normalizeId(item?.id)
@@ -1379,7 +1412,13 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     const draft = verifyWizardDrafts[itemId] || {}
     const body = { accion: action, nota: String(draft?.nota || '').trim() }
     let changedFromCount = false
-    if (action === 'aprobar' && draft?.porUbicacion) {
+    if (action === 'reubicar') {
+      if (!draft?.reubicar) {
+        setVerifyWizardError('Elige la nueva ubicacion del producto.')
+        return
+      }
+      body.subdivision_id = Number(draft.reubicar)
+    } else if (action === 'aprobar' && draft?.porUbicacion) {
       const entries = Object.entries(draft.porUbicacion)
       const parsed = entries.map(([subdivisionId, value]) => ({
         subdivision_id: Number(subdivisionId),
@@ -1433,7 +1472,10 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       if (!response.ok) {
         throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar la verificacion.')
       }
-      const nextDecisions = { ...verifyWizardDecisions, [itemId]: action === 'aprobar' ? 'aprobada' : 'rechazada' }
+      const nextDecisions = {
+        ...verifyWizardDecisions,
+        [itemId]: action === 'aprobar' ? 'aprobada' : action === 'reubicar' ? 'reubicada' : 'rechazada',
+      }
       setVerifyWizardDecisions(nextDecisions)
       setVerifyWizardConfirming(false)
       // Siguiente diferencia sin decidir (hacia adelante y luego desde el inicio).
@@ -1749,6 +1791,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                       <div className="inspection-admin__product-cell">
                         <strong>{String(row?.producto_codigo || '').trim() || `#${row?.producto_id || '-'}`}</strong>
                         <span>{String(row?.producto_nombre || 'Producto').trim()}</span>
+                        {row?.no_encontrado && (
+                          <span className="inspection-admin__notfound-tag">
+                            {row?.reubicado_a ? `No encontrado · reubicado a ${row.reubicado_a}` : 'No encontrado'}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td>{Number.parseInt(String(row?.cantidad_esperada || 0), 10) || 0}</td>
@@ -1811,6 +1858,8 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         const decision = verifyWizardDecisions[itemId] || ''
         const decidedCount = Object.keys(verifyWizardDecisions).length
         const approvedCount = Object.values(verifyWizardDecisions).filter((value) => value === 'aprobada').length
+        const relocatedCount = Object.values(verifyWizardDecisions).filter((value) => value === 'reubicada').length
+        const relocateState = relocateOptionsByBranch[normalizeId(item?.sucursal_id)] || null
         const expected = Number.parseInt(String(item?.cantidad_esperada ?? 0), 10) || 0
         const reported = item?.cantidad_reportada == null ? null : Number.parseInt(String(item.cantidad_reportada), 10) || 0
         const firstCount = item?.cantidad_primer_conteo == null ? null : Number.parseInt(String(item.cantidad_primer_conteo), 10) || 0
@@ -1876,7 +1925,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 ) : !item ? (
                   <div className="quick-actions__inspection-quiz">
                     <p className="quick-actions__inspection-empty">
-                      {`Listo: revisaste ${decidedCount} diferencia(s) (${approvedCount} con ajuste de inventario, ${decidedCount - approvedCount} sin ajuste).`}
+                      {`Listo: revisaste ${decidedCount} diferencia(s) (${approvedCount} con ajuste de inventario${relocatedCount ? `, ${relocatedCount} reubicado(s)` : ''}, ${decidedCount - approvedCount - relocatedCount} sin ajuste).`}
                     </p>
                   </div>
                 ) : (
@@ -1969,9 +2018,48 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                         </p>
                       )}
 
+                      {item?.no_encontrado && !decision && (
+                        <div className="inspection-admin__relocate">
+                          <strong>El revisor no lo encontró</strong>
+                          <p>Si sabes dónde está, elige su nueva ubicación: se mueve ahí todo su stock y el total no cambia. Si de verdad no está, ajusta la cantidad abajo.</p>
+                          <div className="inspection-admin__relocate-row">
+                            <select
+                              value={draft.reubicar || ''}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                setVerifyWizardDrafts((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || {}), reubicar: value } }))
+                              }}
+                              disabled={busy || !relocateState || relocateState.loading}
+                              aria-label="Nueva ubicacion"
+                            >
+                              <option value="">
+                                {!relocateState || relocateState.loading
+                                  ? 'Cargando ubicaciones...'
+                                  : relocateState.error ? 'No se pudieron cargar las ubicaciones' : 'Nueva ubicación'}
+                              </option>
+                              {(relocateState?.options || []).map((option) => (
+                                <option key={`relocate-${itemId}-${option.id}`} value={option.id}>{option.label}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className="quick-actions__inspection-btn inspection-admin__verify-adjust"
+                              onClick={() => void submitVerifyDecision('reubicar')}
+                              disabled={busy || !draft.reubicar}
+                            >
+                              {verifyWizardSubmitting ? 'Guardando...' : 'Reubicar'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {decision ? (
                         <p className="quick-actions__inspection-verify-state">
-                          {decision === 'aprobada' ? 'Inventario ajustado.' : 'Inventario mantenido, sin ajuste.'}
+                          {decision === 'aprobada'
+                            ? 'Inventario ajustado.'
+                            : decision === 'reubicada'
+                              ? 'Producto reubicado; el total no cambió.'
+                              : 'Inventario mantenido, sin ajuste.'}
                         </p>
                       ) : (
                         <>

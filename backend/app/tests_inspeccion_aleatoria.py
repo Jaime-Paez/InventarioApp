@@ -896,3 +896,71 @@ class YaContadosTests(InspeccionAleatoriaBaseTestCase):
             self.URL, {"sucursal_id": self.sucursal.id, "producto_ids": [self.producto.id]}, format="json"
         )
         self.assertEqual(response.data["contados"], 0)
+
+
+class NoEncontradoTests(InspeccionAleatoriaBaseTestCase):
+    def _responder_no_encontrado(self, inspection):
+        body = {
+            "items": [
+                {"id": item.id, "no_encontrado": True} for item in inspection.items.all()
+            ],
+        }
+        return self.revisor_client.post(
+            f"{BASE_URL}/{inspection.id}/responder/", body, format="json"
+        )
+
+    def test_no_encontrado_cuenta_como_cero_y_queda_marcado(self):
+        inspection = self._crear_inspeccion()
+        response = self._responder_no_encontrado(inspection)
+        self.assertEqual(response.status_code, 200, response.data)
+        item = inspection.items.get()
+        self.assertTrue(item.no_encontrado)
+        self.assertEqual(item.cantidad_reportada, 0)
+        self.assertEqual(item.estado_revision, "no_coincide")
+        self.assertEqual(item.verificacion_estado, "pendiente")
+
+    def test_borrador_guarda_no_encontrado(self):
+        inspection = self._crear_inspeccion()
+        item = inspection.items.get()
+        response = self.revisor_client.patch(
+            f"{BASE_URL}/{inspection.id}/borrador/",
+            {"items": [{"id": item.id, "no_encontrado": True, "cantidad_reportada": 0}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertTrue(item.no_encontrado)
+
+    def test_admin_reubica_sin_cambiar_el_total(self):
+        inspection = self._crear_inspeccion()
+        self._responder_no_encontrado(inspection)
+        item = inspection.items.get()
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/",
+            {"accion": "reubicar", "subdivision_id": self.sub_b.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertEqual(item.verificacion_estado, "aprobada")
+        self.assertEqual(item.reubicado_a_id, self.sub_b.id)
+        self.assertIn("Reubicado a", item.nota_verificacion)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 0)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 10)
+        self.assertEqual(self._stock(), 10)
+
+    def test_reubicar_a_otra_sucursal_se_rechaza(self):
+        otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
+        bodega = Bodega.objects.create(sucursal=otra, nombre="Sur")
+        division = Division.objects.create(tipo_division=self.division.tipo_division, bodega=bodega, nombre="X")
+        sub = SubDivision.objects.create(division=division, nombre="1")
+        inspection = self._crear_inspeccion()
+        self._responder_no_encontrado(inspection)
+        item = inspection.items.get()
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/",
+            {"accion": "reubicar", "subdivision_id": sub.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 10)

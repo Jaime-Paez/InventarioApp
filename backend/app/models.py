@@ -278,6 +278,16 @@ class InspeccionAleatoriaItem(models.Model):
         default=EstadosRevision.PENDIENTE,
     )
     cantidad_reportada = models.PositiveIntegerField(null=True, blank=True)
+    # El revisor marco "No lo encontre" (cuenta como 0). Administracion lo ve
+    # aparte y puede reubicarlo (`reubicado_a`) en vez de ajustar el stock.
+    no_encontrado = models.BooleanField(default=False, db_default=False)
+    reubicado_a = models.ForeignKey(
+        "inventario.SubDivision",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
     observacion = models.TextField(blank=True, default="")
     revisado_en = models.DateTimeField(null=True, blank=True)
     verificacion_estado = models.CharField(
