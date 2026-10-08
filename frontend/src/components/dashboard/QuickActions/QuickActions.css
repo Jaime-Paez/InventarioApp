@@ -3751,3 +3751,21 @@
   max-height: 220px;
   box-shadow: none;
 }
+
+/* El buscador de "agregar" se ve como un desplegable */
+.quick-actions__inspection-add-search input {
+  padding-right: 34px;
+  cursor: pointer;
+}
+
+.quick-actions__inspection-add-chevron {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: var(--color-text-secondary, #64748b);
+  pointer-events: none;
+}
+
+.quick-actions__inspection-add-row {
+  align-items: flex-start;
+}

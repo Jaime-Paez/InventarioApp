@@ -3777,14 +3777,12 @@ class RandomInspectionSearchProductAPIView(APIView):
         if error is not None:
             return error
         term = _normalize_text(request.query_params.get("q"))
-        if len(term) < 2:
-            return Response({"results": []}, status=status.HTTP_200_OK)
         existing = set(inspection.items.values_list("producto_id", flat=True))
-        products = (
-            Producto.objects.filter(Q(codigo__icontains=term) | Q(nombre__icontains=term))
-            .order_by("codigo")
-            .values("id", "codigo", "nombre")[:12]
-        )
+        # Sin texto (al abrir el desplegable) se listan los primeros por codigo.
+        products = Producto.objects.all()
+        if term:
+            products = products.filter(Q(codigo__icontains=term) | Q(nombre__icontains=term))
+        products = products.order_by("codigo").values("id", "codigo", "nombre")[:20]
         return Response(
             {
                 "results": [

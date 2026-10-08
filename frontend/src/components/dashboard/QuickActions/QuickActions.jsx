@@ -4694,11 +4694,8 @@ function QuickActions({
   const searchRandomInspectionAddProducts = useCallback(async (query) => {
     const inspectionId = normalizeId(activeRandomInspection?.id)
     const term = String(query || '').trim()
-    setRandomInspectionAdd((prev) => (prev ? { ...prev, query, selected: null, error: '' } : prev))
-    if (!token || !inspectionId || term.length < 2) {
-      setRandomInspectionAdd((prev) => (prev ? { ...prev, results: [], searching: false } : prev))
-      return
-    }
+    setRandomInspectionAdd((prev) => (prev ? { ...prev, query, selected: null, error: '', open: true } : prev))
+    if (!token || !inspectionId) return
     const seq = randomInspectionAddSearchSeqRef.current + 1
     randomInspectionAddSearchSeqRef.current = seq
     setRandomInspectionAdd((prev) => (prev ? { ...prev, searching: true } : prev))
@@ -6146,12 +6143,27 @@ function QuickActions({
                                   type="search"
                                   value={randomInspectionAdd.query}
                                   onChange={(event) => void searchRandomInspectionAddProducts(event.target.value)}
-                                  placeholder="Código o nombre del producto"
+                                  onFocus={() => {
+                                    if (randomInspectionAdd.selected) return
+                                    if (!randomInspectionAdd.results.length) void searchRandomInspectionAddProducts(randomInspectionAdd.query)
+                                    else setRandomInspectionAdd((prev) => (prev ? { ...prev, open: true } : prev))
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Escape') setRandomInspectionAdd((prev) => (prev ? { ...prev, open: false } : prev))
+                                    if (event.key !== 'Enter') return
+                                    event.preventDefault()
+                                    const first = randomInspectionAdd.results.find((product) => !product.en_lista)
+                                    if (!first) return
+                                    setRandomInspectionAdd((prev) => ({ ...prev, selected: first, open: false, query: `${first.codigo} - ${first.nombre}`, error: '' }))
+                                    window.setTimeout(() => document.querySelector('.quick-actions__inspection-add-qty')?.focus(), 0)
+                                  }}
+                                  placeholder="Toca para ver los productos o escribe el código"
                                   aria-label="Buscar producto encontrado"
                                   disabled={randomInspectionAdd.saving}
                                   autoFocus
                                 />
-                                {!randomInspectionAdd.selected && String(randomInspectionAdd.query || '').trim().length >= 2 && (
+                                <ChevronDown size={16} className="quick-actions__inspection-add-chevron" aria-hidden="true" />
+                                {!randomInspectionAdd.selected && randomInspectionAdd.open && (
                                   <div className="quick-actions__inspection-search-results" role="listbox">
                                     {randomInspectionAdd.searching && <small className="quick-actions__inspection-search-empty">Buscando...</small>}
                                     {!randomInspectionAdd.searching && !randomInspectionAdd.results.length && (
@@ -6169,7 +6181,8 @@ function QuickActions({
                                             if (rowIndex >= 0) jumpToRandomInspectionStep(rowIndex)
                                             return
                                           }
-                                          setRandomInspectionAdd((prev) => ({ ...prev, selected: product, query: `${product.codigo} - ${product.nombre}`, error: '' }))
+                                          setRandomInspectionAdd((prev) => ({ ...prev, selected: product, open: false, query: `${product.codigo} - ${product.nombre}`, error: '' }))
+                                          window.setTimeout(() => document.querySelector('.quick-actions__inspection-add-qty')?.focus(), 0)
                                         }}
                                       >
                                         <span className="quick-actions__inspection-search-text">
@@ -6227,16 +6240,20 @@ function QuickActions({
                           <button
                             type="button"
                             className="quick-actions__inspection-add-open"
-                            onClick={() => setRandomInspectionAdd({
-                              groupKey: activeRandomInspectionGroup.key,
-                              query: '',
-                              results: [],
-                              selected: null,
-                              cantidad: '',
-                              searching: false,
-                              saving: false,
-                              error: '',
-                            })}
+                            onClick={() => {
+                              setRandomInspectionAdd({
+                                groupKey: activeRandomInspectionGroup.key,
+                                open: true,
+                                query: '',
+                                results: [],
+                                selected: null,
+                                cantidad: '',
+                                searching: true,
+                                saving: false,
+                                error: '',
+                              })
+                              void searchRandomInspectionAddProducts('')
+                            }}
                             disabled={randomInspectionSubmitting}
                           >
                             + Agregar un producto que no está en la lista
