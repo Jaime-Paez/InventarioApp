@@ -3769,3 +3769,75 @@
 .quick-actions__inspection-add-row {
   align-items: flex-start;
 }
+
+/* Selector de "agregar producto": boton tipo select + panel flotante igual
+   al de productos en entradas/salidas (por encima de todo el modal). */
+.quick-actions__inspection-add-trigger {
+  flex: 1 1 260px;
+  min-width: 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text-secondary, #64748b);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quick-actions__inspection-add-trigger span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.quick-actions__inspection-add-trigger.has-value {
+  color: var(--color-text-primary, #0f172a);
+  font-weight: 600;
+}
+
+.quick-actions__inspection-add-panel .create-salida__results-header,
+.quick-actions__inspection-add-panel .create-salida__result-row {
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 2fr) minmax(0, auto);
+}
+
+.quick-actions__inspection-add-panel .result-nombre {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.quick-actions__inspection-add-panel.is-dark {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-dark);
+  color: var(--color-text-dark);
+}
+
+.quick-actions__inspection-add-panel.is-dark .create-user__dropdown-search,
+.quick-actions__inspection-add-panel.is-dark .create-user__dropdown-results {
+  border-color: var(--color-border-dark);
+  background: var(--color-surface-darker);
+}
+
+.quick-actions__inspection-add-panel.is-dark .create-user__dropdown-search input {
+  color: var(--color-text-dark);
+}
+
+.quick-actions__inspection-add-panel.is-dark .create-salida__result-row:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-add-trigger {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-search-dark, #2a2a2c);
+  color: var(--color-text-dark);
+}
+
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-add-trigger.has-value {
+  color: var(--color-text-title-dark);
+}

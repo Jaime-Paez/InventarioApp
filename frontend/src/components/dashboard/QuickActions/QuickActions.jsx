@@ -9,6 +9,7 @@ import ReceiveCompleteDialog from './ReceiveCompleteDialog'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
 import urgentNotificationAudioSrc from '../common/reminders/urgentnotifications.mp3'
 import { API_URL, authFetch } from '../../../utils/api'
+import { getAppPortalRoot } from '../../../utils/portalRoot'
 import { formatDate } from '../../../utils/dateFormat'
 import {
   requestSystemNotificationPermission,
@@ -4719,13 +4720,59 @@ function QuickActions({
     }
   }, [activeRandomInspection?.id, token])
 
+  const randomInspectionAddTriggerRef = useRef(null)
+  const randomInspectionAddPanelRef = useRef(null)
+  const [randomInspectionAddPanelStyle, setRandomInspectionAddPanelStyle] = useState(null)
+  const isRandomInspectionAddPanelOpen = Boolean(randomInspectionAdd?.open && !randomInspectionAdd?.saving)
+  useEffect(() => {
+    if (!isRandomInspectionAddPanelOpen) {
+      setRandomInspectionAddPanelStyle(null)
+      return undefined
+    }
+    const place = () => {
+      const trigger = randomInspectionAddTriggerRef.current
+      if (!trigger) return
+      const rect = trigger.getBoundingClientRect()
+      const padding = 12
+      const desired = 340
+      const below = window.innerHeight - rect.bottom - padding
+      const above = rect.top - padding
+      const openUp = below < 220 && above > below
+      const maxHeight = Math.max(160, Math.min(desired, openUp ? above - 6 : below - 6))
+      const width = Math.min(Math.max(rect.width, 420), window.innerWidth - padding * 2)
+      const left = Math.min(Math.max(padding, rect.left), window.innerWidth - width - padding)
+      setRandomInspectionAddPanelStyle({
+        left,
+        width,
+        maxWidth: width,
+        maxHeight,
+        ...(openUp ? { bottom: window.innerHeight - rect.top + 6, top: 'auto' } : { top: rect.bottom + 6 }),
+      })
+    }
+    place()
+    const handlePointer = (event) => {
+      if (randomInspectionAddPanelRef.current?.contains(event.target)) return
+      if (randomInspectionAddTriggerRef.current?.contains(event.target)) return
+      setRandomInspectionAdd((prev) => (prev ? { ...prev, open: false } : prev))
+    }
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    document.addEventListener('mousedown', handlePointer)
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+      document.removeEventListener('mousedown', handlePointer)
+    }
+  }, [isRandomInspectionAddPanelOpen])
+
+
   const submitRandomInspectionAdd = useCallback(async () => {
     const inspectionId = normalizeId(activeRandomInspection?.id)
     const form = randomInspectionAdd
     if (!token || !inspectionId || !form) return
     const quantity = toPositiveInt(form.cantidad, 0)
     if (!form.selected?.id) {
-      setRandomInspectionAdd((prev) => ({ ...prev, error: 'Elige el producto que encontraste.' }))
+      setRandomInspectionAdd((prev) => ({ ...prev, error: 'Elige el producto que encontraste.', open: true }))
       return
     }
     if (quantity <= 0) {
@@ -4797,6 +4844,18 @@ function QuickActions({
     randomInspectionSubmitting,
     saveInspectionDraftToBackend,
   ])
+
+  const selectRandomInspectionAddProduct = useCallback((product) => {
+    if (!product) return
+    if (product.en_lista) {
+      const rowIndex = randomInspectionRows.findIndex((row) => normalizeId(row?.producto_id) === normalizeId(product.id))
+      setRandomInspectionAdd(null)
+      if (rowIndex >= 0) jumpToRandomInspectionStep(rowIndex)
+      return
+    }
+    setRandomInspectionAdd((prev) => (prev ? { ...prev, selected: product, open: false, error: '' } : prev))
+    window.setTimeout(() => document.querySelector('.quick-actions__inspection-add-qty')?.focus(), 0)
+  }, [jumpToRandomInspectionStep, randomInspectionRows])
 
   // "No lo encontre": queda en 0 y marcado para que administracion decida
   // (puede reubicarlo). Pasa al siguiente producto como "Siguiente".
@@ -6138,65 +6197,86 @@ function QuickActions({
                           <div className="quick-actions__inspection-add">
                             <strong>{`Agregar un producto que encontraste en ${activeRandomInspectionGroup.label}`}</strong>
                             <div className="quick-actions__inspection-add-row">
-                              <div className="quick-actions__inspection-add-search">
-                                <input
-                                  type="search"
-                                  value={randomInspectionAdd.query}
-                                  onChange={(event) => void searchRandomInspectionAddProducts(event.target.value)}
-                                  onFocus={() => {
-                                    if (randomInspectionAdd.selected) return
-                                    if (!randomInspectionAdd.results.length) void searchRandomInspectionAddProducts(randomInspectionAdd.query)
-                                    else setRandomInspectionAdd((prev) => (prev ? { ...prev, open: true } : prev))
-                                  }}
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Escape') setRandomInspectionAdd((prev) => (prev ? { ...prev, open: false } : prev))
-                                    if (event.key !== 'Enter') return
-                                    event.preventDefault()
-                                    const first = randomInspectionAdd.results.find((product) => !product.en_lista)
-                                    if (!first) return
-                                    setRandomInspectionAdd((prev) => ({ ...prev, selected: first, open: false, query: `${first.codigo} - ${first.nombre}`, error: '' }))
-                                    window.setTimeout(() => document.querySelector('.quick-actions__inspection-add-qty')?.focus(), 0)
-                                  }}
-                                  placeholder="Toca para ver los productos o escribe el código"
-                                  aria-label="Buscar producto encontrado"
-                                  disabled={randomInspectionAdd.saving}
-                                  autoFocus
-                                />
-                                <ChevronDown size={16} className="quick-actions__inspection-add-chevron" aria-hidden="true" />
-                                {!randomInspectionAdd.selected && randomInspectionAdd.open && (
-                                  <div className="quick-actions__inspection-search-results" role="listbox">
-                                    {randomInspectionAdd.searching && <small className="quick-actions__inspection-search-empty">Buscando...</small>}
+                              <button
+                                type="button"
+                                ref={randomInspectionAddTriggerRef}
+                                className={`quick-actions__inspection-add-trigger${randomInspectionAdd.selected ? ' has-value' : ''}`}
+                                onClick={() => {
+                                  if (randomInspectionAdd.open) {
+                                    setRandomInspectionAdd((prev) => ({ ...prev, open: false }))
+                                    return
+                                  }
+                                  setRandomInspectionAdd((prev) => ({ ...prev, open: true }))
+                                  if (!randomInspectionAdd.results.length) void searchRandomInspectionAddProducts(randomInspectionAdd.query)
+                                }}
+                                disabled={randomInspectionAdd.saving}
+                                aria-haspopup="listbox"
+                                aria-expanded={Boolean(randomInspectionAdd.open)}
+                              >
+                                <span>
+                                  {randomInspectionAdd.selected
+                                    ? `${randomInspectionAdd.selected.codigo} - ${randomInspectionAdd.selected.nombre}`
+                                    : 'Selecciona el producto que encontraste'}
+                                </span>
+                                <i className={`pi pi-chevron-${randomInspectionAdd.open ? 'up' : 'down'}`} />
+                              </button>
+                              {isRandomInspectionAddPanelOpen && randomInspectionAddPanelStyle && createPortal(
+                                <div
+                                  ref={randomInspectionAddPanelRef}
+                                  className={`create-user__dropdown-panel create-salida__product-panel quick-actions__inspection-add-panel${darkMode ? ' is-dark' : ''}`}
+                                  style={randomInspectionAddPanelStyle}
+                                >
+                                  <div className="create-user__dropdown-search">
+                                    <i className="pi pi-search" />
+                                    <input
+                                      type="text"
+                                      placeholder="Buscar por código o descripción"
+                                      value={randomInspectionAdd.query}
+                                      onChange={(event) => void searchRandomInspectionAddProducts(event.target.value)}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Escape') setRandomInspectionAdd((prev) => (prev ? { ...prev, open: false } : prev))
+                                        if (event.key !== 'Enter') return
+                                        event.preventDefault()
+                                        selectRandomInspectionAddProduct(randomInspectionAdd.results.find((product) => !product.en_lista))
+                                      }}
+                                      autoFocus
+                                    />
+                                  </div>
+                                  <div
+                                    className="create-user__dropdown-results"
+                                    style={{ maxHeight: `${Math.max(Number(randomInspectionAddPanelStyle.maxHeight || 0) - 72, 100)}px` }}
+                                  >
+                                    {randomInspectionAdd.searching && <small className="muted">Buscando productos...</small>}
                                     {!randomInspectionAdd.searching && !randomInspectionAdd.results.length && (
-                                      <small className="quick-actions__inspection-search-empty">Ningún producto coincide.</small>
+                                      <small className="muted">Sin resultados.</small>
+                                    )}
+                                    {randomInspectionAdd.results.length > 0 && (
+                                      <div className="create-salida__results-header">
+                                        <span>Código</span>
+                                        <span>Descripción</span>
+                                        <span />
+                                      </div>
                                     )}
                                     {randomInspectionAdd.results.map((product) => (
                                       <button
                                         key={`inspection-add-${product.id}`}
                                         type="button"
-                                        className="quick-actions__inspection-search-row"
-                                        onClick={() => {
-                                          if (product.en_lista) {
-                                            const rowIndex = randomInspectionRows.findIndex((row) => normalizeId(row?.producto_id) === normalizeId(product.id))
-                                            setRandomInspectionAdd(null)
-                                            if (rowIndex >= 0) jumpToRandomInspectionStep(rowIndex)
-                                            return
-                                          }
-                                          setRandomInspectionAdd((prev) => ({ ...prev, selected: product, open: false, query: `${product.codigo} - ${product.nombre}`, error: '' }))
-                                          window.setTimeout(() => document.querySelector('.quick-actions__inspection-add-qty')?.focus(), 0)
-                                        }}
+                                        className={`create-salida__result-row${product.en_lista ? ' is-added' : ''}${randomInspectionAdd.selected?.id === product.id ? ' is-selected' : ''}`}
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onClick={() => selectRandomInspectionAddProduct(product)}
+                                        title={product.en_lista ? 'Ya está en esta revisión: ir a su fila' : undefined}
                                       >
-                                        <span className="quick-actions__inspection-search-text">
-                                          <strong>{product.codigo}</strong>
-                                          <small>{product.nombre}</small>
+                                        <span className="result-codigo">{product.codigo}</span>
+                                        <span className="result-nombre">{product.nombre || '-'}</span>
+                                        <span className="result-stock">
+                                          {product.en_lista && <span className="create-salida__result-added-badge">ya en la revisión: ir</span>}
                                         </span>
-                                        {product.en_lista && (
-                                          <span className="quick-actions__inspection-search-state quick-actions__inspection-search-state--done">Ya está en la lista: ir</span>
-                                        )}
                                       </button>
                                     ))}
                                   </div>
-                                )}
-                              </div>
+                                </div>,
+                                getAppPortalRoot()
+                              )}
                               <input
                                 type="text"
                                 inputMode="numeric"
