@@ -1419,7 +1419,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     const draft = verifyWizardDrafts[itemId] || {}
     const body = { accion: action, nota: String(draft?.nota || '').trim() }
     let changedFromCount = false
-    if (action === 'reubicar') {
+    if (action === 'mover_aqui') {
+      body.cantidad_confirmada = Number.parseInt(String(item?.cantidad_reportada ?? 0), 10) || 0
+    } else if (action === 'reubicar') {
       if (!draft?.reubicar) {
         setVerifyWizardError('Elige la nueva ubicacion del producto.')
         return
@@ -1481,7 +1483,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       }
       const nextDecisions = {
         ...verifyWizardDecisions,
-        [itemId]: action === 'aprobar' ? 'aprobada' : action === 'reubicar' ? 'reubicada' : 'rechazada',
+        [itemId]: action === 'aprobar'
+          ? 'aprobada'
+          : action === 'reubicar' ? 'reubicada' : action === 'mover_aqui' ? 'movida' : 'rechazada',
       }
       setVerifyWizardDecisions(nextDecisions)
       setVerifyWizardConfirming(false)
@@ -1799,6 +1803,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                       <div className="inspection-admin__product-cell">
                         <strong>{String(row?.producto_codigo || '').trim() || `#${row?.producto_id || '-'}`}</strong>
                         <span>{String(row?.producto_nombre || 'Producto').trim()}</span>
+                        {row?.agregado_por_revisor && (
+                          <span className="inspection-admin__notfound-tag inspection-admin__found-tag">
+                            {`Agregado por el revisor · encontrado en ${String(row?.encontrado_en?.label || '-')}`}
+                          </span>
+                        )}
                         {row?.no_encontrado && (
                           <span className="inspection-admin__notfound-tag">
                             {row?.reubicado_a ? `No encontrado · reubicado a ${row.reubicado_a}` : 'No encontrado'}
@@ -1866,7 +1875,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         const decision = verifyWizardDecisions[itemId] || ''
         const decidedCount = Object.keys(verifyWizardDecisions).length
         const approvedCount = Object.values(verifyWizardDecisions).filter((value) => value === 'aprobada').length
-        const relocatedCount = Object.values(verifyWizardDecisions).filter((value) => value === 'reubicada').length
+        const relocatedCount = Object.values(verifyWizardDecisions).filter((value) => value === 'reubicada' || value === 'movida').length
         const relocateState = relocateOptionsByBranch[normalizeId(item?.sucursal_id)] || null
         const expected = Number.parseInt(String(item?.cantidad_esperada ?? 0), 10) || 0
         const reported = item?.cantidad_reportada == null ? null : Number.parseInt(String(item.cantidad_reportada), 10) || 0
@@ -2026,6 +2035,31 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                         </p>
                       )}
 
+                      {item?.agregado_por_revisor && !decision && (
+                        <div className="inspection-admin__relocate inspection-admin__relocate--found">
+                          <strong>{`No estaba en la lista: el revisor lo encontró en ${String(item?.encontrado_en?.label || 'esta fila')}`}</strong>
+                          {Array.isArray(item?.otras_ubicaciones) && item.otras_ubicaciones.length > 0 ? (
+                            <p>
+                              {'En el sistema está en: '}
+                              {item.otras_ubicaciones.map((location) => `${location.label} (${location.cantidad})`).join(', ')}
+                              {`. "Mover aquí" trae ${reported ?? 0} unidad(es) desde ahí; si no alcanzan, la diferencia se suma como ajuste.`}
+                            </p>
+                          ) : (
+                            <p>{`En el sistema no está en otra ubicación de la sucursal: "Mover aquí" suma ${reported ?? 0} unidad(es) en esta ubicación.`}</p>
+                          )}
+                          <div className="inspection-admin__relocate-row">
+                            <button
+                              type="button"
+                              className="quick-actions__inspection-btn inspection-admin__verify-adjust"
+                              onClick={() => void submitVerifyDecision('mover_aqui')}
+                              disabled={busy || !reported}
+                            >
+                              {verifyWizardSubmitting ? 'Guardando...' : `Mover aquí (${reported ?? 0})`}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {item?.no_encontrado && !decision && (
                         <div className="inspection-admin__relocate">
                           <strong>El revisor no lo encontró</strong>
@@ -2067,7 +2101,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                             ? 'Inventario ajustado.'
                             : decision === 'reubicada'
                               ? 'Producto reubicado; el total no cambió.'
-                              : 'Inventario mantenido, sin ajuste.'}
+                              : decision === 'movida'
+                                ? 'Producto movido a la ubicación donde se encontró.'
+                                : 'Inventario mantenido, sin ajuste.'}
                         </p>
                       ) : (
                         <>

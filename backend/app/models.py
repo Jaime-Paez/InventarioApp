@@ -288,6 +288,17 @@ class InspeccionAleatoriaItem(models.Model):
         blank=True,
         related_name="+",
     )
+    # Producto que no estaba en la lista y el revisor encontro en la fila
+    # `encontrado_en`. Administracion puede aceptar que ahora esta ahi
+    # ("mover aqui": lo trae desde sus otras ubicaciones).
+    agregado_por_revisor = models.BooleanField(default=False, db_default=False)
+    encontrado_en = models.ForeignKey(
+        "inventario.SubDivision",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
     observacion = models.TextField(blank=True, default="")
     revisado_en = models.DateTimeField(null=True, blank=True)
     verificacion_estado = models.CharField(

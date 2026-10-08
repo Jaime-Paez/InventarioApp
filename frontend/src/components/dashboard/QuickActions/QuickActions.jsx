@@ -2645,7 +2645,9 @@ function QuickActions({
     }
     randomInspectionRows.forEach((row, rowIndex) => {
       const locations = Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : []
-      if (row?.requiere_conteo_por_ubicacion) {
+      if (row?.agregado_por_revisor && row?.encontrado_en) {
+        addEntry(row.encontrado_en, { row, rowIndex, location: null })
+      } else if (row?.requiere_conteo_por_ubicacion) {
         locations.forEach((location) => addEntry(location, { row, rowIndex, location }))
       } else {
         addEntry(locations[0] || null, { row, rowIndex, location: null })
@@ -3393,6 +3395,7 @@ function QuickActions({
     setRandomInspectionStepIndex(0)
     setRandomInspectionShowSummary(false)
     setRandomInspectionSearch('')
+    setRandomInspectionAdd(null)
     setRandomInspectionError('')
     setRandomInspectionSubmitting(false)
     setRandomInspectionLoading(false)
@@ -4682,6 +4685,94 @@ function QuickActions({
   }, [randomInspectionRows, randomInspectionSearch])
 
   const [randomInspectionHighlightRowId, setRandomInspectionHighlightRowId] = useState('')
+
+  // "Agregar producto encontrado": un producto que no esta en la lista pero
+  // el revisor lo encontro en esta fila. Queda en la base y administracion
+  // decide si acepta que ahora esta aqui.
+  const [randomInspectionAdd, setRandomInspectionAdd] = useState(null)
+  const randomInspectionAddSearchSeqRef = useRef(0)
+  const searchRandomInspectionAddProducts = useCallback(async (query) => {
+    const inspectionId = normalizeId(activeRandomInspection?.id)
+    const term = String(query || '').trim()
+    setRandomInspectionAdd((prev) => (prev ? { ...prev, query, selected: null, error: '' } : prev))
+    if (!token || !inspectionId || term.length < 2) {
+      setRandomInspectionAdd((prev) => (prev ? { ...prev, results: [], searching: false } : prev))
+      return
+    }
+    const seq = randomInspectionAddSearchSeqRef.current + 1
+    randomInspectionAddSearchSeqRef.current = seq
+    setRandomInspectionAdd((prev) => (prev ? { ...prev, searching: true } : prev))
+    try {
+      const response = await authFetch(
+        `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/buscar-producto/?q=${encodeURIComponent(term)}`,
+        {},
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (seq !== randomInspectionAddSearchSeqRef.current) return
+      setRandomInspectionAdd((prev) => (prev ? {
+        ...prev,
+        searching: false,
+        results: response.ok && Array.isArray(payload?.results) ? payload.results : [],
+        error: response.ok ? '' : String(payload?.detail || 'No se pudo buscar.'),
+      } : prev))
+    } catch {
+      if (seq !== randomInspectionAddSearchSeqRef.current) return
+      setRandomInspectionAdd((prev) => (prev ? { ...prev, searching: false, error: 'No se pudo buscar.' } : prev))
+    }
+  }, [activeRandomInspection?.id, token])
+
+  const submitRandomInspectionAdd = useCallback(async () => {
+    const inspectionId = normalizeId(activeRandomInspection?.id)
+    const form = randomInspectionAdd
+    if (!token || !inspectionId || !form) return
+    const quantity = toPositiveInt(form.cantidad, 0)
+    if (!form.selected?.id) {
+      setRandomInspectionAdd((prev) => ({ ...prev, error: 'Elige el producto que encontraste.' }))
+      return
+    }
+    if (quantity <= 0) {
+      setRandomInspectionAdd((prev) => ({ ...prev, error: 'Escribe cuántas unidades encontraste.' }))
+      return
+    }
+    setRandomInspectionAdd((prev) => ({ ...prev, saving: true, error: '' }))
+    try {
+      // Primero lo pendiente de guardar, para no chocar con la version.
+      const flushResult = await flushRandomInspectionDraft()
+      if (flushResult?.completed) return
+      const response = await authFetch(
+        `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/agregar-producto/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            producto_id: form.selected.id,
+            subdivision_id: Number(form.groupKey),
+            cantidad: quantity,
+            version: randomInspectionVersionRef.current,
+          }),
+        },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (payload?.inspection) randomInspectionApplyServerRef.current?.(payload.inspection)
+      if (!response.ok) {
+        throw new Error(
+          payload?.conflict
+            ? 'La revisión se actualizó desde otro dispositivo. Vuelve a intentarlo.'
+            : String(payload?.detail || '').trim() || 'No se pudo agregar el producto.'
+        )
+      }
+      const newRowId = normalizeId(payload?.item_id)
+      setRandomInspectionAdd(null)
+      setRandomInspectionHighlightRowId(newRowId)
+      window.setTimeout(() => {
+        document.querySelector(`[data-inspection-row="${newRowId}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }, 80)
+      window.setTimeout(() => setRandomInspectionHighlightRowId((current) => (current === newRowId ? '' : current)), 2600)
+    } catch (error) {
+      setRandomInspectionAdd((prev) => (prev ? { ...prev, saving: false, error: error?.message || 'No se pudo agregar el producto.' } : prev))
+    }
+  }, [activeRandomInspection?.id, flushRandomInspectionDraft, randomInspectionAdd, token])
   const jumpToRandomInspectionStep = useCallback((rowIndex) => {
     if (randomInspectionSubmitting) return
     let step = rowIndex
@@ -5979,6 +6070,9 @@ function QuickActions({
                               </span>
                               <span className="quick-actions__inspection-row-name">
                                 {String(row?.producto_nombre || '').trim()}
+                                {row?.agregado_por_revisor && (
+                                  <small className="quick-actions__inspection-added-tag">Agregado por ti (no estaba en la lista)</small>
+                                )}
                                 {otherLocations.length > 0 && (
                                   <small>{`También en: ${otherLocations.join(', ')} (se cuenta aparte)`}</small>
                                 )}
@@ -6041,6 +6135,114 @@ function QuickActions({
                           )
                         })}
                       </div>
+
+                      {/^\d+$/.test(String(activeRandomInspectionGroup.key)) && (
+                        randomInspectionAdd?.groupKey === activeRandomInspectionGroup.key ? (
+                          <div className="quick-actions__inspection-add">
+                            <strong>{`Agregar un producto que encontraste en ${activeRandomInspectionGroup.label}`}</strong>
+                            <div className="quick-actions__inspection-add-row">
+                              <div className="quick-actions__inspection-add-search">
+                                <input
+                                  type="search"
+                                  value={randomInspectionAdd.query}
+                                  onChange={(event) => void searchRandomInspectionAddProducts(event.target.value)}
+                                  placeholder="Código o nombre del producto"
+                                  aria-label="Buscar producto encontrado"
+                                  disabled={randomInspectionAdd.saving}
+                                  autoFocus
+                                />
+                                {!randomInspectionAdd.selected && String(randomInspectionAdd.query || '').trim().length >= 2 && (
+                                  <div className="quick-actions__inspection-search-results" role="listbox">
+                                    {randomInspectionAdd.searching && <small className="quick-actions__inspection-search-empty">Buscando...</small>}
+                                    {!randomInspectionAdd.searching && !randomInspectionAdd.results.length && (
+                                      <small className="quick-actions__inspection-search-empty">Ningún producto coincide.</small>
+                                    )}
+                                    {randomInspectionAdd.results.map((product) => (
+                                      <button
+                                        key={`inspection-add-${product.id}`}
+                                        type="button"
+                                        className="quick-actions__inspection-search-row"
+                                        onClick={() => {
+                                          if (product.en_lista) {
+                                            const rowIndex = randomInspectionRows.findIndex((row) => normalizeId(row?.producto_id) === normalizeId(product.id))
+                                            setRandomInspectionAdd(null)
+                                            if (rowIndex >= 0) jumpToRandomInspectionStep(rowIndex)
+                                            return
+                                          }
+                                          setRandomInspectionAdd((prev) => ({ ...prev, selected: product, query: `${product.codigo} - ${product.nombre}`, error: '' }))
+                                        }}
+                                      >
+                                        <span className="quick-actions__inspection-search-text">
+                                          <strong>{product.codigo}</strong>
+                                          <small>{product.nombre}</small>
+                                        </span>
+                                        {product.en_lista && (
+                                          <span className="quick-actions__inspection-search-state quick-actions__inspection-search-state--done">Ya está en la lista: ir</span>
+                                        )}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                className="quick-actions__inspection-add-qty"
+                                value={randomInspectionAdd.cantidad}
+                                onChange={(event) => {
+                                  const value = normalizeQuantityInputString(event.target.value)
+                                  setRandomInspectionAdd((prev) => ({ ...prev, cantidad: value, error: '' }))
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key !== 'Enter') return
+                                  event.preventDefault()
+                                  void submitRandomInspectionAdd()
+                                }}
+                                placeholder="Cant."
+                                aria-label="Cantidad encontrada"
+                                disabled={randomInspectionAdd.saving}
+                              />
+                              <button
+                                type="button"
+                                className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
+                                onClick={() => void submitRandomInspectionAdd()}
+                                disabled={randomInspectionAdd.saving || !randomInspectionAdd.selected}
+                              >
+                                {randomInspectionAdd.saving ? 'Agregando...' : 'Agregar'}
+                              </button>
+                              <button
+                                type="button"
+                                className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                                onClick={() => setRandomInspectionAdd(null)}
+                                disabled={randomInspectionAdd.saving}
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                            {randomInspectionAdd.error && (
+                              <p className="quick-actions__inspection-error">{randomInspectionAdd.error}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="quick-actions__inspection-add-open"
+                            onClick={() => setRandomInspectionAdd({
+                              groupKey: activeRandomInspectionGroup.key,
+                              query: '',
+                              results: [],
+                              selected: null,
+                              cantidad: '',
+                              searching: false,
+                              saving: false,
+                              error: '',
+                            })}
+                            disabled={randomInspectionSubmitting}
+                          >
+                            + Agregar un producto que no está en la lista
+                          </button>
+                        )
+                      )}
                     </div>
                   )}
 

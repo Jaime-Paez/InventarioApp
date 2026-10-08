@@ -35,3 +35,9 @@ Estados: ⬜ pendiente · 🔄 en curso · ✅ aplicado y subido
 |---|---|---|---|
 | 11 | Tabla "Asignar ubicaciones faltantes" | Corregir la ventana de **ubicaciones faltantes** al crear una entrada: la lista de bodegas se abre encima del texto y tapa la ventana. | ✅ (la lista ahora abre hacia abajo si cabe; no se probó en pantalla) |
 | 12 | Traslados desde una compra local | Desde una **compra local**, opción para **repartir** a otras sucursales (crear los traslados) desde la misma compra, como se hace con las importaciones. | ⬜ |
+
+## Pedidos posteriores (8 de octubre)
+
+| # | Pedido | Cómo se entendió | Estado |
+|---|---|---|---|
+| 13 | Agregar producto encontrado en la revisión | En revisiones por **división o subdivisión**, debajo de cada fila: **"+ Agregar un producto que no está en la lista"** (buscar código y cantidad). Queda guardado y marcado *Agregado*. El administrador lo ve en Diferencias ("encontrado en B05/03") y con **"Mover aquí"** trae esas unidades desde sus otras ubicaciones; si no alcanzan, la diferencia se suma como ajuste. | ✅ |

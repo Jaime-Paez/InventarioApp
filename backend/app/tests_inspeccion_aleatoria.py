@@ -964,3 +964,77 @@ class NoEncontradoTests(InspeccionAleatoriaBaseTestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self._stock(subdivision=self.sub_a), 10)
+
+
+class AgregarProductoEncontradoTests(InspeccionAleatoriaBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        Inventario.objects.create(producto=self.producto_2, subdivision=self.sub_b, cantidad=2)
+        self.inspection = self._crear_inspeccion(
+            productos=[self.producto_2], es_por_division=True, division=self.division_b
+        )
+
+    def _agregar(self, **extra):
+        body = {"producto_id": self.producto.id, "subdivision_id": self.sub_b.id, "cantidad": 3, **extra}
+        return self.revisor_client.post(
+            f"{BASE_URL}/{self.inspection.id}/agregar-producto/", body, format="json"
+        )
+
+    def test_busca_y_agrega_producto_en_la_fila(self):
+        response = self.revisor_client.get(f"{BASE_URL}/{self.inspection.id}/buscar-producto/?q=P-")
+        self.assertEqual(response.status_code, 200, response.data)
+        en_lista = {row["codigo"]: row["en_lista"] for row in response.data["results"]}
+        self.assertEqual(en_lista, {"P-1": False, "P-2": True})
+
+        response = self._agregar()
+        self.assertEqual(response.status_code, 201, response.data)
+        item = self.inspection.items.get(producto=self.producto)
+        self.assertTrue(item.agregado_por_revisor)
+        self.assertEqual(item.encontrado_en_id, self.sub_b.id)
+        self.assertEqual(item.cantidad_reportada, 3)
+        self.assertEqual(item.cantidad_esperada, 0)
+        self.inspection.refresh_from_db()
+        self.assertEqual(self.inspection.total_items, 2)
+
+    def test_no_repite_ni_acepta_fila_fuera_de_la_division(self):
+        self.assertEqual(self._agregar(producto_id=self.producto_2.id).status_code, 400)
+        self.assertEqual(self._agregar(subdivision_id=self.sub_a.id).status_code, 400)
+        self.assertEqual(self._agregar(cantidad=0).status_code, 400)
+
+    def test_admin_mueve_aqui_sin_inventar_stock(self):
+        self._agregar()
+        response = self._responder(self.inspection, {self.producto.id: 3, self.producto_2.id: 2})
+        self.assertEqual(response.status_code, 200, response.data)
+        item = self.inspection.items.get(producto=self.producto)
+        self.assertEqual(item.estado_revision, "no_coincide")
+        self.assertEqual(item.conteo_ubicaciones[0]["subdivision_id"], self.sub_b.id)
+
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/", {"accion": "mover_aqui"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertEqual(item.verificacion_estado, "aprobada")
+        self.assertEqual(self._stock(subdivision=self.sub_a), 7)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 3)
+        self.assertEqual(self._stock(), 10)
+
+    def test_mover_aqui_suma_ajuste_si_no_alcanza(self):
+        self._agregar(cantidad=12)
+        self._responder(self.inspection, {self.producto.id: 12, self.producto_2.id: 2})
+        item = self.inspection.items.get(producto=self.producto)
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/", {"accion": "mover_aqui"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 0)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 12)
+
+    def test_solo_en_revision_por_division(self):
+        lista = self._crear_inspeccion(productos=[self.producto_2], es_por_lista=True, sucursal=self.sucursal)
+        response = self.revisor_client.post(
+            f"{BASE_URL}/{lista.id}/agregar-producto/",
+            {"producto_id": self.producto.id, "subdivision_id": self.sub_b.id, "cantidad": 1},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)

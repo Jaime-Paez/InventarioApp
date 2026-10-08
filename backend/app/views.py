@@ -1702,12 +1702,30 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
         "conteo_ubicaciones": conteo_ubicaciones,
         "revisado_en": _parse_iso_timestamp(item.revisado_en),
         "no_encontrado": bool(getattr(item, "no_encontrado", False)),
+        "agregado_por_revisor": bool(getattr(item, "agregado_por_revisor", False)),
+        "encontrado_en": _serialize_found_location(getattr(item, "encontrado_en", None))
+        if getattr(item, "encontrado_en_id", None)
+        else None,
         "reubicado_a": (
             _subdivision_label(getattr(item, "reubicado_a", None))
             if getattr(item, "reubicado_a_id", None) and not hide_expected
             else ""
         ),
         **serialized_result,
+    }
+
+
+def _serialize_found_location(subdivision):
+    if subdivision is None:
+        return None
+    division = getattr(subdivision, "division", None)
+    bodega = getattr(division, "bodega", None)
+    return {
+        "subdivision_id": int(subdivision.id),
+        "bodega_nombre": _normalize_text(getattr(bodega, "nombre", "")),
+        "division_nombre": _normalize_text(getattr(division, "nombre", "")),
+        "subdivision_nombre": _normalize_text(getattr(subdivision, "nombre", "")),
+        "label": _subdivision_label(subdivision),
     }
 
 
@@ -1944,6 +1962,36 @@ def _serialize_random_inspection_admin_item(item, subdivision_labels=None):
             }
         )
     serialized["ubicaciones_conteo"] = location_counts
+    if getattr(item, "agregado_por_revisor", False) and getattr(item, "encontrado_en_id", None):
+        serialized["otras_ubicaciones"] = [
+            {
+                "subdivision_id": int(row["subdivision_id"]),
+                "label": " / ".join(
+                    part
+                    for part in (
+                        _normalize_text(row["subdivision__division__bodega__nombre"]),
+                        _normalize_text(row["subdivision__division__nombre"]),
+                        _normalize_text(row["subdivision__nombre"]),
+                    )
+                    if part
+                ),
+                "cantidad": int(row["total"] or 0),
+            }
+            for row in Inventario.objects.filter(
+                producto_id=item.producto_id,
+                subdivision__division__bodega__sucursal_id=item.sucursal_id,
+                cantidad__gt=0,
+            )
+            .exclude(subdivision_id=item.encontrado_en_id)
+            .values(
+                "subdivision_id",
+                "subdivision__division__bodega__nombre",
+                "subdivision__division__nombre",
+                "subdivision__nombre",
+            )
+            .annotate(total=Sum("cantidad"))
+            .order_by("subdivision__division__nombre", "subdivision__nombre")
+        ]
     serialized.update(
         {
             "inspeccion_id": int(item.inspeccion_id),
@@ -2497,6 +2545,43 @@ def _move_inspection_item_stock(item, target_subdivision):
     return {"cantidad": moved, "origenes": origins}
 
 
+def _move_found_stock_here(item, target_subdivision, quantity):
+    """El revisor encontro `quantity` unidades en `target_subdivision`: se
+    traen desde las otras ubicaciones del producto en la sucursal; si no
+    alcanzan, lo que falta se suma como ajuste."""
+    rows = list(
+        Inventario.objects.select_for_update()
+        .filter(
+            producto_id=int(item.producto_id),
+            subdivision__division__bodega__sucursal_id=int(item.sucursal_id),
+            cantidad__gt=0,
+        )
+        .exclude(subdivision_id=int(target_subdivision.id))
+        .order_by("id")
+    )
+    remaining = int(quantity)
+    origins = []
+    for row in rows:
+        if remaining <= 0:
+            break
+        take = min(int(row.cantidad or 0), remaining)
+        if take <= 0:
+            continue
+        row.cantidad = int(row.cantidad or 0) - take
+        row.save(update_fields=["cantidad"])
+        origins.append({"subdivision_id": int(row.subdivision_id), "cantidad": take})
+        remaining -= take
+    target_row, _ = Inventario.objects.select_for_update().get_or_create(
+        subdivision=target_subdivision,
+        producto_id=int(item.producto_id),
+        referencia="",
+        defaults={"cantidad": 0},
+    )
+    target_row.cantidad = int(target_row.cantidad or 0) + int(quantity)
+    target_row.save(update_fields=["cantidad"])
+    return {"movido": int(quantity) - remaining, "ajuste": remaining, "origenes": origins}
+
+
 def _record_random_inspection_audit(item, actor_user, detalle, valores):
     from django.contrib.contenttypes.models import ContentType
 
@@ -3018,13 +3103,20 @@ def _normalize_random_inspection_verify_action(value):
         return "rechazar"
     if normalized in {"reubicar", "reubicada", "mover"}:
         return "reubicar"
+    if normalized in {"mover_aqui", "mover-aqui", "aceptar_aqui"}:
+        return "mover_aqui"
     return ""
 
 
 def _get_random_inspection_queryset():
     return (
         InspeccionAleatoriaDiaria.objects.select_related("usuario", "division", "subdivision")
-        .prefetch_related("items__sucursal", "items__producto", "items__verificado_por")
+        .prefetch_related(
+            "items__sucursal",
+            "items__producto",
+            "items__verificado_por",
+            "items__encontrado_en__division__bodega",
+        )
         .order_by("-fecha_programada", "-id")
     )
 
@@ -3300,6 +3392,15 @@ class RandomInspectionRespondAPIView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
+                if not locations_complete and item.agregado_por_revisor and item.encontrado_en_id:
+                    location_counts = [
+                        {
+                            "key": "",
+                            "subdivision_id": int(item.encontrado_en_id),
+                            "cantidad_contada": int(reported),
+                        }
+                    ]
+                    locations_complete = True
                 if not locations_complete:
                     stocked_locations = [
                         location
@@ -3636,6 +3737,156 @@ class RandomInspectionSaveDraftAPIView(APIView):
         return Response(response_payload, status=status.HTTP_200_OK)
 
 
+def _pending_division_inspection_for_reviewer(request, inspection_id, *, lock=False):
+    inspection = (
+        _lock_random_inspection(inspection_id)
+        if lock
+        else InspeccionAleatoriaDiaria.objects.select_related("division", "subdivision")
+        .filter(pk=inspection_id)
+        .first()
+    )
+    if inspection is None:
+        return None, Response(
+            {"detail": "No se encontro la inspeccion aleatoria."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    if int(inspection.usuario_id) != int(request.user.id):
+        return None, Response(
+            {"detail": "Solo el usuario asignado puede agregar productos a esta inspeccion."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    if not _is_random_inspection_pending(inspection):
+        return None, _random_inspection_completed_response()
+    if not inspection.es_por_division or not inspection.division_id:
+        return None, Response(
+            {"detail": "Solo se pueden agregar productos en revisiones por division o subdivision."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return inspection, None
+
+
+class RandomInspectionSearchProductAPIView(APIView):
+    """Busca productos del catalogo para agregarlos a la revision."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, inspection_id):
+        from productos.models import Producto
+
+        inspection, error = _pending_division_inspection_for_reviewer(request, inspection_id)
+        if error is not None:
+            return error
+        term = _normalize_text(request.query_params.get("q"))
+        if len(term) < 2:
+            return Response({"results": []}, status=status.HTTP_200_OK)
+        existing = set(inspection.items.values_list("producto_id", flat=True))
+        products = (
+            Producto.objects.filter(Q(codigo__icontains=term) | Q(nombre__icontains=term))
+            .order_by("codigo")
+            .values("id", "codigo", "nombre")[:12]
+        )
+        return Response(
+            {
+                "results": [
+                    {
+                        "id": int(product["id"]),
+                        "codigo": _normalize_text(product["codigo"]),
+                        "nombre": _normalize_text(product["nombre"]),
+                        "en_lista": int(product["id"]) in existing,
+                    }
+                    for product in products
+                ]
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class RandomInspectionAddProductAPIView(APIView):
+    """El revisor encontro en una fila un producto que no estaba en la lista."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, inspection_id):
+        from productos.models import Producto
+
+        with transaction.atomic():
+            inspection, error = _pending_division_inspection_for_reviewer(
+                request, inspection_id, lock=True
+            )
+            if error is not None:
+                return error
+            client_version = _parse_client_draft_version(request.data)
+            if client_version is not None and client_version != int(inspection.borrador_version or 0):
+                return _random_inspection_conflict_response(inspection.id, request)
+
+            product = Producto.objects.filter(
+                pk=_normalize_int(request.data.get("producto_id"), 0)
+            ).first()
+            if product is None:
+                return Response(
+                    {"detail": "Elige un producto valido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if inspection.items.filter(producto_id=product.id).exists():
+                return Response(
+                    {"detail": f"{product.codigo} ya esta en esta revision: buscalo en la lista."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            subdivision_qs = SubDivision.objects.filter(
+                pk=_normalize_int(request.data.get("subdivision_id"), 0),
+                division_id=inspection.division_id,
+            )
+            if inspection.es_por_subdivision and inspection.subdivision_id:
+                subdivision_qs = subdivision_qs.filter(pk=inspection.subdivision_id)
+            subdivision = subdivision_qs.select_related("division__bodega").first()
+            if subdivision is None:
+                return Response(
+                    {"detail": "La fila donde lo encontraste no es parte de esta revision."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            quantity = _parse_optional_quantity(request.data.get("cantidad"))
+            if quantity is None or quantity <= 0:
+                return Response(
+                    {"detail": "Escribe cuantas unidades encontraste (mayor a 0)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            sucursal_id = int(subdivision.division.bodega.sucursal_id)
+            item = InspeccionAleatoriaItem(
+                inspeccion=inspection,
+                sucursal_id=sucursal_id,
+                producto=product,
+                cantidad_esperada=0,
+                cantidad_esperada_inicial=0,
+                cantidad_reportada=int(quantity),
+                agregado_por_revisor=True,
+                encontrado_en=subdivision,
+            )
+            expected = _live_expected_quantities(
+                [item],
+                division_id=_inspection_division_scope(inspection),
+                subdivision_id=_inspection_subdivision_scope(inspection),
+            ).get((sucursal_id, int(product.id)), 0)
+            item.cantidad_esperada = int(expected)
+            item.cantidad_esperada_inicial = int(expected)
+            item.save()
+
+            inspection.total_items = inspection.items.count()
+            inspection.borrador_version = int(inspection.borrador_version or 0) + 1
+            inspection.save(update_fields=["total_items", "borrador_version", "updated_at"])
+
+        refreshed = _get_random_inspection_queryset().filter(pk=inspection_id).first()
+        return Response(
+            {
+                "ok": True,
+                "item_id": int(item.id),
+                "version": int(inspection.borrador_version),
+                "inspection": _serialize_random_inspection(refreshed, viewer=request.user),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class RandomInspectionVerifyItemAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -3695,7 +3946,41 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 request.data.get("nota") or request.data.get("observacion")
             )
 
-            if action == "reubicar":
+            if action == "mover_aqui":
+                target = getattr(item, "encontrado_en", None) if item.encontrado_en_id else None
+                if not item.agregado_por_revisor or target is None:
+                    return Response(
+                        {"detail": "Solo aplica a productos que el revisor agrego en una fila."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                quantity = _normalize_int(
+                    request.data.get("cantidad_confirmada", item.cantidad_reportada), -1
+                )
+                if quantity <= 0:
+                    return Response(
+                        {"detail": "La cantidad encontrada debe ser mayor a cero."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                moved = _move_found_stock_here(item, target, quantity)
+                target_label = _subdivision_label(target)
+                _record_random_inspection_audit(
+                    item,
+                    request.user,
+                    (
+                        f"Inspeccion aleatoria #{int(item.inspeccion_id)}: producto encontrado en "
+                        f"{target_label}; {moved['movido']} movida(s) desde otras ubicaciones"
+                        + (f" y {moved['ajuste']} sumada(s) por ajuste." if moved["ajuste"] else ".")
+                    ),
+                    {**moved, "subdivision_destino_id": int(target.id)},
+                )
+                item.verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.APROBADA
+                item.cantidad_confirmada = int(quantity)
+                item.reubicado_a = target
+                note = note or (
+                    f"Encontrado en {target_label}: {moved['movido']} movida(s) aqui"
+                    + (f", {moved['ajuste']} sumada(s) por ajuste." if moved["ajuste"] else ".")
+                )
+            elif action == "reubicar":
                 target = (
                     SubDivision.objects.select_related("division__bodega")
                     .filter(

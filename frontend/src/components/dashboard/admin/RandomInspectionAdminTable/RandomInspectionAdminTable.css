@@ -1575,3 +1575,24 @@ body.app-theme-dark .inspection-admin__notfound-tag {
 .inspection-admin__send-immediate label {
   cursor: pointer;
 }
+
+/* Producto agregado por el revisor (no estaba en la lista) */
+.inspection-admin__relocate--found {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.07);
+}
+
+.inspection-admin__found-tag {
+  background: rgba(59, 130, 246, 0.14);
+  color: #1d4ed8;
+}
+
+.quick-actions__inspection-overlay.dark .inspection-admin__relocate--found {
+  border-color: rgba(96, 165, 250, 0.4);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+body.app-theme-dark .inspection-admin__found-tag {
+  background: rgba(96, 165, 250, 0.16);
+  color: #93c5fd;
+}
