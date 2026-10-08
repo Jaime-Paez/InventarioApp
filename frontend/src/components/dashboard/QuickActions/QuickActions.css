@@ -3846,3 +3846,12 @@
   padding: 6px 10px 2px;
   text-align: center;
 }
+
+/* Desplegable de ubicacion en "agregar producto" */
+.quick-actions__inspection-add-trigger--location {
+  flex: 1 1 200px;
+}
+
+.quick-actions__inspection-add-panel .quick-actions__inspection-add-location-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}

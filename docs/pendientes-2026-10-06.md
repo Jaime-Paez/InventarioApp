@@ -40,4 +40,4 @@ Estados: ⬜ pendiente · 🔄 en curso · ✅ aplicado y subido
 
 | # | Pedido | Cómo se entendió | Estado |
 |---|---|---|---|
-| 13 | Agregar producto encontrado en la revisión | En revisiones por **división o subdivisión**, debajo de cada fila: **"+ Agregar un producto que no está en la lista"** (buscar código y cantidad). Queda guardado y marcado *Agregado*. El administrador lo ve en Diferencias ("encontrado en B05/03") y con **"Mover aquí"** trae esas unidades desde sus otras ubicaciones; si no alcanzan, la diferencia se suma como ajuste. | ✅ |
+| 13 | Agregar producto encontrado en la revisión | En revisiones por **división o subdivisión**, debajo de cada fila: **"+ Agregar un producto que no está en la lista"**: producto y **ubicación** con desplegables (la ubicación viene con la fila actual y se puede cambiar a cualquiera de la sucursal) y la cantidad. Queda guardado y marcado *Agregado*. El administrador lo ve en Diferencias ("encontrado en B05/03") y con **"Mover aquí"** trae esas unidades desde sus otras ubicaciones; si no alcanzan, la diferencia se suma como ajuste. | ✅ |

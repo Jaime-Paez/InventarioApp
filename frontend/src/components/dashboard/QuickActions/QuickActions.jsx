@@ -4723,15 +4723,22 @@ function QuickActions({
 
   const randomInspectionAddTriggerRef = useRef(null)
   const randomInspectionAddPanelRef = useRef(null)
+  const randomInspectionAddLocationTriggerRef = useRef(null)
   const [randomInspectionAddPanelStyle, setRandomInspectionAddPanelStyle] = useState(null)
-  const isRandomInspectionAddPanelOpen = Boolean(randomInspectionAdd?.open && !randomInspectionAdd?.saving)
+  // Que desplegable esta abierto: el de producto o el de ubicacion.
+  const randomInspectionAddPanelKind = randomInspectionAdd?.saving
+    ? ''
+    : randomInspectionAdd?.open ? 'producto' : randomInspectionAdd?.locationOpen ? 'ubicacion' : ''
   useEffect(() => {
-    if (!isRandomInspectionAddPanelOpen) {
+    if (!randomInspectionAddPanelKind) {
       setRandomInspectionAddPanelStyle(null)
       return undefined
     }
+    const triggerRef = randomInspectionAddPanelKind === 'ubicacion'
+      ? randomInspectionAddLocationTriggerRef
+      : randomInspectionAddTriggerRef
     const place = () => {
-      const trigger = randomInspectionAddTriggerRef.current
+      const trigger = triggerRef.current
       if (!trigger) return
       const rect = trigger.getBoundingClientRect()
       const padding = 12
@@ -4753,8 +4760,8 @@ function QuickActions({
     place()
     const handlePointer = (event) => {
       if (randomInspectionAddPanelRef.current?.contains(event.target)) return
-      if (randomInspectionAddTriggerRef.current?.contains(event.target)) return
-      setRandomInspectionAdd((prev) => (prev ? { ...prev, open: false } : prev))
+      if (triggerRef.current?.contains(event.target)) return
+      setRandomInspectionAdd((prev) => (prev ? { ...prev, open: false, locationOpen: false } : prev))
     }
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
@@ -4764,7 +4771,36 @@ function QuickActions({
       window.removeEventListener('scroll', place, true)
       document.removeEventListener('mousedown', handlePointer)
     }
-  }, [isRandomInspectionAddPanelOpen])
+  }, [randomInspectionAddPanelKind])
+
+  // Ubicaciones de la sucursal para el desplegable de ubicacion.
+  const [randomInspectionLocations, setRandomInspectionLocations] = useState({ inspectionId: '', loading: false, list: [] })
+  const loadRandomInspectionLocations = useCallback(async () => {
+    const inspectionId = normalizeId(activeRandomInspection?.id)
+    if (!token || !inspectionId) return
+    if (randomInspectionLocations.inspectionId === inspectionId && (randomInspectionLocations.loading || randomInspectionLocations.list.length)) return
+    setRandomInspectionLocations({ inspectionId, loading: true, list: [] })
+    try {
+      const response = await authFetch(
+        `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/ubicaciones/`,
+        {},
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      setRandomInspectionLocations({
+        inspectionId,
+        loading: false,
+        list: response.ok && Array.isArray(payload?.results) ? payload.results : [],
+      })
+    } catch {
+      setRandomInspectionLocations({ inspectionId, loading: false, list: [] })
+    }
+  }, [activeRandomInspection?.id, randomInspectionLocations, token])
+  const filteredRandomInspectionLocations = useMemo(() => {
+    const term = normalizeSearchText(randomInspectionAdd?.locationQuery || '')
+    const list = randomInspectionLocations.list
+    return term ? list.filter((location) => normalizeSearchText(location?.label).includes(term)) : list
+  }, [randomInspectionAdd?.locationQuery, randomInspectionLocations.list])
 
 
   const submitRandomInspectionAdd = useCallback(async () => {
@@ -4774,6 +4810,10 @@ function QuickActions({
     const quantity = toPositiveInt(form.cantidad, 0)
     if (!form.selected?.id) {
       setRandomInspectionAdd((prev) => ({ ...prev, error: 'Elige el producto que encontraste.', open: true }))
+      return
+    }
+    if (!form.location?.subdivision_id) {
+      setRandomInspectionAdd((prev) => ({ ...prev, error: 'Elige la ubicación donde lo encontraste.', locationOpen: true }))
       return
     }
     if (quantity <= 0) {
@@ -4791,7 +4831,7 @@ function QuickActions({
           method: 'POST',
           body: JSON.stringify({
             producto_id: form.selected.id,
-            subdivision_id: Number(form.groupKey),
+            subdivision_id: Number(form.location.subdivision_id),
             cantidad: quantity,
             version: randomInspectionVersionRef.current,
           }),
@@ -4809,6 +4849,12 @@ function QuickActions({
       }
       const newRowId = normalizeId(payload?.item_id)
       setRandomInspectionAdd(null)
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Producto agregado',
+        detail: `${form.selected.codigo} agregado en ${form.location.label}.`,
+        life: 3200,
+      })
       setRandomInspectionHighlightRowId(newRowId)
       window.setTimeout(() => {
         document.querySelector(`[data-inspection-row="${newRowId}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -6193,10 +6239,10 @@ function QuickActions({
                         })}
                       </div>
 
-                      {/^\d+$/.test(String(activeRandomInspectionGroup.key)) && (
+                      {(
                         randomInspectionAdd?.groupKey === activeRandomInspectionGroup.key ? (
                           <div className="quick-actions__inspection-add">
-                            <strong>{`Agregar un producto que encontraste en ${activeRandomInspectionGroup.label}`}</strong>
+                            <strong>Agregar un producto que no está en la lista</strong>
                             <div className="quick-actions__inspection-add-row">
                               <button
                                 type="button"
@@ -6207,7 +6253,7 @@ function QuickActions({
                                     setRandomInspectionAdd((prev) => ({ ...prev, open: false }))
                                     return
                                   }
-                                  setRandomInspectionAdd((prev) => ({ ...prev, open: true }))
+                                  setRandomInspectionAdd((prev) => ({ ...prev, open: true, locationOpen: false }))
                                   if (!randomInspectionAdd.results.length) void searchRandomInspectionAddProducts(randomInspectionAdd.query)
                                 }}
                                 disabled={randomInspectionAdd.saving}
@@ -6221,7 +6267,7 @@ function QuickActions({
                                 </span>
                                 <i className={`pi pi-chevron-${randomInspectionAdd.open ? 'up' : 'down'}`} />
                               </button>
-                              {isRandomInspectionAddPanelOpen && randomInspectionAddPanelStyle && createPortal(
+                              {randomInspectionAddPanelKind === 'producto' && randomInspectionAddPanelStyle && createPortal(
                                 <div
                                   ref={randomInspectionAddPanelRef}
                                   className={`create-user__dropdown-panel create-salida__product-panel quick-actions__inspection-add-panel${darkMode ? ' is-dark' : ''}`}
@@ -6283,6 +6329,74 @@ function QuickActions({
                                 </div>,
                                 getAppPortalRoot()
                               )}
+                              <button
+                                type="button"
+                                ref={randomInspectionAddLocationTriggerRef}
+                                className={`quick-actions__inspection-add-trigger quick-actions__inspection-add-trigger--location${randomInspectionAdd.location ? ' has-value' : ''}`}
+                                onClick={() => {
+                                  setRandomInspectionAdd((prev) => ({ ...prev, open: false, locationOpen: !prev.locationOpen }))
+                                  void loadRandomInspectionLocations()
+                                }}
+                                disabled={randomInspectionAdd.saving}
+                                aria-haspopup="listbox"
+                                aria-expanded={Boolean(randomInspectionAdd.locationOpen)}
+                                title={randomInspectionAdd.location?.label || 'Ubicación donde lo encontraste'}
+                              >
+                                <span>{randomInspectionAdd.location?.label || 'Ubicación donde lo encontraste'}</span>
+                                <i className={`pi pi-chevron-${randomInspectionAdd.locationOpen ? 'up' : 'down'}`} />
+                              </button>
+                              {randomInspectionAddPanelKind === 'ubicacion' && randomInspectionAddPanelStyle && createPortal(
+                                <div
+                                  ref={randomInspectionAddPanelRef}
+                                  className={`create-user__dropdown-panel create-salida__product-panel quick-actions__inspection-add-panel${darkMode ? ' is-dark' : ''}`}
+                                  style={randomInspectionAddPanelStyle}
+                                >
+                                  <div className="create-user__dropdown-search">
+                                    <i className="pi pi-search" />
+                                    <input
+                                      type="text"
+                                      placeholder="Buscar bodega, división o subdivisión"
+                                      value={randomInspectionAdd.locationQuery || ''}
+                                      onChange={(event) => {
+                                        const value = event.target.value
+                                        setRandomInspectionAdd((prev) => ({ ...prev, locationQuery: value }))
+                                      }}
+                                      onKeyDown={(event) => {
+                                        if (event.key === 'Escape') setRandomInspectionAdd((prev) => (prev ? { ...prev, locationOpen: false } : prev))
+                                        if (event.key !== 'Enter') return
+                                        event.preventDefault()
+                                        const first = filteredRandomInspectionLocations[0]
+                                        if (first) setRandomInspectionAdd((prev) => ({ ...prev, location: first, locationOpen: false, error: '' }))
+                                      }}
+                                      autoFocus
+                                    />
+                                  </div>
+                                  <div
+                                    className="create-user__dropdown-results"
+                                    style={{ maxHeight: `${Math.max(Number(randomInspectionAddPanelStyle.maxHeight || 0) - 72, 100)}px` }}
+                                  >
+                                    {randomInspectionLocations.loading && <small className="muted">Cargando ubicaciones...</small>}
+                                    {!randomInspectionLocations.loading && !filteredRandomInspectionLocations.length && (
+                                      <small className="muted">Sin resultados.</small>
+                                    )}
+                                    {filteredRandomInspectionLocations.map((location) => (
+                                      <button
+                                        key={`inspection-add-location-${location.subdivision_id}`}
+                                        type="button"
+                                        className={`create-salida__result-row quick-actions__inspection-add-location-row${randomInspectionAdd.location?.subdivision_id === location.subdivision_id ? ' is-selected' : ''}`}
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onClick={() => setRandomInspectionAdd((prev) => ({ ...prev, location, locationOpen: false, error: '' }))}
+                                      >
+                                        <span className="result-nombre">{location.label}</span>
+                                        <span className="result-stock">
+                                          {location.en_revision && <span className="create-salida__result-added-badge">en esta revisión</span>}
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>,
+                                getAppPortalRoot()
+                              )}
                               <input
                                 type="text"
                                 inputMode="numeric"
@@ -6329,6 +6443,11 @@ function QuickActions({
                             onClick={() => {
                               setRandomInspectionAdd({
                                 groupKey: activeRandomInspectionGroup.key,
+                                location: /^\d+$/.test(String(activeRandomInspectionGroup.key))
+                                  ? { subdivision_id: Number(activeRandomInspectionGroup.key), label: activeRandomInspectionGroup.label }
+                                  : null,
+                                locationOpen: false,
+                                locationQuery: '',
                                 open: true,
                                 query: '',
                                 results: [],
@@ -6339,6 +6458,7 @@ function QuickActions({
                                 error: '',
                               })
                               void searchRandomInspectionAddProducts('')
+                              void loadRandomInspectionLocations()
                             }}
                             disabled={randomInspectionSubmitting}
                           >

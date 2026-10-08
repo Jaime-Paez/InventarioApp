@@ -3741,7 +3741,7 @@ def _pending_division_inspection_for_reviewer(request, inspection_id, *, lock=Fa
     inspection = (
         _lock_random_inspection(inspection_id)
         if lock
-        else InspeccionAleatoriaDiaria.objects.select_related("division", "subdivision")
+        else InspeccionAleatoriaDiaria.objects.select_related("division__bodega", "subdivision")
         .filter(pk=inspection_id)
         .first()
     )
@@ -3763,6 +3763,44 @@ def _pending_division_inspection_for_reviewer(request, inspection_id, *, lock=Fa
             status=status.HTTP_400_BAD_REQUEST,
         )
     return inspection, None
+
+
+def _inspection_branch_locations(inspection):
+    """Ubicaciones de la sucursal de la revision (sin POR UBICAR)."""
+    from inventario.por_ubicar import POR_UBICAR_NOMBRE
+
+    division = getattr(inspection, "division", None)
+    sucursal_id = getattr(getattr(division, "bodega", None), "sucursal_id", None)
+    if not sucursal_id:
+        return SubDivision.objects.none()
+    return SubDivision.objects.filter(division__bodega__sucursal_id=int(sucursal_id)).exclude(
+        division__nombre__iexact=POR_UBICAR_NOMBRE
+    )
+
+
+class RandomInspectionLocationsAPIView(APIView):
+    """Ubicaciones donde el revisor puede decir que encontro un producto."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, inspection_id):
+        inspection, error = _pending_division_inspection_for_reviewer(request, inspection_id)
+        if error is not None:
+            return error
+        rows = (
+            _inspection_branch_locations(inspection)
+            .select_related("division__bodega")
+            .order_by("division__bodega__nombre", "division__nombre", "nombre", "id")
+        )
+        locations = [
+            {
+                **_serialize_found_location(subdivision),
+                "en_revision": int(subdivision.division_id) == int(inspection.division_id),
+            }
+            for subdivision in rows
+        ]
+        locations.sort(key=lambda row: _natural_sort_key(row["label"]))
+        return Response({"results": locations}, status=status.HTTP_200_OK)
 
 
 class RandomInspectionSearchProductAPIView(APIView):
@@ -3832,16 +3870,15 @@ class RandomInspectionAddProductAPIView(APIView):
                     {"detail": f"{product.codigo} ya esta en esta revision: buscalo en la lista."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            subdivision_qs = SubDivision.objects.filter(
-                pk=_normalize_int(request.data.get("subdivision_id"), 0),
-                division_id=inspection.division_id,
+            subdivision = (
+                _inspection_branch_locations(inspection)
+                .filter(pk=_normalize_int(request.data.get("subdivision_id"), 0))
+                .select_related("division__bodega")
+                .first()
             )
-            if inspection.es_por_subdivision and inspection.subdivision_id:
-                subdivision_qs = subdivision_qs.filter(pk=inspection.subdivision_id)
-            subdivision = subdivision_qs.select_related("division__bodega").first()
             if subdivision is None:
                 return Response(
-                    {"detail": "La fila donde lo encontraste no es parte de esta revision."},
+                    {"detail": "Elige una ubicacion de la sucursal donde lo encontraste."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             quantity = _parse_optional_quantity(request.data.get("cantidad"))

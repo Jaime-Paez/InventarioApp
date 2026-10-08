@@ -996,10 +996,25 @@ class AgregarProductoEncontradoTests(InspeccionAleatoriaBaseTestCase):
         self.inspection.refresh_from_db()
         self.assertEqual(self.inspection.total_items, 2)
 
-    def test_no_repite_ni_acepta_fila_fuera_de_la_division(self):
+    def test_no_repite_y_valida_ubicacion_y_cantidad(self):
         self.assertEqual(self._agregar(producto_id=self.producto_2.id).status_code, 400)
-        self.assertEqual(self._agregar(subdivision_id=self.sub_a.id).status_code, 400)
         self.assertEqual(self._agregar(cantidad=0).status_code, 400)
+        otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
+        bodega = Bodega.objects.create(sucursal=otra, nombre="Sur")
+        division = Division.objects.create(tipo_division=self.division.tipo_division, bodega=bodega, nombre="X")
+        sub_otra = SubDivision.objects.create(division=division, nombre="1")
+        self.assertEqual(self._agregar(subdivision_id=sub_otra.id).status_code, 400)
+
+    def test_se_puede_elegir_otra_ubicacion_de_la_sucursal(self):
+        response = self.revisor_client.get(f"{BASE_URL}/{self.inspection.id}/ubicaciones/")
+        self.assertEqual(response.status_code, 200, response.data)
+        ids = {row["subdivision_id"]: row["en_revision"] for row in response.data["results"]}
+        self.assertEqual(ids, {self.sub_a.id: False, self.sub_b.id: True})
+
+        response = self._agregar(subdivision_id=self.sub_a.id)
+        self.assertEqual(response.status_code, 201, response.data)
+        item = self.inspection.items.get(producto=self.producto)
+        self.assertEqual(item.encontrado_en_id, self.sub_a.id)
 
     def test_admin_mueve_aqui_sin_inventar_stock(self):
         self._agregar()
