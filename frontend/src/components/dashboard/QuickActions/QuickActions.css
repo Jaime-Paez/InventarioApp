@@ -3841,3 +3841,8 @@
 .quick-actions__inspection-overlay.dark .quick-actions__inspection-add-trigger.has-value {
   color: var(--color-text-title-dark);
 }
+
+.quick-actions__inspection-add-more {
+  padding: 6px 10px 2px;
+  text-align: center;
+}

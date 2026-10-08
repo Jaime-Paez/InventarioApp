@@ -4712,6 +4712,7 @@ function QuickActions({
         ...prev,
         searching: false,
         results: response.ok && Array.isArray(payload?.results) ? payload.results : [],
+        total: response.ok ? Number(payload?.total) || 0 : 0,
         error: response.ok ? '' : String(payload?.detail || 'No se pudo buscar.'),
       } : prev))
     } catch {
@@ -6273,6 +6274,11 @@ function QuickActions({
                                         </span>
                                       </button>
                                     ))}
+                                    {!randomInspectionAdd.searching && Number(randomInspectionAdd.total) > randomInspectionAdd.results.length && (
+                                      <small className="muted quick-actions__inspection-add-more">
+                                        {`Mostrando ${randomInspectionAdd.results.length} de ${Number(randomInspectionAdd.total).toLocaleString('es-EC')}: escribe más del código o la descripción para afinar.`}
+                                      </small>
+                                    )}
                                   </div>
                                 </div>,
                                 getAppPortalRoot()

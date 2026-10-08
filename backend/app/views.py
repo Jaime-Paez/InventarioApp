@@ -3782,9 +3782,11 @@ class RandomInspectionSearchProductAPIView(APIView):
         products = Producto.objects.all()
         if term:
             products = products.filter(Q(codigo__icontains=term) | Q(nombre__icontains=term))
+        total = products.count()
         products = products.order_by("codigo").values("id", "codigo", "nombre")[:20]
         return Response(
             {
+                "total": int(total),
                 "results": [
                     {
                         "id": int(product["id"]),
