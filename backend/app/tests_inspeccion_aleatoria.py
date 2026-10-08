@@ -948,6 +948,8 @@ class NoEncontradoTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(self._stock(subdivision=self.sub_a), 0)
         self.assertEqual(self._stock(subdivision=self.sub_b), 10)
         self.assertEqual(self._stock(), 10)
+        # La ubicacion vieja no queda en 0: se quita.
+        self.assertFalse(Inventario.objects.filter(producto=self.producto, subdivision=self.sub_a).exists())
 
     def test_reubicar_a_otra_sucursal_se_rechaza(self):
         otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
@@ -1044,6 +1046,7 @@ class AgregarProductoEncontradoTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self._stock(subdivision=self.sub_a), 0)
         self.assertEqual(self._stock(subdivision=self.sub_b), 12)
+        self.assertFalse(Inventario.objects.filter(producto=self.producto, subdivision=self.sub_a).exists())
 
     def test_solo_en_revision_por_division(self):
         lista = self._crear_inspeccion(productos=[self.producto_2], es_por_lista=True, sucursal=self.sucursal)

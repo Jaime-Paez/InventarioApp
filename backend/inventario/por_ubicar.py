@@ -74,7 +74,11 @@ def add_stock(subdivision_id, producto_id, cantidad):
 
 
 def take_stock(subdivision_id, producto_id, cantidad):
-    """Quita hasta `cantidad` de la ubicacion; devuelve cuanto pudo quitar."""
+    """Quita hasta `cantidad` de la ubicacion; devuelve cuanto pudo quitar.
+
+    Solo se usa para MOVER stock (de POR UBICAR a su ubicacion): la fila que
+    queda en 0 se borra, igual que en "mover" del inventario.
+    """
     qty = int(cantidad or 0)
     if qty <= 0:
         return 0
@@ -89,7 +93,10 @@ def take_stock(subdivision_id, producto_id, cantidad):
             break
         part = min(int(row.cantidad or 0), qty - taken)
         row.cantidad = int(row.cantidad or 0) - part
-        row.save(update_fields=["cantidad"])
+        if row.cantidad <= 0:
+            row.delete()
+        else:
+            row.save(update_fields=["cantidad"])
         taken += part
     return taken
 

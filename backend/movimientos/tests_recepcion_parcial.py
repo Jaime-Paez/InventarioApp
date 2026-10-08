@@ -130,6 +130,8 @@ class RecepcionParcialTrasladoTests(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self._stock(self.p1, self.nivel), 3)
         self.assertEqual(self._stock(self.p1, por_ubicar), 0)
+        # Movido a su ubicacion: la fila de POR UBICAR no queda en 0, se quita.
+        self.assertFalse(Inventario.objects.filter(producto=self.p1, subdivision=por_ubicar).exists())
         self.assertEqual(response.data["recepcion_progreso"][str(self.p1.id)]["pendiente_guardar"], 0)
 
     def test_cerrar_no_duplica_stock_y_exige_guardar_antes(self):

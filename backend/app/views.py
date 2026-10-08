@@ -2531,8 +2531,8 @@ def _move_inspection_item_stock(item, target_subdivision):
             continue
         origins.append({"subdivision_id": int(row.subdivision_id), "cantidad": quantity})
         moved += quantity
-        row.cantidad = 0
-        row.save(update_fields=["cantidad"])
+        # Se movio todo: la ubicacion vieja no queda en 0, se quita.
+        row.delete()
     if moved:
         target_row, _ = Inventario.objects.select_for_update().get_or_create(
             subdivision=target_subdivision,
@@ -2568,7 +2568,11 @@ def _move_found_stock_here(item, target_subdivision, quantity):
         if take <= 0:
             continue
         row.cantidad = int(row.cantidad or 0) - take
-        row.save(update_fields=["cantidad"])
+        if row.cantidad <= 0:
+            # Movido de un lado a otro: la ubicacion que queda vacia se quita.
+            row.delete()
+        else:
+            row.save(update_fields=["cantidad"])
         origins.append({"subdivision_id": int(row.subdivision_id), "cantidad": take})
         remaining -= take
     target_row, _ = Inventario.objects.select_for_update().get_or_create(
