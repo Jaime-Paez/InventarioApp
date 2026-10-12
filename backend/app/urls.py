@@ -1,8 +1,14 @@
 from django.urls import path
-from . import views
+from . import reposicion, views
 from auditoria.views import AuditoriaListAPIView
 
 urlpatterns = [
+    path("reposicion/", reposicion.ReposicionAPIView.as_view(), name="reposicion"),
+    path(
+        "reposicion/configuracion/",
+        reposicion.ReposicionConfigAPIView.as_view(),
+        name="reposicion-configuracion",
+    ),
     path("auditoria/registros/", AuditoriaListAPIView.as_view(), name="auditoria-registros"),
     path("ping/", views.ping),
     path(

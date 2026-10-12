@@ -335,3 +335,64 @@ class InspeccionAleatoriaItem(models.Model):
         return (
             f"ItemInspeccion<{self.inspeccion_id}:{self.sucursal_id}:{self.producto_id}>"
         )
+
+
+class ReposicionConfiguracion(models.Model):
+    """Parametros del modelo de reposicion (singleton).
+
+    Basado en "Setting Analytical Inventory Targets for a Single Location"
+    (Willems): revision continua (R, Q) para productos A/B y revision
+    periodica con stock base (B) para productos C.
+    """
+
+    GLOBAL_KEY = "global"
+
+    key = models.CharField(max_length=50, unique=True, default=GLOBAL_KEY)
+    # Historia de demanda usada para mu y sigma (dias).
+    ventana_dias = models.PositiveSmallIntegerField(default=180, db_default=180)
+    # Nivel de servicio (fill rate %) por clase ABC -> z.
+    nivel_servicio_a = models.DecimalField(max_digits=5, decimal_places=2, default=97.7, db_default=97.7)
+    nivel_servicio_b = models.DecimalField(max_digits=5, decimal_places=2, default=95, db_default=95)
+    nivel_servicio_c = models.DecimalField(max_digits=5, decimal_places=2, default=90, db_default=90)
+    # Corte ABC por valor anual acumulado (%).
+    corte_a = models.DecimalField(max_digits=5, decimal_places=2, default=80, db_default=80)
+    corte_b = models.DecimalField(max_digits=5, decimal_places=2, default=95, db_default=95)
+    # Revision periodica (clase C): cada cuantos dias se revisa (r).
+    revision_dias = models.PositiveSmallIntegerField(default=7, db_default=7)
+    # Tiempo de entrega (L) de las sucursales que se abastecen de la central.
+    traslado_dias = models.PositiveSmallIntegerField(default=2, db_default=2)
+    # L por defecto de proveedores sin historia de importaciones.
+    proveedor_local_dias = models.PositiveSmallIntegerField(default=3, db_default=3)
+    proveedor_importacion_dias = models.PositiveSmallIntegerField(default=60, db_default=60)
+    # Costos para la cantidad economica de pedido (EOQ).
+    costo_pedido = models.DecimalField(max_digits=10, decimal_places=2, default=10, db_default=10)
+    costo_mantener_pct = models.DecimalField(max_digits=5, decimal_places=2, default=25, db_default=25)
+    # Sin ventas en estos dias y con stock = obsoleto.
+    dias_obsoleto = models.PositiveSmallIntegerField(default=365, db_default=365)
+    # Menos dias con venta que esto en la ventana = demanda esporadica: el
+    # modelo normal no aplica (se maneja bajo pedido, sin reponer solo).
+    min_dias_venta = models.PositiveSmallIntegerField(default=4, db_default=4)
+    # Tope de la cantidad de pedido (Q): a lo mas estos dias de venta.
+    max_dias_pedido = models.PositiveSmallIntegerField(default=90, db_default=90)
+    # Sucursal que compra a proveedores y abastece a las demas.
+    sucursal_central = models.ForeignKey(
+        "inventario.Sucursal",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Configuracion de reposicion"
+        verbose_name_plural = "Configuraciones de reposicion"
+
+    def __str__(self) -> str:
+        return f"ReposicionConfiguracion<{self.key}>"
+
+    @classmethod
+    def get_global(cls):
+        instance, _ = cls.objects.get_or_create(key=cls.GLOBAL_KEY)
+        return instance
+

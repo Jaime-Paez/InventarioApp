@@ -17,6 +17,7 @@ import {
   PackageCheck,
   Truck,
   Hand,
+  PackageSearch,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -54,6 +55,7 @@ export const MENU_STRUCTURE = [
   { label: 'Proveedores', icon: Truck, moduleKey: 'proveedores_casas' },
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
   { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios', requiresAdmin: true },
+  { label: 'Reposición', icon: PackageSearch, moduleKey: 'usuarios', requiresAdmin: true },
   { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
   { label: 'Auditoría', icon: ScrollText, moduleKey: 'usuarios', requiresAdmin: true },
 ]

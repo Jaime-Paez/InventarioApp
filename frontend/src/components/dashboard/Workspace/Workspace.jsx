@@ -4,6 +4,7 @@ import { UnsavedTabScope } from '../common/unsavedChanges/unsavedChanges'
 import QuickActions from '../QuickActions/QuickActions'
 import UsersTable from '../admin/UsersTable/UsersTable'
 import RandomInspectionAdminTable from '../admin/RandomInspectionAdminTable/RandomInspectionAdminTable'
+import ReposicionTable from '../reposicion/ReposicionTable'
 import AuditoriaTable from '../admin/AuditoriaTable/AuditoriaTable'
 import SucursalesTable from '../sucursales/SucursalesTable/SucursalesTable'
 import BodegasTable from '../bodegas/BodegasTable/BodegasTable'
@@ -52,6 +53,7 @@ const MODULE_KEY_BY_TAB = {
   Inventario: 'inventario',
   Administrar: 'usuarios',
   'Auditoría': 'usuarios',
+  'Reposición': 'usuarios',
   [INVENTORY_REVIEW_TAB]: 'usuarios',
   [INVENTORY_REVIEW_TAB_LEGACY]: 'usuarios',
   Sucursales: 'sucursales_sucursales',
@@ -164,6 +166,7 @@ function Workspace({
     Administrar: UsersTable,
     [INVENTORY_REVIEW_TAB]: RandomInspectionAdminTable,
     [INVENTORY_REVIEW_TAB_LEGACY]: RandomInspectionAdminTable,
+    'Reposición': ReposicionTable,
     Sucursales: SucursalesTable,
     Bodegas: BodegasTable,
     'Proveedores': CasasComercialesTable,
@@ -479,7 +482,7 @@ function Workspace({
       )
     }
 
-    if (tab === 'Configuraciones' || tab === 'Auditoría') {
+    if (tab === 'Configuraciones' || tab === 'Auditoría' || tab === 'Reposición') {
       if (!isAdministrator) {
         return (
           <p className="workspace__subtitle">
