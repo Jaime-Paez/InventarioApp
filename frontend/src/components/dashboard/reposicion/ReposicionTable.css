@@ -1352,3 +1352,21 @@ body.app-theme-dark .reposicion-import__done { color: #86efac; }
   align-self: stretch;
   width: 100%;
 }
+
+/* Al abrir "Ver formula" el espacio se achica: la lista de pasos se
+   desplaza por dentro en vez de quedar cortada. */
+.repo-steps {
+  overflow: hidden;
+}
+
+.repo-steps__list {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.repo-steps__conclusion,
+.repo-steps__formula {
+  flex: 0 0 auto;
+}
