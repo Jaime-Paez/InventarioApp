@@ -172,6 +172,9 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             "cliente__cedula_ruc",
             "producto__nombre",
             "producto__codigo",
+            "producto__referencia",
+            "producto__referencias__valor",
+            "producto__oem_productos__oem__codigo",
             "producto_solicitado__nombre",
             "producto_solicitado__codigo",
             "producto_solicitado__casa_comercial__nombre",
@@ -925,6 +928,8 @@ class SolicitudViewSet(viewsets.ModelViewSet):
             imp = d.importacion
             results.append({
                 "detalle_id": d.id,
+                "producto_id": d.producto_id,
+                "referencia": (d.producto.referencia if d.producto_id and d.producto else None) or d.referencia or "",
                 "solicitud_id": sol.id,
                 "solicitud_codigo": str(sol.codigo or sol.grupo_codigo or "").strip(),
                 "nombre": (d.producto.nombre if d.producto_id and d.producto else None) or d.nombre or "",
@@ -940,6 +945,9 @@ class SolicitudViewSet(viewsets.ModelViewSet):
                 "importacion_numero_factura": imp.numero_factura or "",
             })
 
+        from core.search_utils import attach_product_search
+
+        attach_product_search(results)
         return Response({"count": len(results), "results": results})
 
     def _build_grouped_list_payload(self, queryset):

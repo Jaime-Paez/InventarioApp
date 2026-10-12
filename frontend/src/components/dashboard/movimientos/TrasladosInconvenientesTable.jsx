@@ -1964,6 +1964,7 @@ function TrasladosInconvenientesTable({
             'solicitud_no_documento',
             'producto_nombre',
             'producto_codigo',
+            'producto_busqueda',
             'cantidad_faltante',
             'sucursal_proveedora',
             'sucursal_solicitante',

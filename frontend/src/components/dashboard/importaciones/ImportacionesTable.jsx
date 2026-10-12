@@ -30,6 +30,14 @@ const getPortalRoot = () => getAppPortalRoot()
 const getProductoOem = (producto) =>
   (producto?.oem_productos || []).map((r) => r?.oem?.codigo).filter(Boolean).join(', ')
 
+// Referencias del producto (la vieja y las varias) + las del propio detalle,
+// para que los buscadores tambien encuentren por referencia.
+const getReferenciasTexto = (producto, detalle = null) => [
+  producto?.referencia,
+  ...(producto?.referencias || []).map((r) => r?.valor),
+  detalle?.referencia,
+].filter(Boolean).join(' ')
+
 // OEMProductoSerializer manda "producto" como su __str__ ("Nombre (Codigo)"),
 // no como objeto — se separa el código (paréntesis al final) del nombre para
 // poder mostrarlo en su propia columna en vez de mezclado en un solo texto.
@@ -1157,7 +1165,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const filteredRows = useMemo(() => {
     const q = filter.trim().toLowerCase()
     if (!q) return rows
-    return rows.filter(r => [r.codigo, r.nombre, r.oem].some(v => String(v || '').toLowerCase().includes(q)))
+    return rows.filter(r => [r.codigo, r.nombre, r.oem, r.referencia, r.producto_busqueda].some(v => String(v || '').toLowerCase().includes(q)))
   }, [rows, filter])
 
   const checkedCount = rows.filter(r => r.checked).length
@@ -5513,6 +5521,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       String(item.codigo || '').toLowerCase().includes(q) ||
       String(item.nombre || '').toLowerCase().includes(q) ||
       String(item.solicitud_codigo || '').toLowerCase().includes(q) ||
+      String(item.referencia || '').toLowerCase().includes(q) ||
       (item.oem_codigos || []).some((oem) => String(oem).toLowerCase().includes(q))
     )
   }, [aceptadosItems, aceptadosSearch])
@@ -7530,9 +7539,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     if (term.length < 2) return []
     return details
       .filter((item) => {
-        const code = String(item.producto?.codigo || item.codigo || '').toLowerCase()
-        const name = String(item.producto?.nombre || item.nombre || '').toLowerCase()
-        return code.includes(term) || name.includes(term)
+        const text = [
+          item.producto?.codigo || item.codigo,
+          item.producto?.nombre || item.nombre,
+          getProductoOem(item.producto) || item.oem,
+          getReferenciasTexto(item.producto, item),
+        ].join(' ').toLowerCase()
+        return text.includes(term)
       })
       .slice(0, 6)
   }, [details, productQuery])
@@ -7553,6 +7566,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       String(item.codigo || '').toLowerCase().includes(q) ||
       String(item.nombre || '').toLowerCase().includes(q) ||
       String(item.solicitud_codigo || '').toLowerCase().includes(q) ||
+      String(item.referencia || '').toLowerCase().includes(q) ||
       (item.oem_codigos || []).some((oem) => String(oem).toLowerCase().includes(q))
     )
   }, [aceptadosItems, aceptadosSearch])
@@ -8766,6 +8780,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         codigo: d.producto?.codigo || d.codigo || '-',
         nombre: d.producto?.nombre || d.nombre || '-',
         oem: getProductoOem(d.producto) || d.oem || '-',
+        referencias: getReferenciasTexto(d.producto, d),
         cantidad: d.cantidad ?? 0,
         sinCatalogo: !d.producto?.id,
       }))
@@ -8776,7 +8791,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       return {
         ...item,
         casa_nombre: item?.casa_comercial?.nombre ?? '-',
-        productos_resumen: productos.map((p) => `${p.codigo} ${p.nombre} ${p.oem}`).join(' | '),
+        productos_resumen: productos.map((p) => `${p.codigo} ${p.nombre} ${p.oem} ${p.referencias}`).join(' | '),
         productos,
         estado_label,
       }

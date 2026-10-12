@@ -88,3 +88,56 @@ class FuzzyTokenSearchFilter(SearchFilter):
         fields = [f.lstrip("^=@$") for f in raw_fields]
         queryset = apply_token_search(queryset, tokens, fields)
         return queryset.distinct()
+
+
+# Campos de un producto por los que se busca en TODA la app: codigo, nombre,
+# descripcion, referencia (la vieja y las varias) y OEM.
+PRODUCT_SEARCH_FIELDS = [
+    "codigo",
+    "nombre",
+    "descripcion",
+    "referencia",
+    "referencias__valor",
+    "oem_productos__oem__codigo",
+]
+
+
+def matching_product_ids(search_term: str):
+    """Subconsulta con los ids de productos que calzan con el texto en
+    cualquiera de PRODUCT_SEARCH_FIELDS (por palabras, sin tildes)."""
+    from productos.models import Producto
+
+    tokens = get_search_tokens(search_term or "")
+    if not tokens:
+        return Producto.objects.none().values("id")
+    return apply_token_search(Producto.objects.all(), tokens, PRODUCT_SEARCH_FIELDS).values("id")
+
+
+def product_search_text(product_ids) -> dict:
+    """{producto_id: "ref1 ref2 oem1 ..."} para que los filtros que buscan
+    sobre lo ya cargado en pantalla tambien encuentren por referencia/OEM."""
+    from productos.models import OEMProducto, Producto, ProductoReferencia
+
+    ids = sorted({int(pid) for pid in product_ids if pid})
+    if not ids:
+        return {}
+    parts = {pid: [] for pid in ids}
+    for pid, referencia in Producto.objects.filter(id__in=ids).values_list("id", "referencia"):
+        if referencia:
+            parts[pid].append(str(referencia))
+    for pid, valor in ProductoReferencia.objects.filter(producto_id__in=ids).values_list("producto_id", "valor"):
+        if valor:
+            parts[pid].append(str(valor))
+    for pid, codigo in OEMProducto.objects.filter(producto_id__in=ids).values_list("producto_id", "oem__codigo"):
+        if codigo:
+            parts[pid].append(str(codigo))
+    return {pid: " ".join(dict.fromkeys(values)) for pid, values in parts.items()}
+
+
+def attach_product_search(rows, id_key="producto_id", target="producto_busqueda"):
+    """Agrega a cada fila (dict) el texto de referencias/OEM de su producto."""
+    rows = [row for row in (rows or []) if isinstance(row, dict)]
+    texts = product_search_text(row.get(id_key) for row in rows)
+    for row in rows:
+        row[target] = texts.get(int(row.get(id_key) or 0), "") if row.get(id_key) else ""
+    return rows

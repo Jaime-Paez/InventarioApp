@@ -252,3 +252,20 @@ class ReposicionTests(TestCase):
             format="json",
         )
         self.assertEqual(bad.status_code, 400)
+
+    def test_busqueda_por_referencia_y_oem(self):
+        from core.search_utils import attach_product_search, matching_product_ids
+        from productos.models import OEM, OEMProducto, ProductoReferencia
+
+        ProductoReferencia.objects.create(producto=self.rapido, valor="REF-998877")
+        oem = OEM.objects.create(codigo="OEM-5544")
+        OEMProducto.objects.create(producto=self.barato, oem=oem)
+
+        self.assertEqual(set(matching_product_ids("998877").values_list("id", flat=True)), {self.rapido.id})
+        self.assertEqual(set(matching_product_ids("oem 5544").values_list("id", flat=True)), {self.barato.id})
+
+        response = self.client_admin.get("/reposicion/?estado=&search=REF-998877")
+        self.assertEqual({row["codigo"] for row in response.data["results"]}, {"RAP"})
+
+        rows = attach_product_search([{"producto_id": self.barato.id}])
+        self.assertIn("OEM-5544", rows[0]["producto_busqueda"])

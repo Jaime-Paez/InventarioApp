@@ -2040,7 +2040,7 @@ const handleResetTable = () => {
               rowsPerPageOptions={[10, 25, 50]}
               rowClassName={(r) => r.importacion_estado === 'en_camino' ? 'importados-row--en-camino' : 'importados-row--importada'}
               filters={importadosFilters}
-              globalFilterFields={['solicitud_codigo', 'codigo', 'nombre', 'oem', 'importacion_codigo', 'importacion_casa']}
+              globalFilterFields={['solicitud_codigo', 'codigo', 'nombre', 'oem', 'referencia', 'producto_busqueda', 'importacion_codigo', 'importacion_casa']}
               header={
                 <div className="users-header">
                   <div className="users-header__left">

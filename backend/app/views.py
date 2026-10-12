@@ -1849,6 +1849,14 @@ def _is_random_inspection_pending(inspection):
     )
 
 
+def _with_product_search(items):
+    """Referencias y OEM de cada producto, para el buscador del revisor."""
+    from core.search_utils import attach_product_search
+
+    attach_product_search(items)
+    return items
+
+
 def _serialize_random_inspection(inspection, *, viewer=None):
     division_id = _inspection_division_scope(inspection)
     subdivision_id = _inspection_subdivision_scope(inspection)
@@ -1903,7 +1911,7 @@ def _serialize_random_inspection(inspection, *, viewer=None):
         "subdivision_id": int(inspection.subdivision_id) if inspection.subdivision_id else None,
         "subdivision_nombre": _normalize_text(getattr(subdivision, "nombre", "")),
         "nota_general": str(inspection.nota_general or "").strip(),
-        "items": [
+        "items": _with_product_search([
             _serialize_random_inspection_item(
                 item,
                 hide_expected=hide_expected,
@@ -1912,7 +1920,7 @@ def _serialize_random_inspection(inspection, *, viewer=None):
                 else None,
             )
             for item in inspection_items
-        ],
+        ]),
     }
 
 
@@ -3821,7 +3829,10 @@ class RandomInspectionSearchProductAPIView(APIView):
         # Sin texto (al abrir el desplegable) se listan los primeros por codigo.
         products = Producto.objects.all()
         if term:
-            products = products.filter(Q(codigo__icontains=term) | Q(nombre__icontains=term))
+            # Por codigo, nombre, descripcion, referencia(s) u OEM.
+            from core.search_utils import matching_product_ids
+
+            products = products.filter(id__in=matching_product_ids(term))
         total = products.count()
         products = products.order_by("codigo").values("id", "codigo", "nombre")[:20]
         return Response(

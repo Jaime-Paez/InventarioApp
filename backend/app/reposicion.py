@@ -489,12 +489,13 @@ class ReposicionAPIView(APIView):
         clase = (params.get("clase") or "").strip().upper()
         if clase:
             rows = [row for row in rows if row["clase"] == clase]
-        search = (params.get("search") or "").strip().lower()
+        search = (params.get("search") or "").strip()
         if search:
-            rows = [
-                row for row in rows
-                if search in str(row["codigo"]).lower() or search in str(row["nombre"]).lower()
-            ]
+            # Codigo, nombre, descripcion, referencia(s) u OEM.
+            from core.search_utils import matching_product_ids
+
+            matched = set(matching_product_ids(search).values_list("id", flat=True))
+            rows = [row for row in rows if row["producto_id"] in matched]
 
         orden = (params.get("orden") or "prioridad").strip()
         descending = orden.startswith("-")

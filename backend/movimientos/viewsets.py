@@ -29,7 +29,12 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.search_utils import apply_token_search, get_search_tokens
+from core.search_utils import (
+    apply_token_search,
+    attach_product_search,
+    get_search_tokens,
+    matching_product_ids,
+)
 from core.table_filters import apply_column_filters, parse_column_filters
 from app.models import ReminderState
 from app.views import (
@@ -668,6 +673,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             matching_solicitud_ids = SolicitudTrasladoDetalle.objects.filter(
                 Q(producto__codigo__icontains=search_term)
                 | Q(producto__nombre__icontains=search_term)
+                | Q(producto_id__in=matching_product_ids(search_term))
             ).values_list("solicitud_id", flat=True)
             search_query = (
                 Q(no_documento__icontains=search_term)
@@ -796,6 +802,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             matching_solicitud_ids = SolicitudTrasladoDetalle.objects.filter(
                 Q(producto__codigo__icontains=search_term)
                 | Q(producto__nombre__icontains=search_term)
+                | Q(producto_id__in=matching_product_ids(search_term))
             ).values_list("solicitud_id", flat=True)
             queryset = queryset.filter(
                 Q(no_documento__icontains=search_term)
@@ -957,9 +964,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         search_term = (params.get("search") or "").strip()
         if search_term:
             normalized_search = search_term.lower()
+            # Tambien por referencia(s) y OEM de los productos del movimiento.
             matching_movement_ids = DetalleMovimiento.objects.filter(
                 Q(producto__codigo__icontains=search_term)
                 | Q(producto__nombre__icontains=search_term)
+                | Q(producto_id__in=matching_product_ids(search_term))
             ).values_list("movimiento_inventario_id", flat=True)
             search_query = (
                 Q(no_documento__icontains=search_term)
@@ -4289,6 +4298,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 }
             )
 
+        # Para el buscador de la ventana de recepcion: referencias y OEM.
+        attach_product_search([detalle for row in payload for detalle in row.get("detalles", [])])
         return Response(payload, status=status.HTTP_200_OK)
 
     def _get_open_transfer_for_reception(self, request, solicitud_id, *, lock=False):
@@ -5031,6 +5042,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
 
         payload = [self._serialize_inconveniente(row) for row in queryset]
+        # Para el buscador de la tabla: referencias y OEM del producto.
+        attach_product_search(payload)
         return Response(payload, status=status.HTTP_200_OK)
 
     @action(

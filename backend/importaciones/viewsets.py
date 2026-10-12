@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import connections, transaction
 from django.utils import timezone
 
+from core.search_utils import attach_product_search
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -528,6 +529,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         "casa_comercial__nombre",
         "detalles__producto__codigo",
         "detalles__producto__nombre",
+        "detalles__producto__referencia",
+        "detalles__producto__referencias__valor",
+        "detalles__producto__oem_productos__oem__codigo",
+        "detalles__codigo",
+        "detalles__nombre",
+        "detalles__oem",
+        "detalles__referencia",
     ]
     ordering_fields = ["codigo", "fecha", "creado_en", "casa_comercial__nombre"]
 
@@ -1095,6 +1103,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(estado=estado)
 
         payload = [self._serialize_importacion_inconveniente(row) for row in queryset]
+        attach_product_search(payload)
         return Response(payload, status=status.HTTP_200_OK)
 
     @action(
@@ -1412,6 +1421,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "_source": "importacion",
             })
 
+        attach_product_search([detalle for row in payload for detalle in row.get("detalles", [])])
         return Response(payload, status=status.HTTP_200_OK)
 
     def _get_pending_envio_for_user(self, request, envio_id, *, lock=False):

@@ -2406,9 +2406,9 @@ function QuickActions({
     const term = receiveShipmentFilter.trim().toLowerCase()
     const filtered = term
       ? receiveShipmentRows.filter((row) => {
-          const code = String(row?.producto_codigo || '').toLowerCase()
-          const name = String(row?.producto_nombre || '').toLowerCase()
-          return code.includes(term) || name.includes(term)
+          // Codigo, descripcion, referencia(s) u OEM.
+          const text = `${row?.producto_codigo || ''} ${row?.producto_nombre || ''} ${row?.producto_busqueda || ''}`.toLowerCase()
+          return text.includes(term)
         })
       : [...receiveShipmentRows]
 
@@ -4041,6 +4041,7 @@ function QuickActions({
           producto_id: toPositiveInt(detail?.producto_id, 0),
           producto_codigo: String(detail?.producto_codigo || '').trim(),
           producto_nombre: String(detail?.producto_nombre || '').trim(),
+          producto_busqueda: String(detail?.producto_busqueda || '').trim(),
           cantidad_enviada: cantidadEnviada,
           cantidad_recibida: cantidadEnviada,
           cantidad_recibida_input: String(cantidadEnviada),
@@ -4685,8 +4686,7 @@ function QuickActions({
     return randomInspectionRows
       .map((row, index) => ({ row, index }))
       .filter(({ row }) => (
-        String(row?.producto_codigo || '').toLowerCase().includes(term) ||
-        String(row?.producto_nombre || '').toLowerCase().includes(term)
+        `${row?.producto_codigo || ''} ${row?.producto_nombre || ''} ${row?.producto_busqueda || ''}`.toLowerCase().includes(term)
       ))
       .slice(0, 8)
   }, [randomInspectionRows, randomInspectionSearch])

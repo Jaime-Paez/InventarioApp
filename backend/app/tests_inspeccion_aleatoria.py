@@ -1107,3 +1107,10 @@ class AgregarProductoEncontradoTests(InspeccionAleatoriaBaseTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_buscar_producto_por_referencia(self):
+        from productos.models import ProductoReferencia
+
+        ProductoReferencia.objects.create(producto=self.producto, valor="ZZ-REF-1234")
+        response = self.revisor_client.get(f"{BASE_URL}/{self.inspection.id}/buscar-producto/?q=1234")
+        self.assertEqual([row["codigo"] for row in response.data["results"]], ["P-1"])
