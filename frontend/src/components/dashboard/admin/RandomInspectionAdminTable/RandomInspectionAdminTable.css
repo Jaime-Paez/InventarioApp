@@ -1596,3 +1596,22 @@ body.app-theme-dark .inspection-admin__found-tag {
   background: rgba(96, 165, 250, 0.16);
   color: #93c5fd;
 }
+
+/* Reubicar: bodega / division / subdivision con buscador */
+.inspection-admin__relocate-cascade {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .inspection-admin__relocate-row {
+    flex-direction: column;
+  }
+
+  .inspection-admin__relocate-cascade {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

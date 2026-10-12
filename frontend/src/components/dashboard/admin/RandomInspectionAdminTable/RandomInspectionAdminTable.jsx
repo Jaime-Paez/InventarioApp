@@ -1395,6 +1395,11 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         const options = list
           .map((subdivision) => ({
             id: normalizeId(subdivision?.id),
+            nombre: String(subdivision?.nombre || '').trim(),
+            divisionId: normalizeId(subdivision?.division?.id),
+            divisionNombre: String(subdivision?.division?.nombre || '').trim(),
+            bodegaId: normalizeId(subdivision?.division?.bodega?.id),
+            bodegaNombre: String(subdivision?.division?.bodega?.nombre || '').trim(),
             label: [subdivision?.division?.bodega?.nombre, subdivision?.division?.nombre, subdivision?.nombre]
               .map((part) => String(part || '').trim())
               .filter(Boolean)
@@ -2065,24 +2070,62 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                           <strong>El revisor no lo encontró</strong>
                           <p>Si sabes dónde está, elige su nueva ubicación: se mueve ahí todo su stock y el total no cambia. Si de verdad no está, ajusta la cantidad abajo.</p>
                           <div className="inspection-admin__relocate-row">
-                            <select
-                              value={draft.reubicar || ''}
-                              onChange={(event) => {
-                                const value = event.target.value
-                                setVerifyWizardDrafts((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || {}), reubicar: value } }))
-                              }}
-                              disabled={busy || !relocateState || relocateState.loading}
-                              aria-label="Nueva ubicacion"
-                            >
-                              <option value="">
-                                {!relocateState || relocateState.loading
-                                  ? 'Cargando ubicaciones...'
-                                  : relocateState.error ? 'No se pudieron cargar las ubicaciones' : 'Nueva ubicación'}
-                              </option>
-                              {(relocateState?.options || []).map((option) => (
-                                <option key={`relocate-${itemId}-${option.id}`} value={option.id}>{option.label}</option>
-                              ))}
-                            </select>
+                            {(() => {
+                              // Bodega -> Division -> Subdivision con buscador (como en el resto).
+                              const allOptions = relocateState?.options || []
+                              const uniqueBy = (list, idKey, nameKey) => {
+                                const seen = new Map()
+                                list.forEach((option) => {
+                                  if (option[idKey] && !seen.has(option[idKey])) seen.set(option[idKey], { id: option[idKey], nombre: option[nameKey] || '-' })
+                                })
+                                return [...seen.values()].sort((left, right) => left.nombre.localeCompare(right.nombre, 'es', { numeric: true }))
+                              }
+                              const bodegaOptions = uniqueBy(allOptions, 'bodegaId', 'bodegaNombre')
+                              const divisionOptions = uniqueBy(
+                                allOptions.filter((option) => option.bodegaId === draft.reubicarBodega),
+                                'divisionId',
+                                'divisionNombre'
+                              )
+                              const subdivisionOptions = allOptions
+                                .filter((option) => option.divisionId === draft.reubicarDivision)
+                                .map((option) => ({ id: option.id, nombre: option.nombre || '-' }))
+                                .sort((left, right) => left.nombre.localeCompare(right.nombre, 'es', { numeric: true }))
+                              const loadingLabel = !relocateState || relocateState.loading
+                                ? 'Cargando...'
+                                : relocateState.error ? 'No se pudieron cargar' : null
+                              const updateDraft = (patch) => setVerifyWizardDrafts((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || {}), ...patch } }))
+                              return (
+                                <div className="inspection-admin__relocate-cascade">
+                                  <CascadeDropdown
+                                    placeholder={loadingLabel || 'Bodega'}
+                                    searchPlaceholder="Buscar bodega"
+                                    options={bodegaOptions}
+                                    valueId={draft.reubicarBodega || ''}
+                                    getOptionLabel={(option) => option.nombre}
+                                    onSelect={(option) => updateDraft({ reubicarBodega: option.id, reubicarDivision: '', reubicar: '' })}
+                                    disabled={busy || Boolean(loadingLabel)}
+                                  />
+                                  <CascadeDropdown
+                                    placeholder="División"
+                                    searchPlaceholder="Buscar división"
+                                    options={divisionOptions}
+                                    valueId={draft.reubicarDivision || ''}
+                                    getOptionLabel={(option) => option.nombre}
+                                    onSelect={(option) => updateDraft({ reubicarDivision: option.id, reubicar: '' })}
+                                    disabled={busy || !draft.reubicarBodega}
+                                  />
+                                  <CascadeDropdown
+                                    placeholder="Subdivisión"
+                                    searchPlaceholder="Buscar subdivisión"
+                                    options={subdivisionOptions}
+                                    valueId={draft.reubicar || ''}
+                                    getOptionLabel={(option) => option.nombre}
+                                    onSelect={(option) => updateDraft({ reubicar: option.id })}
+                                    disabled={busy || !draft.reubicarDivision}
+                                  />
+                                </div>
+                              )
+                            })()}
                             <button
                               type="button"
                               className="quick-actions__inspection-btn inspection-admin__verify-adjust"
