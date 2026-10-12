@@ -2654,8 +2654,14 @@ function QuickActions({
         addEntry(locations[0] || null, { row, rowIndex, location: null })
       }
     })
+    // Por subdivision: primero la fila enviada; despues las otras ubicaciones
+    // donde tambien estan esos productos.
+    const chosenKey = activeRandomInspection?.es_por_subdivision ? String(activeRandomInspection?.subdivision_id || '') : ''
+    if (chosenKey) {
+      groups.sort((left, right) => Number(right.key === chosenKey) - Number(left.key === chosenKey))
+    }
     return groups
-  }, [isRandomInspectionTableMode, randomInspectionRows])
+  }, [activeRandomInspection?.es_por_subdivision, activeRandomInspection?.subdivision_id, isRandomInspectionTableMode, randomInspectionRows])
   const randomInspectionStepCount = isRandomInspectionTableMode
     ? randomInspectionGroups.length
     : randomInspectionRows.length

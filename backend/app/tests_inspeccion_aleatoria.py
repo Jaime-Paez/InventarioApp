@@ -689,7 +689,7 @@ class InspeccionPorSubdivisionTests(InspeccionAleatoriaBaseTestCase):
             format="json",
         )
 
-    def test_solo_cuenta_y_ajusta_la_subdivision_elegida(self):
+    def test_productos_de_la_subdivision_se_buscan_en_todas_sus_ubicaciones(self):
         response = self._enviar(subdivision_id=self.sub_a2.id)
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["subdivision_id"], self.sub_a2.id)
@@ -701,20 +701,41 @@ class InspeccionPorSubdivisionTests(InspeccionAleatoriaBaseTestCase):
             list(inspection.items.values_list("producto_id", flat=True)), [self.producto.id]
         )
 
-        # Esperado = 3 (solo Nivel 2), no 13 (toda la division).
-        self._responder(inspection, {self.producto.id: 3})
+        # Tambien se manda a buscar en Nivel 1 (su otra ubicacion): esperado 13.
+        Inventario.objects.create(producto=self.producto, subdivision=self.sub_b, cantidad=4)
+        detail = self.revisor_client.get(f"{BASE_URL}/{inspection.id}/")
+        self.assertEqual(detail.status_code, 200, detail.data)
+        payload = detail.data.get("inspection", detail.data)
+        labels = {row["subdivision_id"] for row in payload["items"][0]["ubicaciones_bodega"]}
+        self.assertEqual(labels, {self.sub_a.id, self.sub_a2.id, self.sub_b.id})
+        self._responder(inspection, {self.producto.id: 17})
         self.assertEqual(self._diferencias(inspection), 0)
 
-    def test_aprobar_ajusta_solo_la_subdivision(self):
+    def test_aprobar_ajusta_cada_ubicacion_contada(self):
         response = self._enviar(subdivision_id=self.sub_a2.id)
         inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
-        self._responder(inspection, {self.producto.id: 1})
+        item = inspection.items.get()
+        self.revisor_client.post(
+            f"{BASE_URL}/{inspection.id}/responder/",
+            {
+                "items": [
+                    {
+                        "id": item.id,
+                        "cantidad_reportada": 11,
+                        "cantidad_por_ubicacion": [
+                            {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": 10},
+                            {"key": "a2", "subdivision_id": self.sub_a2.id, "cantidad": 1},
+                        ],
+                    }
+                ]
+            },
+            format="json",
+        )
         self.assertEqual(self._diferencias(inspection), 1)
 
-        item = inspection.items.get()
         response = self.admin_client.post(
             f"{BASE_URL}/items/{item.id}/verificar/",
-            {"accion": "aprobar", "cantidad_confirmada": 1},
+            {"accion": "aprobar", "cantidad_confirmada": 11},
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)

@@ -1552,20 +1552,24 @@ def _ensure_all_admin_summaries(user, store):
 
 
 def _inspection_division_scope(inspection):
-    """Division a la que se limita el conteo (solo inspecciones por division)."""
-    if inspection is not None and getattr(inspection, "es_por_division", False):
+    """Division a la que se limita el conteo (solo inspecciones por division).
+
+    Una revision por subdivision NO se limita: sus productos se buscan en
+    todas sus ubicaciones de la sucursal (aunque esten fuera de esa
+    subdivision), asi que lo esperado y el ajuste son de toda la sucursal.
+    """
+    if (
+        inspection is not None
+        and getattr(inspection, "es_por_division", False)
+        and not getattr(inspection, "es_por_subdivision", False)
+    ):
         return getattr(inspection, "division_id", None)
     return None
 
 
 def _inspection_subdivision_scope(inspection):
-    """Subdivision a la que se limita el conteo (division con subdivision elegida)."""
-    if (
-        inspection is not None
-        and getattr(inspection, "es_por_division", False)
-        and getattr(inspection, "es_por_subdivision", False)
-    ):
-        return getattr(inspection, "subdivision_id", None)
+    """Ya no se limita a la subdivision elegida (ver _inspection_division_scope):
+    la subdivision solo decide QUE productos entran en la revision."""
     return None
 
 
@@ -4397,14 +4401,9 @@ class RandomInspectionCoverageMapAPIView(APIView):
         ):
             product_id = _normalize_int(row.get("producto_id"), 0)
             revisado_en = row.get("revisado_en")
-            if row.get("inspeccion__es_por_division"):
-                if row.get("inspeccion__es_por_subdivision") and row.get("inspeccion__subdivision_id"):
-                    remember(
-                        by_subdivision.setdefault(int(row["inspeccion__subdivision_id"]), {}),
-                        product_id,
-                        revisado_en,
-                    )
-                elif row.get("inspeccion__division_id"):
+            # Por subdivision: el producto se conto en todas sus ubicaciones.
+            if row.get("inspeccion__es_por_division") and not row.get("inspeccion__es_por_subdivision"):
+                if row.get("inspeccion__division_id"):
                     remember(
                         by_division.setdefault(int(row["inspeccion__division_id"]), {}),
                         product_id,
