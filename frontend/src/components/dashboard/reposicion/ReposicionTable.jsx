@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Loader2, PackagePlus, RefreshCw, Search, Settings, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, PackagePlus, RefreshCw, Search, Settings, X } from 'lucide-react'
 import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../utils/api'
@@ -9,7 +9,8 @@ import './ReposicionTable.css'
 import ReposicionProductDialog from './ReposicionProductDialog'
 import ReposicionImportDialog from './ReposicionImportDialog'
 import CascadeDropdown from '../common/CascadeDropdown'
-import { ESTADO_LABEL } from './reposicionConstants'
+import ReposicionHint from './ReposicionHint'
+import { ESTADO_LABEL, causaInfo, claseInfo, estadoInfo } from './reposicionConstants'
 
 // Reposicion de inventario por producto y sucursal (modelo de Willems):
 // revision continua (R, Q) para A/B y stock base periodico (B) para C.
@@ -24,12 +25,28 @@ const ESTADOS = [
 ]
 
 const CAUSAS = [
-  { key: 'ciclo', label: 'Ciclo', hint: 'Lo que se consume entre un pedido y el siguiente.' },
-  { key: 'seguridad', label: 'Seguridad', hint: 'Colchón para la variación de la demanda durante la entrega.' },
-  { key: 'en_camino', label: 'En camino', hint: 'Traslados e importaciones que vienen en camino.' },
-  { key: 'exceso', label: 'Exceso', hint: 'Más de lo que debería haber justo al llegar un pedido.' },
-  { key: 'lento', label: 'Lento', hint: 'Poca o ninguna venta reciente, aún no obsoleto.' },
-  { key: 'obsoleto', label: 'Obsoleto', hint: 'Sin ventas en el plazo configurado.' },
+  { key: 'ciclo', label: 'Ciclo' },
+  { key: 'seguridad', label: 'Seguridad' },
+  { key: 'en_camino', label: 'En camino' },
+  { key: 'exceso', label: 'Exceso' },
+  { key: 'lento', label: 'Lento' },
+  { key: 'obsoleto', label: 'Obsoleto' },
+]
+
+// Columnas de la tabla: todas se ordenan haciendo clic en el titulo.
+const COLUMNS = [
+  { field: 'codigo', label: 'Producto' },
+  { field: 'sucursal_nombre', label: 'Sucursal', onlyAll: true },
+  { field: 'clase', label: 'Clase' },
+  { field: 'venta_dia', label: 'Venta/día', num: true, title: 'Venta promedio diaria (μ)' },
+  { field: 'dias_entrega', label: 'Entrega', num: true, title: 'Tiempo de entrega (L)' },
+  { field: 'stock_seguridad', label: 'Seguridad', num: true, title: 'Stock de seguridad' },
+  { field: 'pedir_en', label: 'Pedir en', num: true, title: 'Punto de pedido R (continua) o nivel base B (periódica)' },
+  { field: 'stock', label: 'Stock', num: true },
+  { field: 'en_camino', label: 'En camino', num: true },
+  { field: 'cobertura_dias', label: 'Cobertura', num: true, title: 'Días que alcanza el stock actual' },
+  { field: 'sugerido', label: 'Sugerido', num: true },
+  { field: 'estado', label: 'Estado' },
 ]
 
 const POLITICA_LABEL = {
@@ -84,6 +101,9 @@ function ReposicionTable({ token }) {
   const [pageSize, setPageSize] = useState(50)
   const [orden, setOrden] = useState('prioridad')
   const [openRow, setOpenRow] = useState(null)
+  const [hint, setHint] = useState(null)
+  // Filtros con los que se cargaron los datos que se estan mostrando.
+  const [loadedKey, setLoadedKey] = useState('')
   const [importOpen, setImportOpen] = useState(false)
   const [config, setConfig] = useState(null)
   const [configDraft, setConfigDraft] = useState(null)
@@ -109,12 +129,14 @@ function ReposicionTable({ token }) {
     if (clase) params.set('clase', clase)
     if (debouncedSearch) params.set('search', debouncedSearch)
     if (recalcular) params.set('recalcular', '1')
+    const key = JSON.stringify([sucursalId, estado, clase, debouncedSearch])
     try {
       const response = await authFetch(`${API_URL}/reposicion/?${params.toString()}`, {}, token)
       const payload = await response.json().catch(() => ({}))
       if (requestId !== requestRef.current) return
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo calcular la reposición.')
       setData(payload)
+      setLoadedKey(key)
     } catch (err) {
       if (requestId === requestRef.current) setError(err?.message || 'No se pudo calcular la reposición.')
     } finally {
@@ -174,13 +196,27 @@ function ReposicionTable({ token }) {
     CAUSAS.reduce((sum, causa) => sum + Number(resumen?.valor_por_causa?.[causa.key] || 0), 0)
   ), [resumen])
   const sucursales = config?.sucursales || []
-  const rows = Array.isArray(data?.results) ? data.results : []
+  const currentKey = JSON.stringify([sucursalId, estado, clase, debouncedSearch])
+  // Al cambiar de filtro no se muestran los datos del filtro anterior.
+  const stale = loadedKey !== currentKey
+  const rows = !stale && Array.isArray(data?.results) ? data.results : []
   const counts = resumen?.conteo_por_estado || {}
 
   const sortBy = (field) => {
     setOrden((current) => (current === field ? `-${field}` : current === `-${field}` ? 'prioridad' : field))
   }
-  const sortMark = (field) => (orden === field ? ' ▲' : orden === `-${field}` ? ' ▼' : '')
+  const sortIcon = (field) => {
+    if (orden === field) return <ArrowUp size={12} />
+    if (orden === `-${field}`) return <ArrowDown size={12} />
+    return <ArrowUpDown size={12} className="reposicion__sort-idle" />
+  }
+  const hintProps = (info) => (info ? {
+    onMouseEnter: (event) => setHint({ ...info, rect: event.currentTarget.getBoundingClientRect() }),
+    onMouseLeave: () => setHint(null),
+    onFocus: (event) => setHint({ ...info, rect: event.currentTarget.getBoundingClientRect() }),
+    onBlur: () => setHint(null),
+  } : {})
+  const cfg = config || {}
 
   return (
     <div className="users-page reposicion">
@@ -208,7 +244,8 @@ function ReposicionTable({ token }) {
                   key={option.value || 'todos'}
                   type="button"
                   className={`reposicion__segment${estado === option.value ? ' is-active' : ''}`}
-                  onClick={() => setEstado(option.value)}
+                  onClick={() => { setHint(null); setEstado(option.value) }}
+                  {...hintProps(option.value ? estadoInfo(option.value, null, cfg) : null)}
                 >
                   {option.label}
                   {count != null && <span className="reposicion__segment-count">{count}</span>}
@@ -279,7 +316,7 @@ function ReposicionTable({ token }) {
               {CAUSAS.map((causa) => {
                 const value = Number(resumen.valor_por_causa?.[causa.key] || 0)
                 return (
-                  <div key={causa.key} className="reposicion__cause" title={causa.hint}>
+                  <div key={causa.key} className="reposicion__cause" tabIndex={0} {...hintProps(causaInfo(causa.key, cfg))}>
                     <span className={`reposicion__dot is-${causa.key}`} />
                     <div>
                       <small>{causa.label}</small>
@@ -295,25 +332,34 @@ function ReposicionTable({ token }) {
 
         <section className="reposicion__table-card">
           {error && <p className="reposicion__error">{error}</p>}
-          <div className="reposicion__table-wrap">
+          <div className="reposicion__table-wrap" onScroll={() => setHint(null)}>
             <table className="reposicion__table">
               <thead>
                 <tr>
-                  <th onClick={() => sortBy('codigo')}>{`Producto${sortMark('codigo')}`}</th>
-                  {!sucursalId && <th onClick={() => sortBy('sucursal_nombre')}>{`Sucursal${sortMark('sucursal_nombre')}`}</th>}
-                  <th onClick={() => sortBy('clase')}>{`Clase${sortMark('clase')}`}</th>
-                  <th className="is-num" onClick={() => sortBy('venta_dia')} title="Venta promedio diaria (μ)">{`Venta/día${sortMark('venta_dia')}`}</th>
-                  <th className="is-num" onClick={() => sortBy('dias_entrega')} title="Tiempo de entrega (L)">{`Entrega${sortMark('dias_entrega')}`}</th>
-                  <th className="is-num" title="Stock de seguridad">Seguridad</th>
-                  <th className="is-num" title="Punto de pedido R (continua) o nivel base B (periódica)">Pedir en</th>
-                  <th className="is-num" onClick={() => sortBy('stock')}>{`Stock${sortMark('stock')}`}</th>
-                  <th className="is-num">En camino</th>
-                  <th className="is-num" onClick={() => sortBy('cobertura_dias')} title="Días que alcanza el stock actual">{`Cobertura${sortMark('cobertura_dias')}`}</th>
-                  <th className="is-num" onClick={() => sortBy('sugerido')}>{`Sugerido${sortMark('sugerido')}`}</th>
-                  <th>Estado</th>
+                  {COLUMNS.filter((col) => !col.onlyAll || !sucursalId).map((col) => (
+                    <th
+                      key={col.field}
+                      className={`${col.num ? 'is-num' : ''}${orden.replace('-', '') === col.field ? ' is-sorted' : ''}`}
+                      onClick={() => sortBy(col.field)}
+                      title={col.title}
+                      aria-sort={orden === col.field ? 'ascending' : orden === `-${col.field}` ? 'descending' : 'none'}
+                    >
+                      <span className="reposicion__th">
+                        {col.label}
+                        {sortIcon(col.field)}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
+                {!rows.length && loading && (
+                  <tr>
+                    <td colSpan={sucursalId ? 11 : 12} className="reposicion__empty">
+                      <span className="reposicion__loading-row"><Loader2 size={16} className="is-spinning" /> Cargando productos...</span>
+                    </td>
+                  </tr>
+                )}
                 {!rows.length && !loading && (
                   <tr><td colSpan={sucursalId ? 11 : 12} className="reposicion__empty">No hay productos con este filtro.</td></tr>
                 )}
@@ -323,7 +369,7 @@ function ReposicionTable({ token }) {
                     <React.Fragment key={key}>
                       <tr
                         className={`reposicion__row is-${row.estado}`}
-                        onClick={() => setOpenRow(row)}
+                        onClick={() => { setHint(null); setOpenRow(row) }}
                         tabIndex={0}
                         onKeyDown={(event) => { if (event.key === 'Enter') setOpenRow(row) }}
                       >
@@ -334,7 +380,11 @@ function ReposicionTable({ token }) {
                           </div>
                         </td>
                         {!sucursalId && <td>{row.sucursal_nombre}</td>}
-                        <td><span className={`reposicion__class is-${row.clase}`}>{row.clase === 'N' ? '—' : row.clase}</span></td>
+                        <td>
+                          <span className={`reposicion__class is-${row.clase}`} {...hintProps(claseInfo(row.clase, cfg))}>
+                            {row.clase === 'N' ? '—' : row.clase}
+                          </span>
+                        </td>
                         <td className="is-num">{num(row.venta_dia, 2)}</td>
                         <td className="is-num">{`${num(row.dias_entrega, 0)} d`}</td>
                         <td className="is-num">{num(row.stock_seguridad)}</td>
@@ -343,14 +393,18 @@ function ReposicionTable({ token }) {
                         <td className="is-num">{row.en_camino ? num(row.en_camino) : '—'}</td>
                         <td className="is-num">{row.cobertura_dias == null ? '—' : `${num(row.cobertura_dias, 0)} d`}</td>
                         <td className="is-num"><strong>{row.sugerido ? num(row.sugerido) : '—'}</strong></td>
-                        <td><span className={`reposicion__status is-${row.estado}`}>{ESTADO_LABEL[row.estado] || row.estado}</span></td>
+                        <td>
+                          <span className={`reposicion__status is-${row.estado}`} {...hintProps(estadoInfo(row.estado, row, cfg))}>
+                            {ESTADO_LABEL[row.estado] || row.estado}
+                          </span>
+                        </td>
                       </tr>
                     </React.Fragment>
                   )
                 })}
               </tbody>
             </table>
-            {loading && (
+            {loading && rows.length > 0 && (
               <div className="reposicion__loading" aria-label="Calculando">
                 <Loader2 size={22} className="is-spinning" />
               </div>
@@ -369,6 +423,8 @@ function ReposicionTable({ token }) {
           />
         </section>
       </div>
+
+      <ReposicionHint hint={hint} />
 
       <ReposicionProductDialog open={Boolean(openRow)} token={token} row={openRow} onClose={() => setOpenRow(null)} />
 

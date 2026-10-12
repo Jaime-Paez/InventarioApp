@@ -269,3 +269,23 @@ class ReposicionTests(TestCase):
 
         rows = attach_product_search([{"producto_id": self.barato.id}])
         self.assertIn("OEM-5544", rows[0]["producto_busqueda"])
+
+    def test_orden_por_columna(self):
+        from app.reposicion import ESTADO_ORDEN
+
+        for field in ("codigo", "sucursal_nombre", "clase", "venta_dia", "dias_entrega", "stock_seguridad",
+                      "pedir_en", "stock", "en_camino", "cobertura_dias", "sugerido", "estado"):
+            for orden in (field, f"-{field}"):
+                response = self.client_admin.get(f"/reposicion/?estado=&orden={orden}")
+                self.assertEqual(response.status_code, 200, orden)
+                self.assertTrue(response.data["results"], orden)
+
+        estados = [r["estado"] for r in self.client_admin.get("/reposicion/?estado=&orden=estado").data["results"]]
+        self.assertEqual(estados, sorted(estados, key=lambda e: ESTADO_ORDEN[e]))
+
+        # Los vacios (sin cobertura) quedan al final en los dos sentidos.
+        for orden in ("cobertura_dias", "-cobertura_dias"):
+            values = [r["cobertura_dias"] for r in self.client_admin.get(f"/reposicion/?estado=&orden={orden}").data["results"]]
+            present = [v for v in values if v is not None]
+            self.assertEqual(values[:len(present)], present)
+            self.assertEqual(present, sorted(present, reverse=orden.startswith("-")))

@@ -448,6 +448,16 @@ ESTADO_ORDEN = {
 }
 CAUSAS = ("ciclo", "seguridad", "en_camino", "exceso", "lento", "obsoleto")
 
+# Orden por columna que no es un campo simple de la fila.
+SORT_KEYS = {
+    "codigo": lambda row: str(row["codigo"] or "").lower(),
+    "nombre": lambda row: str(row["nombre"] or "").lower(),
+    "sucursal_nombre": lambda row: str(row["sucursal_nombre"] or "").lower(),
+    "clase": lambda row: {"A": 0, "B": 1, "C": 2}.get(row["clase"], 3),
+    "estado": lambda row: ESTADO_ORDEN.get(row["estado"], 9),
+    "pedir_en": lambda row: row["punto_pedido"] if row["punto_pedido"] is not None else row["nivel_base"],
+}
+
 
 def _summary(rows):
     summary = {causa: 0.0 for causa in CAUSAS}
@@ -509,12 +519,15 @@ class ReposicionAPIView(APIView):
                     row["cobertura_dias"] if row["cobertura_dias"] is not None else 1e9,
                 ),
             )
-        elif rows and field in rows[0]:
-            rows = sorted(
-                rows,
-                key=lambda row: (row[field] is None, row[field] if row[field] is not None else 0),
-                reverse=descending,
-            )
+        else:
+            value_of = SORT_KEYS.get(field)
+            if value_of is None and rows and field in rows[0]:
+                value_of = lambda row: row[field]  # noqa: E731
+            if value_of is not None:
+                # Los vacios siempre al final, sea ascendente o descendente.
+                present = [row for row in rows if value_of(row) is not None]
+                missing = [row for row in rows if value_of(row) is None]
+                rows = sorted(present, key=value_of, reverse=descending) + missing
 
         try:
             page = max(1, int(params.get("page") or 1))
