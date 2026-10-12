@@ -84,15 +84,18 @@ def _supplier_leadtimes(config):
         if row["casa_comercial_id"] and row["dias"]
     }
     result = {}
-    for casa in CasaComercial.objects.all().only("id", "tipo", "nombre"):
+    for casa in CasaComercial.objects.all().only("id", "tipo", "nombre", "dias_entrega"):
         default = (
             config.proveedor_importacion_dias
             if casa.tipo == CasaComercial.TIPO_IMPORTACION
             else config.proveedor_local_dias
         )
+        # Estimado: el de sus importaciones o el "dias de entrega" del proveedor.
+        own_estimate = float(casa.dias_entrega) if getattr(casa, "dias_entrega", None) else None
+        estimate = estimated.get(int(casa.id)) or own_estimate
         result[int(casa.id)] = {
-            "dias": real.get(int(casa.id)) or estimated.get(int(casa.id)) or float(default),
-            "fuente": "proveedor" if int(casa.id) in real else ("estimado" if int(casa.id) in estimated else "defecto"),
+            "dias": real.get(int(casa.id)) or estimate or float(default),
+            "fuente": "proveedor" if int(casa.id) in real else ("estimado" if estimate else "defecto"),
             "proveedor": casa.nombre,
         }
     return result
@@ -589,6 +592,168 @@ class ReposicionProductoAPIView(APIView):
                 "ventas_semanales": _weekly_sales(producto_id, start, today),
             },
             status=status.HTTP_200_OK,
+        )
+
+
+OPEN_IMPORT_STATES = ("borrador", "cotizacion", "confirmacion", "en_camino")
+
+
+def _open_imports_by_product(product_ids):
+    """Importaciones abiertas (no recibidas) en las que ya esta cada producto."""
+    from importaciones.models import ImportacionDetalle
+
+    result = {}
+    for row in (
+        ImportacionDetalle.objects.filter(
+            producto_id__in=sorted(product_ids), importacion__estado__in=OPEN_IMPORT_STATES
+        )
+        .values("producto_id", "importacion_id", "importacion__codigo", "importacion__estado", "cantidad")
+        .order_by("importacion_id")
+    ):
+        result.setdefault(int(row["producto_id"]), []).append({
+            "id": int(row["importacion_id"]),
+            "codigo": row["importacion__codigo"],
+            "estado": row["importacion__estado"],
+            "cantidad": int(row["cantidad"] or 0),
+        })
+    return result
+
+
+class ReposicionSugerenciaImportacionAPIView(APIView):
+    """GET: lo que la sucursal central debe pedir, agrupado por proveedor.
+    POST: crea la sugerencia de importacion (borrador) de un proveedor."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from casa_comercial.models import CasaComercial
+        from productos.models import Producto
+
+        if not is_app_admin(request.user):
+            return Response({"detail": "Solo administradores."}, status=status.HTTP_403_FORBIDDEN)
+        rows, meta = cached_replenishment(refresh=request.query_params.get("recalcular") == "1")
+        central_id = meta.get("sucursal_central_id")
+        to_order = [
+            row for row in rows
+            if row["sucursal_id"] == central_id and row["sugerido"] > 0 and row["estado"] in ("agotado", "pedir")
+        ]
+        product_ids = [row["producto_id"] for row in to_order]
+        supplier_of = {}
+        for link in Producto.casas_comerciales.through.objects.filter(producto_id__in=product_ids).values(
+            "producto_id", "casacomercial_id"
+        ):
+            supplier_of.setdefault(int(link["producto_id"]), []).append(int(link["casacomercial_id"]))
+        casas = {
+            int(casa.id): casa
+            for casa in CasaComercial.objects.filter(
+                id__in={cid for ids in supplier_of.values() for cid in ids}
+            )
+        }
+        open_imports = _open_imports_by_product(product_ids) if product_ids else {}
+
+        groups = {}
+        for row in to_order:
+            candidates = [casas[cid] for cid in supplier_of.get(row["producto_id"], []) if cid in casas]
+            # Si tiene varios proveedores, primero el de importacion.
+            candidates.sort(key=lambda casa: casa.tipo != CasaComercial.TIPO_IMPORTACION)
+            casa = candidates[0] if candidates else None
+            key = int(casa.id) if casa else 0
+            group = groups.setdefault(key, {
+                "casa_comercial_id": key or None,
+                "casa_nombre": casa.nombre if casa else "Sin proveedor",
+                "tipo": casa.tipo if casa else "",
+                "es_importacion": bool(casa and casa.tipo == CasaComercial.TIPO_IMPORTACION),
+                "items": [],
+            })
+            group["items"].append({
+                "producto_id": row["producto_id"],
+                "codigo": row["codigo"],
+                "nombre": row["nombre"],
+                "clase": row["clase"],
+                "estado": row["estado"],
+                "sugerido": row["sugerido"],
+                "stock": row["stock"],
+                "en_camino": row["en_camino"],
+                "venta_dia": row["venta_dia"],
+                "cobertura_dias": row["cobertura_dias"],
+                "dias_entrega": row["dias_entrega"],
+                "costo": row["costo"],
+                "valor_sugerido": row["valor_sugerido"],
+                "otros_proveedores": [other.nombre for other in candidates[1:]],
+                "importaciones_abiertas": open_imports.get(row["producto_id"], []),
+            })
+        ordered = sorted(
+            groups.values(),
+            key=lambda group: (not group["es_importacion"], -sum(i["valor_sugerido"] for i in group["items"])),
+        )
+        for group in ordered:
+            group["items"].sort(key=lambda item: ({"agotado": 0, "pedir": 1}.get(item["estado"], 2), item["codigo"]))
+            group["valor_total"] = round(sum(item["valor_sugerido"] for item in group["items"]), 2)
+        return Response({"meta": meta, "proveedores": ordered}, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        from casa_comercial.models import CasaComercial
+        from importaciones.serializers import ImportacionSerializer
+        from productos.models import Producto
+
+        if not is_app_admin(request.user):
+            return Response({"detail": "Solo administradores."}, status=status.HTTP_403_FORBIDDEN)
+        casa = CasaComercial.objects.filter(pk=request.data.get("casa_comercial_id")).first()
+        if casa is None:
+            return Response({"detail": "Elige el proveedor de la importacion."}, status=status.HTTP_400_BAD_REQUEST)
+        raw_items = request.data.get("items")
+        if not isinstance(raw_items, list) or not raw_items:
+            return Response({"detail": "Agrega al menos un producto."}, status=status.HTTP_400_BAD_REQUEST)
+        quantities = {}
+        for raw in raw_items:
+            try:
+                pid = int(raw.get("producto_id"))
+                qty = int(raw.get("cantidad"))
+            except (TypeError, ValueError, AttributeError):
+                return Response({"detail": "Producto o cantidad invalidos."}, status=status.HTTP_400_BAD_REQUEST)
+            if qty <= 0:
+                return Response({"detail": "Cada cantidad debe ser mayor a cero."}, status=status.HTTP_400_BAD_REQUEST)
+            quantities[pid] = quantities.get(pid, 0) + qty
+        products = {p.id: p for p in Producto.objects.filter(id__in=quantities)}
+        if any(pid not in products for pid in quantities):
+            return Response({"detail": "Uno de los productos ya no existe."}, status=status.HTTP_400_BAD_REQUEST)
+
+        rows, meta = cached_replenishment()
+        central_id = meta.get("sucursal_central_id")
+        by_product = {row["producto_id"]: row for row in rows if row["sucursal_id"] == central_id}
+        detalles = []
+        for orden, pid in enumerate(quantities, start=1):
+            product = products[pid]
+            row = by_product.get(pid) or {}
+            comment = ""
+            if row:
+                comment = "Reposicion: vende {:.2f}/dia, stock {}, en camino {}, sugerido {}".format(
+                    float(row["venta_dia"]), row["stock"], row["en_camino"], row["sugerido"]
+                )
+            detalles.append({
+                "producto_id": pid,
+                "codigo": product.codigo,
+                "nombre": product.nombre,
+                "cantidad": quantities[pid],
+                "comentario": comment,
+                "orden": orden,
+            })
+        serializer = ImportacionSerializer(
+            data={"casa_comercial_id": casa.id, "detalles": detalles},
+            context={"request": request},
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        importacion = serializer.save()
+        return Response(
+            {
+                "id": int(importacion.id),
+                "codigo": importacion.codigo,
+                "estado": importacion.estado,
+                "productos": len(detalles),
+                "unidades": sum(quantities.values()),
+            },
+            status=status.HTTP_201_CREATED,
         )
 
 

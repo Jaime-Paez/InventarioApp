@@ -5,6 +5,11 @@ from auditoria.views import AuditoriaListAPIView
 urlpatterns = [
     path("reposicion/", reposicion.ReposicionAPIView.as_view(), name="reposicion"),
     path(
+        "reposicion/sugerencia-importacion/",
+        reposicion.ReposicionSugerenciaImportacionAPIView.as_view(),
+        name="reposicion-sugerencia-importacion",
+    ),
+    path(
         "reposicion/producto/<int:producto_id>/",
         reposicion.ReposicionProductoAPIView.as_view(),
         name="reposicion-producto",

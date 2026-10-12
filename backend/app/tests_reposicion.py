@@ -206,3 +206,49 @@ class ReposicionTests(TestCase):
         self.assertEqual(barato["proveedor_nombre"], "PROV")
         # Las demas sucursales: traslado desde la central.
         self.assertEqual(rows[(self.norte.id, "RAP")]["fuente_entrega"], "traslado")
+
+    def test_sugerencia_de_importacion_por_proveedor(self):
+        from casa_comercial.models import CasaComercial
+        from importaciones.models import Importacion, ImportacionDetalle
+
+        importador = CasaComercial.objects.create(nombre="IMPORTA", codigo="IMP", tipo=CasaComercial.TIPO_IMPORTACION)
+        local = CasaComercial.objects.create(nombre="LOCALITO", codigo="LOC", tipo=CasaComercial.TIPO_LOCAL)
+        self.rapido.casas_comerciales.add(importador)
+        self.barato.casas_comerciales.add(local)
+        abierta = Importacion.objects.create(codigo="IMP-ABIERTA", casa_comercial=importador)
+        ImportacionDetalle.objects.create(importacion=abierta, producto=self.rapido, cantidad=5)
+
+        response = self.client_admin.get("/reposicion/sugerencia-importacion/")
+        self.assertEqual(response.status_code, 200, response.data)
+        grupos = {g["casa_nombre"]: g for g in response.data["proveedores"]}
+        self.assertTrue(grupos["IMPORTA"]["es_importacion"])
+        self.assertFalse(grupos["LOCALITO"]["es_importacion"])
+        item = grupos["IMPORTA"]["items"][0]
+        self.assertEqual(item["codigo"], "RAP")
+        self.assertEqual(item["importaciones_abiertas"][0]["codigo"], "IMP-ABIERTA")
+        # La sucursal Norte no compra: no aparece en la sugerencia.
+        self.assertEqual(len(grupos["IMPORTA"]["items"]), 1)
+
+        response = self.client_admin.post(
+            "/reposicion/sugerencia-importacion/",
+            {"casa_comercial_id": importador.id, "items": [{"producto_id": self.rapido.id, "cantidad": 80}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        creada = Importacion.objects.get(pk=response.data["id"])
+        self.assertEqual(creada.estado, Importacion.ESTADO_BORRADOR)
+        self.assertEqual(creada.casa_comercial_id, importador.id)
+        detalle = creada.detalles.get()
+        self.assertEqual((detalle.producto_id, detalle.cantidad, detalle.orden), (self.rapido.id, 80, 1))
+        self.assertIn("Reposicion", detalle.comentario)
+
+    def test_sugerencia_valida_cantidades(self):
+        from casa_comercial.models import CasaComercial
+
+        casa = CasaComercial.objects.create(nombre="X", codigo="X", tipo=CasaComercial.TIPO_IMPORTACION)
+        bad = self.client_admin.post(
+            "/reposicion/sugerencia-importacion/",
+            {"casa_comercial_id": casa.id, "items": [{"producto_id": self.rapido.id, "cantidad": 0}]},
+            format="json",
+        )
+        self.assertEqual(bad.status_code, 400)

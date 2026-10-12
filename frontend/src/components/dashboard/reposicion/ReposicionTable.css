@@ -1157,3 +1157,198 @@ body.app-theme-dark .reposicion__field .create-user__dropdown-trigger {
   border-color: var(--color-primary-strong);
   color: #fff;
 }
+
+/* ===== Sugerencia de importacion ===== */
+.reposicion-import__body.create-user__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 14px 18px 18px;
+}
+
+.reposicion-import__intro {
+  margin: 0;
+  color: var(--color-text-secondary, #64748b);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.reposicion-import__group {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface, #fff);
+  overflow: hidden;
+}
+
+.reposicion-import__group.is-done {
+  border-color: rgba(22, 163, 74, 0.5);
+}
+
+.reposicion-import__group-head,
+.reposicion-import__group-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.reposicion-import__group-head {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.reposicion-import__group-head > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reposicion-import__group-head strong {
+  font-size: 1rem;
+}
+
+.reposicion-import__type {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.14);
+  font-size: var(--font-size-xs, 12px);
+  font-weight: 600;
+}
+
+.reposicion-import__type.is-import {
+  background: rgba(37, 99, 235, 0.13);
+  color: #1d4ed8;
+}
+
+.reposicion-import__group-total {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.reposicion-import__group-total small {
+  color: var(--color-text-secondary, #64748b);
+}
+
+.reposicion-import__table-wrap {
+  max-height: 340px;
+  overflow: auto;
+}
+
+.reposicion-import__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm, 13px);
+}
+
+.reposicion-import__table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 10px;
+  background: var(--table-color, #f1f5f9);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.reposicion-import__table td {
+  padding: 6px 10px;
+  border-top: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.reposicion-import__table .is-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.reposicion-import__table tr.is-off td {
+  opacity: 0.55;
+}
+
+.reposicion-import__table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.reposicion-import__qty {
+  width: 72px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface, #fff);
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: right;
+}
+
+.reposicion-import__warn {
+  color: #b45309;
+  font-size: var(--font-size-xs, 12px);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.reposicion-import__group-foot {
+  justify-content: flex-end;
+  border-top: 1px solid var(--color-border);
+}
+
+.reposicion-import__error {
+  margin-right: auto;
+  color: #b91c1c;
+  font-size: var(--font-size-sm, 13px);
+}
+
+.reposicion-import__done {
+  color: #15803d;
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 600;
+}
+
+.reposicion-import__note {
+  color: var(--color-text-secondary, #64748b);
+  font-size: var(--font-size-sm, 13px);
+}
+
+body.app-theme-dark .reposicion-import__group {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-dark);
+  color: var(--color-text-dark);
+}
+
+body.app-theme-dark .reposicion-import__group-head,
+body.app-theme-dark .reposicion-import__group-foot,
+body.app-theme-dark .reposicion-import__table td {
+  border-color: var(--color-border-dark);
+}
+
+body.app-theme-dark .reposicion-import__table th {
+  background: var(--color-surface-darker, #1f1f22);
+  color: var(--color-text-title-dark);
+}
+
+body.app-theme-dark .reposicion-import__qty {
+  border-color: var(--color-border-dark);
+  background: var(--color-surface-darker);
+  color: var(--color-text-title-dark);
+}
+
+body.app-theme-dark .reposicion-import__type.is-import {
+  background: rgba(96, 165, 250, 0.16);
+  color: #93c5fd;
+}
+
+body.app-theme-dark .reposicion-import__warn { color: #fbbf24; }
+body.app-theme-dark .reposicion-import__done { color: #86efac; }
+
+.reposicion-import__group,
+.reposicion-import__intro {
+  align-self: stretch;
+  width: 100%;
+}

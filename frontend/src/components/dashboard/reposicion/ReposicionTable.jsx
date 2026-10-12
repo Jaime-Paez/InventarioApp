@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Loader2, RefreshCw, Search, Settings, X } from 'lucide-react'
+import { Loader2, PackagePlus, RefreshCw, Search, Settings, X } from 'lucide-react'
 import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../utils/api'
 import '../admin/UsersTable/UsersTable.css'
 import './ReposicionTable.css'
 import ReposicionProductDialog from './ReposicionProductDialog'
+import ReposicionImportDialog from './ReposicionImportDialog'
 import CascadeDropdown from '../common/CascadeDropdown'
 import { ESTADO_LABEL } from './reposicionConstants'
 
@@ -83,6 +84,7 @@ function ReposicionTable({ token }) {
   const [pageSize, setPageSize] = useState(50)
   const [orden, setOrden] = useState('prioridad')
   const [openRow, setOpenRow] = useState(null)
+  const [importOpen, setImportOpen] = useState(false)
   const [config, setConfig] = useState(null)
   const [configDraft, setConfigDraft] = useState(null)
   const [configSaving, setConfigSaving] = useState(false)
@@ -235,6 +237,10 @@ function ReposicionTable({ token }) {
             />
           </label>
           <div className="reposicion__actions-right">
+            <button type="button" className="reposicion__btn reposicion__btn--primary" onClick={() => setImportOpen(true)}>
+              <PackagePlus size={14} />
+              Sugerencia de importación
+            </button>
             <button type="button" className="reposicion__btn" onClick={() => void load({ recalcular: true })} disabled={loading}>
               <RefreshCw size={14} className={loading ? 'is-spinning' : undefined} />
               Recalcular
@@ -365,6 +371,20 @@ function ReposicionTable({ token }) {
       </div>
 
       <ReposicionProductDialog open={Boolean(openRow)} token={token} row={openRow} onClose={() => setOpenRow(null)} />
+
+      <ReposicionImportDialog
+        open={importOpen}
+        token={token}
+        onClose={() => { setImportOpen(false); void load({ recalcular: true }) }}
+        onCreated={(created) => {
+          toast.current?.show({
+            severity: 'success',
+            summary: 'Sugerencia creada',
+            detail: `${created.codigo}: ${created.productos} productos. Está en Importaciones.`,
+            life: 4000,
+          })
+        }}
+      />
 
       {configDraft && createPortal(
         <div className="reposicion__dialog-overlay" onMouseDown={() => !configSaving && setConfigDraft(null)}>
