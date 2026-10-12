@@ -6,6 +6,8 @@ import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../utils/api'
 import '../admin/UsersTable/UsersTable.css'
 import './ReposicionTable.css'
+import ReposicionProductDialog from './ReposicionProductDialog'
+import { ESTADO_LABEL } from './reposicionConstants'
 
 // Reposicion de inventario por producto y sucursal (modelo de Willems):
 // revision continua (R, Q) para A/B y stock base periodico (B) para C.
@@ -18,16 +20,6 @@ const ESTADOS = [
   { value: 'obsoleto', label: 'Obsoletos' },
   { value: '', label: 'Todos' },
 ]
-
-const ESTADO_LABEL = {
-  agotado: 'Agotado',
-  pedir: 'Pedir',
-  ok: 'OK',
-  exceso: 'Exceso',
-  esporadico: 'Esporádico',
-  obsoleto: 'Obsoleto',
-  sin_demanda: 'Sin venta reciente',
-}
 
 const CAUSAS = [
   { key: 'ciclo', label: 'Ciclo', hint: 'Lo que se consume entre un pedido y el siguiente.' },
@@ -81,7 +73,7 @@ function ReposicionTable({ token }) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [orden, setOrden] = useState('prioridad')
-  const [expandedKey, setExpandedKey] = useState('')
+  const [openRow, setOpenRow] = useState(null)
   const [config, setConfig] = useState(null)
   const [configDraft, setConfigDraft] = useState(null)
   const [configSaving, setConfigSaving] = useState(false)
@@ -309,10 +301,14 @@ function ReposicionTable({ token }) {
                 )}
                 {rows.map((row) => {
                   const key = `${row.sucursal_id}-${row.producto_id}`
-                  const expanded = expandedKey === key
                   return (
                     <React.Fragment key={key}>
-                      <tr className={`reposicion__row is-${row.estado}${expanded ? ' is-expanded' : ''}`} onClick={() => setExpandedKey(expanded ? '' : key)}>
+                      <tr
+                        className={`reposicion__row is-${row.estado}`}
+                        onClick={() => setOpenRow(row)}
+                        tabIndex={0}
+                        onKeyDown={(event) => { if (event.key === 'Enter') setOpenRow(row) }}
+                      >
                         <td>
                           <div className="reposicion__product">
                             <strong>{row.codigo}</strong>
@@ -331,13 +327,6 @@ function ReposicionTable({ token }) {
                         <td className="is-num"><strong>{row.sugerido ? num(row.sugerido) : '—'}</strong></td>
                         <td><span className={`reposicion__status is-${row.estado}`}>{ESTADO_LABEL[row.estado] || row.estado}</span></td>
                       </tr>
-                      {expanded && (
-                        <tr className="reposicion__detail-row">
-                          <td colSpan={sucursalId ? 11 : 12}>
-                            <ReposicionDetail row={row} />
-                          </td>
-                        </tr>
-                      )}
                     </React.Fragment>
                   )
                 })}
@@ -362,6 +351,8 @@ function ReposicionTable({ token }) {
           />
         </section>
       </div>
+
+      <ReposicionProductDialog open={Boolean(openRow)} token={token} row={openRow} onClose={() => setOpenRow(null)} />
 
       {configDraft && createPortal(
         <div className="reposicion__dialog-overlay" onMouseDown={() => !configSaving && setConfigDraft(null)}>
@@ -413,58 +404,6 @@ function ReposicionTable({ token }) {
         </div>,
         document.body
       )}
-    </div>
-  )
-}
-
-// Explicacion del calculo con los numeros del producto.
-function ReposicionDetail({ row }) {
-  const L = Number(row.dias_entrega || 0)
-  const mu = Number(row.venta_dia || 0)
-  const sigma = Number(row.desviacion_dia || 0)
-  const z = Number(row.z || 0)
-  return (
-    <div className="reposicion__detail">
-      <div className="reposicion__detail-grid">
-        <div><small>Venta diaria μ</small><strong>{num(mu, 3)}</strong></div>
-        <div><small>Variación diaria σ</small><strong>{num(sigma, 3)}</strong></div>
-        <div><small>Días con venta</small><strong>{num(row.dias_con_venta)}</strong></div>
-        <div><small>Entrega L</small><strong>{`${num(L, 1)} d`}</strong><em>{row.fuente_entrega}</em></div>
-        <div><small>Nivel de servicio</small><strong>{row.nivel_servicio ? `${num(row.nivel_servicio, 1)}%` : '—'}</strong><em>{row.z ? `z = ${num(z, 2)}` : ''}</em></div>
-        <div><small>Costo unitario</small><strong>{`$${num(row.costo, 2)}`}</strong></div>
-        <div><small>Última venta</small><strong>{row.ultima_venta || '—'}</strong><em>{row.dias_sin_venta != null ? `hace ${row.dias_sin_venta} d` : ''}</em></div>
-        <div><small>Posición (stock + en camino)</small><strong>{num(row.posicion)}</strong></div>
-      </div>
-      <div className="reposicion__formula">
-        {row.politica === 'continua' && (
-          <>
-            <p><strong>Revisión continua (clase {row.clase}):</strong> cuando la posición baja de R se pide Q.</p>
-            <p>{`Stock de seguridad = z·σ·√L = ${num(z, 2)} × ${num(sigma, 3)} × √${num(L, 1)} = ${num(row.stock_seguridad)}`}</p>
-            <p>{`Punto de pedido R = L·μ + seguridad = ${num(L, 1)} × ${num(mu, 3)} + ${num(row.stock_seguridad)} ≈ ${num(row.punto_pedido)}`}</p>
-            <p>{`Cantidad a pedir Q (lote económico, con tope) = ${num(row.cantidad_pedido)} · stock esperado promedio Q/2 + seguridad ≈ ${num(row.inventario_esperado, 1)}`}</p>
-          </>
-        )}
-        {row.politica === 'periodica' && (
-          <>
-            <p><strong>Revisión periódica (clase C):</strong> cada {row.revision_dias} días se pide hasta el nivel base B.</p>
-            <p>{`Stock de seguridad = z·σ·√(r+L) = ${num(z, 2)} × ${num(sigma, 3)} × √(${row.revision_dias}+${num(L, 1)}) = ${num(row.stock_seguridad)}`}</p>
-            <p>{`Nivel base B = (r+L)·μ + seguridad = (${row.revision_dias}+${num(L, 1)}) × ${num(mu, 3)} + ${num(row.stock_seguridad)} ≈ ${num(row.nivel_base)}`}</p>
-            <p>{`Pedir = B − posición = ${num(row.nivel_base)} − ${num(row.posicion)} → ${num(row.sugerido)} · stock esperado promedio r·μ/2 + seguridad ≈ ${num(row.inventario_esperado, 1)}`}</p>
-          </>
-        )}
-        {row.politica === 'bajo_pedido' && (
-          <p><strong>Demanda esporádica:</strong> {`solo ${row.dias_con_venta} día(s) con venta en la ventana; el modelo supone demanda estable, así que este producto se maneja bajo pedido (no se repone solo).`}</p>
-        )}
-        {row.politica === 'sin_demanda' && (
-          <p><strong>Sin venta en la ventana:</strong> no se calcula reposición.</p>
-        )}
-        {row.estado === 'obsoleto' && (
-          <p className="reposicion__formula-warn">{`Obsoleto: sin ventas ${row.dias_sin_venta != null ? `desde hace ${row.dias_sin_venta} días` : 'registradas en esta sucursal'}. Considera trasladarlo a donde sí se vende o liquidarlo.`}</p>
-        )}
-        {row.estado === 'exceso' && (
-          <p className="reposicion__formula-warn">{`Exceso: hay ${num(row.stock)} y lo máximo esperado es ${num(row.nivel_maximo)} (justo al llegar un pedido).`}</p>
-        )}
-      </div>
     </div>
   )
 }

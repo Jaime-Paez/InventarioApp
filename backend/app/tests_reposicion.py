@@ -172,3 +172,12 @@ class ReposicionTests(TestCase):
         client = APIClient()
         client.force_authenticate(user)
         self.assertEqual(client.get("/reposicion/").status_code, 403)
+
+    def test_detalle_de_producto_con_ventas_semanales(self):
+        response = self.client_admin.get(f"/reposicion/producto/{self.rapido.id}/")
+        self.assertEqual(response.status_code, 200, response.data)
+        filas = response.data["filas"]
+        self.assertEqual([fila["sucursal_id"] for fila in filas], [self.matriz.id, self.norte.id])
+        semanas = response.data["ventas_semanales"][str(self.matriz.id)]
+        self.assertEqual(sum(semana["cantidad"] for semana in semanas), 360)
+        self.assertEqual(semanas[0]["cantidad"], 14)

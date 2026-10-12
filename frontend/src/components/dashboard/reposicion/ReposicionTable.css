@@ -596,3 +596,307 @@ body.app-theme-dark .reposicion__class.is-C { color: #cbd5e1; }
   background: transparent;
   color: var(--color-text-dark);
 }
+
+/* ===== Ventana de detalle ===== */
+.reposicion-dialog__overlay {
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.25);
+  pointer-events: auto;
+}
+
+.reposicion-dialog.create-user__modal {
+  inset: 0;
+  margin: auto;
+  width: min(980px, calc(100% - 24px));
+  height: min(760px, calc(100vh - 24px));
+  min-width: 0;
+  min-height: 0;
+  pointer-events: auto;
+}
+
+.reposicion-dialog__body {
+  padding: 14px 18px 18px;
+}
+
+/* ===== Panel (ventana y pestana de Productos) ===== */
+.reposicion-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.reposicion-panel__state {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  color: var(--color-text-secondary, #64748b);
+  text-align: center;
+}
+
+.reposicion-panel__branches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reposicion-panel__branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.reposicion-panel__branch.is-active {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.reposicion-panel__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 8px;
+}
+
+.reposicion-panel__stats > div {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface, #fff);
+}
+
+.reposicion-panel__stats small {
+  color: var(--color-text-secondary, #64748b);
+  font-size: var(--font-size-xs, 12px);
+}
+
+.reposicion-panel__stats strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.reposicion-panel__stats .is-accent {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 7%, var(--color-surface, #fff));
+}
+
+.reposicion-panel__tabs {
+  margin: 0;
+}
+
+.reposicion-panel__body {
+  min-width: 0;
+}
+
+/* ===== Graficas (SVG) ===== */
+.repo-chart {
+  --repo-stock: #2a78d6;
+  --repo-order: #eb6834;
+  --repo-grid: #e4e4e0;
+  --repo-text-2: #52514e;
+  --repo-surface: #fcfcfb;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--repo-surface);
+}
+
+body.app-theme-dark .repo-chart {
+  --repo-stock: #3987e5;
+  --repo-order: #d95926;
+  --repo-grid: #3a3a37;
+  --repo-text-2: #c3c2b7;
+  --repo-surface: #1a1a19;
+  border-color: var(--color-border-dark);
+  color: var(--color-text-dark);
+}
+
+.repo-chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  color: var(--repo-text-2);
+  font-size: var(--font-size-xs, 12px);
+}
+
+.repo-chart__legend span,
+.repo-chart__tooltip-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.repo-chart__key {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--repo-stock);
+}
+
+.repo-chart__key.is-order {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--repo-order);
+}
+
+.repo-chart__frame {
+  position: relative;
+}
+
+.repo-chart__frame svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.repo-chart__grid {
+  stroke: var(--repo-grid);
+  stroke-width: 1;
+}
+
+.repo-chart__tick,
+.repo-chart__ref-label,
+.repo-chart__bracket text {
+  fill: var(--repo-text-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.repo-chart__ref-label {
+  font-weight: 600;
+}
+
+.repo-chart__ref {
+  stroke: var(--repo-text-2);
+  stroke-width: 1;
+  opacity: 0.7;
+}
+
+.repo-chart__ref.is-safety {
+  opacity: 0.45;
+}
+
+.repo-chart__area {
+  fill: var(--repo-stock);
+  opacity: 0.1;
+}
+
+.repo-chart__line {
+  fill: none;
+  stroke: var(--repo-stock);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.repo-chart__order {
+  fill: var(--repo-order);
+  stroke: var(--repo-surface);
+  stroke-width: 2;
+}
+
+.repo-chart__bracket line {
+  stroke: var(--repo-text-2);
+  stroke-width: 1;
+}
+
+.repo-chart__crosshair {
+  stroke: var(--repo-text-2);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.repo-chart__bar {
+  fill: var(--repo-stock);
+}
+
+.repo-chart__bar.is-hover {
+  opacity: 0.8;
+}
+
+.repo-chart__hit {
+  fill: transparent;
+}
+
+.repo-chart__tooltip {
+  position: absolute;
+  top: 8px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 130px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface, #fff);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+  font-size: var(--font-size-xs, 12px);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.repo-chart__tooltip strong {
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.repo-chart__tooltip span {
+  color: var(--repo-text-2);
+}
+
+body.app-theme-dark .repo-chart__tooltip {
+  border-color: var(--color-border-dark);
+  background: #232322;
+  color: var(--color-text-title-dark);
+}
+
+.repo-chart__caption {
+  margin: 0;
+  color: var(--repo-text-2);
+  font-size: var(--font-size-xs, 12px);
+  line-height: 1.45;
+}
+
+.repo-chart__empty {
+  margin: 0;
+  padding: 24px;
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  color: var(--color-text-secondary, #64748b);
+  text-align: center;
+}
+
+body.app-theme-dark .reposicion-panel__branch,
+body.app-theme-dark .reposicion-panel__stats > div {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-dark);
+  color: var(--color-text-dark);
+}
+
+body.app-theme-dark .reposicion-panel__stats .is-accent {
+  border-color: rgba(96, 165, 250, 0.45);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+body.app-theme-dark .reposicion-panel__branch.is-active {
+  border-color: var(--color-primary-dark, #60a5fa);
+  box-shadow: inset 0 0 0 1px var(--color-primary-dark, #60a5fa);
+}
+

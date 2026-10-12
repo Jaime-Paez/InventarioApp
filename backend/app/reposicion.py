@@ -484,6 +484,66 @@ class ReposicionAPIView(APIView):
         )
 
 
+def _weekly_sales(product_id, start, today):
+    """Ventas (y traslados que salen) por semana y sucursal en la ventana."""
+    from movimientos.models import DetalleMovimiento
+
+    weeks = {}
+    rows = (
+        DetalleMovimiento.objects.filter(
+            producto_id=int(product_id),
+            movimiento_inventario__tipo_movimiento__nombre__iexact="salida",
+            movimiento_inventario__sub_tipo_movimiento__nombre__iregex=r"^(venta|traslado)$",
+            movimiento_inventario__fecha__gte=start,
+            movimiento_inventario__fecha__lte=today,
+        )
+        .values("movimiento_inventario__sucursal_id", "movimiento_inventario__fecha")
+        .annotate(qty=Sum("cantidad"))
+    )
+    for row in rows:
+        day = row["movimiento_inventario__fecha"]
+        index = (day - start).days // 7
+        bucket = weeks.setdefault(int(row["movimiento_inventario__sucursal_id"]), {})
+        bucket[index] = bucket.get(index, 0) + int(row["qty"] or 0)
+    total_weeks = (today - start).days // 7 + 1
+    return {
+        str(branch_id): [
+            {
+                "desde": (start + datetime.timedelta(days=7 * index)).isoformat(),
+                "hasta": min(today, start + datetime.timedelta(days=7 * index + 6)).isoformat(),
+                "cantidad": int(by_week.get(index, 0)),
+            }
+            for index in range(total_weeks)
+        ]
+        for branch_id, by_week in weeks.items()
+    }
+
+
+class ReposicionProductoAPIView(APIView):
+    """Reposicion de un producto en todas las sucursales + ventas semanales."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, producto_id):
+        if not is_app_admin(request.user):
+            return Response({"detail": "Solo administradores."}, status=status.HTTP_403_FORBIDDEN)
+        rows, meta = cached_replenishment(refresh=request.query_params.get("recalcular") == "1")
+        product_rows = sorted(
+            (row for row in rows if int(row["producto_id"]) == int(producto_id)),
+            key=lambda row: (not row["es_central"], row["sucursal_nombre"]),
+        )
+        start = datetime.date.fromisoformat(meta["ventana_desde"])
+        today = datetime.date.fromisoformat(meta["fecha"])
+        return Response(
+            {
+                "meta": meta,
+                "filas": product_rows,
+                "ventas_semanales": _weekly_sales(producto_id, start, today),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 CONFIG_FIELDS = {
     "ventana_dias": (int, 30, 730),
     "nivel_servicio_a": (float, 50, 99.99),

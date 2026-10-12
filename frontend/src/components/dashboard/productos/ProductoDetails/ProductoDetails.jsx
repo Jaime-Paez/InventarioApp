@@ -12,6 +12,7 @@ import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdown
 import InventarioEditor from '../../inventario/InventarioEditor/InventarioEditor'
 import useModalAnimation from '../../common/useModalAnimation'
 import ProductoRatingTab from '../ProductoRatingTab/ProductoRatingTab'
+import ReposicionProductPanel from '../../reposicion/ReposicionProductPanel'
 import { formatMoneyFromValue, formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
 import { toUpperCode } from '../../../../utils/textInput'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
@@ -1726,6 +1727,14 @@ function ProductoDetails({
             >
               Calificaciones
             </button>}
+            {!onlyGeneralTab && isAdminByRole && <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'reposicion' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('reposicion')}
+              aria-selected={activeTab === 'reposicion'}
+            >
+              Reposición
+            </button>}
           </div>
 
           <div className="create-user__body">
@@ -2215,6 +2224,12 @@ function ProductoDetails({
                   </div>
                 )}
               </>
+            )}
+
+            {activeTab === 'reposicion' && isAdminByRole && (
+              <div className="producto-details__reposicion">
+                <ReposicionProductPanel token={token} productoId={resolvedProductoId || productoId} />
+              </div>
             )}
 
             {activeTab === 'calificaciones' && (
