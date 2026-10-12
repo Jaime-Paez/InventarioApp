@@ -1,4 +1,29 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+
+// Tamano real del contenedor: la grafica se dibuja a ese tamano para ocupar
+// el espacio disponible sin scroll (y con el texto a su tamano real).
+function useElementSize(fallback) {
+  const [element, setElement] = useState(null)
+  const [size, setSize] = useState(fallback)
+  useEffect(() => {
+    if (!element || typeof ResizeObserver === 'undefined') return undefined
+    const update = () => {
+      const rect = element.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        setSize((prev) => (
+          Math.abs(prev.width - rect.width) < 1 && Math.abs(prev.height - rect.height) < 1
+            ? prev
+            : { width: rect.width, height: rect.height }
+        ))
+      }
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [element])
+  return [setElement, size]
+}
 
 // Graficas de reposicion en SVG (sin librerias), al estilo del documento:
 // la proyeccion "dientes de sierra" del stock con el punto de pedido / nivel
@@ -73,6 +98,7 @@ export function InventoryProjectionChart({ row, today }) {
   const wrapRef = useRef(null)
   const [hover, setHover] = useState(null)
   const sim = useMemo(() => simulateInventory(row), [row])
+  const [measureProjection, size] = useElementSize({ width: 760, height: 300 })
   if (!sim) {
     return (
       <p className="repo-chart__empty">
@@ -83,9 +109,9 @@ export function InventoryProjectionChart({ row, today }) {
     )
   }
 
-  const width = 760
-  const height = 300
-  const pad = { top: 16, right: 132, bottom: 54, left: 44 }
+  const width = Math.max(320, size.width)
+  const height = Math.max(180, size.height)
+  const pad = { top: 12, right: 132, bottom: 58, left: 40 }
   const plotW = width - pad.left - pad.right
   const plotH = height - pad.top - pad.bottom
   const isContinuous = row.politica === 'continua'
@@ -125,8 +151,13 @@ export function InventoryProjectionChart({ row, today }) {
         <span><i className="repo-chart__key is-stock" />Stock esperado</span>
         <span><i className="repo-chart__key is-order" />Pedido (llega después de L días)</span>
       </div>
-      <div className="repo-chart__frame" ref={wrapRef} onMouseMove={handleMove} onMouseLeave={() => setHover(null)}>
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Proyección del stock de ${row.codigo}`}>
+      <div
+        className="repo-chart__frame"
+        ref={(node) => { wrapRef.current = node; measureProjection(node) }}
+        onMouseMove={handleMove}
+        onMouseLeave={() => setHover(null)}
+      >
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Proyección del stock de ${row.codigo}`}>
           {yTicks.map((tick) => (
             <g key={`y-${tick}`}>
               <line className="repo-chart__grid" x1={pad.left} x2={pad.left + plotW} y1={y(tick)} y2={y(tick)} />
@@ -162,7 +193,7 @@ export function InventoryProjectionChart({ row, today }) {
           {/* Pedidos: punto donde se pide y su tiempo de entrega L abajo */}
           {sim.orders.slice(0, 6).map((order, index) => {
             const orderValue = (sim.points.find((point) => point.day === order.day) || {}).value || 0
-            const bracketY = pad.top + plotH + 30
+            const bracketY = pad.top + plotH + 32
             return (
               <g key={`order-${order.day}-${index}`}>
                 <circle className="repo-chart__order" cx={x(order.day)} cy={y(orderValue)} r={5} />
@@ -172,7 +203,7 @@ export function InventoryProjectionChart({ row, today }) {
                     <line x1={x(order.day)} x2={x(order.day)} y1={bracketY - 4} y2={bracketY + 4} />
                     <line x1={x(order.arrival)} x2={x(order.arrival)} y1={bracketY - 4} y2={bracketY + 4} />
                     {x(order.arrival) - x(order.day) > 10 && (
-                      <text x={(x(order.day) + x(order.arrival)) / 2} y={bracketY - 6} textAnchor="middle">L</text>
+                      <text x={(x(order.day) + x(order.arrival)) / 2} y={bracketY + 16} textAnchor="middle">L</text>
                     )}
                   </g>
                 )}
@@ -204,12 +235,13 @@ export function InventoryProjectionChart({ row, today }) {
 
 export function WeeklySalesChart({ weeks, row }) {
   const [hover, setHover] = useState(null)
+  const [measureSales, size] = useElementSize({ width: 760, height: 240 })
   const data = Array.isArray(weeks) ? weeks : []
   if (!data.length || !data.some((week) => week.cantidad > 0)) {
     return <p className="repo-chart__empty">Sin ventas en la ventana para esta sucursal.</p>
   }
-  const width = 760
-  const height = 240
+  const width = Math.max(320, size.width)
+  const height = Math.max(160, size.height)
   const pad = { top: 14, right: 130, bottom: 34, left: 44 }
   const plotW = width - pad.left - pad.right
   const plotH = height - pad.top - pad.bottom
@@ -223,8 +255,8 @@ export function WeeklySalesChart({ weeks, row }) {
 
   return (
     <div className="repo-chart">
-      <div className="repo-chart__frame" onMouseLeave={() => setHover(null)}>
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Ventas por semana">
+      <div className="repo-chart__frame" ref={measureSales} onMouseLeave={() => setHover(null)}>
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Ventas por semana">
           {[0, yMax / 2, yMax].map((tick) => (
             <g key={`wy-${tick}`}>
               <line className="repo-chart__grid" x1={pad.left} x2={pad.left + plotW} y1={y(tick)} y2={y(tick)} />
