@@ -7,6 +7,7 @@ import { API_URL, authFetch } from '../../../utils/api'
 import '../admin/UsersTable/UsersTable.css'
 import './ReposicionTable.css'
 import ReposicionProductDialog from './ReposicionProductDialog'
+import CascadeDropdown from '../common/CascadeDropdown'
 import { ESTADO_LABEL } from './reposicionConstants'
 
 // Reposicion de inventario por producto y sucursal (modelo de Willems):
@@ -54,6 +55,14 @@ const CONFIG_FIELDS = [
   { key: 'min_dias_venta', label: 'Mín. días con venta', hint: 'Con menos días con venta es esporádico (bajo pedido).' },
   { key: 'dias_obsoleto', label: 'Obsoleto sin venta (días)' },
 ]
+
+const CLASE_OPTIONS = [
+  { id: '', nombre: 'Clase A, B y C' },
+  { id: 'A', nombre: 'Clase A (más valor)' },
+  { id: 'B', nombre: 'Clase B' },
+  { id: 'C', nombre: 'Clase C (menos valor)' },
+]
+const optionName = (option) => option.nombre
 
 const money = (value) => `$${Number(value || 0).toLocaleString('es-EC', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 const num = (value, digits = 0) => (
@@ -177,17 +186,16 @@ function ReposicionTable({ token }) {
 
       <div className="users-page__top">
         <div className="users-page__actions reposicion__actions">
-          <select
-            className="reposicion__select"
-            value={sucursalId}
-            onChange={(event) => setSucursalId(event.target.value)}
-            aria-label="Sucursal"
-          >
-            <option value="">Todas las sucursales</option>
-            {sucursales.map((sucursal) => (
-              <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-            ))}
-          </select>
+          <div className="reposicion__dropdown">
+            <CascadeDropdown
+              placeholder="Todas las sucursales"
+              searchPlaceholder="Buscar sucursal"
+              options={[{ id: '', nombre: 'Todas las sucursales' }, ...sucursales]}
+              valueId={sucursalId}
+              getOptionLabel={optionName}
+              onSelect={(option) => setSucursalId(String(option.id || ''))}
+            />
+          </div>
           <div className="reposicion__segmented" role="tablist" aria-label="Estado">
             {ESTADOS.map((option) => {
               const count = option.value === 'reponer'
@@ -206,12 +214,16 @@ function ReposicionTable({ token }) {
               )
             })}
           </div>
-          <select className="reposicion__select" value={clase} onChange={(event) => setClase(event.target.value)} aria-label="Clase">
-            <option value="">Clase A, B y C</option>
-            <option value="A">Clase A</option>
-            <option value="B">Clase B</option>
-            <option value="C">Clase C</option>
-          </select>
+          <div className="reposicion__dropdown reposicion__dropdown--small">
+            <CascadeDropdown
+              placeholder="Clase A, B y C"
+              searchPlaceholder="Buscar clase"
+              options={CLASE_OPTIONS}
+              valueId={clase}
+              getOptionLabel={optionName}
+              onSelect={(option) => setClase(String(option.id || ''))}
+            />
+          </div>
           <label className="reposicion__search">
             <Search size={14} aria-hidden="true" />
             <input
@@ -367,17 +379,17 @@ function ReposicionTable({ token }) {
               </button>
             </header>
             <div className="reposicion__dialog-body">
-              <label className="reposicion__field reposicion__field--wide">
+              <div className="reposicion__field reposicion__field--wide">
                 <span>Sucursal central (compra a proveedores y abastece a las demás)</span>
-                <select
-                  value={configDraft.sucursal_central_id || ''}
-                  onChange={(event) => setConfigDraft((prev) => ({ ...prev, sucursal_central_id: event.target.value }))}
-                >
-                  {(configDraft.sucursales || []).map((sucursal) => (
-                    <option key={sucursal.id} value={sucursal.id}>{sucursal.nombre}</option>
-                  ))}
-                </select>
-              </label>
+                <CascadeDropdown
+                  placeholder="Selecciona la sucursal central"
+                  searchPlaceholder="Buscar sucursal"
+                  options={configDraft.sucursales || []}
+                  valueId={configDraft.sucursal_central_id || ''}
+                  getOptionLabel={optionName}
+                  onSelect={(option) => setConfigDraft((prev) => ({ ...prev, sucursal_central_id: option.id }))}
+                />
+              </div>
               {CONFIG_FIELDS.map((field) => (
                 <label key={field.key} className="reposicion__field" title={field.hint}>
                   <span>{field.label}</span>

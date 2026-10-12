@@ -84,7 +84,7 @@ def _supplier_leadtimes(config):
         if row["casa_comercial_id"] and row["dias"]
     }
     result = {}
-    for casa in CasaComercial.objects.all().only("id", "tipo"):
+    for casa in CasaComercial.objects.all().only("id", "tipo", "nombre"):
         default = (
             config.proveedor_importacion_dias
             if casa.tipo == CasaComercial.TIPO_IMPORTACION
@@ -92,9 +92,43 @@ def _supplier_leadtimes(config):
         )
         result[int(casa.id)] = {
             "dias": real.get(int(casa.id)) or estimated.get(int(casa.id)) or float(default),
-            "fuente": "real" if int(casa.id) in real else ("estimado" if int(casa.id) in estimated else "defecto"),
+            "fuente": "proveedor" if int(casa.id) in real else ("estimado" if int(casa.id) in estimated else "defecto"),
+            "proveedor": casa.nombre,
         }
     return result
+
+
+def _product_leadtimes(product_ids):
+    """Dias reales de las importaciones en las que vino cada producto (lo mas
+    preciso): {producto_id: {"dias", "importaciones": [codigo...]}}."""
+    from importaciones.models import ImportacionDetalle
+
+    result = {}
+    rows = (
+        ImportacionDetalle.objects.filter(
+            producto_id__in=sorted(product_ids), importacion__dias_reales_entrega__gt=0
+        )
+        .values("producto_id", "importacion_id", "importacion__codigo", "importacion__dias_reales_entrega")
+        .distinct()
+    )
+    for row in rows:
+        bucket = result.setdefault(int(row["producto_id"]), {"total": 0.0, "importaciones": {}})
+        if row["importacion_id"] in bucket["importaciones"]:
+            continue
+        bucket["importaciones"][row["importacion_id"]] = (
+            row["importacion__codigo"], int(row["importacion__dias_reales_entrega"])
+        )
+        bucket["total"] += float(row["importacion__dias_reales_entrega"])
+    return {
+        pid: {
+            "dias": bucket["total"] / len(bucket["importaciones"]),
+            "importaciones": [
+                {"codigo": codigo, "dias": dias} for codigo, dias in bucket["importaciones"].values()
+            ][:5],
+        }
+        for pid, bucket in result.items()
+        if bucket["importaciones"]
+    }
 
 
 def compute_replenishment(config=None, *, today=None):
@@ -165,6 +199,7 @@ def compute_replenishment(config=None, *, today=None):
     ):
         supplier_of.setdefault(int(row["producto_id"]), int(row["casacomercial_id"]))
     leadtimes = _supplier_leadtimes(config)
+    product_leadtimes = _product_leadtimes(product_ids) if product_ids else {}
     branches = {int(s.id): s.nombre for s in Sucursal.objects.all().only("id", "nombre")}
 
     def unit_cost(pid):
@@ -217,15 +252,26 @@ def compute_replenishment(config=None, *, today=None):
         cost = unit_cost(pid)
         clase = abc.get(pid, "N")  # N = sin demanda
 
+        # Tiempo de entrega L, de lo mas preciso a lo mas general:
+        # importaciones de este producto -> de su proveedor -> estimado -> defecto.
+        importaciones_l = []
+        proveedor_l = ""
         if branch_id == central_id:
             supplier = leadtimes.get(supplier_of.get(pid)) or {
-                "dias": float(config.proveedor_local_dias), "fuente": "defecto"
+                "dias": float(config.proveedor_local_dias), "fuente": "defecto", "proveedor": ""
             }
-            leadtime = float(supplier["dias"])
-            fuente_l = f"proveedor ({supplier['fuente']})"
+            proveedor_l = supplier.get("proveedor", "")
+            own = product_leadtimes.get(pid)
+            if own:
+                leadtime = float(own["dias"])
+                fuente_l = "producto"
+                importaciones_l = own["importaciones"]
+            else:
+                leadtime = float(supplier["dias"])
+                fuente_l = supplier["fuente"]
         else:
             leadtime = float(transfer_days)
-            fuente_l = "traslado desde la central"
+            fuente_l = "traslado"
 
         last = last_sale.get((branch_id, pid))
         dias_sin_venta = (today - last).days if last else None
@@ -335,6 +381,8 @@ def compute_replenishment(config=None, *, today=None):
             "dias_con_venta": int(sale_days),
             "dias_entrega": round(leadtime, 1),
             "fuente_entrega": fuente_l,
+            "proveedor_nombre": proveedor_l,
+            "importaciones_entrega": importaciones_l,
             "revision_dias": review if politica == "periodica" else None,
             "nivel_servicio": float(
                 {"A": config.nivel_servicio_a, "B": config.nivel_servicio_b, "C": config.nivel_servicio_c}.get(clase, 0)

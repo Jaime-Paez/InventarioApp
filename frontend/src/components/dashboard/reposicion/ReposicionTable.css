@@ -1104,3 +1104,56 @@ body.app-theme-dark .repo-steps__conclusion.is-order { border-left-color: #d9592
 body.app-theme-dark .repo-steps__conclusion.is-ok { border-left-color: #22c55e; }
 body.app-theme-dark .repo-steps__conclusion.is-warn { border-left-color: #f59e0b; }
 body.app-theme-dark .repo-steps__conclusion.is-neutral { border-left-color: #64748b; }
+
+/* Desplegables con buscador (mismo componente que el resto de la app),
+   a la altura de los demas controles de la barra. */
+.reposicion__dropdown {
+  width: 210px;
+}
+
+.reposicion__dropdown--small {
+  width: 170px;
+}
+
+.reposicion__dropdown .create-user__dropdown-trigger,
+.reposicion__field .create-user__dropdown-trigger {
+  height: 34px;
+  border-radius: 8px;
+  font-size: var(--font-size-sm, 13px);
+}
+
+.reposicion__dropdown .create-user__dropdown-trigger span,
+.reposicion__field .create-user__dropdown-trigger span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+body.app-theme-dark .reposicion__field .create-user__dropdown-trigger {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-dark);
+  color: var(--color-text-title-dark);
+}
+
+/* Paginador en oscuro (igual que Revision de inventario) */
+.dashboard-shell.dark .reposicion .p-paginator .p-paginator-pages .p-paginator-page,
+.dashboard-shell.dark .reposicion .p-paginator .p-paginator-first,
+.dashboard-shell.dark .reposicion .p-paginator .p-paginator-prev,
+.dashboard-shell.dark .reposicion .p-paginator .p-paginator-next,
+.dashboard-shell.dark .reposicion .p-paginator .p-paginator-last,
+.dashboard-shell.dark .reposicion .p-paginator .p-dropdown,
+.dashboard-shell.dark .reposicion .p-paginator .p-dropdown .p-dropdown-label,
+.dashboard-shell.dark .reposicion .p-paginator .p-dropdown .p-dropdown-trigger {
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .reposicion .p-paginator .p-dropdown {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border-dark);
+}
+
+.dashboard-shell.dark .reposicion .p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
+  background: var(--color-primary);
+  border-color: var(--color-primary-strong);
+  color: #fff;
+}

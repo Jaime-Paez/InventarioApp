@@ -22,9 +22,16 @@ function ReposicionCalculation({ row, ventanaDias }) {
   const days = Number(ventanaDias || 0)
   const dayWord = (value) => (Math.round(value) === 1 ? 'día' : 'días')
   const unitWord = (value) => (Math.round(value) === 1 ? 'unidad' : 'unidades')
-  const leadSource = String(row.fuente_entrega || '').startsWith('traslado')
-    ? 'Llega por traslado desde la sucursal central.'
-    : 'Es lo que tarda el proveedor según sus importaciones (o el valor configurado).'
+  // De donde sale el tiempo de entrega, en palabras simples.
+  const provider = String(row.proveedor_nombre || '').trim()
+  const imports = Array.isArray(row.importaciones_entrega) ? row.importaciones_entrega : []
+  const leadSource = {
+    traslado: 'Llega por traslado desde la sucursal central.',
+    producto: `Es lo que tardaron en llegar sus importaciones (${imports.map((item) => `${item.codigo}: ${item.dias} días`).join(', ')}).`,
+    proveedor: `Es lo que suelen tardar las importaciones de ${provider || 'su proveedor'}.`,
+    estimado: `Es el tiempo estimado de ${provider || 'su proveedor'}: todavía no hay importaciones suyas recibidas.`,
+    defecto: `No hay importaciones${provider ? ` de ${provider}` : ''}: se usa el valor por defecto de la configuración.`,
+  }[row.fuente_entrega] || ''
   const position = Number(row.posicion || 0)
   const q = Number(row.cantidad_pedido || 0)
 

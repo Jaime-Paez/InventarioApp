@@ -181,3 +181,28 @@ class ReposicionTests(TestCase):
         semanas = response.data["ventas_semanales"][str(self.matriz.id)]
         self.assertEqual(sum(semana["cantidad"] for semana in semanas), 360)
         self.assertEqual(semanas[0]["cantidad"], 14)
+
+    def test_tiempo_de_entrega_sale_de_las_importaciones_del_producto(self):
+        from casa_comercial.models import CasaComercial
+        from importaciones.models import Importacion, ImportacionDetalle
+
+        casa = CasaComercial.objects.create(nombre="PROV", codigo="PROV", tipo=CasaComercial.TIPO_IMPORTACION)
+        self.rapido.casas_comerciales.add(casa)
+        self.barato.casas_comerciales.add(casa)
+        # Otra importacion del proveedor (sin estos productos) tardo 40 dias.
+        Importacion.objects.create(codigo="IMP-OTRA", casa_comercial=casa, dias_reales_entrega=40)
+        propia = Importacion.objects.create(codigo="IMP-RAP", casa_comercial=casa, dias_reales_entrega=20)
+        ImportacionDetalle.objects.create(importacion=propia, producto=self.rapido, cantidad=10)
+
+        rows, _ = self._rows()
+        rapido = rows[(self.matriz.id, "RAP")]
+        self.assertEqual(rapido["dias_entrega"], 20.0)
+        self.assertEqual(rapido["fuente_entrega"], "producto")
+        self.assertEqual(rapido["importaciones_entrega"], [{"codigo": "IMP-RAP", "dias": 20}])
+        # Sin importaciones propias: promedio del proveedor (40 y 20 -> 30).
+        barato = rows[(self.matriz.id, "BAR")]
+        self.assertEqual(barato["dias_entrega"], 30.0)
+        self.assertEqual(barato["fuente_entrega"], "proveedor")
+        self.assertEqual(barato["proveedor_nombre"], "PROV")
+        # Las demas sucursales: traslado desde la central.
+        self.assertEqual(rows[(self.norte.id, "RAP")]["fuente_entrega"], "traslado")
