@@ -281,6 +281,9 @@ class InspeccionAleatoriaItem(models.Model):
     # El revisor marco "No lo encontre" (cuenta como 0). Administracion lo ve
     # aparte y puede reubicarlo (`reubicado_a`) en vez de ajustar el stock.
     no_encontrado = models.BooleanField(default=False, db_default=False)
+    # El total coincide pero el revisor lo encontro repartido distinto entre
+    # ubicaciones: no se corrige solo, queda para que administracion apruebe.
+    cambio_ubicacion = models.BooleanField(default=False, db_default=False)
     reubicado_a = models.ForeignKey(
         "inventario.SubDivision",
         on_delete=models.SET_NULL,

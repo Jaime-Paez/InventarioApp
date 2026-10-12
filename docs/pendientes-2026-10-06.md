@@ -41,3 +41,8 @@ Estados: ⬜ pendiente · 🔄 en curso · ✅ aplicado y subido
 | # | Pedido | Cómo se entendió | Estado |
 |---|---|---|---|
 | 13 | Agregar producto encontrado en la revisión | En revisiones por **división o subdivisión**, debajo de cada fila: **"+ Agregar un producto que no está en la lista"**: producto y **ubicación** con desplegables (la ubicación viene con la fila actual y se puede cambiar a cualquiera de la sucursal) y la cantidad. Queda guardado y marcado *Agregado*. El administrador lo ve en Diferencias ("encontrado en B05/03") y con **"Mover aquí"** trae esas unidades desde sus otras ubicaciones; si no alcanzan, la diferencia se suma como ajuste. | ✅ |
+| 14 | Ubicación en 0 al mover | Al **mover** stock de una ubicación a otra (guardar desde POR UBICAR, "Reubicar" y "Mover aquí" en la verificación), la ubicación de origen que queda en 0 se quita. Ventas y ajustes siguen dejando el 0. | ✅ |
+| 15 | Revisión por subdivisión: otras ubicaciones | Los productos de la subdivisión enviada también se mandan a buscar en sus otras ubicaciones de la sucursal (filas extra al final). | ✅ |
+| 16 | Reubicar con desplegables | En la verificación, "Reubicar" usa Bodega → División → Subdivisión con buscador. | ✅ |
+| 17 | Cambio de ubicación lo aprueba el administrador | Si el total coincide pero el revisor lo encontró repartido distinto, ya no se corrige solo: sale en Diferencias como **"Cambio de ubicación"** para aprobar o "Mantener como estaba". | ✅ |
+| 18 | Diseño de Revisión de inventario | Barra fija con "Enviar revisión ahora" y "Configuración" y debajo una tarjeta con Sucursales y Diferencias, como en las otras pantallas. | ✅ |

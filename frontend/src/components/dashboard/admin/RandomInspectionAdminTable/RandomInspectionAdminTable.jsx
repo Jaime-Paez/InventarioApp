@@ -1558,10 +1558,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     <section className="inspection-admin">
       <Toast ref={toast} />
 
-      <header className="inspection-admin__head">
-        <div>
-          <p>Consulta cobertura de inspecciones y corrige cantidades reales reportadas.</p>
-        </div>
+      {/* Barra fija de acciones (como en el resto de pantallas); debajo, una
+          tarjeta con Sucursales y Diferencias que se desplaza por dentro. */}
+      <header className="users-page__actions inspection-admin__head">
         <div className="inspection-admin__head-actions">
           {canUpdate && (
             <button
@@ -1661,6 +1660,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         onConfirm={() => { recountConfirm?.resolve(true); setRecountConfirm(null) }}
       />
 
+      <div className="inspection-admin__body">
       <div className="inspection-admin__block">
         <div className="inspection-admin__block-head">
           <h4>Sucursales</h4>
@@ -1808,6 +1808,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                       <div className="inspection-admin__product-cell">
                         <strong>{String(row?.producto_codigo || '').trim() || `#${row?.producto_id || '-'}`}</strong>
                         <span>{String(row?.producto_nombre || 'Producto').trim()}</span>
+                        {row?.cambio_ubicacion && (
+                          <span className="inspection-admin__notfound-tag inspection-admin__found-tag">Cambio de ubicación</span>
+                        )}
                         {row?.agregado_por_revisor && (
                           <span className="inspection-admin__notfound-tag inspection-admin__found-tag">
                             {`Agregado por el revisor · encontrado en ${String(row?.encontrado_en?.label || '-')}`}
@@ -1870,6 +1873,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
             setItemsPage(Number.isFinite(nextPage) && nextPage > 0 ? nextPage : 1)
           }}
         />
+      </div>
       </div>
 
       {verifyWizardOpen && (() => {
@@ -2038,6 +2042,13 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                         <p className="quick-actions__inspection-stage-help">
                           {`Nota: ${String(item.observacion).trim()}`}
                         </p>
+                      )}
+
+                      {item?.cambio_ubicacion && !decision && (
+                        <div className="inspection-admin__relocate inspection-admin__relocate--found">
+                          <strong>{`Cambio de ubicación: el total coincide (${expected}) pero el revisor lo encontró repartido distinto`}</strong>
+                          <p>"Aprobar cambio de ubicación" deja cada ubicación como la contó el revisor (el total no cambia). "Mantener como estaba" no mueve nada.</p>
+                        </div>
                       )}
 
                       {item?.agregado_por_revisor && !decision && (
@@ -2329,6 +2340,17 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                       Siguiente
                       <ChevronRight size={15} />
                     </button>
+                    {!decision && item?.cambio_ubicacion && (
+                      <button
+                        type="button"
+                        className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                        onClick={() => void submitVerifyDecision('rechazar')}
+                        disabled={busy || verifyWizardConfirming}
+                        title="No mueve nada: las ubicaciones quedan como estaban"
+                      >
+                        Mantener como estaba
+                      </button>
+                    )}
                     {!decision && (
                       <button
                         type="button"
@@ -2337,7 +2359,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                         disabled={busy || verifyWizardConfirming}
                         title="Deja el inventario en la cantidad real confirmada"
                       >
-                        {verifyWizardSubmitting ? 'Guardando...' : 'Aprobar ajuste'}
+                        {verifyWizardSubmitting ? 'Guardando...' : item?.cambio_ubicacion ? 'Aprobar cambio de ubicación' : 'Aprobar ajuste'}
                       </button>
                     )}
                   </>

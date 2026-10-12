@@ -289,14 +289,44 @@ class ConteoPorUbicacionTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(self._stock(subdivision=self.sub_a), 3)
         self.assertEqual(self._stock(subdivision=self.sub_b), 5)
 
-    def test_total_correcto_con_ubicaciones_cruzadas_se_reubica(self):
+    def test_total_correcto_con_ubicaciones_cruzadas_espera_al_administrador(self):
         inspection = self._crear_inspeccion()
         self._responder_por_ubicacion(inspection, 3, 7)
 
-        self.assertEqual(self._diferencias(inspection), 0)
+        # No se corrige solo: queda pendiente como "cambio de ubicacion".
+        item = inspection.items.get()
+        self.assertTrue(item.cambio_ubicacion)
+        self.assertEqual(item.verificacion_estado, "pendiente")
+        self.assertEqual(self._diferencias(inspection), 1)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 5)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 5)
+
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/",
+            {
+                "accion": "aprobar",
+                "cantidades_por_ubicacion": [
+                    {"subdivision_id": self.sub_a.id, "cantidad": 3},
+                    {"subdivision_id": self.sub_b.id, "cantidad": 7},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self._stock(), 10)
         self.assertEqual(self._stock(subdivision=self.sub_a), 3)
         self.assertEqual(self._stock(subdivision=self.sub_b), 7)
+
+    def test_cambio_de_ubicacion_rechazado_no_mueve_nada(self):
+        inspection = self._crear_inspeccion()
+        self._responder_por_ubicacion(inspection, 3, 7)
+        item = inspection.items.get()
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/", {"accion": "rechazar"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 5)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 5)
 
 
 class GeneracionTests(InspeccionAleatoriaBaseTestCase):

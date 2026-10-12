@@ -1615,3 +1615,38 @@ body.app-theme-dark .inspection-admin__found-tag {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Layout como el resto de pantallas: barra de acciones fija arriba y una
+   tarjeta debajo (Sucursales + Diferencias) que se desplaza por dentro. */
+.inspection-admin {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  padding-right: 0;
+}
+
+.inspection-admin__head.users-page__actions {
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.inspection-admin__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--table-color);
+}
+
+.dashboard-shell.dark .inspection-admin__body {
+  border-color: var(--color-border-dark);
+  background: var(--color-surface-dark);
+}

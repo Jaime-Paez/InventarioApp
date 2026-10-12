@@ -1706,6 +1706,7 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
         "conteo_ubicaciones": conteo_ubicaciones,
         "revisado_en": _parse_iso_timestamp(item.revisado_en),
         "no_encontrado": bool(getattr(item, "no_encontrado", False)),
+        "cambio_ubicacion": bool(getattr(item, "cambio_ubicacion", False)) and not hide_expected,
         "agregado_por_revisor": bool(getattr(item, "agregado_por_revisor", False)),
         "encontrado_en": _serialize_found_location(getattr(item, "encontrado_en", None))
         if getattr(item, "encontrado_en_id", None)
@@ -2496,24 +2497,6 @@ def _apply_random_inspection_adjustment(item, cantidad_confirmada, confirmed_by_
             subdivision_id=scope_subdivision_id,
         )
     return {"delta_total": total_delta, "por_ubicacion": per_location, "residual": residual}
-
-
-def _relocate_random_inspection_item(item):
-    """Total correcto pero repartido distinto: corrige solo las ubicaciones.
-
-    No cambia la cantidad total (suma 0), por eso no pasa por verificacion.
-    Solo aplica si se contaron todas las ubicaciones con stock del producto.
-    """
-    location_counts = _valid_location_counts(item)
-    if len(location_counts) < 2:
-        return None
-    if sum(entry["cantidad_sistema"] for entry in location_counts) != int(item.cantidad_esperada or 0):
-        return None
-    if sum(entry["cantidad_contada"] for entry in location_counts) != int(item.cantidad_esperada or 0):
-        return None
-    if all(entry["cantidad_contada"] == entry["cantidad_sistema"] for entry in location_counts):
-        return None
-    return _apply_random_inspection_adjustment(item, int(item.cantidad_esperada or 0))
 
 
 def _move_inspection_item_stock(item, target_subdivision):
@@ -3476,7 +3459,29 @@ class RandomInspectionRespondAPIView(APIView):
                         }
                     )
 
-                if reported == system_qty:
+                checked_locations = [
+                    entry for entry in location_counts
+                    if entry.get("subdivision_id")
+                    and entry.get("cantidad_contada") is not None
+                    and entry.get("cantidad_sistema") is not None
+                ]
+                location_change = bool(
+                    reported == system_qty
+                    and len(checked_locations) >= 2
+                    and sum(int(entry["cantidad_sistema"]) for entry in checked_locations) == system_qty
+                    and sum(int(entry["cantidad_contada"]) for entry in checked_locations) == system_qty
+                    and any(
+                        int(entry["cantidad_contada"]) != int(entry["cantidad_sistema"])
+                        for entry in checked_locations
+                    )
+                )
+                if location_change:
+                    # Total correcto pero repartido distinto: antes se corregia
+                    # solo; ahora administracion lo ve y decide.
+                    estado_revision = InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE
+                    verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
+                    mismatch_count += 1
+                elif reported == system_qty:
                     estado_revision = InspeccionAleatoriaItem.EstadosRevision.COINCIDE
                     verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.SIN_NOVEDAD
                 else:
@@ -3497,6 +3502,7 @@ class RandomInspectionRespondAPIView(APIView):
                     observacion = f"{observacion}\n{note}".strip() if observacion else note
 
                 item.estado_revision = estado_revision
+                item.cambio_ubicacion = location_change
                 item.no_encontrado = bool(parsed["not_found"])
                 item.cantidad_esperada = system_qty
                 item.cantidad_reportada = reported
@@ -3512,6 +3518,7 @@ class RandomInspectionRespondAPIView(APIView):
                 inspection_items,
                 [
                     "estado_revision",
+                    "cambio_ubicacion",
                     "no_encontrado",
                     "cantidad_esperada",
                     "cantidad_reportada",
@@ -3523,19 +3530,6 @@ class RandomInspectionRespondAPIView(APIView):
                     "updated_at",
                 ],
             )
-
-            for item in inspection_items:
-                if item.estado_revision != InspeccionAleatoriaItem.EstadosRevision.COINCIDE:
-                    continue
-                relocation = _relocate_random_inspection_item(item)
-                if relocation:
-                    _record_random_inspection_audit(
-                        item,
-                        request.user,
-                        "Reubicacion por inspeccion aleatoria: el total coincide pero "
-                        "el conteo por ubicacion no; se corrigio cada ubicacion.",
-                        relocation,
-                    )
 
             if "nota_general" in request.data:
                 nota_general = _normalize_text(request.data.get("nota_general"))
