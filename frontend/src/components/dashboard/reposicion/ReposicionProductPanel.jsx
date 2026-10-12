@@ -12,53 +12,168 @@ const num = (value, digits = 0) => (
   value == null ? '—' : Number(value).toLocaleString('es-EC', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 )
 
-export function ReposicionCalculation({ row }) {
+// Explicacion en palabras simples, paso a paso, de por que se sugiere pedir
+// (o no) este producto. La formula tecnica queda escondida en "Ver formula".
+function ReposicionCalculation({ row, ventanaDias }) {
   const L = Number(row.dias_entrega || 0)
   const mu = Number(row.venta_dia || 0)
   const sigma = Number(row.desviacion_dia || 0)
   const z = Number(row.z || 0)
+  const days = Number(ventanaDias || 0)
+  const dayWord = (value) => (Math.round(value) === 1 ? 'día' : 'días')
+  const unitWord = (value) => (Math.round(value) === 1 ? 'unidad' : 'unidades')
+  const leadSource = String(row.fuente_entrega || '').startsWith('traslado')
+    ? 'Llega por traslado desde la sucursal central.'
+    : 'Es lo que tarda el proveedor según sus importaciones (o el valor configurado).'
+  const position = Number(row.posicion || 0)
+  const q = Number(row.cantidad_pedido || 0)
+
+  let steps = []
+  let conclusion = null
+
+  if (row.politica === 'continua' || row.politica === 'periodica') {
+    const periodic = row.politica === 'periodica'
+    const r = Number(row.revision_dias || 0)
+    const window = periodic ? r + L : L
+    const sold = window * mu
+    steps = [
+      {
+        value: num(mu, mu < 10 ? 1 : 0),
+        title: `Se vende en promedio ${num(mu, mu < 10 ? 1 : 0)} por día`,
+        text: `En los últimos ${days || '—'} días salieron ${num(row.venta_total)} ${unitWord(row.venta_total)}, en ${num(row.dias_con_venta)} días distintos.`,
+      },
+      {
+        value: `${num(L)} ${dayWord(L)}`,
+        title: `Un pedido tarda ${num(L)} ${dayWord(L)} en llegar`,
+        text: leadSource,
+      },
+      ...(periodic ? [{
+        value: `${num(r)} ${dayWord(r)}`,
+        title: `Este producto se revisa cada ${num(r)} ${dayWord(r)}`,
+        text: 'Es de los que menos valor mueven (clase C): conviene revisarlo junto con otros, no a cada rato.',
+      }] : []),
+      {
+        value: num(sold, sold < 10 ? 1 : 0),
+        title: periodic
+          ? `Hasta que llegue el siguiente pedido se venden unas ${num(sold, sold < 10 ? 1 : 0)}`
+          : `Mientras llega el pedido se venden unas ${num(sold, sold < 10 ? 1 : 0)}`,
+        text: periodic
+          ? `${num(r)} ${dayWord(r)} de revisión + ${num(L)} de entrega = ${num(window)} días × ${num(mu, 2)} por día.`
+          : `${num(L)} ${dayWord(L)} × ${num(mu, 2)} por día.`,
+      },
+      {
+        value: num(row.stock_seguridad),
+        title: `Colchón por si se vende más de lo normal: ${num(row.stock_seguridad)}`,
+        text: `Las ventas cambian de un día a otro. Con este colchón, ${num(row.nivel_servicio, Number.isInteger(Number(row.nivel_servicio)) ? 0 : 1)} de cada 100 veces no te quedas sin stock mientras llega el pedido.`,
+      },
+      periodic
+        ? {
+          value: num(row.nivel_base),
+          title: `En cada revisión hay que completar hasta ${num(row.nivel_base)}`,
+          text: `Lo que se vende hasta que llegue el siguiente pedido (${num(sold, sold < 10 ? 1 : 0)}) más el colchón (${num(row.stock_seguridad)}).`,
+        }
+        : {
+          value: num(row.punto_pedido),
+          title: `Hay que pedir cuando queden ${num(row.punto_pedido)}`,
+          text: `Lo que se vende mientras llega (${num(sold, sold < 10 ? 1 : 0)}) más el colchón (${num(row.stock_seguridad)}). Si se pide antes, sobra; si se pide después, falta.`,
+        },
+      ...(!periodic ? [{
+        value: num(q),
+        title: `Cada pedido es de ${num(q)}`,
+        text: `Alcanza para unos ${num(mu > 0 ? q / mu : 0)} días. Es el punto medio entre hacer muchos pedidos pequeños y tener demasiado guardado.`,
+      }] : []),
+    ]
+    const threshold = periodic ? Number(row.nivel_base || 0) : Number(row.punto_pedido || 0)
+    const have = `Hoy hay ${num(row.stock)} en stock${Number(row.en_camino || 0) ? ` y ${num(row.en_camino)} en camino` : ''}`
+    if (Number(row.sugerido || 0) > 0) {
+      conclusion = {
+        tone: 'order',
+        title: `Por eso hay que pedir ${num(row.sugerido)}`,
+        text: periodic
+          ? `${have}: faltan ${num(row.sugerido)} para llegar a ${num(threshold)}.`
+          : `${have}${Number(row.en_camino || 0) ? ` (${num(position)} en total)` : ''} y se pide cuando quedan ${num(threshold)} o menos.${Number(row.sugerido) > q ? ` Se piden ${num(Number(row.sugerido) / q)} pedidos de ${num(q)} para volver a quedar por encima.` : ''}`,
+      }
+    } else if (row.estado === 'exceso') {
+      conclusion = {
+        tone: 'warn',
+        title: 'No hay que pedir: sobra stock',
+        text: `${have}. Lo máximo que debería haber es ${num(row.nivel_maximo)} (justo cuando llega un pedido). Hay ${num(Number(row.stock) - Number(row.nivel_maximo))} de más.`,
+      }
+    } else {
+      conclusion = {
+        tone: 'ok',
+        title: 'Por ahora no hay que pedir',
+        text: `${have}, más que ${num(threshold)}. Se pedirá cuando baje de ahí.`,
+      }
+    }
+  } else if (row.politica === 'bajo_pedido') {
+    steps = [{
+      value: num(row.dias_con_venta),
+      title: `Se vendió solo en ${num(row.dias_con_venta)} ${dayWord(row.dias_con_venta)} en los últimos ${days || '—'} días`,
+      text: `En total salieron ${num(row.venta_total)} ${unitWord(row.venta_total)}. Con tan pocas ventas no se puede calcular un ritmo confiable.`,
+    }]
+    conclusion = {
+      tone: 'neutral',
+      title: 'Se maneja bajo pedido',
+      text: 'No se sugiere tenerlo en stock de forma automática: pídelo cuando un cliente lo necesite.',
+    }
+  } else {
+    steps = [{
+      value: '0',
+      title: `No se vendió en los últimos ${days || '—'} días`,
+      text: 'Sin ventas no hay nada que reponer.',
+    }]
+    conclusion = { tone: 'neutral', title: 'No hay que pedir', text: '' }
+  }
+
+  if (row.estado === 'obsoleto') {
+    conclusion = {
+      tone: 'warn',
+      title: 'Producto obsoleto',
+      text: `Tiene ${num(row.stock)} en stock y no se vende ${row.dias_sin_venta != null ? `hace ${num(row.dias_sin_venta)} días` : 'en esta sucursal'}. Conviene trasladarlo a donde sí se vende o liquidarlo.`,
+    }
+  }
+
   return (
-    <div className="reposicion__detail">
-      <div className="reposicion__detail-grid">
-        <div><small>Venta diaria μ</small><strong>{num(mu, 3)}</strong></div>
-        <div><small>Variación diaria σ</small><strong>{num(sigma, 3)}</strong></div>
-        <div><small>Días con venta</small><strong>{num(row.dias_con_venta)}</strong></div>
-        <div><small>Entrega L</small><strong>{`${num(L, 1)} d`}</strong><em>{row.fuente_entrega}</em></div>
-        <div><small>Nivel de servicio</small><strong>{row.nivel_servicio ? `${num(row.nivel_servicio, 1)}%` : '—'}</strong><em>{row.z ? `z = ${num(z, 2)}` : ''}</em></div>
-        <div><small>Costo unitario</small><strong>{`$${num(row.costo, 2)}`}</strong></div>
-        <div><small>Última venta</small><strong>{row.ultima_venta || '—'}</strong><em>{row.dias_sin_venta != null ? `hace ${row.dias_sin_venta} d` : ''}</em></div>
-        <div><small>Posición (stock + en camino)</small><strong>{num(row.posicion)}</strong></div>
-      </div>
-      <div className="reposicion__formula">
-        {row.politica === 'continua' && (
-          <>
-            <p><strong>Revisión continua (clase {row.clase}):</strong> cuando la posición baja de R se pide Q.</p>
-            <p>{`Stock de seguridad = z·σ·√L = ${num(z, 2)} × ${num(sigma, 3)} × √${num(L, 1)} = ${num(row.stock_seguridad)}`}</p>
-            <p>{`Punto de pedido R = L·μ + seguridad = ${num(L, 1)} × ${num(mu, 3)} + ${num(row.stock_seguridad)} ≈ ${num(row.punto_pedido)}`}</p>
-            <p>{`Cantidad a pedir Q (lote económico, con tope) = ${num(row.cantidad_pedido)} · stock esperado promedio Q/2 + seguridad ≈ ${num(row.inventario_esperado, 1)}`}</p>
-          </>
-        )}
-        {row.politica === 'periodica' && (
-          <>
-            <p><strong>Revisión periódica (clase C):</strong> cada {row.revision_dias} días se pide hasta el nivel base B.</p>
-            <p>{`Stock de seguridad = z·σ·√(r+L) = ${num(z, 2)} × ${num(sigma, 3)} × √(${row.revision_dias}+${num(L, 1)}) = ${num(row.stock_seguridad)}`}</p>
-            <p>{`Nivel base B = (r+L)·μ + seguridad = (${row.revision_dias}+${num(L, 1)}) × ${num(mu, 3)} + ${num(row.stock_seguridad)} ≈ ${num(row.nivel_base)}`}</p>
-            <p>{`Pedir = B − posición = ${num(row.nivel_base)} − ${num(row.posicion)} → ${num(row.sugerido)} · stock esperado promedio r·μ/2 + seguridad ≈ ${num(row.inventario_esperado, 1)}`}</p>
-          </>
-        )}
-        {row.politica === 'bajo_pedido' && (
-          <p><strong>Demanda esporádica:</strong> {`solo ${row.dias_con_venta} día(s) con venta en la ventana; el modelo supone demanda estable, así que este producto se maneja bajo pedido (no se repone solo).`}</p>
-        )}
-        {row.politica === 'sin_demanda' && (
-          <p><strong>Sin venta en la ventana:</strong> no se calcula reposición.</p>
-        )}
-        {row.estado === 'obsoleto' && (
-          <p className="reposicion__formula-warn">{`Obsoleto: sin ventas ${row.dias_sin_venta != null ? `desde hace ${row.dias_sin_venta} días` : 'registradas en esta sucursal'}. Considera trasladarlo a donde sí se vende o liquidarlo.`}</p>
-        )}
-        {row.estado === 'exceso' && (
-          <p className="reposicion__formula-warn">{`Exceso: hay ${num(row.stock)} y lo máximo esperado es ${num(row.nivel_maximo)} (justo al llegar un pedido).`}</p>
-        )}
-      </div>
+    <div className="repo-steps">
+      <ol className="repo-steps__list">
+        {steps.map((step, index) => (
+          <li key={step.title} className="repo-steps__item">
+            <span className="repo-steps__number" aria-hidden="true">{index + 1}</span>
+            <div className="repo-steps__text">
+              <strong>{step.title}</strong>
+              {step.text && <span>{step.text}</span>}
+            </div>
+            <span className="repo-steps__value">{step.value}</span>
+          </li>
+        ))}
+      </ol>
+
+      {conclusion && (
+        <div className={`repo-steps__conclusion is-${conclusion.tone}`}>
+          <strong>{conclusion.title}</strong>
+          {conclusion.text && <span>{conclusion.text}</span>}
+        </div>
+      )}
+
+      {(row.politica === 'continua' || row.politica === 'periodica') && (
+        <details className="repo-steps__formula">
+          <summary>Ver fórmula</summary>
+          {row.politica === 'continua' ? (
+            <>
+              <p>{`Seguridad = z × σ × √L = ${num(z, 2)} × ${num(sigma, 2)} × √${num(L, 1)} ≈ ${num(row.stock_seguridad)}`}</p>
+              <p>{`Punto de pedido R = L × μ + seguridad = ${num(L, 1)} × ${num(mu, 2)} + ${num(row.stock_seguridad)} ≈ ${num(row.punto_pedido)}`}</p>
+              <p>{`Q = lote económico (con tope de días) = ${num(q)}`}</p>
+            </>
+          ) : (
+            <>
+              <p>{`Seguridad = z × σ × √(r + L) = ${num(z, 2)} × ${num(sigma, 2)} × √(${row.revision_dias} + ${num(L, 1)}) ≈ ${num(row.stock_seguridad)}`}</p>
+              <p>{`Nivel base B = (r + L) × μ + seguridad = (${row.revision_dias} + ${num(L, 1)}) × ${num(mu, 2)} + ${num(row.stock_seguridad)} ≈ ${num(row.nivel_base)}`}</p>
+            </>
+          )}
+          <p>{`μ = venta diaria promedio, σ = cuánto varía de un día a otro, L = días de entrega, z = ${num(z, 2)} por el nivel de servicio de ${num(row.nivel_servicio, 1)}%.`}</p>
+        </details>
+      )}
     </div>
   )
 }
@@ -159,7 +274,7 @@ export default function ReposicionProductPanel({ token, productoId, initialSucur
 
       <div className="reposicion-panel__body">
         {tab === 'grafica' && <InventoryProjectionChart row={row} today={data?.meta?.fecha} />}
-        {tab === 'calculo' && <ReposicionCalculation row={row} />}
+        {tab === 'calculo' && <ReposicionCalculation row={row} ventanaDias={data?.meta?.ventana_dias} />}
         {tab === 'ventas' && <WeeklySalesChart weeks={data?.ventas_semanales?.[String(row.sucursal_id)]} row={row} />}
       </div>
     </div>
