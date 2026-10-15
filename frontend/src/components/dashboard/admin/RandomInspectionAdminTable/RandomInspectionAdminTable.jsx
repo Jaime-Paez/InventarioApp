@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
 import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -13,6 +13,25 @@ import './RandomInspectionAdminTable.css'
 import InspectionCoverageMap from './InspectionCoverageMap'
 import ConfirmDialog from '../../common/unsavedChanges/ConfirmDialog'
 import CascadeDropdown from '../../common/CascadeDropdown'
+
+// Aviso grande de "no se puede enviar": que pasa, por que y como resolverlo.
+function SendBlocker({ title, reason, actionLabel, onAction }) {
+  return (
+    <div className="inspection-admin__blocker" role="alert">
+      <AlertTriangle size={18} aria-hidden="true" />
+      <div>
+        <strong>{title}</strong>
+        <p>{reason}</p>
+        {actionLabel && onAction && (
+          <button type="button" className="inspection-admin__blocker-action" onClick={onAction}>
+            <Settings size={13} />
+            {actionLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeId = (value) => (value == null ? '' : String(value).trim())
@@ -113,6 +132,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [sendNowParams, setSendNowParams] = useState({ cantidad_productos: '', hora_recordatorio: '' })
   const [sendNowSelectedUserIds, setSendNowSelectedUserIds] = useState(new Set())
   const [sendNowMode, setSendNowMode] = useState('aleatorio')
+  const [sendError, setSendError] = useState('')
   // "Enviar ahora mismo": ignora la hora elegida y usa la hora actual.
   const [sendNowImmediate, setSendNowImmediate] = useState(false)
   const resolveSendNowHour = useCallback(() => {
@@ -269,6 +289,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       setShowSendNowDialog(false)
     } catch (error) {
       notifyError(error?.message || 'No se pudo enviar el recordatorio.')
+      setSendError(error?.message || 'No se pudo enviar el recordatorio.')
     } finally {
       setSendNowLoading(false)
     }
@@ -397,6 +418,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       setShowSendNowDialog(false)
     } catch (error) {
       notifyError(error?.message || 'No se pudo enviar la division.')
+      setSendError(error?.message || 'No se pudo enviar la division.')
     } finally {
       setDivisionSending(false)
     }
@@ -636,6 +658,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       setShowSendNowDialog(false)
     } catch (error) {
       notifyError(error?.message || 'No se pudo enviar la lista.')
+      setSendError(error?.message || 'No se pudo enviar la lista.')
     } finally {
       setListSending(false)
     }
@@ -1386,18 +1409,48 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     }))
   }, [assignmentBranches])
 
-  const sendNowSummary = useMemo(() => {
+  const reviewersByBranch = useMemo(() => {
     return assignmentBranches.map((branch) => {
       const branchId = normalizeId(branch?.id)
-      const reviewers = assignmentRows.filter((row) => {
+      const assigned = assignmentRows.filter((row) => {
         const ids = Array.isArray(row?.inspeccion_aleatoria_sucursales)
           ? row.inspeccion_aleatoria_sucursales.map((v) => normalizeId(v))
           : []
         return ids.includes(branchId)
       })
-      return { id: branchId, nombre: String(branch?.nombre || '').trim(), reviewers }
-    }).filter((b) => b.reviewers.length > 0)
+      return {
+        id: branchId,
+        nombre: String(branch?.nombre || '').trim(),
+        reviewers: assigned.filter((row) => row?.activo !== false),
+        inactive: assigned.filter((row) => row?.activo === false),
+      }
+    })
   }, [assignmentBranches, assignmentRows])
+
+  const sendNowSummary = useMemo(
+    () => reviewersByBranch.filter((b) => b.reviewers.length > 0),
+    [reviewersByBranch]
+  )
+
+  // Cualquier cambio en el formulario borra el error del ultimo intento.
+  useEffect(() => {
+    setSendError('')
+  }, [sendNowMode, listSucursalId, listUsuarioId, listProducts.length, divisionSucursalId, divisionId, divisionSubdivisionId, divisionUsuarioId])
+
+  // Por que no se puede enviar a una sucursal (o null si si se puede).
+  const branchBlocker = useCallback((branchId) => {
+    if (!branchId || assignmentsLoading) return null
+    const branch = reviewersByBranch.find((b) => b.id === normalizeId(branchId))
+    if (!branch || branch.reviewers.length > 0) return null
+    const nombre = branch.nombre || 'esta sucursal'
+    const inactiveNames = branch.inactive
+      .map((u) => String(u?.nombre_completo || u?.correo || '').trim())
+      .filter(Boolean)
+    const reason = inactiveNames.length
+      ? `Los revisores asignados a ${nombre} (${inactiveNames.join(', ')}) tienen el usuario inactivo, y una revisión solo se puede enviar a un usuario activo. Activa el usuario en Administrar o asigna a otro revisor a ${nombre} en Configuración.`
+      : `Ningún usuario tiene asignada la revisión de inventario de ${nombre}, así que no hay a quién enviársela. Asigna al menos un revisor activo a ${nombre} en Configuración y vuelve a intentarlo.`
+    return { title: `No se puede enviar a ${nombre}: no tiene revisores`, reason }
+  }, [reviewersByBranch, assignmentsLoading])
 
   const divisionReviewers = useMemo(() => {
     if (!divisionSucursalId) return []
@@ -2353,21 +2406,27 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                     <label className="create-user__field">
                       <span>Revisor</span>
                       <CascadeDropdown
-                        placeholder="Selecciona un revisor"
+                        placeholder={listSucursalId && !listReviewers.length ? 'Sin revisores en esta sucursal' : 'Selecciona un revisor'}
                         searchPlaceholder="Buscar revisor"
                         options={listReviewers}
                         valueId={listUsuarioId}
                         getOptionLabel={(o) => String(o?.nombre_completo || o?.correo || `Usuario ${o?.id}`).trim()}
                         onSelect={(o) => setListUsuarioId(o.id)}
-                        disabled={!listSucursalId || listSending}
+                        disabled={!listSucursalId || !listReviewers.length || listSending}
                       />
                     </label>
                   </div>
-                  {listSucursalId && listReviewers.length === 0 && (
-                    <p className="inspection-admin__sendnow-empty">
-                      Esta sucursal no tiene revisores asignados.
-                    </p>
-                  )}
+                  {(() => {
+                    const block = branchBlocker(listSucursalId)
+                    return block ? (
+                      <SendBlocker
+                        title={block.title}
+                        reason={block.reason}
+                        actionLabel={canUpdate ? 'Asignar revisores' : null}
+                        onAction={openAssignmentsDialog}
+                      />
+                    ) : null
+                  })()}
 
                   <div className="create-user__locations-table create-salida__products-table inspection-admin__list-products-table">
                     <div className="create-user__locations-row create-user__locations-row--head">
@@ -2610,25 +2669,34 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                   <label className="create-user__field">
                     <span>Revisor</span>
                     <CascadeDropdown
-                      placeholder="Selecciona un revisor"
+                      placeholder={divisionSucursalId && !divisionReviewers.length ? 'Sin revisores en esta sucursal' : 'Selecciona un revisor'}
                       searchPlaceholder="Buscar revisor"
                       options={divisionReviewers}
                       valueId={divisionUsuarioId}
                       getOptionLabel={(o) => String(o?.nombre_completo || o?.correo || `Usuario ${o?.id}`).trim()}
                       onSelect={(o) => setDivisionUsuarioId(o.id)}
-                      disabled={!divisionSucursalId || divisionSending}
+                      disabled={!divisionSucursalId || !divisionReviewers.length || divisionSending}
                     />
                   </label>
-                  {divisionSucursalId && divisionReviewers.length === 0 && (
-                    <p className="inspection-admin__sendnow-empty">
-                      Esta sucursal no tiene revisores asignados.
-                    </p>
-                  )}
+                  {(() => {
+                    const block = branchBlocker(divisionSucursalId)
+                    return block ? (
+                      <SendBlocker
+                        title={block.title}
+                        reason={block.reason}
+                        actionLabel={canUpdate ? 'Asignar revisores' : null}
+                        onAction={openAssignmentsDialog}
+                      />
+                    ) : null
+                  })()}
                 </div>
               ) : sendNowSummary.length === 0 ? (
-                <p className="inspection-admin__sendnow-empty">
-                  No hay revisores asignados. Configura los revisores antes de enviar.
-                </p>
+                <SendBlocker
+                  title="No se puede enviar: no hay revisores"
+                  reason="Ningún usuario activo tiene asignada la revisión de inventario de ninguna sucursal, así que no hay a quién enviársela. Asigna revisores a las sucursales en Configuración y vuelve a intentarlo."
+                  actionLabel={canUpdate ? 'Asignar revisores' : null}
+                  onAction={openAssignmentsDialog}
+                />
               ) : (() => {
                 const allReviewerIds = sendNowSummary.flatMap((b) =>
                   b.reviewers.map((u) => normalizeId(u?.id)).filter(Boolean)
@@ -2712,6 +2780,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                   </div>
                 )
               })()}
+              {sendError && <SendBlocker title="No se pudo enviar" reason={sendError} />}
             </div>
 
             <footer className="inspection-admin__dialog-actions">
