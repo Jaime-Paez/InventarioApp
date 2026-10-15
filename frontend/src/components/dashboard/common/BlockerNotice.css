@@ -87,3 +87,11 @@ body.app-theme-dark .blocker-notice__action {
   margin-top: 6px;
   font-weight: 700;
 }
+
+/* Dentro de una fila de tabla en grilla, el aviso ocupa toda la fila. */
+[class*='-row'] > .blocker-notice,
+[class*='__row'] > .blocker-notice {
+  grid-column: 1 / -1;
+  width: 100%;
+  box-sizing: border-box;
+}

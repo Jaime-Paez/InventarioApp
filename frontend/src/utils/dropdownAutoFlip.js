@@ -122,8 +122,13 @@ const adjustInline = (panel) => {
 
 const adjustFloating = (panel) => {
   const saved = remember(panel)
-  // Si el propio componente ya lo abrio hacia arriba (usa bottom), no se toca.
-  if (saved.bottom && saved.bottom !== 'auto') return
+  // Si el propio componente lo abrio hacia arriba (usa bottom), no se toca.
+  // Se mira el estilo actual: algunos lo colocan despues de un primer render.
+  if (panel.style.bottom && panel.style.bottom !== 'auto') {
+    panel.style.transform = saved.transform
+    panel.style.maxHeight = saved.maxHeight
+    return
+  }
   panel.style.transform = saved.transform
   panel.style.maxHeight = saved.maxHeight
   const rect = panel.getBoundingClientRect()
