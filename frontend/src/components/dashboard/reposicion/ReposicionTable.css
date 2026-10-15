@@ -1311,6 +1311,11 @@ body.app-theme-dark .reposicion__field .create-user__dropdown-trigger {
   font-weight: 600;
 }
 
+.reposicion-import__blocker {
+  flex: 1;
+  margin-right: auto;
+}
+
 .reposicion-import__note {
   color: var(--color-text-secondary, #64748b);
   font-size: var(--font-size-sm, 13px);

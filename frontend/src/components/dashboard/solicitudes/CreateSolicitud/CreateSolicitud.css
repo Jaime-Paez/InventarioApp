@@ -5,6 +5,7 @@
 .create-solicitud__products-table .create-user__locations-row {
   grid-template-columns:
     minmax(70px, 0.7fr)
+    minmax(70px, 0.7fr)
     minmax(100px, 1.2fr)
     minmax(80px, 0.9fr)
     minmax(54px, 0.54fr)
@@ -669,4 +670,18 @@
     width: max(240px, 100%);
     max-width: min(320px, calc(100vw - 24px));
   }
+}
+
+.create-solicitud__products-hint {
+  margin: 0 0 8px;
+  color: var(--color-text-secondary, #64748b);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.create-solicitud__product-error {
+  margin-top: 8px;
+}
+
+.create-solicitud__submit-blocker {
+  margin: 0 16px 8px;
 }

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { API_URL, authFetch } from '../../../utils/api'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
 import '../admin/CreateUsuario/CreateUsuario.css'
+import BlockerNotice from '../common/BlockerNotice'
 import { ESTADO_LABEL } from './reposicionConstants'
 
 // Sugerencia de importacion a partir de Reposicion: lo que la sucursal
@@ -142,6 +143,8 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
               const summary = groupSummary(group)
               const done = created[group.casa_comercial_id]
               const canCreate = group.es_importacion && group.casa_comercial_id
+              const allInOpenImport = group.items.length > 0
+                && group.items.every((item) => (item.importaciones_abiertas || []).length)
               return (
                 <section key={key} className={`reposicion-import__group${done ? ' is-done' : ''}`}>
                   <header className="reposicion-import__group-head">
@@ -227,20 +230,51 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
                         {`Creada ${done.codigo} con ${done.productos} productos (${num(done.unidades)} unidades). Está en Importaciones como sugerencia.`}
                       </span>
                     ) : canCreate ? (
-                      <button
-                        type="button"
-                        className="reposicion__btn reposicion__btn--primary"
-                        onClick={() => void createSuggestion(group)}
-                        disabled={Boolean(creating) || !summary.chosen.length}
-                      >
-                        {creating === key ? 'Creando...' : `Crear sugerencia de importación (${summary.chosen.length})`}
-                      </button>
+                      <>
+                        {!summary.chosen.length && !groupErrors[group.casa_comercial_id] && (
+                          <BlockerNotice
+                            compact
+                            className="reposicion-import__blocker"
+                            title="No se puede crear la sugerencia todavía"
+                            reason={allInOpenImport
+                              ? 'Todos estos productos ya están en una importación abierta. Márcalos si igual quieres pedirlos.'
+                              : 'Marca al menos un producto para crear la sugerencia.'}
+                            actionLabel={allInOpenImport ? 'Marcar todos' : undefined}
+                            onAction={allInOpenImport
+                              ? () => setDraft((prev) => {
+                                const next = { ...prev }
+                                group.items.forEach((item) => {
+                                  next[item.producto_id] = { ...next[item.producto_id], selected: true }
+                                })
+                                return next
+                              })
+                              : undefined}
+                          />
+                        )}
+                        <button
+                          type="button"
+                          className="reposicion__btn reposicion__btn--primary"
+                          onClick={() => void createSuggestion(group)}
+                          disabled={Boolean(creating) || !summary.chosen.length}
+                        >
+                          {creating === key ? 'Creando...' : `Crear sugerencia de importación (${summary.chosen.length})`}
+                        </button>
+                      </>
+                    ) : group.casa_comercial_id ? (
+                      <BlockerNotice
+                        compact
+                        className="reposicion-import__blocker"
+                        title="No se puede crear una importación"
+                        reason={`${group.casa_nombre || 'Este proveedor'} es un proveedor local: estos productos se compran con una entrada de compra local, no con una importación.`}
+                      />
                     ) : (
-                      <span className="reposicion-import__note">
-                        {group.casa_comercial_id
-                          ? 'Proveedor local: se compra con una entrada de compra local, no con una importación.'
-                          : 'Estos productos no tienen proveedor asignado: asígnalo en Productos para poder importarlos.'}
-                      </span>
+                      <BlockerNotice
+                        compact
+                        className="reposicion-import__blocker"
+                        title="No se pueden pedir: sin proveedor"
+                        reason="Estos productos no tienen proveedor: asígnale una casa comercial en Productos para poder pedirlos."
+                        goTo="Productos"
+                      />
                     )}
                   </footer>
                 </section>

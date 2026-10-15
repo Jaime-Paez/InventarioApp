@@ -191,8 +191,8 @@
     transform 0.18s ease;
 }
 
-.create-salida__subtipo-btn:hover:not(:disabled),
-.create-salida__subtipo-btn:focus-visible:not(:disabled),
+.create-salida__subtipo-btn:hover:not(:disabled):not(.create-salida__subtipo-btn--blocked),
+.create-salida__subtipo-btn:focus-visible:not(:disabled):not(.create-salida__subtipo-btn--blocked),
 .create-salida__subtipo-btn[aria-pressed='true'] {
   background: var(--color-primary);
   border-color: var(--color-primary);
@@ -200,7 +200,7 @@
   box-shadow: 0 4px 10px rgba(11, 81, 133, 0.14);
 }
 
-.create-salida__subtipo-btn:hover:not(:disabled) {
+.create-salida__subtipo-btn:hover:not(:disabled):not(.create-salida__subtipo-btn--blocked) {
   transform: none;
 }
 
@@ -355,8 +355,8 @@
   color: #64748b;
 }
 
-.dashboard-shell.dark .create-salida__subtipo-btn:hover:not(:disabled),
-.dashboard-shell.dark .create-salida__subtipo-btn:focus-visible:not(:disabled),
+.dashboard-shell.dark .create-salida__subtipo-btn:hover:not(:disabled):not(.create-salida__subtipo-btn--blocked),
+.dashboard-shell.dark .create-salida__subtipo-btn:focus-visible:not(:disabled):not(.create-salida__subtipo-btn--blocked),
 .dashboard-shell.dark .create-salida__subtipo-btn[aria-pressed='true'] {
   background:
     radial-gradient(circle at top, color-mix(in srgb, var(--color-primary) 72%, #38bdf8), var(--color-primary-dark) 78%);
@@ -2126,4 +2126,8 @@
 
 .dashboard-shell.dark .movimientos-details__creator-info {
   color: var(--color-text-dark);
+}
+
+.create-salida__footer-blocker {
+  margin: 8px 15px;
 }

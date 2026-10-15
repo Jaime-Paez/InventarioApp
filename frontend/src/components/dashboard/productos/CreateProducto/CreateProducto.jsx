@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
+import BlockerNotice from '../../common/BlockerNotice'
 import { formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
 import { toUpperCode } from '../../../../utils/textInput'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
@@ -44,6 +45,19 @@ const getSubdivisionDivisionId = (subdivision) => String(subdivision?.division?.
 const getSubdivisionBodegaId = (subdivision) =>
   String(subdivision?.division?.bodega?.id ?? subdivision?.division?.bodega_id ?? '')
 const normalizeScopeBranchId = (value) => String(value ?? '').trim()
+const LOCATION_PLAN_HINT = 'Agrégalas en el plano de la bodega (Sucursales › Bodegas › Plano).'
+// Mensaje del desplegable de ubicaciones vacio: distingue "no hay nada
+// configurado" de "la busqueda no coincide", y dice donde configurarlo.
+const getEmptyLevelMessage = (field, parentName, query) => {
+  const term = String(query ?? '').trim()
+  if (term) return `Ninguna opción coincide con "${term}".`
+  if (field === 'sucursal') {
+    return 'No hay sucursales disponibles: no hay sucursales registradas o no tienes permiso de Productos en ninguna. Crea una en Sucursales › Sucursales o pide al administrador que te la asigne en Administrar › Usuarios.'
+  }
+  if (field === 'bodega') return `${parentName || 'Esta sucursal'} no tiene bodegas. Créalas en Sucursales › Bodegas.`
+  if (field === 'division') return `${parentName ? `La bodega ${parentName}` : 'Esta bodega'} no tiene divisiones. ${LOCATION_PLAN_HINT}`
+  return `${parentName ? `La división ${parentName}` : 'Esta división'} no tiene subdivisiones. ${LOCATION_PLAN_HINT}`
+}
 // Igual que en ProductoDetails: mover/editar una ubicacion ya no exige el
 // modulo Productos especificamente -- cualquier modulo asignado en una
 // sucursal ya implica poder ver su inventario, asi que tambien alcanza
@@ -90,6 +104,10 @@ function CreateProducto({
   const [referenciaError, setReferenciaError] = useState('')
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
   const [suppliers, setSuppliers] = useState([])
+  // Termino de la ultima busqueda terminada (para no decir "no hay" mientras busca)
+  const [suppliersSearchedTerm, setSuppliersSearchedTerm] = useState('')
+  // true cuando no existe ninguna casa comercial registrada
+  const [supplierCatalogEmpty, setSupplierCatalogEmpty] = useState(false)
   const [branches, setBranches] = useState([])
   const [bodegas, setBodegas] = useState([])
   const [divisions, setDivisions] = useState([])
@@ -324,12 +342,29 @@ function CreateProducto({
         const data = await response.json()
         const list = Array.isArray(data) ? data : data?.results || []
         setSuppliers(list)
+        setSuppliersSearchedTerm(term)
       } catch (err) {
         notifyError(err.message || 'Ocurrió un error al cargar las casas comerciales.')
       }
     },
     [notifyError, token]
   )
+
+  useEffect(() => {
+    if (!open || !token) return
+    let cancelled = false
+    authFetch(`${API_URL}/casa-comercial/casas/?page_size=1`, {}, token)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return
+        const list = Array.isArray(data) ? data : data?.results || []
+        setSupplierCatalogEmpty(!list.length)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [open, token])
 
   const setLocationLevelLoading = useCallback((level, value) => {
     setLocationSearchLoading((prev) => ({
@@ -1488,7 +1523,11 @@ function CreateProducto({
 
     if (hasMissingRequiredFields) {
       setActiveTab('general')
-      notifyError('Completa los campos requeridos resaltados.')
+      notifyError(
+        !payload.casas_comerciales_ids.length && supplierCatalogEmpty
+          ? 'No se puede crear el producto: no hay casas comerciales registradas.'
+          : 'Completa los campos requeridos resaltados.'
+      )
       return
     }
 
@@ -1942,7 +1981,13 @@ function CreateProducto({
                             <div className="create-user__dropdown-results">
                               {!casaSearch.trim() && <small className="muted">Escribe para buscar.</small>}
                               {casaSearch.trim() && !filteredSuppliers.length && (
-                                <small className="muted">Sin resultados.</small>
+                                <small className="muted">
+                                  {suppliersSearchedTerm !== casaSearch.trim()
+                                    ? 'Buscando...'
+                                    : supplierCatalogEmpty
+                                      ? 'No hay casas comerciales registradas.'
+                                      : `No hay casas comerciales que coincidan con "${casaSearch.trim()}".`}
+                                </small>
                               )}
                               {filteredSuppliers.map((supplier) => {
                                 return (
@@ -1970,6 +2015,13 @@ function CreateProducto({
                         )}
                       </div>
                       {casaInvalid && <small className="create-user__field-error">Selecciona una casa comercial.</small>}
+                      {supplierCatalogEmpty && !selectedCasa && (
+                        <BlockerNotice
+                          compact
+                          title="No hay casas comerciales registradas: crea una en Proveedores antes de crear el producto."
+                          goTo="Proveedores"
+                        />
+                      )}
                     </label>
 
                   </div>
@@ -2317,6 +2369,8 @@ function CreateProducto({
                   </button>
                 </div>
 
+                {locationError && <BlockerNotice compact title={locationError} />}
+
                 <div className="create-user__locations-table create-user__locations-table--locations-selectors create-user__locations-table--with-actions">
                   <div className="create-user__locations-row create-user__locations-row--head">
                     <span>Sucursal</span>
@@ -2360,7 +2414,7 @@ function CreateProducto({
                               <div className="create-user__dropdown-results">
                                 {locationSearchLoading.sucursal && <small className="muted">Buscando...</small>}
                                 {!locationSearchLoading.sucursal && !locationBranchOptions.length && (
-                                  <small className="muted">Sin resultados.</small>
+                                  <small className="muted">{getEmptyLevelMessage('sucursal', '', locationBranchQuery)}</small>
                                 )}
                                 {locationBranchOptions.map((branch) => {
                                   const branchEditable = canManageLocationBranch(branch?.id)
@@ -2380,6 +2434,7 @@ function CreateProducto({
                                     >
                                       <div className="create-user__result-info">
                                         <strong>{branch.nombre || `Sucursal ${branch.id}`}</strong>
+                                        {!branchEditable && <small style={{ opacity: 0.7 }}>Sin permiso en esta sucursal</small>}
                                       </div>
                                     </button>
                                   )
@@ -2421,7 +2476,7 @@ function CreateProducto({
                               <div className="create-user__dropdown-results">
                                 {locationSearchLoading.bodega && <small className="muted">Buscando...</small>}
                                 {!locationSearchLoading.bodega && !locationBodegaOptions.length && (
-                                  <small className="muted">Sin resultados.</small>
+                                  <small className="muted">{getEmptyLevelMessage('bodega', selectedLocationBranch?.nombre, locationBodegaQuery)}</small>
                                 )}
                                 {locationBodegaOptions.map((bodega) => (
                                   <button
@@ -2478,7 +2533,7 @@ function CreateProducto({
                               <div className="create-user__dropdown-results">
                                 {locationSearchLoading.division && <small className="muted">Buscando...</small>}
                                 {!locationSearchLoading.division && !locationDivisionOptions.length && (
-                                  <small className="muted">Sin resultados.</small>
+                                  <small className="muted">{getEmptyLevelMessage('division', selectedLocationBodega?.nombre, locationDivisionQuery)}</small>
                                 )}
                                 {locationDivisionOptions.map((division) => (
                                   <button
@@ -2535,7 +2590,7 @@ function CreateProducto({
                               <div className="create-user__dropdown-results">
                                 {locationSearchLoading.subdivision && <small className="muted">Buscando...</small>}
                                 {!locationSearchLoading.subdivision && !locationSubdivisionOptions.length && (
-                                  <small className="muted">Sin resultados.</small>
+                                  <small className="muted">{getEmptyLevelMessage('subdivision', selectedLocationDivision?.nombre, locationSubdivisionQuery)}</small>
                                 )}
                                 {locationSubdivisionOptions.map((subdivision) => (
                                   <button

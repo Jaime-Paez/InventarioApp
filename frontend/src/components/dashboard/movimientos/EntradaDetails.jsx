@@ -10,6 +10,7 @@ import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import StaticFieldDisplay from './StaticFieldDisplay'
+import BlockerNotice from '../common/BlockerNotice'
 import {
   emitRemindersSync,
   extractUserId,
@@ -652,6 +653,32 @@ function EntradaDetails({
 
   const hasAdminReminderRecipients = adminReminderRecipients.length > 0
   const hasAdditionalReminderRecipients = selectedReminderRecipients.length > 0
+  const proveedorSucursalLabel =
+    String(branches.find((b) => String(b.id) === selectedReminderTargetBranchId)?.nombre || '').trim() ||
+    'la sucursal proveedora'
+  // Aviso persistente cuando la solicitud no se puede enviar por falta de destinatarios.
+  let reminderBlocker = null
+  if (isTraslado && isPreviewGuardadoSolicitud && hasSelectedReminderTargetBranch && !reminderUsersLoading) {
+    if (reminderUsersError) {
+      reminderBlocker = {
+        title: 'No se puede crear la solicitud de traslado: no se cargaron los usuarios del recordatorio',
+        reason: `${reminderUsersError} Sin esa lista no se puede elegir a quién avisar en ${proveedorSucursalLabel}. Vuelve a intentarlo.`,
+        retry: true,
+      }
+    } else if (!hasAdminReminderRecipients) {
+      reminderBlocker = {
+        title: 'No se puede crear la solicitud de traslado: no hay administradores para el recordatorio',
+        reason: 'Toda solicitud de traslado avisa obligatoriamente a los administradores y no se encontró ningún usuario administrador activo. Pide que se marque al menos un usuario activo como administrador en Administrar › Usuarios.',
+        goTo: 'Administrar',
+      }
+    } else if (!selectableReminderUsers.length) {
+      reminderBlocker = {
+        title: `No se puede crear la solicitud de traslado: ${proveedorSucursalLabel} no tiene usuarios que puedan recibirla`,
+        reason: `Se necesita al menos un usuario (además de los administradores) con permiso de crear y editar Salidas en ${proveedorSucursalLabel}. Asígnalo en Administrar › Usuarios › permisos de Movimientos - Salidas para ${proveedorSucursalLabel}.`,
+        goTo: 'Administrar',
+      }
+    }
+  }
 
   const toggleReminderUser = (userId) => {
     const normalizedId = normalizeId(userId)
@@ -2557,13 +2584,17 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
 
     if (!hasAdminReminderRecipients) {
       setActiveTab('recordatorio')
-      notifyError('No se pudo resolver un administrador para el recordatorio obligatorio.')
+      notifyError('No se puede crear la solicitud de traslado: no hay administradores activos para el recordatorio. Revisa el aviso en la pestaña Recordatorio.')
       return
     }
 
     if (!hasAdditionalReminderRecipients) {
       setActiveTab('recordatorio')
-      notifyError('Debes seleccionar al menos un usuario adicional para el recordatorio.')
+      notifyError(
+        selectableReminderUsers.length
+          ? 'Debes seleccionar al menos un usuario adicional para el recordatorio.'
+          : 'No se puede crear la solicitud de traslado: la sucursal proveedora no tiene usuarios que puedan recibirla. Revisa el aviso en la pestaña Recordatorio.'
+      )
       return
     }
 
@@ -2580,6 +2611,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     notifyError,
     reminderUsersLoading,
     saving,
+    selectableReminderUsers.length,
     transferSolicitudId,
   ])
 
@@ -3730,6 +3762,16 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       <small className="muted">No se pudo resolver la sucursal proveedora para cargar usuarios.</small>
                     )}
 
+                    {reminderBlocker && (
+                      <BlockerNotice
+                        title={reminderBlocker.title}
+                        reason={reminderBlocker.reason}
+                        goTo={reminderBlocker.goTo}
+                        actionLabel={reminderBlocker.retry ? 'Reintentar' : null}
+                        onAction={reminderBlocker.retry ? fetchReminderUsers : null}
+                      />
+                    )}
+
                     <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdminReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
                       <div className="create-salida__reminder-head">
                         <h5>Administradores incluidos</h5>
@@ -3763,7 +3805,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                             {!adminReminderRows.length && (
                               <div className="permissions-matrix__row create-salida__reminder-row--empty">
                                 <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                  No se detectaron administradores para la sucursal proveedora seleccionada.
+                                  No hay usuarios administradores activos.
                                 </div>
                               </div>
                             )}
@@ -3777,7 +3819,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                         <h5>Usuarios adicionales</h5>
                         <span className="create-salida__reminder-count">{selectedReminderUserIds.length}</span>
                       </div>
-                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdditionalReminderRecipients && (
+                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && selectableReminderUsers.length > 0 && !hasAdditionalReminderRecipients && (
                         <small className="create-user__field-error">Debes seleccionar al menos un usuario adicional.</small>
                       )}
                       <div className="create-salida__reminder-table-wrap">
@@ -3799,7 +3841,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                           {hasSelectedReminderTargetBranch && !reminderUsersLoading && !selectableReminderUsers.length && (
                             <div className="permissions-matrix__row create-salida__reminder-row--empty">
                               <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                No hay usuarios disponibles con permisos de crear y editar en salidas para esta sucursal.
+                                Ningún usuario de {proveedorSucursalLabel} tiene permiso de crear y editar Salidas.
                               </div>
                             </div>
                           )}
@@ -3846,6 +3888,19 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                 )}
               </div>
             </div>
+
+          {reminderBlocker && effectiveAllowEdit && !isRejectedSolicitudRibbon && activeTab !== 'recordatorio' && (
+            <div style={{ padding: '8px 15px 0' }}>
+              <BlockerNotice
+                compact
+                title={reminderBlocker.title}
+                reason={reminderBlocker.reason}
+                goTo={reminderBlocker.goTo}
+                actionLabel={reminderBlocker.retry ? 'Reintentar' : 'Ver recordatorio'}
+                onAction={reminderBlocker.retry ? fetchReminderUsers : () => setActiveTab('recordatorio')}
+              />
+            </div>
+          )}
 
           <div className="create-user__footer">
             <div style={{ display: 'flex', gap: 8 }}>

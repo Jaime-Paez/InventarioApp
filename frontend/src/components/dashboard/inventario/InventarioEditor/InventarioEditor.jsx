@@ -6,6 +6,7 @@ import '../InventarioDetails/InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { emitRemindersSync } from '../../common/reminders/remindersStorage'
 import BodegaLocationPreview from './BodegaLocationPreview'
+import BlockerNotice from '../../common/BlockerNotice'
 import { getAppPortalRoot as getPortalHost } from '../../../../utils/portalRoot'
 import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 
@@ -31,6 +32,22 @@ const SCOPE_EDIT_LOCATION_ERROR =
 const SCOPE_DELETE_LOCATION_ERROR =
   'No puedes eliminar esta ubicacion porque pertenece a una sucursal sin permiso. Solo puedes eliminar ubicaciones en las sucursales que tienes autorizadas en Productos.'
 const normalizeErrorText = (value) => String(value ?? '').trim().toLowerCase()
+const LOCATION_PLAN_HINT = 'Agrégalas en el plano de la bodega (Sucursales › Bodegas › Plano).'
+// Mensaje del desplegable vacio: distingue "no hay nada configurado" de
+// "la busqueda no coincide", y dice donde configurarlo.
+const getEmptyLevelMessage = (field, parentName) => {
+  if (field === 'sucursal') return 'No hay sucursales configuradas. Créalas en Sucursales › Sucursales.'
+  if (field === 'bodega') return `${parentName || 'Esta sucursal'} no tiene bodegas. Créalas en Sucursales › Bodegas.`
+  if (field === 'division') return `${parentName ? `La bodega ${parentName}` : 'Esta bodega'} no tiene divisiones. ${LOCATION_PLAN_HINT}`
+  return `${parentName ? `La división ${parentName}` : 'Esta división'} no tiene subdivisiones. ${LOCATION_PLAN_HINT}`
+}
+const renderEmptyResults = (hasOptions, query, emptyMessage) => (
+  <small className="muted">
+    {hasOptions || !emptyMessage
+      ? (String(query ?? '').trim() ? `Ninguna opción coincide con "${String(query).trim()}".` : 'Sin resultados.')
+      : emptyMessage}
+  </small>
+)
 
 const InventarioEditor = forwardRef(function InventarioEditor(
   {
@@ -969,11 +986,17 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
   if (!branches.length) {
     return (
-      <div className="inventario-details__empty">
-        No hay sucursales configuradas.
+      <div className="inventario-details__body">
+        <BlockerNotice
+          title="No se pueden registrar ubicaciones: no hay sucursales configuradas"
+          reason="Cada ubicación pertenece a una sucursal, una bodega, una división y una subdivisión. Crea una sucursal en Sucursales › Sucursales y luego sus bodegas en Sucursales › Bodegas."
+          goTo="Sucursales"
+        />
       </div>
     )
   }
+
+  const hasEditableBranch = branches.some((branch) => canManageBranchLocation(branch?.id))
 
   return (
     <div className="inventario-details__body">
@@ -1002,6 +1025,17 @@ const InventarioEditor = forwardRef(function InventarioEditor(
             {showLocationForm ? 'Cancelar' : 'Agregar ubicacion'}
           </button>
         </div>
+
+        {showLocationForm && !hasEditableBranch && (
+          <BlockerNotice
+            title="No puedes agregar ubicaciones: no tienes permiso en ninguna sucursal"
+            reason="Solo puedes agregar ubicaciones en las sucursales asignadas a tu usuario. Pide al administrador que te las asigne en Administrar › Usuarios."
+            goTo="Administrar"
+          />
+        )}
+        {locationError && (
+          <BlockerNotice compact title={locationError} />
+        )}
 
         <div className="create-user__locations-table create-user__locations-table--with-actions create-user__locations-table--locations-selectors">
           <div className="create-user__locations-row create-user__locations-row--head">
@@ -1045,9 +1079,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         />
                       </div>
                       <div className="create-user__dropdown-results">
-                        {!filteredLocationBranches.length && (
-                          <small className="muted">Sin resultados.</small>
-                        )}
+                        {!filteredLocationBranches.length &&
+                          renderEmptyResults(branches.length > 0, locationBranchQuery, getEmptyLevelMessage('sucursal'))}
                         {filteredLocationBranches.map((branch) => {
                           const branchEditable = canManageBranchLocation(branch?.id)
                           return (
@@ -1066,6 +1099,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                             >
                               <div className="create-user__result-info">
                                 <strong>{branch.nombre || `Sucursal ${branch.id}`}</strong>
+                                {!branchEditable && <small style={{ opacity: 0.7 }}>Sin permiso en esta sucursal</small>}
                               </div>
                             </button>
                           )
@@ -1105,9 +1139,12 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         />
                       </div>
                       <div className="create-user__dropdown-results">
-                        {!filteredLocationBodegas.length && (
-                          <small className="muted">Sin resultados.</small>
-                        )}
+                        {!filteredLocationBodegas.length &&
+                          renderEmptyResults(
+                            availableBodegas.length > 0,
+                            locationBodegaQuery,
+                            getEmptyLevelMessage('bodega', selectedLocationBranch?.nombre)
+                          )}
                         {filteredLocationBodegas.map((bodega) => (
                           <button
                             key={bodega.id}
@@ -1161,9 +1198,12 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         />
                       </div>
                       <div className="create-user__dropdown-results">
-                        {!filteredLocationDivisions.length && (
-                          <small className="muted">Sin resultados.</small>
-                        )}
+                        {!filteredLocationDivisions.length &&
+                          renderEmptyResults(
+                            availableDivisions.length > 0,
+                            locationDivisionQuery,
+                            getEmptyLevelMessage('division', selectedLocationBodega?.nombre)
+                          )}
                         {filteredLocationDivisions.map((division) => (
                           <button
                             key={division.id}
@@ -1217,9 +1257,12 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         />
                       </div>
                       <div className="create-user__dropdown-results">
-                        {!filteredLocationSubdivisions.length && (
-                          <small className="muted">Sin resultados.</small>
-                        )}
+                        {!filteredLocationSubdivisions.length &&
+                          renderEmptyResults(
+                            availableSubdivisions.length > 0,
+                            locationSubdivisionQuery,
+                            getEmptyLevelMessage('subdivision', selectedLocationDivision?.nombre)
+                          )}
                         {filteredLocationSubdivisions.map((subdivision) => {
                           const alreadyUsed = usedSubdivisionIds.has(String(subdivision.id))
                           return (
@@ -1304,6 +1347,11 @@ const InventarioEditor = forwardRef(function InventarioEditor(
               return items.filter((item) => normalizeForSearch(getName(item)).includes(rowDropdownDebouncedQuery))
             }
 
+            const rowParentNames = {
+              bodega: location.sucursalNombre,
+              division: location.bodegaNombre,
+              subdivision: location.divisionNombre,
+            }
             const makeDropdown = (field, label, items, getName, getId, triggerDisabled, isItemDisabled) => {
               const open = isOpen(field)
               const filtered = filterByQuery(items, getName)
@@ -1333,7 +1381,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         />
                       </div>
                       <div className="create-user__dropdown-results">
-                        {!filtered.length && <small className="muted">Sin resultados.</small>}
+                        {!filtered.length &&
+                          renderEmptyResults(items.length > 0, rowDropdownQuery, getEmptyLevelMessage(field, rowParentNames[field]))}
                         {filtered.map((item) => {
                           const itemDisabled = isItemDisabled ? isItemDisabled(item) : false
                           return (
@@ -1434,7 +1483,14 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         />
                       </div>
                       <div className="create-user__dropdown-results">
-                        {!filteredItems.length && <small className="muted">Sin resultados.</small>}
+                        {!filteredItems.length &&
+                          renderEmptyResults(
+                            items.length > 0,
+                            transferDropdownQuery,
+                            field === 'subdivision' && (subdivisionsByDivision.get(transferDraft.divisionId) || []).length
+                              ? `Esta división no tiene otras subdivisiones además de la actual. ${LOCATION_PLAN_HINT}`
+                              : getEmptyLevelMessage(field, field === 'bodega' ? location.sucursalNombre : (field === 'division' ? transferBodega?.nombre : transferDivision?.nombre))
+                          )}
                         {filteredItems.map((item) => (
                           <button
                             key={getId(item)}

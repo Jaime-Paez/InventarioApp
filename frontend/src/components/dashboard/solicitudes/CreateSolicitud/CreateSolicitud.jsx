@@ -4,6 +4,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import './CreateSolicitud.css'
 import '../../clientes/CreateCliente/CreateCliente.css'
 import { API_URL, authFetch } from '../../../../utils/api'
+import BlockerNotice from '../../common/BlockerNotice'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../../common/useModalAnimation'
@@ -233,6 +234,12 @@ function CreateSolicitud({
   const [showCodigoDropdown, setShowCodigoDropdown] = useState(false)
   const [codigoOptions, setCodigoOptions] = useState([])
   const [codigoLoading, setCodigoLoading] = useState(false)
+  // Por que no se pudo agregar el producto (queda visible bajo la tabla).
+  const [productoError, setProductoError] = useState(null)
+  const productoErrorRef = useRef(null)
+  useEffect(() => {
+    if (productoError) productoErrorRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [productoError])
   const [showOemDropdown, setShowOemDropdown] = useState(false)
   const [oemOptions, setOemOptions] = useState([])
   const [oemLoading, setOemLoading] = useState(false)
@@ -344,6 +351,7 @@ function CreateSolicitud({
     setShowCodigoDropdown(false)
     setCodigoOptions([])
     setCodigoLoading(false)
+    setProductoError(null)
     setShowOemDropdown(false)
     setOemOptions([])
     setOemLoading(false)
@@ -1124,6 +1132,7 @@ function CreateSolicitud({
 
   const handleProductoDraftChange = (event) => {
     const { name, value } = event.target
+    setProductoError(null)
     const normalizedValue = name === 'codigo' ? String(value || '').toUpperCase() : value
     const shouldDetachSelectedProduct =
       selectedDraftProducto && ['referencia', 'codigo', 'nombre', 'oems'].includes(name)
@@ -1415,6 +1424,16 @@ function CreateSolicitud({
         // Si falla la resolución automática, se mantiene el flujo manual.
       }
     }
+
+    const codigoEscrito = String(productoDraft.codigo || '').trim().toUpperCase()
+    if (codigoEscrito && !hasProductoId) {
+      setProductoError({
+        title: `No se puede agregar: el código ${codigoEscrito} no existe`,
+        reason: 'Ese código no es de ningún producto de Jaime Páez. Elígelo de la lista que aparece al escribir, o si el producto no está en el catálogo deja el código vacío y escribe solo el OEM y la descripción.',
+      })
+      return
+    }
+    setProductoError(null)
 
     const { productoIds, codes, oems } = buildCurrentIdentitySets()
 
@@ -1751,11 +1770,34 @@ function CreateSolicitud({
   }
 
   const draftCantidadRaw = Number(productoDraft.cantidad)
-  const productoCodigoInvalid = false
+  const productoCodigoInvalid = Boolean(productoError)
   const productoNombreInvalid = productoAttempted && !String(productoDraft.nombre || '').trim()
   const productoCantidadInvalid = productoAttempted && (!Number.isFinite(draftCantidadRaw) || draftCantidadRaw <= 0)
   const sucursalInvalid = submitAttempted && !sucursalId
   const productosInvalid = submitAttempted && !productos.length
+
+  // Lo que impide crear la solicitud, visible sobre los botones.
+  const submitBlocker = (() => {
+    if (!sucursalesLoading && !sucursales.length) {
+      return {
+        title: 'No se puede crear la solicitud: no tienes sucursales',
+        reason: 'Tu usuario no tiene permiso de Solicitudes en ninguna sucursal. Pide al administrador que te lo asigne en Administrar › Usuarios › Permisos.',
+        goTo: 'Administrar',
+      }
+    }
+    if (!reminderUsersLoading && sucursalId && !hasAdminRecipients) {
+      return {
+        title: 'No se puede crear la solicitud: no hay a quién avisar',
+        reason: 'Cada solicitud le llega a un administrador como recordatorio, y no se encontró ningún administrador activo. Activa o crea un usuario administrador en Administrar › Usuarios.',
+        goTo: 'Administrar',
+      }
+    }
+    if (submitAttempted) {
+      const message = getSubmitValidationMessage()
+      if (message) return { title: 'Falta completar la solicitud', reason: message }
+    }
+    return null
+  })()
 
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true" style={overlayStyle}>
@@ -1891,10 +1933,14 @@ function CreateSolicitud({
                     </div>
                   </div>
 
+                  <p className="create-solicitud__products-hint">
+                    Escribe nuestro código (Jaime Páez) y el OEM y la descripción se llenan solos. Si el producto no está en el catálogo, deja el código vacío y pon solo el OEM.
+                  </p>
                   <div
                     className={`create-user__locations-table create-solicitud__products-table${productosInvalid ? ' create-solicitud__products-table--invalid' : ''}`}
                   >
                     <div className="create-user__locations-row create-user__locations-row--head">
+                      <span>Código JP</span>
                       <span>OEM</span>
                       <span>Descripción</span>
                       <span>Comentario</span>
@@ -1904,10 +1950,71 @@ function CreateSolicitud({
 
                     <div className="create-user__locations-row create-user__locations-row--form">
                       <span>
+                        <div className="create-solicitud__inline-dropdown" ref={codigoDropdownRef}>
+                          <input
+                            className={productoCodigoInvalid ? 'create-solicitud__input--invalid' : ''}
+                            name="codigo"
+                            type="text"
+                            placeholder="Código JP"
+                            value={productoDraft.codigo}
+                            onChange={handleProductoDraftChange}
+                            onFocus={() => {
+                              const hasTerm = String(productoDraft.codigo || '').trim().length >= 1
+                              setShowCodigoDropdown(hasTerm)
+                            }}
+                            disabled={loading}
+                            autoComplete="off"
+                          />
+                          <InlinePanel anchorRef={codigoDropdownRef} panelRef={codigoPanelRef} open={showCodigoDropdown} className="create-solicitud__inline-panel create-solicitud__inline-panel--code">
+                            <div className="create-solicitud__inline-results">
+                              {codigoLoading && <small className="muted">Buscando...</small>}
+                              {!codigoLoading && String(productoDraft.codigo || '').trim().length < 2 && (
+                                <small className="muted">Escribe al menos 2 caracteres del código, nombre u OEM.</small>
+                              )}
+                              {!codigoLoading &&
+                                String(productoDraft.codigo || '').trim().length >= 2 &&
+                                !codigoOptions.length && (
+                                  <small className="muted">
+                                    Ningún producto de Jaime Páez coincide. Si es un producto nuevo, deja el código vacío y usa solo el OEM.
+                                  </small>
+                                )}
+                              {codigoOptions.length > 0 && (
+                                <div className="create-solicitud__results-header">
+                                  <span>Código</span>
+                                  <span>Nombre</span>
+                                  <span>Disponible</span>
+                                </div>
+                              )}
+                              {codigoOptions.map((producto) => {
+                                const isSelected =
+                                  String(selectedDraftProducto?.id || '') === String(producto.id)
+                                const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
+                                const nombre = String(producto?.nombre || '').trim()
+                                const stock = Number(producto?.total_stock ?? 0)
+                                return (
+                                  <button
+                                    key={`codigo-opt-${producto.id}`}
+                                    type="button"
+                                    className={`create-solicitud__result-row${isSelected ? ' is-selected' : ''}`}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => handleProductoSelect(producto)}
+                                  >
+                                    <span className="result-codigo">{codigo}</span>
+                                    <span className="result-nombre">{nombre || '-'}</span>
+                                    <span className="result-stock">{stock}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </InlinePanel>
+                        </div>
+                      </span>
+
+                      <span>
                         <input
                           name="oems"
                           type="text"
-                          placeholder="OEM"
+                          placeholder={selectedDraftProducto ? 'OEM' : 'OEM (se llena con el código)'}
                           value={productoDraft.oems}
                           onChange={handleProductoDraftChange}
                           disabled={loading}
@@ -1972,6 +2079,7 @@ function CreateSolicitud({
 
                     {productos.map((item) => (
                       <div key={item.uid} className="create-user__locations-row">
+                        <span>{item.productoId ? (item.codigo || '-') : '-'}</span>
                         <span>{item.oems?.length ? item.oems.join(', ') : '-'}</span>
                         <span>{item.nombre || '-'}</span>
                         <span>{item.comentario || '-'}</span>
@@ -1990,6 +2098,15 @@ function CreateSolicitud({
                       </div>
                     ))}
                   </div>
+                  {productoError && (
+                    <div ref={productoErrorRef}>
+                      <BlockerNotice
+                        className="create-solicitud__product-error"
+                        title={productoError.title}
+                        reason={productoError.reason}
+                      />
+                    </div>
+                  )}
 
                 </section>
 
@@ -2299,6 +2416,15 @@ function CreateSolicitud({
             )}
 
           </div>
+
+          {submitBlocker && (
+            <BlockerNotice
+              className="create-solicitud__submit-blocker"
+              title={submitBlocker.title}
+              reason={submitBlocker.reason}
+              goTo={submitBlocker.goTo}
+            />
+          )}
 
           <div className="create-user__footer">
             <button

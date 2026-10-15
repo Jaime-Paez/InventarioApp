@@ -17,7 +17,9 @@ const normalizeForSearch = (value) =>
 // de la app (ver InventarioEditor.jsx). El panel se renderiza vía portal
 // con create-user__dropdown-panel--floating (position:fixed) para que
 // pueda salirse del modal en vez de quedar recortado por su overflow.
-export default function CascadeDropdown({ placeholder, searchPlaceholder, options, valueId, onSelect, disabled, getOptionLabel }) {
+// `emptyMessage`: que decir cuando la lista viene vacia (sin buscar nada),
+// p. ej. "Esta bodega no tiene divisiones" en vez de "Sin resultados.".
+export default function CascadeDropdown({ placeholder, searchPlaceholder, options, valueId, onSelect, disabled, getOptionLabel, emptyMessage }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -113,7 +115,9 @@ export default function CascadeDropdown({ placeholder, searchPlaceholder, option
             />
           </div>
           <div className="create-user__dropdown-results">
-            {!filtered.length && <small className="muted">Sin resultados.</small>}
+            {!filtered.length && (
+              <small className="muted">{!options.length && emptyMessage ? emptyMessage : 'Sin resultados.'}</small>
+            )}
             {filtered.map((option) => (
               <button
                 key={option.id}

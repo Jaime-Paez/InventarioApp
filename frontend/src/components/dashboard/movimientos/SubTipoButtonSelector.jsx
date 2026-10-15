@@ -6,6 +6,7 @@ import {
   ShoppingBag,
   UserRound,
 } from 'lucide-react'
+import BlockerNotice from '../common/BlockerNotice'
 
 const DEFAULT_HELPER_TEXT = 'Pasa el cursor sobre un botón para ver su descripción.'
 const ICONS_BY_NAME = {
@@ -24,6 +25,7 @@ function SubTipoButtonSelector({
   disabled = false,
   helperText = DEFAULT_HELPER_TEXT,
   ariaLabel,
+  movimientoLabel = 'entrada',
 }) {
   const [hoveredValue, setHoveredValue] = useState('')
 
@@ -40,8 +42,9 @@ function SubTipoButtonSelector({
     [normalizedOptions, hoveredValue]
   )
 
+  const allBlocked = normalizedOptions.length > 0 && normalizedOptions.every((option) => option?.blocked)
   const resolvedHelperText = hoveredOption?.blocked
-    ? 'No tienes permiso para crear este tipo de entrada en esta sucursal.'
+    ? `No tienes permiso para crear este tipo de ${movimientoLabel} en esta sucursal.`
     : hoveredOption?.description || selectedOption?.description || helperText
   const helperClassName = [
     'create-salida__subtipo-help',
@@ -72,7 +75,8 @@ function SubTipoButtonSelector({
               className={`create-salida__subtipo-btn${isBlocked ? ' create-salida__subtipo-btn--blocked' : ''}`}
               aria-pressed={isActive}
               aria-disabled={isBlocked || undefined}
-              disabled={disabled || isBlocked}
+              // Los bloqueados no usan `disabled` para que reciban hover/foco y muestren el motivo
+              disabled={disabled}
               onMouseEnter={() => setHoveredValue(optionValue)}
               onFocus={() => setHoveredValue(optionValue)}
               onBlur={() => setHoveredValue('')}
@@ -84,9 +88,17 @@ function SubTipoButtonSelector({
           )
         })}
       </div>
-      <p className={helperClassName} aria-live="polite">
-        {resolvedHelperText}
-      </p>
+      {allBlocked ? (
+        <BlockerNotice
+          title={`No puedes crear ningún tipo de ${movimientoLabel} en esta sucursal`}
+          reason={`Tu usuario no tiene permiso para crear ${movimientoLabel}s en esta sucursal. Pide al administrador que te asigne los permisos en Administrar › Usuarios.`}
+          goTo="Administrar"
+        />
+      ) : (
+        <p className={helperClassName} aria-live="polite">
+          {resolvedHelperText}
+        </p>
+      )}
     </div>
   )
 }

@@ -8,6 +8,7 @@ import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../../common/useModalAnimation'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
+import BlockerNotice from '../../common/BlockerNotice'
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
@@ -342,6 +343,8 @@ function UsersDetails({
   const [permissionsLoading, setPermissionsLoading] = useState(false)
   const [branches, setBranches] = useState([])
   const [branchesLoading, setBranchesLoading] = useState(false)
+  const [branchesError, setBranchesError] = useState('')
+  const [permissionsError, setPermissionsError] = useState('')
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -683,6 +686,7 @@ function UsersDetails({
 
   const loadPermissionOptions = useCallback(async () => {
     setPermissionsLoading(true)
+    setPermissionsError('')
     try {
       const response = await authFetch(
         `${API_URL}/usuarios/permisos/opciones/`,
@@ -707,6 +711,7 @@ function UsersDetails({
           .filter((key) => key && BRANCH_SCOPED_MODULE_KEYS.has(key))
       )
     } catch (err) {
+      setPermissionsError(err.message || 'Ocurrió un problema al cargar los permisos.')
       notifyError(err.message || 'Ocurrió un problema al cargar los permisos.')
     } finally {
       setPermissionsLoading(false)
@@ -715,6 +720,7 @@ function UsersDetails({
 
   const fetchBranches = useCallback(async () => {
     setBranchesLoading(true)
+    setBranchesError('')
     try {
       const response = await authFetch(
         `${API_URL}/inventario/sucursales/?modulo=usuarios`,
@@ -732,6 +738,7 @@ function UsersDetails({
         return items[0]?.id ?? null
       })
     } catch (err) {
+      setBranchesError(err.message || 'Ocurrió un problema al cargar las sucursales.')
       notifyError(err.message || 'Ocurrió un problema al cargar las sucursales.')
     } finally {
       setBranchesLoading(false)
@@ -1585,12 +1592,44 @@ function UsersDetails({
                 </div>
               )}
 
-              {(branchesLoading || !branches.length) && (
+              {branchesLoading && (
                 <div className="create-user__section-header">
-                  <small className="muted">
-                    {branchesLoading ? 'Cargando sucursales...' : 'No hay sucursales registradas.'}
-                  </small>
+                  <small className="muted">Cargando sucursales...</small>
                 </div>
+              )}
+              {!branchesLoading && branchesError && (
+                <BlockerNotice
+                  className="create-user__branch-blocker"
+                  title="No se pudieron cargar las sucursales"
+                  reason="Sin la lista de sucursales no se pueden ver ni asignar permisos por sucursal. Revisa la conexión y pulsa Reintentar."
+                  actionLabel="Reintentar"
+                  onAction={fetchBranches}
+                />
+              )}
+              {!branchesLoading && !branchesError && !branches.length && (
+                <BlockerNotice
+                  className="create-user__branch-blocker"
+                  title="No hay sucursales"
+                  reason="No se pueden asignar permisos por sucursal porque no hay ninguna registrada. Crea una en Sucursales y vuelve a abrir este usuario."
+                  goTo="Sucursales"
+                />
+              )}
+              {!permissionsLoading && branches.length > 0 && !branchPermissionOptions.length && (
+                permissionsError ? (
+                  <BlockerNotice
+                    className="create-user__branch-blocker"
+                    title="No se pudieron cargar los permisos"
+                    reason={'Por eso "Ver permisos" está deshabilitado. Revisa la conexión y pulsa Reintentar.'}
+                    actionLabel="Reintentar"
+                    onAction={loadPermissionOptions}
+                  />
+                ) : (
+                  <BlockerNotice
+                    className="create-user__branch-blocker"
+                    title="No hay módulos por sucursal configurados"
+                    reason={'"Ver permisos" está deshabilitado porque el sistema no devolvió módulos que se asignen por sucursal (Entradas, Salidas, Productos, etc.). Contacta al soporte técnico para revisar la configuración de permisos.'}
+                  />
+                )
               )}
 
               <div className="create-user__branch-list create-user__branch-list--full">
@@ -1855,6 +1894,13 @@ function UsersDetails({
                         </option>
                       ))}
                     </select>
+                    {!(conflict.candidatos || []).length && (
+                      <BlockerNotice
+                        compact
+                        title="No hay a quién reasignarlo"
+                        reason={`No hay otro usuario con permiso de Salidas en ${conflict.sucursal_proveedora_nombre}: el traslado quedará solo con los demás destinatarios (o sin responsable si no hay otros). Para reasignarlo, primero da permiso de Salidas en esa sucursal a otro usuario.`}
+                      />
+                    )}
                   </div>
                 ))}
               </div>

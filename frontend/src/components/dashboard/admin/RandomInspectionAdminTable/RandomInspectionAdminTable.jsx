@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
 import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -13,23 +13,19 @@ import './RandomInspectionAdminTable.css'
 import InspectionCoverageMap from './InspectionCoverageMap'
 import ConfirmDialog from '../../common/unsavedChanges/ConfirmDialog'
 import CascadeDropdown from '../../common/CascadeDropdown'
+import BlockerNotice from '../../common/BlockerNotice'
 
-// Aviso grande de "no se puede enviar": que pasa, por que y como resolverlo.
-function SendBlocker({ title, reason, actionLabel, onAction }) {
+// Aviso de "no se puede enviar" (el componente compartido del sistema).
+function SendBlocker({ title, reason, actionLabel, onAction, goTo }) {
   return (
-    <div className="inspection-admin__blocker" role="alert">
-      <AlertTriangle size={18} aria-hidden="true" />
-      <div>
-        <strong>{title}</strong>
-        <p>{reason}</p>
-        {actionLabel && onAction && (
-          <button type="button" className="inspection-admin__blocker-action" onClick={onAction}>
-            <Settings size={13} />
-            {actionLabel}
-          </button>
-        )}
-      </div>
-    </div>
+    <BlockerNotice
+      className="inspection-admin__blocker"
+      title={title}
+      reason={reason}
+      actionLabel={actionLabel}
+      onAction={onAction}
+      goTo={goTo}
+    />
   )
 }
 
@@ -1449,7 +1445,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     const reason = inactiveNames.length
       ? `Los revisores asignados a ${nombre} (${inactiveNames.join(', ')}) tienen el usuario inactivo, y una revisión solo se puede enviar a un usuario activo. Activa el usuario en Administrar o asigna a otro revisor a ${nombre} en Configuración.`
       : `Ningún usuario tiene asignada la revisión de inventario de ${nombre}, así que no hay a quién enviársela. Asigna al menos un revisor activo a ${nombre} en Configuración y vuelve a intentarlo.`
-    return { title: `No se puede enviar a ${nombre}: no tiene revisores`, reason }
+    return { title: `No se puede enviar a ${nombre}: no tiene revisores`, reason, goTo: inactiveNames.length ? 'Administrar' : null }
   }, [reviewersByBranch, assignmentsLoading])
 
   const divisionReviewers = useMemo(() => {
@@ -2021,6 +2017,17 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                                 ? 'Cargando...'
                                 : relocateState.error ? 'No se pudieron cargar' : null
                               const updateDraft = (patch) => setVerifyWizardDrafts((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || {}), ...patch } }))
+                              if (!loadingLabel && !bodegaOptions.length) {
+                                return (
+                                  <BlockerNotice
+                                    compact
+                                    className="inspection-admin__relocate-blocker"
+                                    title="No hay otra ubicación en esta sucursal para reubicar."
+                                    reason="Para reubicarlo, crea la subdivisión en Sucursales > Bodegas. Si de verdad no está, ajusta la cantidad abajo."
+                                    goTo="Bodegas"
+                                  />
+                                )
+                              }
                               return (
                                 <div className="inspection-admin__relocate-cascade">
                                   <CascadeDropdown
@@ -2031,6 +2038,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                                     getOptionLabel={(option) => option.nombre}
                                     onSelect={(option) => updateDraft({ reubicarBodega: option.id, reubicarDivision: '', reubicar: '' })}
                                     disabled={busy || Boolean(loadingLabel)}
+                                    emptyMessage="No hay otras ubicaciones en esta sucursal."
                                   />
                                   <CascadeDropdown
                                     placeholder="División"
@@ -2040,6 +2048,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                                     getOptionLabel={(option) => option.nombre}
                                     onSelect={(option) => updateDraft({ reubicarDivision: option.id, reubicar: '' })}
                                     disabled={busy || !draft.reubicarBodega}
+                                    emptyMessage="Esta bodega no tiene otras divisiones."
                                   />
                                   <CascadeDropdown
                                     placeholder="Subdivisión"
@@ -2049,6 +2058,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                                     getOptionLabel={(option) => option.nombre}
                                     onSelect={(option) => updateDraft({ reubicar: option.id })}
                                     disabled={busy || !draft.reubicarDivision}
+                                    emptyMessage="Esta división no tiene otras subdivisiones."
                                   />
                                 </div>
                               )
@@ -2058,6 +2068,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                               className="quick-actions__inspection-btn inspection-admin__verify-adjust"
                               onClick={() => void submitVerifyDecision('reubicar')}
                               disabled={busy || !draft.reubicar}
+                              title={draft.reubicar ? undefined : 'Elige primero la bodega, la división y la subdivisión de destino'}
                             >
                               {verifyWizardSubmitting ? 'Guardando...' : 'Reubicar'}
                             </button>
@@ -2422,6 +2433,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                       <SendBlocker
                         title={block.title}
                         reason={block.reason}
+                        goTo={block.goTo}
                         actionLabel={canUpdate ? 'Asignar revisores' : null}
                         onAction={openAssignmentsDialog}
                       />
@@ -2684,6 +2696,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                       <SendBlocker
                         title={block.title}
                         reason={block.reason}
+                        goTo={block.goTo}
                         actionLabel={canUpdate ? 'Asignar revisores' : null}
                         onAction={openAssignmentsDialog}
                       />

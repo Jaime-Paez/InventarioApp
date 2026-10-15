@@ -1587,31 +1587,29 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const baseRows = processedRows === null ? products : processedRows
-    if (!selectedRows?.length) {
-      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
+    const rows = getRowsToExport()
+    if (!rows.length) {
+      notifyExportWarning('No hay registros para exportar.')
       return
     }
-    const rows = selectedRows
     await exportToExcel({
       rows,
       columns: exportColumns,
       valueGetter: getExportValue,
       fileName: buildFileName('inventario'),
     })
-  }, [exportColumns, getExportValue, notifyExportWarning, processedRows, products, selectedRows])
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
 
   const handleExportPdf = useCallback(async () => {
     if (!exportColumns.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const baseRows = processedRows === null ? products : processedRows
-    if (!selectedRows?.length) {
-      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
+    const rows = getRowsToExport()
+    if (!rows.length) {
+      notifyExportWarning('No hay registros para exportar.')
       return
     }
-    const rows = selectedRows
     await exportToPdf({
       rows,
       columns: exportColumns,
@@ -1619,7 +1617,17 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       fileName: buildFileName('inventario'),
       title: 'Reporte de inventario',
     })
-  }, [exportColumns, getExportValue, notifyExportWarning, processedRows, products, selectedRows])
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+
+  // Sin selección se exporta lo filtrado (solo la página cargada); el botón solo se apaga si no hay filas
+  const exportSelectedCount = selectedRows?.length || 0
+  const exportFilteredCount = (processedRows === null ? products : processedRows)?.length || 0
+  const exportCount = exportSelectedCount || exportFilteredCount
+  const exportHint = exportSelectedCount
+    ? (exportSelectedCount === 1 ? 'Exportar la fila seleccionada' : `Exportar las ${exportSelectedCount} filas seleccionadas`)
+    : exportFilteredCount
+      ? `Exportar las ${exportFilteredCount} filas cargadas en esta página (de ${Number(totalRecords) || 0} en total); para incluir otras, selecciónalas primero`
+      : 'No hay registros para exportar'
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {
@@ -1766,11 +1774,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       <div className="users-header__right">
         <span className="users-header__count">Reg. {dataLength}</span>
 
-        <button className="users-circle users-circle--excel" type="button" title="Excel" onClick={handleExportExcel}>
+        <button className="users-circle users-circle--excel" type="button" title={exportCount ? `Excel: ${exportHint}` : exportHint} disabled={!exportCount} onClick={handleExportExcel}>
           <i className="pi pi-file-excel" />
         </button>
 
-        <button className="users-circle users-circle--pdf" type="button" title="PDF" onClick={handleExportPdf}>
+        <button className="users-circle users-circle--pdf" type="button" title={exportCount ? `PDF: ${exportHint}` : exportHint} disabled={!exportCount} onClick={handleExportPdf}>
           <i className="pi pi-file-pdf" />
         </button>
       </div>

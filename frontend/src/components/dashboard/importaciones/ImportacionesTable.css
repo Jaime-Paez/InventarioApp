@@ -2263,3 +2263,16 @@
 body.app-theme-dark .imp-listed-matches__title {
   color: #fbbf24;
 }
+
+.imp-receive-footer-hint {
+  margin-right: auto;
+  max-width: 460px;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: #b45309;
+  text-align: left;
+}
+
+body.app-theme-dark .imp-receive-footer-hint {
+  color: #fbbf24;
+}

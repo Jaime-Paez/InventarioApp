@@ -11,6 +11,7 @@ import useTableCellHover from '../common/useTableCellHover.jsx'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import { normalizeId } from '../common/reminders/remindersStorage'
 import StaticFieldDisplay from './StaticFieldDisplay'
+import BlockerNotice from '../common/BlockerNotice'
 import { tipoEnvioLabel } from './tipoEnvio'
 import useUnsavedChangesGuard from '../common/unsavedChanges/useUnsavedChangesGuard'
 
@@ -300,6 +301,7 @@ function SalidaDetails({
   const [estados, setEstados] = useState([])
   const [productos, setProductos] = useState([])
   const [estadosProducto, setEstadosProducto] = useState([])
+  const [estadosProductoLoaded, setEstadosProductoLoaded] = useState(false)
 
   const [details, setDetails] = useState([])
   const [detailDraft, setDetailDraft] = useState(initialDetail)
@@ -918,6 +920,7 @@ function SalidaDetails({
       setEstados(estadosList)
       setProductos(productosList)
       setEstadosProducto(estadosProductoList)
+      setEstadosProductoLoaded(true)
       setTransferSolicitudId(String(linkedSolicitud?.id || '').trim())
       setCreatorInfo({
         creadoPorNombre: String(salidaData?.creado_por_nombre || linkedSolicitud?.creado_por_nombre || '').trim(),
@@ -2040,6 +2043,13 @@ function SalidaDetails({
                       <h4>Listado de productos</h4>
                     </div>
                   </div>
+
+                  {!lineItemsReadOnly && !loadingData && estadosProductoLoaded && !defaultEstadoProductoId && (
+                    <BlockerNotice
+                      title="No se pueden agregar productos: no hay estado de producto configurado"
+                      reason="El catálogo de estados de producto está vacío y cada producto de la salida necesita uno. Pide al administrador que cree al menos un estado de producto (por ejemplo, «Enviado»)."
+                    />
+                  )}
 
                   <div className={`create-user__locations-table create-salida__products-table${showDetailActions ? ' create-salida__products-table--with-actions' : ''}`}>
                     <div className="create-user__locations-row create-user__locations-row--head">

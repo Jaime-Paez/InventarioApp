@@ -1514,6 +1514,11 @@
   gap: 8px;
 }
 
+.inspection-admin__relocate-blocker {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .inspection-admin__relocate-row select {
   flex: 1 1 auto;
   min-width: 0;
@@ -1649,67 +1654,4 @@ body.app-theme-dark .inspection-admin__found-tag {
 .dashboard-shell.dark .inspection-admin__body {
   border-color: var(--color-border-dark);
   background: var(--color-surface-dark);
-}
-
-/* Aviso de "no se puede enviar": que pasa, por que y como resolverlo. */
-.inspection-admin__blocker {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 1px solid #fcd34d;
-  border-left: 4px solid #d97706;
-  border-radius: 10px;
-  background: #fffbeb;
-  color: #78350f;
-}
-
-.inspection-admin__blocker > svg {
-  flex-shrink: 0;
-  margin-top: 1px;
-  color: #d97706;
-}
-
-.inspection-admin__blocker strong {
-  display: block;
-  margin-bottom: 4px;
-  font-size: var(--font-size-base);
-}
-
-.inspection-admin__blocker p {
-  margin: 0;
-  font-size: var(--font-size-sm, 13px);
-  line-height: 1.45;
-}
-
-.inspection-admin__blocker-action {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 5px 10px;
-  border: 1px solid #d97706;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #92400e;
-  font-size: var(--font-size-sm, 13px);
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.inspection-admin__blocker-action:hover {
-  background: #fef3c7;
-}
-
-.dashboard-shell.dark .inspection-admin__blocker,
-body.app-theme-dark .inspection-admin__blocker {
-  border-color: rgba(217, 119, 6, 0.55);
-  background: rgba(217, 119, 6, 0.12);
-  color: #fde68a;
-}
-
-.dashboard-shell.dark .inspection-admin__blocker-action,
-body.app-theme-dark .inspection-admin__blocker-action {
-  background: transparent;
-  color: #fcd34d;
 }

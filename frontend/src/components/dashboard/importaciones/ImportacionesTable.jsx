@@ -23,6 +23,7 @@ import '../admin/UsersTable/UsersTable.css'
 import '../movimientos/CreateSalida.css'
 import '../QuickActions/QuickActions.css'
 import './ImportacionesTable.css'
+import BlockerNotice from '../common/BlockerNotice'
 import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
 
 const getPortalRoot = () => getAppPortalRoot()
@@ -698,6 +699,26 @@ const SELECTOR_HEIGHT_FULL = 'auto'
 const VIEWPORT_PADDING = 12
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
+// Vacío del buscador de casas comerciales (solo se buscan las de tipo Importación).
+function CasaImportacionEmpty({ query }) {
+  const q = (query || '').trim()
+  return q ? (
+    <BlockerNotice
+      compact
+      title={`No hay casas comerciales de tipo Importación que coincidan con "${q}".`}
+      reason="Si el proveedor existe como Local, cámbiale el tipo en Casas comerciales."
+      goTo="Proveedores"
+    />
+  ) : (
+    <BlockerNotice
+      compact
+      title="No hay casas comerciales de importación registradas."
+      reason="Créala en Casas comerciales con tipo Importación."
+      goTo="Proveedores"
+    />
+  )
+}
+
 function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
   const mode = isDark ? 'dark' : 'light'
@@ -849,9 +870,11 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [fechaLlegada, setFechaLlegada] = useState(() => getSavedDraft(imp)?.fechaLlegada || getDefaultFechaLlegada(imp))
   const [sucursales, setSucursales] = useState([])
   const [loadingSucursales, setLoadingSucursales] = useState(false)
+  const [sucursalesError, setSucursalesError] = useState(false)
   const [distribution, setDistribution] = useState(() => getSavedDraft(imp)?.distribution || {})
   const [allUsers, setAllUsers] = useState([])
   const [loadingUsers, setLoadingUsers] = useState(false)
+  const [usersError, setUsersError] = useState(false)
   const [recipientsBySucursal, setRecipientsBySucursal] = useState(() => getSavedDraft(imp)?.recipientsBySucursal || {})
 
   // Fetch fresh importacion data on mount so already-linked products, and the latest
@@ -891,9 +914,11 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         // paso 4+, cárgalas aquí para que ese paso no se quede vacío al reabrir el modal.
         if (restoredStep >= 4) {
           setLoadingSucursales(true)
+          setSucursalesError(false)
           try {
             const resp = await authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas`, {}, token)
-            const data = resp.ok ? await resp.json() : []
+            if (!resp.ok) throw new Error('sucursales')
+            const data = await resp.json()
             const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
             setSucursales(list)
             const matriz = findMatrizSucursal(list)
@@ -912,6 +937,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
             setDistribution(nextDistribution)
           } catch {
             setSucursales([])
+            setSucursalesError(true)
           } finally {
             setLoadingSucursales(false)
           }
@@ -1202,6 +1228,25 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     sucursalesWithDistribution.every(suc => (recipientsBySucursal[suc.id] || []).length > 0),
     [sucursalesWithDistribution, recipientsBySucursal]
   )
+
+  const getUsersForSucursal = (sucId) => allUsers.filter(u => {
+    if (u.es_admin) return false
+    if (!u.puede_entradas) return false
+    return u.entradas_sucursales_ids.includes(sucId) || u.sucursales_ids.includes(sucId)
+  })
+
+  const confirmBlockReason = (() => {
+    if (step !== 5 || loadingUsers || canConfirmStep4) return ''
+    if (usersError) return 'No se puede confirmar: no se cargaron los usuarios destinatarios.'
+    if (!sucursalesWithDistribution.length) return 'No se puede confirmar: no hay productos asignados a ninguna sucursal. Vuelve al paso 4.'
+    const sinUsuarios = sucursalesWithDistribution.filter(suc => getUsersForSucursal(suc.id).length === 0)
+    if (sinUsuarios.length) {
+      const names = sinUsuarios.map(suc => suc.nombre).join(', ')
+      return `No se puede confirmar: ${names} ${sinUsuarios.length === 1 ? 'no tiene' : 'no tienen'} destinatarios (ver el aviso de arriba).`
+    }
+    const sinSeleccion = sucursalesWithDistribution.filter(suc => !(recipientsBySucursal[suc.id] || []).length)
+    return `Para confirmar, escoge al menos un destinatario para: ${sinSeleccion.map(suc => suc.nombre).join(', ')}.`
+  })()
 
   const makeKitItemKey = () => `kit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -1497,14 +1542,17 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const enterStep4 = async () => {
     setStep(4)
     setLoadingSucursales(true)
+    setSucursalesError(false)
     try {
       const resp = await authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas`, {}, token)
-      const data = resp.ok ? await resp.json() : []
+      if (!resp.ok) throw new Error('sucursales')
+      const data = await resp.json()
       const list = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : []
       setSucursales(list)
       setDistribution(prev => seedDistribution(list, prev))
     } catch {
       setSucursales([])
+      setSucursalesError(true)
     } finally {
       setLoadingSucursales(false)
     }
@@ -1541,12 +1589,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     setStep(5)
     if (allUsers.length > 0) return
     setLoadingUsers(true)
+    setUsersError(false)
     try {
       const collected = []
       let url = `${API_URL}/usuarios/listado/destinatarios/?page_size=200`
       while (url) {
         const resp = await authFetch(url, {}, token)
-        if (!resp.ok) break
+        if (!resp.ok) {
+          if (!collected.length) setUsersError(true)
+          break
+        }
         const data = await resp.json().catch(() => ({}))
         const items = Array.isArray(data) ? data : (data.results || [])
         collected.push(...items)
@@ -1564,7 +1616,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           p.modulo === 'movimientos_entradas' && (p.puede_crear || p.puede_actualizar || p.puede_leer)
         ),
       })))
-    } catch {}
+    } catch {
+      setUsersError(true)
+    }
     setLoadingUsers(false)
   }
 
@@ -1962,9 +2016,22 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     </svg>
                     <span style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Cargando sucursales...</span>
                   </div>
+                ) : sucursalesError ? (
+                  <div style={{ padding: 16 }}>
+                    <BlockerNotice
+                      title="No se pudieron cargar las sucursales"
+                      reason="Hubo un problema de conexión o del servidor al traer las sucursales, así que todavía no puedes distribuir los productos. Tu avance está guardado; vuelve a intentarlo."
+                      actionLabel="Reintentar"
+                      onAction={enterStep4}
+                    />
+                  </div>
                 ) : sucursales.length === 0 ? (
-                  <div style={{ padding: '32px 20px', textAlign: 'center' }}>
-                    <p style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>No hay sucursales disponibles.</p>
+                  <div style={{ padding: 16 }}>
+                    <BlockerNotice
+                      title="No se puede distribuir: no tienes sucursales con permiso de Entradas"
+                      reason="Para repartir la mercadería necesitas permiso de Entradas en al menos una sucursal. Pide a un administrador que lo asigne en Administrar › Usuarios › editar tu usuario › Permisos (Entradas) y vuelve a abrir este paso."
+                      goTo="Administrar"
+                    />
                   </div>
                 ) : (() => {
                   const matrizSucursal = findMatrizSucursal(sucursales)
@@ -2052,7 +2119,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   <div className="quick-actions__receive-stage-copy">
                     <p className="quick-actions__receive-stage-kicker">Paso 5 — Destinatarios del envío</p>
                     <h5>Vas a enviar productos a varias sucursales</h5>
-                    <p className="quick-actions__receive-stage-name">Escoge a quién debe llegarle el recordatorio de cada envío. Pasa el mouse sobre el ícono junto al nombre de la sucursal para ver qué productos le llegarán. Este paso es opcional.</p>
+                    <p className="quick-actions__receive-stage-name">Escoge a quién debe llegarle el recordatorio de cada envío. Pasa el mouse sobre el ícono junto al nombre de la sucursal para ver qué productos le llegarán. Cada sucursal que recibe productos necesita al menos un destinatario.</p>
                   </div>
                 </article>
 
@@ -2064,14 +2131,19 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     </svg>
                     <span style={{ fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>Cargando usuarios...</span>
                   </div>
+                ) : usersError ? (
+                  <div style={{ padding: '4px 16px 8px' }}>
+                    <BlockerNotice
+                      title="No se pudieron cargar los usuarios destinatarios"
+                      reason="Hubo un problema de conexión o del servidor, así que no se puede saber a quién enviar cada envío. Tu avance está guardado; vuelve a intentarlo."
+                      actionLabel="Reintentar"
+                      onAction={enterStep5}
+                    />
+                  </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 16px 8px' }}>
                     {sucursalesWithDistribution.map(suc => {
-                      const usersForSuc = allUsers.filter(u => {
-                          if (u.es_admin) return false
-                          if (!u.puede_entradas) return false
-                          return u.entradas_sucursales_ids.includes(suc.id) || u.sucursales_ids.includes(suc.id)
-                        })
+                      const usersForSuc = getUsersForSucursal(suc.id)
                       const selectedIds = recipientsBySucursal[suc.id] || []
                       return (
                         <div key={suc.id} style={{ background: 'var(--color-surface, #f8fafc)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 10, padding: '12px 14px' }}>
@@ -2088,7 +2160,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                             Vas a enviar {suc.items.length} producto{suc.items.length === 1 ? '' : 's'} a esta sucursal.
                           </p>
                           {usersForSuc.length === 0 ? (
-                            <p style={{ fontSize: '0.88rem', color: 'var(--color-text-secondary)', margin: 0 }}>No hay destinatarios disponibles para esta sucursal.</p>
+                            <BlockerNotice
+                              compact
+                              title={`No se puede enviar a ${suc.nombre}: no tiene destinatarios`}
+                              reason="Ningún usuario (que no sea administrador) tiene permiso de Entradas en esta sucursal. Para resolverlo: Administrar › Usuarios › editar el usuario › Permisos de Entradas en esta sucursal. Luego vuelve a abrir este paso."
+                              goTo="Administrar"
+                            />
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                               {usersForSuc.map(u => (
@@ -2153,13 +2230,23 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
               </>
             ) : step === 4 ? (
               <>
+                {!loadingSucursales && !canFinish && (
+                  <span className="imp-receive-footer-hint">
+                    {sucursalesError
+                      ? 'No se puede continuar: no se cargaron las sucursales.'
+                      : sucursales.length === 0
+                        ? 'No se puede continuar: no tienes sucursales con permiso de Entradas.'
+                        : 'Para continuar, reparte el total de cada producto entre las sucursales.'}
+                  </span>
+                )}
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(3)} disabled={submitting}>Atrás</button>
                 <button type="button" className={`quick-actions__receive-btn${canFinish ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep5} disabled={!canFinish}>Siguiente</button>
               </>
             ) : (
               <>
+                {confirmBlockReason && <span className="imp-receive-footer-hint">{confirmBlockReason}</span>}
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(4)} disabled={submitting}>Atrás</button>
-                <button type="button" className={`quick-actions__receive-btn${canConfirmStep4 ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={handleConfirm} disabled={submitting || !canConfirmStep4}>
+                <button type="button" title={confirmBlockReason || undefined} className={`quick-actions__receive-btn${canConfirmStep4 ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={handleConfirm} disabled={submitting || !canConfirmStep4}>
                   {submitting ? 'Confirmando...' : 'Confirmar llegada y enviar a sucursales'}
                 </button>
               </>
@@ -4320,9 +4407,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                         <div data-casa-portal className="create-user__dropdown-panel" style={casaPanelStyle}>
                           <div className="create-user__dropdown-results">
                             {casaLoading && <small className="muted">Buscando...</small>}
-                            {!casaLoading && !casaOptions.length && (
-                              <small className="muted">{casaQuery.trim() ? 'Sin resultados.' : 'Escribe para buscar.'}</small>
-                            )}
+                            {!casaLoading && !casaOptions.length && <CasaImportacionEmpty query={casaQuery} />}
                             {casaOptions.map((casa) => (
                               <button
                                 key={casa.id}
@@ -5433,6 +5518,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       return
     }
     if (!details.length) {
+      notifyError('No se puede guardar: la importación no tiene productos.')
       return
     }
     const normalizedDetails = details.map((item) => {
@@ -5834,11 +5920,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                       <div data-casa-portal className="create-user__dropdown-panel" style={casaPanelStyle}>
                         <div className="create-user__dropdown-results">
                           {casaLoading && <small className="muted">Buscando...</small>}
-                          {!casaLoading && !casaOptions.length && (
-                            <small className="muted">
-                              {casaQuery.trim() ? 'Sin resultados.' : 'Escribe para buscar.'}
-                            </small>
-                          )}
+                          {!casaLoading && !casaOptions.length && <CasaImportacionEmpty query={casaQuery} />}
                           {casaOptions.map((casa) => (
                             <button
                               key={casa.id}
@@ -5992,6 +6074,11 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                               + Aceptados de solicitudes
                             </button>
                           </span>
+                          {aceptadosCount === 0 && (
+                            <small className="muted" style={{ fontSize: '0.72rem', maxWidth: 170, lineHeight: 1.25 }}>
+                              No hay productos aceptados de solicitudes para esta casa comercial.
+                            </small>
+                          )}
                         </div>
                       </div>
 
@@ -6132,7 +6219,11 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
 
                         {!details.length ? (
                           <div className="create-user__locations-row create-user__locations-row--empty">
-                            <span>Sin productos agregados.</span>
+                            <BlockerNotice
+                              compact
+                              title="No se puede guardar: la importación no tiene productos"
+                              reason="Agrega al menos uno con el buscador de esta tabla, con «+ Agregar nuevo producto» o con «+ Aceptados de solicitudes»."
+                            />
                           </div>
                         ) : details.map((item) => {
                           const sinCatalogo = !item.producto?.id
@@ -6248,7 +6339,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                 <button
                   type="submit"
                   className="create-user__action create-user__action--primary"
-                  disabled={submitting}
+                  disabled={submitting || !details.length}
+                  title={!details.length ? 'No se puede guardar: la importación no tiene productos' : undefined}
                 >
                   {submitting ? 'Guardando...' : 'Guardar proceso'}
                 </button>
@@ -9246,10 +9338,10 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       </div>
       <div className="users-header__right">
         <span className="users-header__count">Reg. {items.length}</span>
-        <button className="users-circle users-circle--excel" type="button" onClick={handleExportExcel} title="Exportar Excel" disabled={!items.length}>
+        <button className="users-circle users-circle--excel" type="button" onClick={handleExportExcel} title={items.length ? 'Exportar Excel' : 'No hay importaciones en esta pestaña para exportar'} disabled={!items.length}>
           <i className="pi pi-file-excel" />
         </button>
-        <button className="users-circle users-circle--pdf" type="button" onClick={handleExportPdf} title="Exportar PDF" disabled={!items.length}>
+        <button className="users-circle users-circle--pdf" type="button" onClick={handleExportPdf} title={items.length ? 'Exportar PDF' : 'No hay importaciones en esta pestaña para exportar'} disabled={!items.length}>
           <i className="pi pi-file-pdf" />
         </button>
       </div>

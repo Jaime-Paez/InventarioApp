@@ -569,6 +569,7 @@ function ReposicionTable({ token }) {
                   valueId={configDraft.sucursal_central_id || ''}
                   getOptionLabel={optionName}
                   onSelect={(option) => setConfigDraft((prev) => ({ ...prev, sucursal_central_id: option.id }))}
+                  emptyMessage="No hay sucursales registradas. Créalas en Sucursales > Sucursales."
                 />
               </div>
               {CONFIG_FIELDS.map((field) => (

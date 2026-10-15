@@ -321,3 +321,7 @@
   background: #0f172a;
   border-color: rgba(148, 163, 184, 0.3);
 }
+
+.user-details__transfer-conflict-row .blocker-notice {
+  margin-top: 6px;
+}

@@ -13,6 +13,7 @@ import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
 import StaticFieldDisplay from './StaticFieldDisplay'
+import BlockerNotice from '../common/BlockerNotice'
 import {
   emitRemindersSync,
   extractUserId,
@@ -429,10 +430,13 @@ function CreateEntrada({
   const [clienteLoading, setClienteLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState({})
   const [stockLoading, setStockLoading] = useState(false)
+  const [stockLoadFailed, setStockLoadFailed] = useState(false)
   const [showLocationResolver, setShowLocationResolver] = useState(false)
   const [locationResolverLoading, setLocationResolverLoading] = useState(false)
   const [locationResolverSubmitting, setLocationResolverSubmitting] = useState(false)
   const [locationResolverError, setLocationResolverError] = useState('')
+  // Sucursal (id) cuya entrada quedo bloqueada por no tener subdivisiones.
+  const [noLocationsBranchId, setNoLocationsBranchId] = useState('')
   const [checkingLocationCoverage, setCheckingLocationCoverage] = useState(false)
   const [missingLocationProducts, setMissingLocationProducts] = useState([])
   const [locationResolverSubdivisions, setLocationResolverSubdivisions] = useState([])
@@ -459,6 +463,8 @@ function CreateEntrada({
   const [casaComercialQuery, setCasaComercialQuery] = useState('')
   const [casaComercialOptions, setCasaComercialOptions] = useState([])
   const [casaComercialLoading, setCasaComercialLoading] = useState(false)
+  // Ultima busqueda de casas terminada: { query, failed } para explicar resultados vacios.
+  const [casaComercialLastSearch, setCasaComercialLastSearch] = useState(null)
   const [showCasaComercialDropdown, setShowCasaComercialDropdown] = useState(false)
   const [casaComercialDropdownStyle, setCasaComercialDropdownStyle] = useState({})
   const [facturaError, setFacturaError] = useState(false)
@@ -1121,8 +1127,10 @@ function CreateEntrada({
         if (!response.ok) throw new Error('No se pudieron cargar las casas comerciales.')
         const payload = await response.json().catch(() => ({}))
         setCasaComercialOptions(parseApiList(payload))
+        setCasaComercialLastSearch({ query: query || '', failed: false })
       } catch {
         setCasaComercialOptions([])
+        setCasaComercialLastSearch({ query: query || '', failed: true })
       } finally {
         setCasaComercialLoading(false)
       }
@@ -1431,9 +1439,11 @@ function CreateEntrada({
     async (sucursalId) => {
       if (!token || !sucursalId) {
         setStockByProduct({})
+        setStockLoadFailed(false)
         return
       }
       setStockLoading(true)
+      setStockLoadFailed(false)
       try {
         const response = await authFetch(
           `${API_URL}/movimientos/movimiento_inventario/stock-sucursal-global/?sucursal_id=${encodeURIComponent(sucursalId)}`,
@@ -1442,6 +1452,7 @@ function CreateEntrada({
         )
         if (!response.ok) {
           setStockByProduct({})
+          setStockLoadFailed(true)
           return
         }
         const payload = await response.json().catch(() => [])
@@ -1456,6 +1467,7 @@ function CreateEntrada({
         setStockByProduct(map)
       } catch {
         setStockByProduct({})
+        setStockLoadFailed(true)
       } finally {
         setStockLoading(false)
       }
@@ -1588,10 +1600,11 @@ function CreateEntrada({
       try {
         const subdivisions = await fetchSubdivisionsForLocationResolver(normalizedBranchId)
         if (!subdivisions.length) {
-          throw new Error(
-            'La sucursal seleccionada no tiene subdivisiones configuradas para registrar la entrada.'
-          )
+          // Aviso persistente junto al pie del formulario (ver noLocationsBlocker).
+          setNoLocationsBranchId(normalizedBranchId)
+          return
         }
+        setNoLocationsBranchId('')
 
         const missingIds = new Set(
           missingProducts.map((item) => String(item?.productoId || '').trim()).filter(Boolean)
@@ -1731,10 +1744,12 @@ function CreateEntrada({
     setClienteOptions([])
     setClienteLoading(false)
     setStockByProduct({})
+    setStockLoadFailed(false)
     setShowLocationResolver(false)
     setLocationResolverLoading(false)
     setLocationResolverSubmitting(false)
     setLocationResolverError('')
+    setNoLocationsBranchId('')
     setCheckingLocationCoverage(false)
     setMissingLocationProducts([])
     setLocationResolverSubdivisions([])
@@ -1757,6 +1772,7 @@ function CreateEntrada({
     setCasaComercialDraft(null)
     setCasaComercialQuery('')
     setCasaComercialOptions([])
+    setCasaComercialLastSearch(null)
     setCasaComercialLoading(false)
     setShowCasaComercialDropdown(false)
     fetchCatalogs()
@@ -2263,6 +2279,7 @@ function CreateEntrada({
   useEffect(() => {
     if (!open || !isTraslado || !formData.sucursalObjetivoId) {
       setStockByProduct({})
+      setStockLoadFailed(false)
       return
     }
     fetchStockByBranch(formData.sucursalObjetivoId)
@@ -2507,6 +2524,7 @@ function CreateEntrada({
     setCasaComercialDraft(null)
     setCasaComercialQuery('')
     setCasaComercialOptions([])
+    setCasaComercialLastSearch(null)
     setShowCasaComercialDropdown(false)
     handleChange({
       target: {
@@ -3443,13 +3461,17 @@ function CreateEntrada({
 
         if (!hasAdminReminderRecipients) {
           setActiveTab('recordatorio')
-          notifyError('No se pudo resolver un administrador para el recordatorio obligatorio.')
+          notifyError('No se puede crear la solicitud de traslado: no hay administradores activos para el recordatorio. Revisa el aviso en la pestaña Recordatorio.')
           return
         }
 
         if (!hasAdditionalReminderRecipients) {
           setActiveTab('recordatorio')
-          notifyError('Debes seleccionar al menos un usuario adicional para el recordatorio.')
+          notifyError(
+            selectableReminderUsers.length
+              ? 'Debes seleccionar al menos un usuario adicional para el recordatorio.'
+              : 'No se puede crear la solicitud de traslado: la sucursal proveedora no tiene usuarios que puedan recibirla. Revisa el aviso en la pestaña Recordatorio.'
+          )
           return
         }
       }
@@ -3578,6 +3600,57 @@ function CreateEntrada({
     .join(' ')
   const showTabs = isVenta || isTraslado
   const showGeneralTab = !showTabs || activeTab === 'general'
+  const findBranchName = (branchId) => {
+    const normalized = String(branchId || '').trim()
+    if (!normalized) return ''
+    const branch = [...providerBranchPool, ...branches].find(
+      (item) => String(item?.id || '').trim() === normalized
+    )
+    return String(branch?.nombre || '').trim()
+  }
+  const proveedorSucursalLabel = findBranchName(selectedProveedorSucursalId) || 'la sucursal proveedora'
+  const isFormStep = Boolean(formData.subTipoId) && !isCasaComercialStep
+  // Avisos persistentes: que no se puede hacer, por que y como resolverlo.
+  let reminderBlocker = null
+  if (isTraslado && isFormStep && hasSelectedReminderTargetBranch && !reminderUsersLoading) {
+    if (reminderUsersError) {
+      reminderBlocker = {
+        title: 'No se puede crear la solicitud de traslado: no se cargaron los usuarios del recordatorio',
+        reason: `${reminderUsersError} Sin esa lista no se puede elegir a quién avisar en ${proveedorSucursalLabel}. Vuelve a intentarlo.`,
+        actionLabel: 'Reintentar',
+        onAction: fetchReminderUsers,
+      }
+    } else if (!hasAdminReminderRecipients) {
+      reminderBlocker = {
+        title: 'No se puede crear la solicitud de traslado: no hay administradores para el recordatorio',
+        reason: 'Toda solicitud de traslado avisa obligatoriamente a los administradores y no se encontró ningún usuario administrador activo. Pide que se marque al menos un usuario activo como administrador en Administrar › Usuarios. Mientras tanto puedes usar "Guardar" para no perder la solicitud.',
+        goTo: 'Administrar',
+      }
+    } else if (!selectableReminderUsers.length) {
+      reminderBlocker = {
+        title: `No se puede crear la solicitud de traslado: ${proveedorSucursalLabel} no tiene usuarios que puedan recibirla`,
+        reason: `Se necesita al menos un usuario (además de los administradores) con permiso de crear y editar Salidas en ${proveedorSucursalLabel}. Asígnalo en Administrar › Usuarios › permisos de Movimientos - Salidas para ${proveedorSucursalLabel}. Mientras tanto puedes usar "Guardar" para no perder la solicitud.`,
+        goTo: 'Administrar',
+      }
+    }
+  }
+  const noProviderBranchBlocker =
+    isTraslado && isFormStep && !catalogsLoading && providerBranchPool.length > 0 && hasSelectedSucursal && !destinationBranches.length
+      ? {
+          title: 'No se puede solicitar un traslado: no hay otra sucursal disponible como proveedora',
+          reason: `La sucursal proveedora debe ser distinta de ${selectedSucursalName || 'la sucursal destino'} y no hay ninguna otra sucursal a la que puedas pedir. Registra otra sucursal en Sucursales o pide a un administrador acceso a otra sucursal en Administrar › Usuarios.`,
+          goTo: 'Sucursales',
+        }
+      : null
+  const noLocationsBranchName = selectedSucursalName || 'la sucursal'
+  const noLocationsBlocker =
+    !isTraslado && isFormStep && noLocationsBranchId && noLocationsBranchId === selectedSucursalId
+      ? {
+          title: `No se puede crear la entrada: ${noLocationsBranchName} no tiene ubicaciones`,
+          reason: `Los productos que entran por primera vez a ${noLocationsBranchName} necesitan una ubicación (bodega › división › subdivisión) y esta sucursal no tiene bodegas con divisiones y subdivisiones. Configúralas en Sucursales › Bodegas de ${noLocationsBranchName} y vuelve a pulsar "Crear entrada".`,
+          goTo: 'Bodegas',
+        }
+      : null
   const defaultHeaderTitle = 'Nueva entrada'
   const rawHeaderDocumentTitle = String(formData.no_documento || '').trim()
   const headerDocumentTitle =
@@ -3742,7 +3815,13 @@ function CreateEntrada({
                             {casaComercialLoading && <small className="muted">Buscando...</small>}
                             {!casaComercialLoading && !casaComercialOptions.length && (
                               <small className="muted">
-                                {casaComercialQuery.trim() ? 'Sin resultados.' : 'Escribe para buscar.'}
+                                {casaComercialLastSearch?.query !== casaComercialQuery.trim()
+                                  ? 'Escribe para buscar.'
+                                  : casaComercialLastSearch.failed
+                                    ? 'No se pudieron cargar las casas comerciales. Vuelve a escribir para reintentar.'
+                                    : casaComercialQuery.trim()
+                                      ? `No hay casas comerciales de tipo Local que coincidan con "${casaComercialQuery.trim()}". Si el proveedor existe como Importación, cámbiale el tipo en Casas comerciales.`
+                                      : 'No hay casas comerciales locales registradas: créala en Casas comerciales.'}
                               </small>
                             )}
                             {casaComercialOptions.map((casa) => (
@@ -3756,6 +3835,7 @@ function CreateEntrada({
                                   setCasaComercialQuery('')
                                   setShowCasaComercialDropdown(false)
                                   setCasaComercialOptions([])
+                                  setCasaComercialLastSearch(null)
                                 }}
                               >
                                 <div className="create-user__result-info">
@@ -4109,6 +4189,20 @@ function CreateEntrada({
                     </div>
                   </div>
 
+                  {noProviderBranchBlocker ? (
+                    <BlockerNotice title={noProviderBranchBlocker.title} reason={noProviderBranchBlocker.reason} goTo={noProviderBranchBlocker.goTo} />
+                  ) : isTraslado && !hasSelectedProveedorSucursal ? (
+                    <small className="muted">Selecciona una sucursal proveedora para poder agregar productos.</small>
+                  ) : null}
+                  {isTraslado && hasSelectedProveedorSucursal && stockLoadFailed && !stockLoading && (
+                    <BlockerNotice
+                      title={`No se pudo cargar el stock de ${proveedorSucursalLabel}`}
+                      reason="Sin el stock no se sabe cuántas unidades se pueden pedir, así que los productos aparecerían sin disponibilidad. Vuelve a intentarlo."
+                      actionLabel="Reintentar"
+                      onAction={() => fetchStockByBranch(selectedProveedorSucursalId)}
+                    />
+                  )}
+
                   <div
                     className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions${isCompraEntrada ? ' create-salida__products-table--compra-local' : ''}`}
                   >
@@ -4235,6 +4329,23 @@ function CreateEntrada({
                                 {!productLoading && productQuery.trim() && !productOptions.length && (
                                   <small className="muted">Sin resultados.</small>
                                 )}
+                                {showProveedorStockInfo && !stockLoading && stockLoadFailed && productOptions.length > 0 && (
+                                  <BlockerNotice
+                                    compact
+                                    title={`No se pudo cargar el stock de ${proveedorSucursalLabel}`}
+                                    reason="Las cantidades no son reales hasta que se cargue el stock."
+                                    actionLabel="Reintentar"
+                                    onAction={() => fetchStockByBranch(selectedProveedorSucursalId)}
+                                  />
+                                )}
+                                {showProveedorStockInfo && !stockLoading && !stockLoadFailed && !productLoading && productOptions.length > 0 &&
+                                  productOptions.every((producto) => Number(stockByProduct[String(producto.id)] ?? 0) <= 0) && (
+                                  <BlockerNotice
+                                    compact
+                                    title={`Ningún resultado tiene stock en ${proveedorSucursalLabel}.`}
+                                    reason="Solo se pueden pedir productos con unidades disponibles en la sucursal proveedora. Busca otro producto o elige otra sucursal proveedora."
+                                  />
+                                )}
                                 {productOptions.length > 0 && (
                                   <div className="create-salida__results-header">
                                     <span>Código</span>
@@ -4254,7 +4365,7 @@ function CreateEntrada({
                                   const codigo = String(producto?.codigo || '').trim() || `ID ${producto.id}`
                                   const nombre = String(producto?.nombre || '').trim()
                                   const dispLabel = showProveedorStockInfo
-                                    ? String(Math.max(0, Math.trunc(stockEnSucursalProveedora)))
+                                    ? (stockLoadFailed ? '?' : String(Math.max(0, Math.trunc(stockEnSucursalProveedora))))
                                     : String(Number(producto?.total_stock ?? 0))
                                   return (
                                     <button
@@ -4269,7 +4380,13 @@ function CreateEntrada({
                                         handleProductSelect(producto)
                                       }}
                                       disabled={isAlreadyAdded || isZeroStock}
-                                      title={isZeroStock ? 'Sin stock disponible' : isAlreadyAdded ? 'Ya agregado' : undefined}
+                                      title={
+                                        isZeroStock
+                                          ? (stockLoadFailed
+                                              ? `No se pudo cargar el stock de ${proveedorSucursalLabel}: pulsa Reintentar.`
+                                              : `Sin stock disponible en ${proveedorSucursalLabel}`)
+                                          : isAlreadyAdded ? 'Ya agregado' : undefined
+                                      }
                                     >
                                       <span className="result-codigo">{codigo}</span>
                                       <span className="result-nombre">{nombre || '-'}</span>
@@ -4800,6 +4917,16 @@ function CreateEntrada({
                       <small className="muted">Selecciona primero una sucursal proveedora para cargar usuarios.</small>
                     )}
 
+                    {reminderBlocker && (
+                      <BlockerNotice
+                        title={reminderBlocker.title}
+                        reason={reminderBlocker.reason}
+                        goTo={reminderBlocker.goTo}
+                        actionLabel={reminderBlocker.actionLabel}
+                        onAction={reminderBlocker.onAction}
+                      />
+                    )}
+
                     <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdminReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
                       <div className="create-salida__reminder-head">
                         <h5>Administradores incluidos</h5>
@@ -4833,7 +4960,7 @@ function CreateEntrada({
                             {!adminReminderRows.length && (
                               <div className="permissions-matrix__row create-salida__reminder-row--empty">
                                 <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                  No se detectaron administradores para la sucursal proveedora seleccionada.
+                                  No hay usuarios administradores activos.
                                 </div>
                               </div>
                             )}
@@ -4847,7 +4974,7 @@ function CreateEntrada({
                         <h5>Usuarios adicionales</h5>
                         <span className="create-salida__reminder-count">{selectedReminderUserIds.length}</span>
                       </div>
-                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdditionalReminderRecipients && (
+                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && selectableReminderUsers.length > 0 && !hasAdditionalReminderRecipients && (
                         <small className="create-user__field-error">Debes seleccionar al menos un usuario adicional.</small>
                       )}
                       <div className="create-salida__reminder-table-wrap">
@@ -4869,7 +4996,7 @@ function CreateEntrada({
                           {hasSelectedReminderTargetBranch && !reminderUsersLoading && !selectableReminderUsers.length && (
                             <div className="permissions-matrix__row create-salida__reminder-row--empty">
                               <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                No hay usuarios disponibles con permisos de crear y editar en salidas para esta sucursal.
+                                Ningún usuario de {proveedorSucursalLabel} tiene permiso de crear y editar Salidas.
                               </div>
                             </div>
                           )}
@@ -4906,6 +5033,24 @@ function CreateEntrada({
             </>
           )}
 
+          {isFormStep && (noLocationsBlocker || (reminderBlocker && activeTab !== 'recordatorio')) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px 15px 0' }}>
+              {noLocationsBlocker && (
+                <BlockerNotice compact title={noLocationsBlocker.title} reason={noLocationsBlocker.reason} goTo={noLocationsBlocker.goTo} />
+              )}
+              {reminderBlocker && activeTab !== 'recordatorio' && (
+                <BlockerNotice
+                  compact
+                  title={reminderBlocker.title}
+                  reason={reminderBlocker.reason}
+                  goTo={reminderBlocker.goTo}
+                  actionLabel={reminderBlocker.actionLabel || 'Ver recordatorio'}
+                  onAction={reminderBlocker.onAction || (() => setActiveTab('recordatorio'))}
+                />
+              )}
+            </div>
+          )}
+
           <div className="create-user__footer">
             <button
               type="button"
@@ -4917,6 +5062,7 @@ function CreateEntrada({
                     setCasaComercialDraft(null)
                     setCasaComercialQuery('')
                     setCasaComercialOptions([])
+                    setCasaComercialLastSearch(null)
                     setShowCasaComercialDropdown(false)
                   }
                 : attemptClose}
@@ -5192,7 +5338,11 @@ function CreateEntrada({
                                           : undefined
                                       }
                                     >
-                                      {!filteredBodegas.length && <small className="muted">Sin resultados.</small>}
+                                      {!filteredBodegas.length && (
+                                        <small className="muted">
+                                          {bodegaOptions.length ? 'Sin resultados.' : 'Esta sucursal no tiene bodegas con subdivisiones.'}
+                                        </small>
+                                      )}
                                       {filteredBodegas.map((bodega) => (
                                         <button
                                           key={`entry-location-bodega-option-${productId}-${bodega.id}`}
@@ -5268,7 +5418,11 @@ function CreateEntrada({
                                           : undefined
                                       }
                                     >
-                                      {!filteredDivisions.length && <small className="muted">Sin resultados.</small>}
+                                      {!filteredDivisions.length && (
+                                        <small className="muted">
+                                          {divisionOptions.length ? 'Sin resultados.' : 'Esta bodega no tiene divisiones.'}
+                                        </small>
+                                      )}
                                       {filteredDivisions.map((division) => (
                                         <button
                                           key={`entry-location-division-option-${productId}-${division.id}`}
@@ -5346,7 +5500,9 @@ function CreateEntrada({
                                       }
                                     >
                                       {!filteredSubdivisions.length && (
-                                        <small className="muted">Sin resultados.</small>
+                                        <small className="muted">
+                                          {subdivisionOptions.length ? 'Sin resultados.' : 'Esta división no tiene subdivisiones.'}
+                                        </small>
                                       )}
                                       {filteredSubdivisions.map((subdivision) => (
                                         <button

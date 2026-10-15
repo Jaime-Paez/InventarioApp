@@ -3,6 +3,7 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import BodegaLayoutEditor from '../BodegaLayoutEditor/BodegaLayoutEditor'
 import useModalAnimation from '../../common/useModalAnimation'
+import BlockerNotice from '../../common/BlockerNotice'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
 
 const MIN_WIDTH = 720
@@ -21,6 +22,8 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
   const [branches, setBranches] = useState([])
+  // 'loading' | 'ready' | 'error': para avisar si no hay sucursales o fallo la carga
+  const [branchesStatus, setBranchesStatus] = useState('loading')
   const [creatingSubdivisions, setCreatingSubdivisions] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -86,13 +89,16 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
   }, [position])
 
   const fetchBranches = useCallback(async () => {
+    setBranchesStatus('loading')
     try {
       const response = await authFetch(`${API_URL}/inventario/sucursales/?modulo=sucursales_bodegas`, {}, token)
       if (!response.ok) throw new Error('No se pudieron cargar las sucursales.')
       const data = await response.json()
       const list = Array.isArray(data) ? data : data?.results || []
       setBranches(list)
+      setBranchesStatus('ready')
     } catch (err) {
+      setBranchesStatus('error')
       notifyError(err.message || 'Ocurrió un error al cargar las sucursales.')
     }
   }, [notifyError, token])
@@ -395,7 +401,11 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
 
     if (!payload.sucursal_id) {
       setLoading(false)
-      notifyError('Selecciona una sucursal para la bodega.')
+      notifyError(
+        branchesStatus === 'ready' && !branches.length
+          ? 'No se puede crear la bodega: no hay sucursales disponibles.'
+          : 'Selecciona una sucursal para la bodega.'
+      )
       return
     }
 
@@ -657,6 +667,24 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
                 </div>
               </div>
 
+              {branchesStatus === 'error' && (
+                <BlockerNotice
+                  title="No se pudieron cargar las sucursales"
+                  reason="Sin la lista de sucursales no se puede asignar la bodega. Revisa tu conexión e inténtalo de nuevo."
+                  actionLabel="Reintentar"
+                  onAction={fetchBranches}
+                />
+              )}
+              {branchesStatus === 'ready' && !branches.length && (
+                <BlockerNotice
+                  title="No se puede crear la bodega: no hay sucursales disponibles"
+                  reason="No hay sucursales registradas o tu usuario no tiene permiso de Sucursales/Bodegas en ninguna. Crea una sucursal en Sucursales › Sucursales o pide al administrador que te asigne el permiso en Administrar › Usuarios."
+                  actionLabel="Volver a cargar"
+                  onAction={fetchBranches}
+                  goTo="Sucursales"
+                />
+              )}
+
               <div className="create-user__grid create-user__grid--two">
                 <label className="create-user__field">
                   <span>Descripción</span>
@@ -680,7 +708,13 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
                     disabled={loading}
                     required
                   >
-                    <option value="" />
+                    <option value="">
+                      {branchesStatus === 'loading'
+                        ? 'Cargando sucursales...'
+                        : branches.length
+                          ? 'Selecciona una sucursal'
+                          : 'No hay sucursales disponibles'}
+                    </option>
                     {branches.map((branch) => (
                       <option key={branch.id} value={branch.id}>
                         {branch.nombre}

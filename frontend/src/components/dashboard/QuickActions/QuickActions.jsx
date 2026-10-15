@@ -6,6 +6,7 @@ import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
 import ReceiveCompleteDialog from './ReceiveCompleteDialog'
+import BlockerNotice from '../common/BlockerNotice'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
 import urgentNotificationAudioSrc from '../common/reminders/urgentnotifications.mp3'
 import { API_URL, authFetch } from '../../../utils/api'
@@ -489,6 +490,17 @@ const resolveUrgentShipmentProgress = (shipment, nowValue) => {
   return clamp01(elapsed / URGENT_SHIELD_NEAR_FULL_MS)
 }
 
+// Por que no se puede completar la ubicacion de un producto al recibir.
+const getReceiveLocationGapMessage = (bodegaId, divisions, divisionId, subdivisions) => {
+  if (bodegaId && !divisions.length) {
+    return 'Esta bodega no tiene divisiones: elige otra bodega o configúrala en Sucursales > Bodegas.'
+  }
+  if (divisionId && !subdivisions.length) {
+    return 'Esta división no tiene subdivisiones: elige otra división o configúrala en Sucursales > Bodegas.'
+  }
+  return ''
+}
+
 function QuickActions({
   darkMode,
   onToggleTheme,
@@ -565,6 +577,10 @@ function QuickActions({
   const [inTransitDivisions, setInTransitDivisions] = useState([])
   const [inTransitSubdivisions, setInTransitSubdivisions] = useState([])
   const [inTransitSubdivisionsLoading, setInTransitSubdivisionsLoading] = useState(false)
+  // Error al cargar las ubicaciones de la sucursal que recibe (aviso fijo con Reintentar).
+  const [receiveLocationsError, setReceiveLocationsError] = useState('')
+  // Envios en camino que no se pueden abrir por datos faltantes: { [id]: motivo }.
+  const [inTransitShipmentBlockers, setInTransitShipmentBlockers] = useState({})
   const [receiveShipmentDraftByProductId, setReceiveShipmentDraftByProductId] = useState({})
   const [receiveShipmentSubmitting, setReceiveShipmentSubmitting] = useState(false)
   const [receiveShipmentError, setReceiveShipmentError] = useState('')
@@ -3067,6 +3083,7 @@ function QuickActions({
     setInTransitDivisions([])
     setInTransitSubdivisions([])
     setInTransitSubdivisionsLoading(false)
+    setReceiveLocationsError('')
     setReceiveShipmentDraftByProductId({})
     setReceiveShipmentError('')
     setReceiveShipmentShowErrors(false)
@@ -3200,6 +3217,7 @@ function QuickActions({
     setInTransitDivisions([])
     setInTransitSubdivisions([])
     setInTransitSubdivisionsLoading(true)
+    setReceiveLocationsError('')
     setReceiveShipmentDraftByProductId(draftByProductId)
     setActiveInTransitShipment(shipment)
     setReceiveShipmentShowSummary(false)
@@ -4011,6 +4029,171 @@ function QuickActions({
     [fetchTransferSolicitudDetail, onTransferDecisionAccepted, showErrorToast]
   )
 
+  // Carga bodegas/divisiones/subdivisiones de la sucursal que recibe y completa
+  // el selector de cada producto. Tambien la usa "Reintentar" si la carga falla.
+  const hydrateReceiveShipmentLocations = useCallback(
+    async ({ loadRequestId, sucursalSolicitanteId, details }) => {
+      setReceiveLocationsError('')
+      setInTransitSubdivisionsLoading(true)
+      try {
+        // page_size=500 se quedaba corto: sucursales grandes (9 de Octubre
+        // llega a 775 subdivisiones) superaban el limite y esas ubicaciones
+        // nunca aparecian al recibir un envio. 2000 deja margen holgado
+        // sobre la sucursal mas grande que existe hoy (775).
+        const [bodegasResponse, divisionsResponse, subdivisionsResponse] = await Promise.all([
+        authFetch(
+          `${API_URL}/inventario/bodegas/?page_size=2000&sucursal_id=${encodeURIComponent(
+            sucursalSolicitanteId
+          )}`,
+          {},
+          token
+        ),
+        authFetch(
+          `${API_URL}/inventario/divisiones/?page_size=2000&sucursal_id=${encodeURIComponent(
+            sucursalSolicitanteId
+          )}`,
+          {},
+          token
+        ),
+        authFetch(
+          `${API_URL}/inventario/subdivisiones/?page_size=2000&sucursal_id=${encodeURIComponent(
+            sucursalSolicitanteId
+          )}`,
+          {},
+          token
+        ),
+      ])
+      if (!bodegasResponse.ok) {
+        throw new Error('No se pudieron cargar las bodegas de la sucursal solicitante.')
+      }
+      if (!divisionsResponse.ok) {
+        throw new Error('No se pudieron cargar las divisiones de la sucursal solicitante.')
+      }
+      if (!subdivisionsResponse.ok) {
+        throw new Error('No se pudieron cargar las subdivisiones para ubicar los productos.')
+      }
+      const bodegasPayload = await bodegasResponse.json().catch(() => ({}))
+      const divisionsPayload = await divisionsResponse.json().catch(() => ({}))
+      const subdivisionsPayload = await subdivisionsResponse.json().catch(() => ({}))
+      if (receiveShipmentLoadRequestRef.current !== loadRequestId) return
+      const bodegas = parseApiList(bodegasPayload)
+      // POR UBICAR es la ubicacion temporal de la recepcion por partes: no se
+      // ofrece como destino ni como sugerencia (sin ubicacion ya va ahi).
+      const isPorUbicar = (name) => normalizeSearchText(name) === 'por ubicar'
+      const divisions = parseApiList(divisionsPayload).filter((division) => !isPorUbicar(division?.nombre))
+      const porUbicarDivisionIds = new Set(
+        parseApiList(divisionsPayload)
+          .filter((division) => isPorUbicar(division?.nombre))
+          .map((division) => normalizeId(division?.id))
+      )
+      const subdivisions = parseApiList(subdivisionsPayload).filter((subdivision) => (
+        !porUbicarDivisionIds.has(normalizeId(subdivision?.division?.id || subdivision?.division_id || '')) &&
+        !isPorUbicar(subdivision?.division?.nombre)
+      ))
+
+      const preferredSubdivisionByProductId = await fetchPreferredReceiveSubdivisions({
+        sucursalSolicitanteId,
+        productIds: details.map((detail) => detail?.producto_id),
+      })
+      if (receiveShipmentLoadRequestRef.current !== loadRequestId) return
+
+      const localSubdivisionsById = new Map()
+      subdivisions.forEach((subdivision) => {
+        const subdivisionId = normalizeId(subdivision?.id)
+        if (!subdivisionId) return
+        localSubdivisionsById.set(subdivisionId, subdivision)
+      })
+
+      setInTransitBodegas(bodegas)
+      setInTransitDivisions(divisions)
+      setInTransitSubdivisions(subdivisions)
+
+      // Patch the draft with preferred locations now that subdivision data is available
+      setReceiveShipmentDraftByProductId((prev) => {
+        if (receiveShipmentLoadRequestRef.current !== loadRequestId) return prev
+        const updated = { ...prev }
+        details.forEach((detail) => {
+          const productId = normalizeId(detail?.producto_id)
+          if (!productId || !updated[productId]) return
+          const preferredSubdivisionId = normalizeId(
+            preferredSubdivisionByProductId.get(productId) || ''
+          )
+          const suggestedSubdivision = localSubdivisionsById.get(preferredSubdivisionId) || null
+          const suggestedSubdivisionId = normalizeId(suggestedSubdivision?.id || '')
+          const suggestedDivisionId = normalizeId(
+            suggestedSubdivision?.division?.id || suggestedSubdivision?.division_id || ''
+          )
+          const suggestedBodegaId = normalizeId(
+            suggestedSubdivision?.division?.bodega?.id ||
+              suggestedSubdivision?.division?.bodega_id ||
+              ''
+          )
+          const alreadyHasUbicaciones = Array.isArray(updated[productId]?.ubicaciones) && updated[productId].ubicaciones.length > 0
+          // Rescate del respaldo viejo: solo si lo guardado en el servidor
+          // esta vacio o es la ubicacion sugerida (lo unico que se guardaba
+          // antes). Si el servidor ya tiene otra, la eligio el usuario
+          // despues del arreglo y esa manda.
+          const legacySubdivisionId = normalizeId(updated[productId]?.legacy_location_subdivision_id)
+          const legacySubdivision = legacySubdivisionId ? localSubdivisionsById.get(legacySubdivisionId) : null
+          const savedSubdivisionId = normalizeId(updated[productId]?.ubicaciones?.[0]?.subdivision_id)
+          if (legacySubdivision && (!savedSubdivisionId || savedSubdivisionId === suggestedSubdivisionId)) {
+            updated[productId] = {
+              ...updated[productId],
+              legacy_location_subdivision_id: '',
+              location_draft_bodega_id: normalizeId(
+                legacySubdivision?.division?.bodega?.id || legacySubdivision?.division?.bodega_id || ''
+              ),
+              location_draft_division_id: normalizeId(
+                legacySubdivision?.division?.id || legacySubdivision?.division_id || ''
+              ),
+              location_draft_subdivision_id: legacySubdivisionId,
+            }
+            return
+          }
+          if (legacySubdivisionId) {
+            // No aplica (el usuario ya eligio otra o la ubicacion ya no existe).
+            updated[productId] = { ...updated[productId], legacy_location_subdivision_id: '' }
+          }
+          if (suggestedSubdivisionId && suggestedDivisionId && suggestedBodegaId && !alreadyHasUbicaciones) {
+            const cantidadEnviada = toPositiveInt(detail?.cantidad_enviada, 0)
+            updated[productId] = {
+              ...updated[productId],
+              ubicaciones: [{ subdivision_id: suggestedSubdivisionId, cantidad: cantidadEnviada }],
+              location_draft_bodega_id: suggestedBodegaId,
+              location_draft_division_id: suggestedDivisionId,
+              location_draft_subdivision_id: suggestedSubdivisionId,
+            }
+          } else if (alreadyHasUbicaciones && !updated[productId].location_draft_subdivision_id) {
+            // Restaurar el selector desde la ubicacion guardada. Antes solo
+            // pasaba si el producto tenia ubicacion sugerida, asi que los
+            // productos nuevos en la sucursal reabrian sin ubicacion.
+            const savedSubId = normalizeId(updated[productId]?.ubicaciones?.[0]?.subdivision_id)
+            const savedSub = localSubdivisionsById.get(savedSubId) || null
+            if (savedSub) {
+              updated[productId] = {
+                ...updated[productId],
+                location_draft_bodega_id: normalizeId(savedSub?.division?.bodega?.id || savedSub?.division?.bodega_id || ''),
+                location_draft_division_id: normalizeId(savedSub?.division?.id || savedSub?.division_id || ''),
+                location_draft_subdivision_id: savedSubId,
+              }
+            }
+          }
+        })
+        return updated
+      })
+    } catch (error) {
+      if (receiveShipmentLoadRequestRef.current !== loadRequestId) return
+      setReceiveLocationsError(error?.message || 'No se pudieron cargar las ubicaciones del envío.')
+      } finally {
+        if (receiveShipmentLoadRequestRef.current === loadRequestId) {
+          setOpeningInTransitShipmentId('')
+          setInTransitSubdivisionsLoading(false)
+        }
+      }
+    },
+    [fetchPreferredReceiveSubdivisions, token]
+  )
+
   const handleOpenInTransitShipment = useCallback(
     (shipment) => {
       if (!token) return
@@ -4019,16 +4202,26 @@ function QuickActions({
         showErrorToast('No se pudo abrir el envío en camino.')
         return
       }
+      const markBlocked = (reason) => {
+        setInTransitShipmentBlockers((prev) => ({ ...prev, [shipmentId]: reason }))
+        showErrorToast(`No se puede recibir: ${reason}`)
+      }
       const sucursalSolicitanteId = normalizeId(shipment?.sucursal_solicitante_id)
       if (!sucursalSolicitanteId) {
-        showErrorToast('No se pudo resolver la sucursal solicitante para recibir el traslado.')
+        markBlocked('el envío no indica qué sucursal lo recibe. Pide a un administrador que corrija el traslado.')
         return
       }
       const details = Array.isArray(shipment?.detalles) ? shipment.detalles : []
       if (!details.length) {
-        showErrorToast('Este envío no tiene productos para registrar recepción.')
+        markBlocked('el envío no tiene productos. Pide a quien lo envió que lo revise y lo corrija.')
         return
       }
+      setInTransitShipmentBlockers((prev) => {
+        if (!(shipmentId in prev)) return prev
+        const next = { ...prev }
+        delete next[shipmentId]
+        return next
+      })
 
       // Phase 1: open the modal immediately with an empty-location draft
       const initialDraft = {}
@@ -4166,166 +4359,21 @@ function QuickActions({
       }
 
       // Open first and hydrate catalogs afterwards so the modal feels instant.
-      void (async () => {
-        try {
-          // page_size=500 se quedaba corto: sucursales grandes (9 de Octubre
-          // llega a 775 subdivisiones) superaban el limite y esas ubicaciones
-          // nunca aparecian al recibir un envio. 2000 deja margen holgado
-          // sobre la sucursal mas grande que existe hoy (775).
-          const [bodegasResponse, divisionsResponse, subdivisionsResponse] = await Promise.all([
-          authFetch(
-            `${API_URL}/inventario/bodegas/?page_size=2000&sucursal_id=${encodeURIComponent(
-              sucursalSolicitanteId
-            )}`,
-            {},
-            token
-          ),
-          authFetch(
-            `${API_URL}/inventario/divisiones/?page_size=2000&sucursal_id=${encodeURIComponent(
-              sucursalSolicitanteId
-            )}`,
-            {},
-            token
-          ),
-          authFetch(
-            `${API_URL}/inventario/subdivisiones/?page_size=2000&sucursal_id=${encodeURIComponent(
-              sucursalSolicitanteId
-            )}`,
-            {},
-            token
-          ),
-        ])
-        if (!bodegasResponse.ok) {
-          throw new Error('No se pudieron cargar las bodegas de la sucursal solicitante.')
-        }
-        if (!divisionsResponse.ok) {
-          throw new Error('No se pudieron cargar las divisiones de la sucursal solicitante.')
-        }
-        if (!subdivisionsResponse.ok) {
-          throw new Error('No se pudieron cargar las subdivisiones para ubicar los productos.')
-        }
-        const bodegasPayload = await bodegasResponse.json().catch(() => ({}))
-        const divisionsPayload = await divisionsResponse.json().catch(() => ({}))
-        const subdivisionsPayload = await subdivisionsResponse.json().catch(() => ({}))
-        if (receiveShipmentLoadRequestRef.current !== loadRequestId) return
-        const bodegas = parseApiList(bodegasPayload)
-        // POR UBICAR es la ubicacion temporal de la recepcion por partes: no se
-        // ofrece como destino ni como sugerencia (sin ubicacion ya va ahi).
-        const isPorUbicar = (name) => normalizeSearchText(name) === 'por ubicar'
-        const divisions = parseApiList(divisionsPayload).filter((division) => !isPorUbicar(division?.nombre))
-        const porUbicarDivisionIds = new Set(
-          parseApiList(divisionsPayload)
-            .filter((division) => isPorUbicar(division?.nombre))
-            .map((division) => normalizeId(division?.id))
-        )
-        const subdivisions = parseApiList(subdivisionsPayload).filter((subdivision) => (
-          !porUbicarDivisionIds.has(normalizeId(subdivision?.division?.id || subdivision?.division_id || '')) &&
-          !isPorUbicar(subdivision?.division?.nombre)
-        ))
-
-        const preferredSubdivisionByProductId = await fetchPreferredReceiveSubdivisions({
-          sucursalSolicitanteId,
-          productIds: details.map((detail) => detail?.producto_id),
-        })
-        if (receiveShipmentLoadRequestRef.current !== loadRequestId) return
-
-        const localSubdivisionsById = new Map()
-        subdivisions.forEach((subdivision) => {
-          const subdivisionId = normalizeId(subdivision?.id)
-          if (!subdivisionId) return
-          localSubdivisionsById.set(subdivisionId, subdivision)
-        })
-
-        setInTransitBodegas(bodegas)
-        setInTransitDivisions(divisions)
-        setInTransitSubdivisions(subdivisions)
-
-        // Patch the draft with preferred locations now that subdivision data is available
-        setReceiveShipmentDraftByProductId((prev) => {
-          if (receiveShipmentLoadRequestRef.current !== loadRequestId) return prev
-          const updated = { ...prev }
-          details.forEach((detail) => {
-            const productId = normalizeId(detail?.producto_id)
-            if (!productId || !updated[productId]) return
-            const preferredSubdivisionId = normalizeId(
-              preferredSubdivisionByProductId.get(productId) || ''
-            )
-            const suggestedSubdivision = localSubdivisionsById.get(preferredSubdivisionId) || null
-            const suggestedSubdivisionId = normalizeId(suggestedSubdivision?.id || '')
-            const suggestedDivisionId = normalizeId(
-              suggestedSubdivision?.division?.id || suggestedSubdivision?.division_id || ''
-            )
-            const suggestedBodegaId = normalizeId(
-              suggestedSubdivision?.division?.bodega?.id ||
-                suggestedSubdivision?.division?.bodega_id ||
-                ''
-            )
-            const alreadyHasUbicaciones = Array.isArray(updated[productId]?.ubicaciones) && updated[productId].ubicaciones.length > 0
-            // Rescate del respaldo viejo: solo si lo guardado en el servidor
-            // esta vacio o es la ubicacion sugerida (lo unico que se guardaba
-            // antes). Si el servidor ya tiene otra, la eligio el usuario
-            // despues del arreglo y esa manda.
-            const legacySubdivisionId = normalizeId(updated[productId]?.legacy_location_subdivision_id)
-            const legacySubdivision = legacySubdivisionId ? localSubdivisionsById.get(legacySubdivisionId) : null
-            const savedSubdivisionId = normalizeId(updated[productId]?.ubicaciones?.[0]?.subdivision_id)
-            if (legacySubdivision && (!savedSubdivisionId || savedSubdivisionId === suggestedSubdivisionId)) {
-              updated[productId] = {
-                ...updated[productId],
-                legacy_location_subdivision_id: '',
-                location_draft_bodega_id: normalizeId(
-                  legacySubdivision?.division?.bodega?.id || legacySubdivision?.division?.bodega_id || ''
-                ),
-                location_draft_division_id: normalizeId(
-                  legacySubdivision?.division?.id || legacySubdivision?.division_id || ''
-                ),
-                location_draft_subdivision_id: legacySubdivisionId,
-              }
-              return
-            }
-            if (legacySubdivisionId) {
-              // No aplica (el usuario ya eligio otra o la ubicacion ya no existe).
-              updated[productId] = { ...updated[productId], legacy_location_subdivision_id: '' }
-            }
-            if (suggestedSubdivisionId && suggestedDivisionId && suggestedBodegaId && !alreadyHasUbicaciones) {
-              const cantidadEnviada = toPositiveInt(detail?.cantidad_enviada, 0)
-              updated[productId] = {
-                ...updated[productId],
-                ubicaciones: [{ subdivision_id: suggestedSubdivisionId, cantidad: cantidadEnviada }],
-                location_draft_bodega_id: suggestedBodegaId,
-                location_draft_division_id: suggestedDivisionId,
-                location_draft_subdivision_id: suggestedSubdivisionId,
-              }
-            } else if (alreadyHasUbicaciones && !updated[productId].location_draft_subdivision_id) {
-              // Restaurar el selector desde la ubicacion guardada. Antes solo
-              // pasaba si el producto tenia ubicacion sugerida, asi que los
-              // productos nuevos en la sucursal reabrian sin ubicacion.
-              const savedSubId = normalizeId(updated[productId]?.ubicaciones?.[0]?.subdivision_id)
-              const savedSub = localSubdivisionsById.get(savedSubId) || null
-              if (savedSub) {
-                updated[productId] = {
-                  ...updated[productId],
-                  location_draft_bodega_id: normalizeId(savedSub?.division?.bodega?.id || savedSub?.division?.bodega_id || ''),
-                  location_draft_division_id: normalizeId(savedSub?.division?.id || savedSub?.division_id || ''),
-                  location_draft_subdivision_id: savedSubId,
-                }
-              }
-            }
-          })
-          return updated
-        })
-      } catch (error) {
-        if (receiveShipmentLoadRequestRef.current !== loadRequestId) return
-        showErrorToast(error?.message || 'No se pudieron cargar las ubicaciones del envío.')
-        } finally {
-          if (receiveShipmentLoadRequestRef.current === loadRequestId) {
-            setOpeningInTransitShipmentId('')
-            setInTransitSubdivisionsLoading(false)
-          }
-        }
-      })()
+      void hydrateReceiveShipmentLocations({ loadRequestId, sucursalSolicitanteId, details })
     },
-    [fetchPreferredReceiveSubdivisions, openReceiveShipmentModalShell, showErrorToast, token]
+    [hydrateReceiveShipmentLocations, openReceiveShipmentModalShell, showErrorToast, token]
   )
+
+  const retryReceiveShipmentLocations = useCallback(() => {
+    const sucursalSolicitanteId = normalizeId(activeInTransitShipment?.sucursal_solicitante_id)
+    if (!sucursalSolicitanteId) return
+    const details = Array.isArray(activeInTransitShipment?.detalles) ? activeInTransitShipment.detalles : []
+    void hydrateReceiveShipmentLocations({
+      loadRequestId: receiveShipmentLoadRequestRef.current,
+      sucursalSolicitanteId,
+      details,
+    })
+  }, [activeInTransitShipment, hydrateReceiveShipmentLocations])
 
   const handleOpenInTransitShipmentFromReminder = useCallback(
     async (reminder) => {
@@ -4797,9 +4845,10 @@ function QuickActions({
         inspectionId,
         loading: false,
         list: response.ok && Array.isArray(payload?.results) ? payload.results : [],
+        failed: !response.ok,
       })
     } catch {
-      setRandomInspectionLocations({ inspectionId, loading: false, list: [] })
+      setRandomInspectionLocations({ inspectionId, loading: false, list: [], failed: true })
     }
   }, [activeRandomInspection?.id, randomInspectionLocations, token])
   const filteredRandomInspectionLocations = useMemo(() => {
@@ -5717,6 +5766,7 @@ function QuickActions({
                       const receiveBranch = String(shipment?.sucursal_solicitante || '').trim()
                       const fecha = String(shipment?.fecha || '').trim()
                       const relatedReminder = shipment?.reminder || null
+                      const blockedReason = shipmentId ? inTransitShipmentBlockers[shipmentId] : ''
 
                       return (
                         <button
@@ -5748,6 +5798,11 @@ function QuickActions({
                                 ? `Fecha: ${formatDate(fecha)}`
                                 : (relatedReminder ? 'Abrir envío en camino' : 'Abrir recepción'))}
                           </span>
+                          {blockedReason && (
+                            <span className="quick-actions__in-transit-item-blocker" role="alert">
+                              <strong>No se puede recibir:</strong> {blockedReason}
+                            </span>
+                          )}
                         </button>
                       )
                     })
@@ -6301,7 +6356,11 @@ function QuickActions({
                                   >
                                     {randomInspectionAdd.searching && <small className="muted">Buscando productos...</small>}
                                     {!randomInspectionAdd.searching && !randomInspectionAdd.results.length && (
-                                      <small className="muted">Sin resultados.</small>
+                                      <small className="muted">
+                                        {String(randomInspectionAdd.query || '').trim()
+                                          ? 'Sin resultados.'
+                                          : 'Escribe un código, nombre, referencia u OEM para buscar.'}
+                                      </small>
                                     )}
                                     {randomInspectionAdd.results.length > 0 && (
                                       <div className="create-salida__results-header">
@@ -6383,7 +6442,13 @@ function QuickActions({
                                   >
                                     {randomInspectionLocations.loading && <small className="muted">Cargando ubicaciones...</small>}
                                     {!randomInspectionLocations.loading && !filteredRandomInspectionLocations.length && (
-                                      <small className="muted">Sin resultados.</small>
+                                      <small className="muted">
+                                        {randomInspectionLocations.failed
+                                          ? 'No se pudieron cargar las ubicaciones. Cierra y vuelve a abrir esta lista para reintentar.'
+                                          : String(randomInspectionAdd.locationQuery || '').trim()
+                                            ? 'Sin resultados.'
+                                            : 'Esta sucursal no tiene subdivisiones registradas. Un administrador debe crearlas en Sucursales > Bodegas.'}
+                                      </small>
                                     )}
                                     {filteredRandomInspectionLocations.map((location) => (
                                       <button
@@ -6866,6 +6931,24 @@ function QuickActions({
             </header>
 
             <div className="quick-actions__receive-body">
+              {!receiveShipmentShowSummary && !inTransitSubdivisionsLoading && (receiveLocationsError ? (
+                <BlockerNotice
+                  compact
+                  className="quick-actions__receive-locations-blocker"
+                  title="No se pudieron cargar las ubicaciones"
+                  reason={`${receiveLocationsError} Sin ubicaciones, lo recibido queda en POR UBICAR. Reintenta para poder elegir dónde guardarlo.`}
+                  actionLabel="Reintentar"
+                  onAction={retryReceiveShipmentLocations}
+                />
+              ) : !inTransitSubdivisions.length && receiveShipmentRows.length ? (
+                <BlockerNotice
+                  compact
+                  className="quick-actions__receive-locations-blocker"
+                  title={`${receiveShipmentDestinationBranchName} no tiene bodegas con subdivisiones`}
+                  reason="Lo recibido quedará en POR UBICAR (ya se puede vender). Para guardarlo en su lugar, un administrador debe configurar las ubicaciones en Sucursales > Bodegas."
+                  goTo="Bodegas"
+                />
+              ) : null)}
               {receiveShipmentShowSummary ? (
                 <div className="quick-actions__receive-summary">
                   <p className="quick-actions__receive-summary-title">Resumen de recepcion</p>
@@ -7112,12 +7195,16 @@ function QuickActions({
                       const selectedSubdivision = inTransitSubdivisionById.get(selectedSubdivisionId) || null
                       const isRegistered = Boolean(row?.recepcion_registrada)
                       const pendingToStore = toPositiveInt(row?.pendiente_guardar, 0)
+                      const locationGapMessage = (!isRegistered || pendingToStore > 0)
+                        ? getReceiveLocationGapMessage(selectedBodegaId, availableDivisions, selectedDivisionId, availableSubdivisions)
+                        : ''
                       const statusLabel = isRegistered
                         ? (pendingToStore > 0 ? 'Por guardar' : 'Recibido')
                         : !isReviewed
                           ? 'Por revisar'
                           : 'Listo para recibir'
                       const hintMessage = rowSummaryValidationMessage
+                        || locationGapMessage
                         || (isRegistered
                           ? (pendingToStore > 0
                             ? `Ya esta en stock (en POR UBICAR). Elige su ubicacion y guardalo.`
@@ -7247,7 +7334,7 @@ function QuickActions({
                                 <button
                                   type="button"
                                   className="quick-actions__receive-dropdown-trigger quick-actions__receive-dropdown-trigger--review"
-                                  title={String(selectedDivision?.nombre || 'Selecciona').trim()}
+                                  title={availableDivisions.length ? String(selectedDivision?.nombre || 'Selecciona').trim() : (selectedBodegaId ? 'Esta bodega no tiene divisiones' : 'Elige primero la bodega')}
                                   aria-label={selectedDivision?.nombre ? `Division: ${String(selectedDivision.nombre).trim()}` : 'Seleccionar division'}
                                   onClick={() => toggleReceiveLocationDropdown(rowProductId, 'division', true)}
                                   disabled={receiveShipmentSubmitting || !availableDivisions.length}
@@ -7264,7 +7351,7 @@ function QuickActions({
                                 <button
                                   type="button"
                                   className="quick-actions__receive-dropdown-trigger quick-actions__receive-dropdown-trigger--review"
-                                  title={String(selectedSubdivision?.nombre || 'Selecciona').trim()}
+                                  title={availableSubdivisions.length ? String(selectedSubdivision?.nombre || 'Selecciona').trim() : (selectedDivisionId ? 'Esta división no tiene subdivisiones' : 'Elige primero la división')}
                                   aria-label={selectedSubdivision?.nombre ? `Subdivision: ${String(selectedSubdivision.nombre).trim()}` : 'Seleccionar subdivision'}
                                   onClick={() => toggleReceiveLocationDropdown(rowProductId, 'subdivision', true)}
                                   disabled={receiveShipmentSubmitting || !availableSubdivisions.length}
@@ -7427,7 +7514,7 @@ function QuickActions({
                                       />
                                     </div>
                                     <div className="quick-actions__receive-dropdown-results">
-                                      {!filteredBodegas.length && <small className="muted">Sin resultados.</small>}
+                                      {!filteredBodegas.length && <small className="muted">{bodegaQuery ? 'Sin resultados.' : 'Esta sucursal no tiene bodegas.'}</small>}
                                       {filteredBodegas.map((bodega) => (
                                         <button
                                           key={`receive-bodega-option-${bodega.id}`}
@@ -7459,6 +7546,7 @@ function QuickActions({
                                   className="quick-actions__receive-dropdown-trigger quick-actions__receive-dropdown-trigger--review"
                                   onClick={() => toggleReceiveLocationDropdown(rowProductId, 'division')}
                                   disabled={receiveShipmentSubmitting || !availableDivisions.length}
+                                  title={availableDivisions.length ? undefined : (selectedBodegaId ? 'Esta bodega no tiene divisiones' : 'Elige primero la bodega')}
                                 >
                                   <span>{String(selectedDivision?.nombre || 'Selecciona').trim()}</span>
                                   <i className={`pi pi-chevron-${isReceiveLocationDropdownOpen(rowProductId, 'division') ? 'up' : 'down'}`} />
@@ -7476,7 +7564,7 @@ function QuickActions({
                                       />
                                     </div>
                                     <div className="quick-actions__receive-dropdown-results">
-                                      {!filteredDivisions.length && <small className="muted">Sin resultados.</small>}
+                                      {!filteredDivisions.length && <small className="muted">{divisionQuery ? 'Sin resultados.' : 'Esta bodega no tiene divisiones.'}</small>}
                                       {filteredDivisions.map((division) => (
                                         <button
                                           key={`receive-division-option-${division.id}`}
@@ -7508,6 +7596,7 @@ function QuickActions({
                                   className="quick-actions__receive-dropdown-trigger quick-actions__receive-dropdown-trigger--review"
                                   onClick={() => toggleReceiveLocationDropdown(rowProductId, 'subdivision')}
                                   disabled={receiveShipmentSubmitting || !availableSubdivisions.length}
+                                  title={availableSubdivisions.length ? undefined : (selectedDivisionId ? 'Esta división no tiene subdivisiones' : 'Elige primero la división')}
                                 >
                                   <span>{String(selectedSubdivision?.nombre || 'Selecciona').trim()}</span>
                                   <i className={`pi pi-chevron-${isReceiveLocationDropdownOpen(rowProductId, 'subdivision') ? 'up' : 'down'}`} />
@@ -7525,7 +7614,7 @@ function QuickActions({
                                       />
                                     </div>
                                     <div className="quick-actions__receive-dropdown-results">
-                                      {!filteredSubdivisions.length && <small className="muted">Sin resultados.</small>}
+                                      {!filteredSubdivisions.length && <small className="muted">{subdivisionQuery ? 'Sin resultados.' : 'Esta división no tiene subdivisiones.'}</small>}
                                       {filteredSubdivisions.map((subdivision) => (
                                         <button
                                           key={`receive-subdivision-option-${subdivision.id}`}
@@ -7551,6 +7640,13 @@ function QuickActions({
                           </div>
                         </div>
                       </div>
+
+                      {(() => {
+                        const gapMessage = getReceiveLocationGapMessage(selectedBodegaId, availableDivisions, selectedDivisionId, availableSubdivisions)
+                        return gapMessage ? (
+                          <p className="quick-actions__receive-item-hint quick-actions__receive-item-hint--warning">{gapMessage}</p>
+                        ) : null
+                      })()}
 
                       <label className="quick-actions__receive-count-field">
                         <span>Cantidad recibida <span className="quick-actions__receive-expected-hint">(esperada: {toPositiveInt(row?.cantidad_enviada, 0)})</span></span>
@@ -7746,6 +7842,7 @@ function QuickActions({
         let queryInput = ''
         let placeholder = ''
         let draftFieldKey = ''
+        let emptyMessage = 'Sin resultados.'
 
         if (activeField === 'bodega') {
           const bodegaQuery = normalizeSearchText(activeRow?.location_draft_bodega_query || '')
@@ -7753,6 +7850,7 @@ function QuickActions({
             ? inTransitBodegas.filter((b) => normalizeSearchText(b?.nombre).includes(bodegaQuery))
             : inTransitBodegas
           queryInput = String(activeRow?.location_draft_bodega_query_input || '')
+          if (!bodegaQuery) emptyMessage = 'Esta sucursal no tiene bodegas.'
           placeholder = 'Buscar bodega'
           draftFieldKey = 'location_draft_bodega_id'
         } else if (activeField === 'division') {
@@ -7764,6 +7862,7 @@ function QuickActions({
             ? availableDivisions.filter((d) => normalizeSearchText(d?.nombre).includes(divisionQuery))
             : availableDivisions
           queryInput = String(activeRow?.location_draft_division_query_input || '')
+          if (!divisionQuery) emptyMessage = 'Esta bodega no tiene divisiones.'
           placeholder = 'Buscar division'
           draftFieldKey = 'location_draft_division_id'
         } else if (activeField === 'subdivision') {
@@ -7776,6 +7875,7 @@ function QuickActions({
             ? availableSubdivisions.filter((s) => normalizeSearchText(s?.nombre).includes(subdivisionQuery))
             : availableSubdivisions
           queryInput = String(activeRow?.location_draft_subdivision_query_input || '')
+          if (!subdivisionQuery) emptyMessage = 'Esta división no tiene subdivisiones.'
           placeholder = 'Buscar subdivision'
           draftFieldKey = 'location_draft_subdivision_id'
         }
@@ -7810,7 +7910,7 @@ function QuickActions({
               />
             </div>
             <div className="quick-actions__receive-dropdown-results">
-              {!options.length && <small className="muted">Sin resultados.</small>}
+              {!options.length && <small className="muted">{emptyMessage}</small>}
               {options.map((option) => (
                 <button
                   key={`receive-portal-${activeField}-${option.id}`}

@@ -1960,6 +1960,12 @@ button.create-user__locations-row {
   border-color: var(--color-border);
 }
 
+/* Abierto hacia arriba cuando abajo no cabe (utils/dropdownAutoFlip.js). */
+.create-user__dropdown-panel.create-user__dropdown-panel--up {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
 .create-user__dropdown-panel--floating {
   position: fixed;
   z-index: 12000;
@@ -2454,4 +2460,8 @@ button.create-user__locations-row {
   .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-cell--editable select {
     max-width: none;
   }
+}
+
+.create-user__branch-blocker {
+  margin: 4px 0 10px;
 }

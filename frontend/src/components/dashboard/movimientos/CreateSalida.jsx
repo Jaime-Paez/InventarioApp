@@ -12,6 +12,7 @@ import { useCloseDropdownsOnTabSwitch } from '../../../hooks/useCloseDropdownsOn
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
+import BlockerNotice from '../common/BlockerNotice'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import {
   buildTransferHistoryEntry,
@@ -383,6 +384,7 @@ function CreateSalida({
   const [branches, setBranches] = useState([])
   const [allBranches, setAllBranches] = useState([])
   const [catalogsLoading, setCatalogsLoading] = useState(false)
+  const [catalogsLoaded, setCatalogsLoaded] = useState(false)
   const [tipoMovimientos, setTipoMovimientos] = useState(() => preloadedTipoMovimientos)
   const [subTipos, setSubTipos] = useState(() => preloadedSubTipos)
   const [estados, setEstados] = useState([])
@@ -423,6 +425,8 @@ function CreateSalida({
   const [clienteOptions, setClienteOptions] = useState([])
   const [clienteLoading, setClienteLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState({})
+  const [stockLoadError, setStockLoadError] = useState(false)
+  const [consumidorFinalMissing, setConsumidorFinalMissing] = useState(false)
   const [stockLoading, setStockLoading] = useState(false)
   const [solicitudesTraslado, setSolicitudesTraslado] = useState([])
   const [solicitudesTrasladoLoading, setSolicitudesTrasladoLoading] = useState(false)
@@ -881,6 +885,17 @@ function CreateSalida({
     ])
     return fallback?.id ? String(fallback.id) : ''
   }, [defaultEstadoMovimientoId, estados, formData.estadoId, isTraslado])
+  // Solo se avisa cuando los catalogos cargaron bien: si fallaron, el problema es otro.
+  const missingEstadoMovimiento = Boolean(
+    formData.subTipoId && catalogsLoaded && !catalogsLoading && !resolvedEstadoMovimientoId
+  )
+  const expectedEstadoMovimientoName = isVenta
+    ? 'Vendido'
+    : isTraslado
+      ? 'Enviado'
+      : isDevolucion
+        ? 'Devuelto'
+        : formatSalidaSubTipoLabel(selectedSubTipo)
   const defaultEstadoProductoId = useMemo(() => {
     if (!estadosProducto.length) return ''
     const preferred = estadosProducto.find((estado) =>
@@ -888,6 +903,9 @@ function CreateSalida({
     )
     return String(preferred?.id ?? estadosProducto[0].id)
   }, [estadosProducto])
+  const missingEstadoProducto = Boolean(
+    formData.subTipoId && catalogsLoaded && !catalogsLoading && !defaultEstadoProductoId
+  )
 
   const ivaRateValue = useMemo(() => {
     const parsed = parseNumber(formData.iva_rate)
@@ -1565,6 +1583,7 @@ function CreateSalida({
     stockByProductRef.current = {}
     setStockByProduct({})
     setStockLoading(false)
+    setStockLoadError(false)
   }, [])
 
   const searchClientes = useCallback(
@@ -1735,6 +1754,7 @@ function CreateSalida({
   const fetchCatalogs = useCallback(async () => {
     if (!token) return
     setCatalogsLoading(true)
+    setCatalogsLoaded(false)
     try {
       const [
         branchesRes,
@@ -1786,6 +1806,7 @@ function CreateSalida({
       setEstados(parseApiList(estadosData))
       setProductos(parseApiList(productosData))
       setEstadosProducto(parseApiList(estadosProductoData))
+      setCatalogsLoaded(true)
 
       const configRes = await authFetch(`${API_URL}/configuracion/sistema/`, {}, token)
       if (configRes.ok) {
@@ -1849,6 +1870,7 @@ function CreateSalida({
             stockByProductRef.current = map
             loadedStockBranchIdRef.current = normalizedBranchId
             setStockByProduct(map)
+            setStockLoadError(false)
           }
 
           return map
@@ -1857,6 +1879,7 @@ function CreateSalida({
             stockByProductRef.current = {}
             loadedStockBranchIdRef.current = ''
             setStockByProduct({})
+            setStockLoadError(true)
           }
           notifyError(err?.message || 'No se pudo cargar el inventario de la sucursal seleccionada.')
           throw err
@@ -1874,6 +1897,12 @@ function CreateSalida({
     },
     [notifyError, resetStockLookup, token]
   )
+
+  const retryStockLoad = useCallback(() => {
+    const branchId = String(formData.sucursalId || '').trim()
+    if (!branchId) return
+    fetchStockByBranch(branchId, { force: true }).catch(() => {})
+  }, [fetchStockByBranch, formData.sucursalId])
 
   const searchProducts = useCallback(
     async (query) => {
@@ -2006,6 +2035,7 @@ function CreateSalida({
     setReminderUsersLoading(false)
     setReminderUsersError('')
     setSelectedReminderUserIds([])
+    setConsumidorFinalMissing(false)
     setIsMaximized(false)
     setIsResizingModal(false)
     modalRestoreRef.current = null
@@ -2352,6 +2382,7 @@ function CreateSalida({
       stockByProductRef.current = {}
       setStockByProduct({})
       setStockLoading(false)
+      setStockLoadError(false)
     }
   }, [formData.sucursalId, open, requiresStockValidation, resetStockLookup])
 
@@ -2809,9 +2840,11 @@ function CreateSalida({
     setError('')
     const existing = await lookupClienteByCedula(CONSUMIDOR_FINAL_CEDULA)
     if (!existing) {
+      setConsumidorFinalMissing(true)
       notifyError('No se encontró el cliente "Consumidor Final". Contacta al administrador.')
       return
     }
+    setConsumidorFinalMissing(false)
     setClienteMode(CLIENT_MODE_CONSUMIDOR_FINAL)
     setSelectedCliente(existing)
     setFormData((prev) => ({ ...prev, cliente: formatClienteFieldValue(existing) }))
@@ -3809,6 +3842,7 @@ function CreateSalida({
                       value={formData.subTipoId}
                       onChange={handleSubTipoSelect}
                       disabled={loading}
+                      movimientoLabel="salida"
                     />
                   </div>
                 </div>
@@ -4072,6 +4106,21 @@ function CreateSalida({
                     </div>
                   </div>
 
+                  {missingEstadoProducto && (
+                    <BlockerNotice
+                      title="No se pueden agregar productos: no hay estado de producto configurado"
+                      reason="El catálogo de estados de producto está vacío y cada producto de la salida necesita uno. Pide al administrador que cree al menos un estado de producto (por ejemplo, «Enviado»)."
+                    />
+                  )}
+                  {stockLoadError && requiresStockValidation && hasSelectedSucursal && (
+                    <BlockerNotice
+                      title={`No se pudo cargar el stock de ${selectedSucursalName || 'la sucursal seleccionada'}`}
+                      reason="Sin el inventario de la sucursal todos los productos aparecen sin stock y no se pueden agregar. Revisa tu conexión y vuelve a intentarlo."
+                      actionLabel="Reintentar"
+                      onAction={retryStockLoad}
+                    />
+                  )}
+
                   <div className={`create-user__locations-table create-salida__products-table${!isPrefilledTransfer ? ' create-salida__products-table--with-actions' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span>
@@ -4197,6 +4246,27 @@ function CreateSalida({
                                 )}
                                 {!productLoading && productQuery.trim() && !productOptions.length && (
                                   <small className="muted">Sin resultados.</small>
+                                )}
+                                {!productLoading && !stockLoading && requiresStockValidation && stockLoadError && hasSelectedSucursal && (
+                                  <BlockerNotice
+                                    compact
+                                    title={`No se pudo cargar el stock de ${selectedSucursalName || 'la sucursal seleccionada'}`}
+                                    reason="Por eso todos los productos aparecen sin stock."
+                                    actionLabel="Reintentar"
+                                    onAction={retryStockLoad}
+                                  />
+                                )}
+                                {!productLoading &&
+                                  !stockLoading &&
+                                  requiresStockValidation &&
+                                  !stockLoadError &&
+                                  productOptions.length > 0 &&
+                                  productOptions.every((producto) => !(Number(stockByProduct[String(producto.id)] ?? 0) > 0)) && (
+                                  <BlockerNotice
+                                    compact
+                                    title={`Ningún resultado tiene stock en ${selectedSucursalName || 'la sucursal seleccionada'}`}
+                                    reason="Para venderlo o sacarlo, primero regístralo con una entrada o un traslado."
+                                  />
                                 )}
                                 {productOptions.length > 0 && (
                                   <div className="create-salida__results-header">
@@ -4459,6 +4529,16 @@ function CreateSalida({
                           </button>
                         </div>
                       </div>
+
+                      {consumidorFinalMissing && !useConsumidorFinal && (
+                        <BlockerNotice
+                          compact
+                          className="create-user__field--full"
+                          title="No se puede usar Consumidor Final"
+                          reason={`No existe el cliente con cédula ${CONSUMIDOR_FINAL_CEDULA}. Créalo en Clientes (o pide al administrador que lo cree) y vuelve a intentarlo.`}
+                          goTo="Clientes"
+                        />
+                      )}
 
                       {useExistingCliente && (
                         <label className="create-user__field create-user__field--full">
@@ -4802,6 +4882,13 @@ function CreateSalida({
                           </div>
                         </div>
                       )}
+                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && !reminderUsersError && !hasAdminReminderRecipients && (
+                        <BlockerNotice
+                          title="No se puede enviar el traslado: no hay un administrador para el recordatorio"
+                          reason="El recordatorio del envío siempre incluye a un administrador y no se encontró ningún usuario administrador. Pide que se marque al menos un usuario como administrador en Administrar › Usuarios."
+                          goTo="Administrar"
+                        />
+                      )}
                     </div>
 
                     <div className={`create-salida__reminder-block create-salida__reminder-block--matrix${hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdditionalReminderRecipients ? ' create-salida__reminder-block--invalid' : ''}`}>
@@ -4809,7 +4896,22 @@ function CreateSalida({
                         <h5>Usuarios adicionales</h5>
                         <span className="create-salida__reminder-count">{selectedReminderUserIds.length}</span>
                       </div>
-                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && !hasAdditionalReminderRecipients && (
+                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && reminderUsersError && (
+                        <BlockerNotice
+                          title="No se pudieron cargar los usuarios para el recordatorio"
+                          reason="Sin la lista de usuarios no se puede elegir a quién recordar y el envío no se puede completar. Revisa tu conexión y vuelve a intentarlo."
+                          actionLabel="Reintentar"
+                          onAction={fetchReminderUsers}
+                        />
+                      )}
+                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && !reminderUsersError && !selectableReminderUsers.length && (
+                        <BlockerNotice
+                          title={`No se puede enviar el traslado a ${selectedObjetivoBranchName || 'esta sucursal'}: no hay usuarios para el recordatorio`}
+                          reason={`El envío necesita al menos un usuario adicional que reciba el recordatorio, y ningún usuario tiene permiso de crear y editar en Movimientos - Salidas de ${selectedObjetivoBranchName || 'esta sucursal'}. Pide al administrador que asigne ese permiso a un usuario de la sucursal en Administrar › Usuarios › permisos.`}
+                          goTo="Administrar"
+                        />
+                      )}
+                      {hasSelectedReminderTargetBranch && !reminderUsersLoading && selectableReminderUsers.length > 0 && !hasAdditionalReminderRecipients && (
                         <small className="create-user__field-error">Debes seleccionar al menos un usuario adicional.</small>
                       )}
                       <div className="create-salida__reminder-table-wrap">
@@ -4831,7 +4933,7 @@ function CreateSalida({
                           {hasSelectedReminderTargetBranch && !reminderUsersLoading && !selectableReminderUsers.length && (
                             <div className="permissions-matrix__row create-salida__reminder-row--empty">
                               <div className="permissions-matrix__cell permissions-matrix__cell--label">
-                                No hay usuarios disponibles con permisos de crear y editar en salidas para esta sucursal.
+                                Sin usuarios disponibles.
                               </div>
                             </div>
                           )}
@@ -4866,6 +4968,14 @@ function CreateSalida({
               </div>
             </div>
             </>
+          )}
+
+          {missingEstadoMovimiento && (
+            <BlockerNotice
+              className="create-salida__footer-blocker"
+              title={`No se puede crear la salida: falta configurar el estado de movimiento «${expectedEstadoMovimientoName}»`}
+              reason={`El catálogo de estados de movimiento no tiene un estado para este tipo de salida, y sin él no se puede registrar. Pide al administrador que configure el estado «${expectedEstadoMovimientoName}» en el catálogo de estados de movimiento.`}
+            />
           )}
 
           <div className="create-user__footer">

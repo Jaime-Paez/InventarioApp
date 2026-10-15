@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { PanelLeftOpen } from 'lucide-react'
 import { APP_PORTAL_ROOT_ID } from '../../../utils/portalRoot'
 import kavaDark from '../../../assets/login/kava(dark).png'
@@ -11,6 +11,8 @@ import Workspace from '../Workspace/Workspace'
 import { buildModuleScopeAccessIndex, buildPermissionIndex, labelHasAccess } from '../menuConfig'
 import { UnsavedChangesHost } from '../common/unsavedChanges/unsavedChanges'
 import { requestTabClose } from '../common/unsavedChanges/unsavedStore'
+import { NAVIGATE_EVENT } from '../../../utils/navigation'
+import { startDropdownAutoFlip } from '../../../utils/dropdownAutoFlip'
 
 function DashboardLayout({
   user,
@@ -87,13 +89,28 @@ function DashboardLayout({
   }, [isLeaving])
 
   const handleSelect = (label) => {
-    if (!labelHasAccess(label, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return
+    if (!labelHasAccess(label, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return false
     setActiveItem(label)
     setOpenTabs((prev) => (prev.includes(label) ? prev : [...prev, label]))
     if (isMobileViewport) {
       setIsSidebarOpen(false)
     }
   }
+
+  // Los desplegables se abren hacia arriba si abajo no caben.
+  useEffect(() => startDropdownAutoFlip(), [])
+
+  // Avisos y otros componentes piden ir a una seccion (goToSection).
+  const handleSelectRef = useRef(handleSelect)
+  handleSelectRef.current = handleSelect
+  useEffect(() => {
+    const onNavigate = (event) => {
+      const detail = event?.detail
+      if (detail) detail.handled = handleSelectRef.current(detail.label) !== false
+    }
+    window.addEventListener(NAVIGATE_EVENT, onNavigate)
+    return () => window.removeEventListener(NAVIGATE_EVENT, onNavigate)
+  }, [])
 
   // Si la pestana tiene ventanas con cambios sin guardar, se pregunta antes
   // de cerrarla (antes se cerraba y se perdia todo).

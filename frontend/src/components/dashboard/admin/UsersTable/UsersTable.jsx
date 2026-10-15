@@ -466,31 +466,29 @@ function UsersTable({
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const baseRows = processedRows === null ? users : processedRows
-    if (!selectedUsers?.length) {
-      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
+    const rows = getRowsToExport()
+    if (!rows.length) {
+      notifyExportWarning('No hay registros para exportar.')
       return
     }
-    const rows = selectedUsers
     await exportToExcel({
       rows,
       columns: exportColumns,
       valueGetter: getExportValue,
       fileName: buildFileName('usuarios'),
     })
-  }, [exportColumns, getExportValue, notifyExportWarning, processedRows, selectedUsers, users])
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
 
   const handleExportPdf = useCallback(async () => {
     if (!exportColumns.length) {
       notifyExportWarning('Selecciona al menos una columna para exportar.')
       return
     }
-    const baseRows = processedRows === null ? users : processedRows
-    if (!selectedUsers?.length) {
-      notifyExportWarning(baseRows.length ? 'Debe seleccionar al menos una fila para generar el reporte.' : 'No hay registros para exportar.')
+    const rows = getRowsToExport()
+    if (!rows.length) {
+      notifyExportWarning('No hay registros para exportar.')
       return
     }
-    const rows = selectedUsers
     await exportToPdf({
       rows,
       columns: exportColumns,
@@ -498,7 +496,17 @@ function UsersTable({
       fileName: buildFileName('usuarios'),
       title: 'Reporte de Administrar Usuarios',
     })
-  }, [exportColumns, getExportValue, notifyExportWarning, processedRows, selectedUsers, users])
+  }, [exportColumns, getExportValue, getRowsToExport, notifyExportWarning])
+
+  // Sin selección se exporta lo filtrado; el botón solo se apaga si no hay filas
+  const exportSelectedCount = selectedUsers?.length || 0
+  const exportFilteredCount = (processedRows === null ? users : processedRows)?.length || 0
+  const exportCount = exportSelectedCount || exportFilteredCount
+  const exportHint = exportSelectedCount
+    ? (exportSelectedCount === 1 ? 'Exportar la fila seleccionada' : `Exportar las ${exportSelectedCount} filas seleccionadas`)
+    : exportFilteredCount
+      ? `Exportar todo lo filtrado (${exportFilteredCount})`
+      : 'No hay registros para exportar'
 
   // ---------------- Body templates ----------------
   const cellWithTooltip = (rowData, field) => {
@@ -645,7 +653,8 @@ function UsersTable({
         <button
           className="users-circle users-circle--excel"
           type="button"
-          title="Excel"
+          title={exportCount ? `Excel: ${exportHint}` : exportHint}
+          disabled={!exportCount}
           onClick={onExportExcel || handleExportExcel}
         >
           <i className="pi pi-file-excel" />
@@ -654,7 +663,8 @@ function UsersTable({
         <button
           className="users-circle users-circle--pdf"
           type="button"
-          title="PDF"
+          title={exportCount ? `PDF: ${exportHint}` : exportHint}
+          disabled={!exportCount}
           onClick={onExportPdf || handleExportPdf}
         >
           <i className="pi pi-file-pdf" />
