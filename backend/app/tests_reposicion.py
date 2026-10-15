@@ -289,3 +289,16 @@ class ReposicionTests(TestCase):
             present = [v for v in values if v is not None]
             self.assertEqual(values[:len(present)], present)
             self.assertEqual(present, sorted(present, reverse=orden.startswith("-")))
+
+    def test_reporte_trae_todo_lo_filtrado_sin_paginar(self):
+        total = self.client_admin.get("/reposicion/?estado=").data["count"]
+        self.assertGreater(total, 1)
+        paged = self.client_admin.get("/reposicion/?estado=&page_size=1")
+        self.assertEqual(len(paged.data["results"]), 1)
+        todo = self.client_admin.get("/reposicion/?estado=&page_size=1&todo=1")
+        self.assertEqual(len(todo.data["results"]), total)
+
+        # Respeta los filtros combinados (clase + estado).
+        clase_a = self.client_admin.get("/reposicion/?estado=&clase=A&todo=1").data["results"]
+        self.assertTrue(clase_a)
+        self.assertTrue(all(row["clase"] == "A" for row in clase_a))

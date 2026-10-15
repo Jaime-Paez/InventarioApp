@@ -1467,3 +1467,21 @@ body.app-theme-dark .reposicion__hint {
 body.app-theme-dark .reposicion__hint p { color: #cbd5e1; }
 body.app-theme-dark .reposicion__hint .reposicion__hint-reason { border-color: #334155; }
 body.app-theme-dark .reposicion__hint-reason span { color: #94a3b8; }
+
+/* ---- Barra de reportes sobre la tabla ---- */
+.reposicion__table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.reposicion__filters-text {
+  overflow: hidden;
+  color: var(--color-text-secondary, #64748b);
+  font-size: var(--font-size-xs, 12px);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -535,6 +535,9 @@ class ReposicionAPIView(APIView):
         except ValueError:
             page, page_size = 1, 50
         total = len(rows)
+        if params.get("todo") == "1":
+            # Para los reportes Excel/PDF: todo lo filtrado, sin paginar.
+            page, page_size = 1, max(1, total)
         start = (page - 1) * page_size
         return Response(
             {

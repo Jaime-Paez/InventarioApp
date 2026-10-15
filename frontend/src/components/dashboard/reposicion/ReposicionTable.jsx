@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, PackagePlus, RefreshCw, Searc
 import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../utils/api'
+import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import '../admin/UsersTable/UsersTable.css'
 import './ReposicionTable.css'
 import ReposicionProductDialog from './ReposicionProductDialog'
@@ -82,6 +83,36 @@ const CLASE_OPTIONS = [
 ]
 const optionName = (option) => option.nombre
 
+// Columnas de los reportes. El PDF lleva menos para que entre en la hoja.
+const EXPORT_COLUMNS = [
+  { key: 'codigo', header: 'Código', pdf: true },
+  { key: 'nombre', header: 'Producto', pdf: true },
+  { key: 'sucursal_nombre', header: 'Sucursal', pdf: true },
+  { key: 'clase', header: 'Clase', pdf: true },
+  { key: 'politica', header: 'Política' },
+  { key: 'venta_dia', header: 'Venta/día', pdf: true },
+  { key: 'dias_entrega', header: 'Entrega (días)' },
+  { key: 'stock_seguridad', header: 'Seguridad' },
+  { key: 'pedir_en', header: 'Pedir en', pdf: true },
+  { key: 'stock', header: 'Stock', pdf: true },
+  { key: 'en_camino', header: 'En camino', pdf: true },
+  { key: 'cobertura_dias', header: 'Cobertura (días)' },
+  { key: 'sugerido', header: 'Sugerido', pdf: true },
+  { key: 'costo', header: 'Costo unitario' },
+  { key: 'valor_sugerido', header: 'Valor sugerido', pdf: true },
+  { key: 'ultima_venta', header: 'Última venta' },
+  { key: 'estado', header: 'Estado', pdf: true },
+]
+
+const exportValue = (row, key) => {
+  if (key === 'clase') return row.clase === 'N' ? 'Sin clase' : row.clase
+  if (key === 'politica') return POLITICA_LABEL[row.politica] || row.politica
+  if (key === 'estado') return ESTADO_LABEL[row.estado] || row.estado
+  if (key === 'pedir_en') return row.punto_pedido ?? row.nivel_base ?? ''
+  if (key === 'venta_dia') return row.venta_dia == null ? '' : Number(Number(row.venta_dia).toFixed(2))
+  return row[key] ?? ''
+}
+
 const money = (value) => `$${Number(value || 0).toLocaleString('es-EC', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 const num = (value, digits = 0) => (
   value == null ? '—' : Number(value).toLocaleString('es-EC', { minimumFractionDigits: digits, maximumFractionDigits: digits })
@@ -108,6 +139,7 @@ function ReposicionTable({ token }) {
   const [config, setConfig] = useState(null)
   const [configDraft, setConfigDraft] = useState(null)
   const [configSaving, setConfigSaving] = useState(false)
+  const [exporting, setExporting] = useState('')
   const requestRef = useRef(0)
 
   useEffect(() => {
@@ -188,6 +220,55 @@ function ReposicionTable({ token }) {
       toast.current?.show({ severity: 'error', summary: 'Configuración', detail: err.message, life: 4000 })
     } finally {
       setConfigSaving(false)
+    }
+  }
+
+  // Descripcion de los filtros aplicados, para el nombre y titulo del reporte.
+  const filtroTexto = () => {
+    const parts = []
+    parts.push(sucursalId ? ((config?.sucursales || []).find((s) => String(s.id) === String(sucursalId))?.nombre || 'Sucursal') : 'Todas las sucursales')
+    parts.push(ESTADOS.find((e) => e.value === estado)?.label || 'Todos')
+    parts.push(clase ? `Clase ${clase}` : 'Clases A, B y C')
+    if (debouncedSearch) parts.push(`Búsqueda "${debouncedSearch}"`)
+    return parts.join(' · ')
+  }
+
+  // Reporte con TODO lo que cumple los filtros (no solo la pagina visible).
+  const exportar = async (formato) => {
+    setExporting(formato)
+    try {
+      const params = new URLSearchParams({ todo: '1', orden })
+      if (sucursalId) params.set('sucursal_id', sucursalId)
+      if (estado) params.set('estado', estado)
+      if (clase) params.set('clase', clase)
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      const response = await authFetch(`${API_URL}/reposicion/?${params.toString()}`, {}, token)
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(String(payload?.detail || 'No se pudo generar el reporte.'))
+      const all = Array.isArray(payload?.results) ? payload.results : []
+      if (!all.length) throw new Error('No hay productos con estos filtros.')
+      const slug = [
+        'reposicion',
+        estado || 'todos',
+        clase ? `clase-${clase}` : '',
+      ].filter(Boolean).join('-')
+      const fileName = buildFileName(slug)
+      if (formato === 'excel') {
+        await exportToExcel({ rows: all, columns: EXPORT_COLUMNS, valueGetter: exportValue, fileName })
+      } else {
+        await exportToPdf({
+          rows: all,
+          columns: EXPORT_COLUMNS.filter((col) => col.pdf),
+          valueGetter: exportValue,
+          fileName,
+          title: 'Reporte de reposición',
+          subtitle: `${filtroTexto()} · ${all.length} productos · sugerido ${money(all.reduce((sum, r) => sum + Number(r.valor_sugerido || 0), 0))}`,
+        })
+      }
+    } catch (err) {
+      toast.current?.show({ severity: 'error', summary: 'Reporte', detail: err.message, life: 3500 })
+    } finally {
+      setExporting('')
     }
   }
 
@@ -331,6 +412,30 @@ function ReposicionTable({ token }) {
         )}
 
         <section className="reposicion__table-card">
+          <div className="reposicion__table-toolbar">
+            <span className="reposicion__filters-text">{filtroTexto()}</span>
+            <div className="users-header__right">
+              <span className="users-header__count">{`Reg. ${stale ? '…' : Number(data?.count || 0)}`}</span>
+              <button
+                className="users-circle users-circle--excel"
+                type="button"
+                onClick={() => void exportar('excel')}
+                title="Exportar a Excel todo lo filtrado"
+                disabled={Boolean(exporting) || stale || !data?.count}
+              >
+                <i className={`pi ${exporting === 'excel' ? 'pi-spin pi-spinner' : 'pi-file-excel'}`} />
+              </button>
+              <button
+                className="users-circle users-circle--pdf"
+                type="button"
+                onClick={() => void exportar('pdf')}
+                title="Exportar a PDF todo lo filtrado"
+                disabled={Boolean(exporting) || stale || !data?.count}
+              >
+                <i className={`pi ${exporting === 'pdf' ? 'pi-spin pi-spinner' : 'pi-file-pdf'}`} />
+              </button>
+            </div>
+          </div>
           {error && <p className="reposicion__error">{error}</p>}
           <div className="reposicion__table-wrap" onScroll={() => setHint(null)}>
             <table className="reposicion__table">
