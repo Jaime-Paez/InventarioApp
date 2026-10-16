@@ -1413,6 +1413,62 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             return ""
         return str(detail or "").strip()
 
+    @action(detail=True, methods=["post"], url_path="previsualizar-ajuste")
+    def previsualizar_ajuste(self, request, pk=None):
+        """Que pasara con el inventario al guardar las cantidades editadas de una entrada.
+
+        Body: {detalles: [{producto_id, cantidad}], ajustes_ubicacion: [{producto_id, subdivision_id}]}.
+        No guarda nada: devuelve por producto cuanto se suma o resta, de donde y si se puede.
+        """
+        from productos.models import Producto
+
+        from .entry_adjustment import plan_adjustment, quantities_by_product
+        from .serializers import MovimientoInventarioSerializer
+
+        instance = self.get_object()
+        helper = MovimientoInventarioSerializer(context=self.get_serializer_context())
+        if instance.es_legado or instance.garantia_pendiente or not helper._entry_adds_stock(instance):
+            return Response({"aplica": False, "cambios": []}, status=status.HTTP_200_OK)
+        raw_details = request.data.get("detalles") or []
+        after = quantities_by_product([d for d in raw_details if isinstance(d, dict)])
+        before = quantities_by_product(instance.detalles.all())
+        products = {
+            p.id: (p.codigo, p.nombre)
+            for p in Producto.objects.filter(id__in=set(before) | set(after)).only("id", "codigo", "nombre")
+        }
+        plan = plan_adjustment(
+            sucursal=instance.sucursal,
+            before=before,
+            after=after,
+            overrides=helper.parse_location_overrides(request.data.get("ajustes_ubicacion")),
+            products=products,
+        )
+        # Para elegir donde guardar lo que se suma: todas las ubicaciones de la sucursal.
+        ubicaciones_sucursal = []
+        if any(item["delta"] > 0 for item in plan):
+            from inventario.models import SubDivision
+
+            from .entry_adjustment import location_label
+
+            ubicaciones_sucursal = sorted(
+                (
+                    {"subdivision_id": sub.id, "label": location_label(sub)}
+                    for sub in SubDivision.objects.select_related("division__bodega").filter(
+                        division__bodega__sucursal_id=instance.sucursal_id
+                    )
+                ),
+                key=lambda loc: loc["label"],
+            )
+        return Response(
+            {
+                "aplica": True,
+                "sucursal": str(instance.sucursal),
+                "cambios": plan,
+                "ubicaciones_sucursal": ubicaciones_sucursal,
+            },
+            status=status.HTTP_200_OK,
+        )
+
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.es_legado:

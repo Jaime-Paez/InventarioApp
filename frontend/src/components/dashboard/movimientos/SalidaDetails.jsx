@@ -779,7 +779,10 @@ function SalidaDetails({
     const detalles = (Array.isArray(salida?.detalles) ? salida.detalles : []).map((detalle) => {
       const productLabel = String(detalle?.producto ?? '').trim()
       const code = parseProductCode(productLabel)
+      // El id viene en la linea; el catalogo cargado es solo la primera pagina.
+      const apiProductId = String(detalle?.producto_id ?? '').trim()
       const product =
+        (apiProductId && productosList.find((item) => String(item?.id) === apiProductId)) ||
         productosList.find((item) => normalizeValue(item?.codigo) === normalizeValue(code)) ||
         productosList.find(
           (item) =>
@@ -799,7 +802,7 @@ function SalidaDetails({
 
       return {
         uid: `det-${Math.random().toString(36).slice(2, 8)}`,
-        productoId: product?.id ? String(product.id) : '',
+        productoId: product?.id ? String(product.id) : apiProductId,
         productoCodigo: product?.codigo ?? code ?? '',
         productoNombre: product?.nombre ?? stripCodeFromProductLabel(productLabel, code) ?? productLabel,
         estadoProductoId: estadoProducto?.id ? String(estadoProducto.id) : '',

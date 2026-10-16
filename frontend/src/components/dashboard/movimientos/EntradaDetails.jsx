@@ -11,6 +11,7 @@ import useTableCellHover from '../common/useTableCellHover.jsx'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
+import EntradaAjustePreview from './EntradaAjustePreview'
 import {
   emitRemindersSync,
   extractUserId,
@@ -430,6 +431,16 @@ function EntradaDetails({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteInventoryAction, setDeleteInventoryAction] = useState('reverse')
   const [isEditing, setIsEditing] = useState(false)
+  // Edicion de cantidades de una entrada recibida: donde sumar/restar cada
+  // producto y el plan que devuelve el backend (se aplica solo la diferencia).
+  const [ajusteOverrides, setAjusteOverrides] = useState({})
+  const [ajustePlan, setAjustePlan] = useState(null)
+  useEffect(() => {
+    if (!isEditing) {
+      setAjusteOverrides({})
+      setAjustePlan(null)
+    }
+  }, [isEditing])
   const [, setError] = useState('')
 
   const [branches, setBranches] = useState([])
@@ -1340,7 +1351,10 @@ function EntradaDetails({
     const detalles = (Array.isArray(salida?.detalles) ? salida.detalles : []).map((detalle) => {
       const productLabel = String(detalle?.producto ?? '').trim()
       const code = parseProductCode(productLabel)
+      // El id viene en la linea; el catalogo cargado es solo la primera pagina.
+      const apiProductId = String(detalle?.producto_id ?? '').trim()
       const product =
+        (apiProductId && productosList.find((item) => String(item?.id) === apiProductId)) ||
         productosList.find((item) => normalizeValue(item?.codigo) === normalizeValue(code)) ||
         productosList.find(
           (item) =>
@@ -1364,7 +1378,7 @@ function EntradaDetails({
 
       return {
         uid: `det-${Math.random().toString(36).slice(2, 8)}`,
-        productoId: product?.id ? String(product.id) : '',
+        productoId: product?.id ? String(product.id) : apiProductId,
         productoCodigo: product?.codigo ?? code ?? '',
         productoNombre: product?.nombre ?? stripCodeFromProductLabel(productLabel, code) ?? productLabel,
         productoReferencia,
@@ -2736,14 +2750,31 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
         const cantidad = parseIntValue(detail.cantidad) || 0
         const valor = parseNumber(detail.valor) || 0
         const valorTotal = parseNumber(detail.valor_total)
+        const costo = parseNumber(detail.costo)
+        const descuentoPorcentaje = parseNumber(detail.descuentoPorcentaje)
+        const precioAnterior = parseNumber(detail.productoPrecioBD)
         return {
           producto_id: Number(detail.productoId),
           cantidad,
           estado_producto_id: Number(detail.estadoProductoId || defaultEstadoProductoId),
           valor,
           valor_total: Number.isFinite(valorTotal) ? valorTotal : cantidad * valor,
+          // Sin el costo, el backend rechazaba editar cualquier compra local.
+          ...(isCompraEntrada
+            ? {
+                costo: Number.isFinite(costo) ? Math.max(0, costo) : 0,
+                descuento_porcentaje: Number.isFinite(descuentoPorcentaje)
+                  ? Math.min(100, Math.max(0, descuentoPorcentaje))
+                  : 0,
+                precio_anterior: Number.isFinite(precioAnterior) ? precioAnterior : null,
+              }
+            : {}),
         }
       }),
+      ajustes_ubicacion: Object.entries(ajusteOverrides).map(([productoId, subdivisionId]) => ({
+        producto_id: Number(productoId),
+        subdivision_id: Number(subdivisionId),
+      })),
     }
 
     if (ivaRate !== null) {
@@ -2762,6 +2793,12 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     })
     if (hasInvalidDetail) {
       setDetailError('Ingresa una cantidad válida en cada producto.')
+      return
+    }
+
+    const ajusteError = (ajustePlan?.cambios || []).find((item) => item.error)
+    if (ajusteError) {
+      notifyError(ajusteError.error)
       return
     }
 
@@ -3900,6 +3937,17 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                 onAction={reminderBlocker.retry ? fetchReminderUsers : () => setActiveTab('recordatorio')}
               />
             </div>
+          )}
+
+          {isEditing && entradaId && !isReadOnlyMode && (
+            <EntradaAjustePreview
+              token={token}
+              entradaId={entradaId}
+              details={details}
+              overrides={ajusteOverrides}
+              onOverridesChange={setAjusteOverrides}
+              onPlanChange={setAjustePlan}
+            />
           )}
 
           <div className="create-user__footer">

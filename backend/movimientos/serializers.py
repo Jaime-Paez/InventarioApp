@@ -1,6 +1,7 @@
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
+from types import SimpleNamespace
 import unicodedata
 
 from django.db import IntegrityError, transaction
@@ -26,6 +27,13 @@ from .models import (
     SolicitudTraslado,
     SolicitudTrasladoDetalle,
     TrasladoInconveniente,
+)
+from .entry_adjustment import (
+    AdjustmentError,
+    apply_adjustment,
+    entry_adds_stock,
+    plan_adjustment,
+    quantities_by_product,
 )
 from .stock_availability import get_available_transfer_quantities_by_product
 from .transfer_helpers import cancel_pending_transfer_requests, REMINDERS_SYNC_FLAG
@@ -239,10 +247,12 @@ class DetalleMovimientoSerializer(serializers.ModelSerializer):
     """Serializa los productos asociados a un movimiento."""
 
     producto = serializers.StringRelatedField(read_only=True)
+    # Tambien se devuelve: las pantallas de detalle lo necesitan para saber
+    # que producto es cada linea (antes lo buscaban por nombre en la primera
+    # pagina del catalogo y casi nunca lo encontraban).
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
         queryset=Producto.objects.all(),
-        write_only=True,
     )
     estado_producto = serializers.StringRelatedField(read_only=True)
     estado_producto_id = serializers.PrimaryKeyRelatedField(
@@ -714,6 +724,13 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         required=False,
         write_only=True,
     )
+    # Al editar una entrada recibida: donde sumar o restar la diferencia de
+    # cada producto ([{producto_id, subdivision_id}]); ver entry_adjustment.
+    ajustes_ubicacion = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        write_only=True,
+    )
     nota_inconveniente = serializers.SerializerMethodField(read_only=True)
     nota_inconveniente_resolucion = serializers.SerializerMethodField(read_only=True)
 
@@ -774,6 +791,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "detalles",
             "pagos",
             "ubicaciones_iniciales",
+            "ajustes_ubicacion",
             "garantia_pendiente",
             "estado_garantia",
             "casa_comercial",
@@ -1589,11 +1607,87 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 movimiento._direct_transfer_solicitud = solicitud_directa
         return movimiento
 
+    @staticmethod
+    def parse_location_overrides(raw):
+        overrides = {}
+        for item in raw or []:
+            try:
+                producto_id = int(item.get("producto_id") or 0)
+                subdivision_id = int(item.get("subdivision_id") or 0)
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if producto_id > 0 and subdivision_id > 0:
+                overrides[producto_id] = subdivision_id
+        return overrides
+
+    def _entry_adds_stock(self, movimiento):
+        return entry_adds_stock(
+            self._resolve_tipo_name(getattr(movimiento, "tipo_movimiento", None)),
+            self._resolve_subtipo_key(getattr(movimiento, "sub_tipo_movimiento", None)),
+            self._resolve_estado_name(getattr(movimiento, "estado_movimiento", None)),
+            getattr(movimiento, "funcional", True),
+        )
+
+    def _update_entry_by_difference(self, instance, validated_data, detalles_data, pagos_data, overrides):
+        """Entrada recibida que sigue recibida en la misma sucursal: solo la diferencia."""
+        before = quantities_by_product(instance.detalles.all())
+        after = quantities_by_product(detalles_data)
+        product_ids = set(before) | set(after)
+        products = {
+            p.id: (p.codigo, p.nombre)
+            for p in Producto.objects.filter(id__in=product_ids).only("id", "codigo", "nombre")
+        }
+        with transaction.atomic():
+            plan = plan_adjustment(
+                sucursal=instance.sucursal,
+                before=before,
+                after=after,
+                overrides=overrides,
+                products=products,
+                for_update=True,
+            )
+            errors = [item["error"] for item in plan if item["error"]]
+            if errors:
+                raise serializers.ValidationError({"detalles": " ".join(errors)})
+            movimiento = super().update(instance, validated_data)
+            movimiento.detalles.all().delete()
+            self._replace_detalles(movimiento, detalles_data)
+            if self._resolve_subtipo_key(movimiento.sub_tipo_movimiento) == "compra_local":
+                self._sync_producto_pricing_from_compra_local(detalles_data)
+            if pagos_data is not None:
+                movimiento.pagos.all().delete()
+                self._replace_pagos(movimiento, pagos_data)
+            try:
+                reduced = apply_adjustment(plan, movimiento.sucursal_id)
+            except AdjustmentError as exc:
+                raise serializers.ValidationError({"detalles": str(exc)})
+            if reduced:
+                self._reject_pending_transfers_due_to_stock_changes({movimiento.sucursal_id: reduced})
+        return movimiento
+
     def update(self, instance, validated_data):
         detalles_data = validated_data.pop("detalles", None)
         pagos_data = validated_data.pop("pagos", None)
         validated_data.pop("ubicaciones_iniciales", None)
         validated_data.pop("solicitud_traslado", None)
+        overrides = self.parse_location_overrides(validated_data.pop("ajustes_ubicacion", None))
+
+        # Entrada que ya sumo al inventario y lo sigue haciendo en la misma
+        # sucursal: se aplica solo la diferencia por producto.
+        if detalles_data is not None and not getattr(instance, "garantia_pendiente", False):
+            fields = ("tipo_movimiento", "sub_tipo_movimiento", "estado_movimiento", "funcional", "sucursal")
+            preview = SimpleNamespace(
+                **{name: validated_data.get(name, getattr(instance, name, None)) for name in fields}
+            )
+            if (
+                self._entry_adds_stock(instance)
+                and self._entry_adds_stock(preview)
+                and getattr(preview.sucursal, "id", None) == instance.sucursal_id
+            ):
+                return self._update_entry_by_difference(
+                    instance, validated_data, detalles_data, pagos_data, overrides
+                )
+
         previous_details = list(instance.detalles.select_related("producto").all())
 
         with transaction.atomic():
