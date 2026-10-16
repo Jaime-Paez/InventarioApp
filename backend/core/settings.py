@@ -121,6 +121,7 @@ INSTALLED_APPS = [
     "auditoria",
     "configuracion",
     "contacto_web",
+    "rendimiento",
 ]
 
 
@@ -149,6 +150,8 @@ REST_FRAMEWORK = {
 # ============================================================
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",  # Debe ir arriba de CommonMiddleware
+    # Mide tiempo y consultas de cada peticion (ver rendimiento/middleware.py).
+    "rendimiento.middleware.RendimientoMiddleware",
     "django.middleware.security.SecurityMiddleware",
 
     # WhiteNoise: sirve static en Render (y no rompe local)
