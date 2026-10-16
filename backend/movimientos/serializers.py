@@ -353,6 +353,9 @@ class SolicitudTrasladoDetalleSerializer(serializers.ModelSerializer):
         producto_id = getattr(instance, "producto_id", None)
         if not sucursal_id or not producto_id:
             return None
+        precomputed = self.context.get("ubicacion_actual_map")
+        if precomputed is not None:
+            return precomputed.get((int(sucursal_id), int(producto_id)))
         return (
             Inventario.objects.filter(
                 producto_id=producto_id,
@@ -495,6 +498,9 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
     def get_recepcion_progreso(self, obj):
         from inventario.por_ubicar import serialize_progress
 
+        precomputed = self.context.get("recepcion_progreso_map")
+        if precomputed is not None and obj.pk in precomputed:
+            return precomputed[obj.pk]
         return serialize_progress(obj.recepcion_progreso, obj.sucursal_solicitante_id)
 
     def get_factura_referencia(self, obj):
@@ -2010,3 +2016,42 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 movimiento_inventario=movimiento,
                 **pago,
             )
+
+
+def build_solicitud_traslado_list_context(solicitudes):
+    """Contexto para serializar muchas solicitudes de traslado sin consultas
+    por fila: avance de recepcion y "ubicacion actual" de cada producto en la
+    sucursal proveedora (antes 1 consulta por detalle y 2 por solicitud)."""
+    from inventario.por_ubicar import serialize_progress_many
+
+    solicitudes = list(solicitudes)
+    progresos = serialize_progress_many(
+        [(row.recepcion_progreso, row.sucursal_solicitante_id) for row in solicitudes]
+    )
+    pairs = {
+        (int(row.sucursal_proveedora_id), int(detalle.producto_id))
+        for row in solicitudes
+        if row.sucursal_proveedora_id
+        for detalle in row.detalles.all()
+        if detalle.producto_id
+    }
+    ubicaciones = {}
+    if pairs:
+        rows = (
+            Inventario.objects.filter(
+                producto_id__in=sorted({pid for _, pid in pairs}),
+                cantidad__gt=0,
+                subdivision__division__bodega__sucursal_id__in=sorted({suc for suc, _ in pairs}),
+            )
+            .select_related("subdivision__division__bodega")
+            .order_by("-cantidad", "subdivision__division__nombre", "subdivision__nombre")
+        )
+        # Mismo orden que _resolve_ubicacion_actual: la primera de cada par gana.
+        for inventario in rows:
+            key = (int(inventario.subdivision.division.bodega.sucursal_id), int(inventario.producto_id))
+            if key in pairs and key not in ubicaciones:
+                ubicaciones[key] = inventario
+    return {
+        "recepcion_progreso_map": {row.pk: progreso for row, progreso in zip(solicitudes, progresos)},
+        "ubicacion_actual_map": ubicaciones,
+    }

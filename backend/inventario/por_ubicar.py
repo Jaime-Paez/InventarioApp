@@ -139,18 +139,54 @@ def received_by_product(progress):
 def serialize_progress(progress, sucursal_id):
     """Avance para la app. `pendiente_guardar` = lo que falta guardar y sigue
     en POR UBICAR (si se vendio desde ahi, ya no hay nada que guardar)."""
-    clean = normalize_progress(progress)
-    if not clean:
-        return {}
-    por_ubicar = get_por_ubicar_subdivision(sucursal_id, create=False)
-    disponibles = stock_in(por_ubicar.id if por_ubicar else None, [int(pid) for pid in clean])
-    return {
-        pid: {
-            **entry,
-            "pendiente_guardar": min(entry["por_ubicar"], disponibles.get(int(pid), 0)),
-        }
-        for pid, entry in clean.items()
-    }
+    return serialize_progress_many([(progress, sucursal_id)])[0]
+
+
+def serialize_progress_many(entries):
+    """serialize_progress para muchos envios con 2 consultas en total (antes
+    eran 2 por envio en cada lista que la app consulta cada pocos segundos).
+
+    entries: [(progress, sucursal_id)] -> lista de avances en el mismo orden.
+    """
+    cleaned = [(normalize_progress(progress), sucursal_id) for progress, sucursal_id in entries]
+    sucursal_ids = sorted({int(suc) for clean, suc in cleaned if clean and suc})
+    if not sucursal_ids:
+        return [{} for _ in cleaned]
+
+    # Misma subdivision que get_por_ubicar_subdivision: la de menor id.
+    por_ubicar_by_sucursal = {}
+    for row in (
+        SubDivision.objects.filter(
+            division__bodega__sucursal_id__in=sucursal_ids,
+            division__nombre__iexact=POR_UBICAR_NOMBRE,
+            nombre__iexact=POR_UBICAR_NOMBRE,
+        )
+        .order_by("id")
+        .values("id", "division__bodega__sucursal_id")
+    ):
+        por_ubicar_by_sucursal.setdefault(int(row["division__bodega__sucursal_id"]), int(row["id"]))
+
+    product_ids = sorted({int(pid) for clean, _ in cleaned for pid in clean})
+    disponibles = {}
+    if por_ubicar_by_sucursal and product_ids:
+        for row in Inventario.objects.filter(
+            subdivision_id__in=sorted(set(por_ubicar_by_sucursal.values())),
+            producto_id__in=product_ids,
+        ).values("subdivision_id", "producto_id", "cantidad"):
+            key = (int(row["subdivision_id"]), int(row["producto_id"]))
+            disponibles[key] = disponibles.get(key, 0) + max(0, int(row["cantidad"] or 0))
+
+    result = []
+    for clean, sucursal_id in cleaned:
+        subdivision_id = por_ubicar_by_sucursal.get(int(sucursal_id)) if (clean and sucursal_id) else None
+        result.append({
+            pid: {
+                **entry,
+                "pendiente_guardar": min(entry["por_ubicar"], disponibles.get((subdivision_id, int(pid)), 0)),
+            }
+            for pid, entry in clean.items()
+        })
+    return result
 
 
 def _validated_subdivision(subdivision_id, sucursal_id):
@@ -165,10 +201,22 @@ class RecepcionError(ValueError):
     pass
 
 
+class RecepcionDesactualizada(RecepcionError):
+    """La pantalla pidio recibir algo que ya se recibio (doble click, otra
+    pestana u otro dispositivo): no se suma nada y se le devuelve el avance
+    real para que se actualice."""
+
+
 def receive_items(*, progress, sucursal_id, items, sent_by_product):
     """Recibe productos: los suma al stock (en su ubicacion o en POR UBICAR).
 
-    items: [{"producto_id", "cantidad", "subdivision_id"?}]
+    items: [{"producto_id", "cantidad", "subdivision_id"?, "ya_recibido"?}]
+    - Nunca se puede recibir mas de lo enviado: un envio entre sucursales
+      siempre llega con lo que salio, asi que pasarse solo puede ser una
+      duplicacion.
+    - `ya_recibido` es lo que la pantalla cree que ya se recibio de ese
+      producto; si no coincide con lo guardado, la peticion es repetida o
+      vieja y se rechaza entera (RecepcionDesactualizada) sin tocar el stock.
     Devuelve el progreso actualizado. Llamar dentro de transaction.atomic()
     con el envio bloqueado (select_for_update).
     """
@@ -177,6 +225,7 @@ def receive_items(*, progress, sucursal_id, items, sent_by_product):
         raise RecepcionError("Debes enviar los productos a recibir en `items`.")
     por_ubicar = None
     seen = set()
+    planned = []
     for raw in items:
         if not isinstance(raw, dict):
             raise RecepcionError("Cada producto debe ser un objeto valido.")
@@ -193,6 +242,25 @@ def receive_items(*, progress, sucursal_id, items, sent_by_product):
         if qty <= 0:
             raise RecepcionError("La cantidad a recibir debe ser mayor a 0.")
         entry = progress.setdefault(str(pid), {"recibido": 0, "por_ubicar": 0})
+        if raw.get("ya_recibido") is not None:
+            try:
+                expected = int(raw.get("ya_recibido"))
+            except (TypeError, ValueError):
+                raise RecepcionError("El valor ya_recibido no es valido.")
+            if expected != entry["recibido"]:
+                raise RecepcionDesactualizada(
+                    "Este producto ya fue recibido en otra ventana o dispositivo. Se actualizo la recepcion."
+                )
+        enviado = int(sent_by_product.get(pid) or 0)
+        if entry["recibido"] + qty > enviado:
+            if entry["recibido"] >= enviado:
+                raise RecepcionDesactualizada(
+                    f"Ya se recibio todo lo enviado de este producto ({enviado}). Se actualizo la recepcion."
+                )
+            raise RecepcionError(
+                f"No se puede recibir mas de lo enviado: se enviaron {enviado} y ya se recibieron "
+                f"{entry['recibido']} (puedes recibir hasta {enviado - entry['recibido']})."
+            )
 
         subdivision = None
         if raw.get("subdivision_id"):
@@ -204,6 +272,14 @@ def receive_items(*, progress, sucursal_id, items, sent_by_product):
                 por_ubicar = get_por_ubicar_subdivision(sucursal_id)
             if por_ubicar is None:
                 raise RecepcionError("La sucursal de destino no tiene bodegas para recibir.")
+        planned.append((pid, qty, subdivision))
+
+    # Primero se valida todo y recien despues se toca el stock: si un producto
+    # fallaba a mitad de la lista, los anteriores quedaban sumados sin quedar
+    # en el avance y al reintentarlos se volvian a sumar.
+    for pid, qty, subdivision in planned:
+        entry = progress[str(pid)]
+        if subdivision is None:
             add_stock(por_ubicar.id, pid, qty)
             entry["por_ubicar"] += qty
         else:

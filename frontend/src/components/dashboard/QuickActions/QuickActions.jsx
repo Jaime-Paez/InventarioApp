@@ -65,6 +65,12 @@ const URGENT_URGENTE_REJECTED_TRANSFER_MESSAGE = '¡Urgente! Corrige tu solicitu
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
+// Envios pendientes/en camino cambian poco: no hace falta pedirlos cada 4s
+// (al volver a la pestana o enfocarla se piden al instante igual).
+const SHIPMENTS_POLL_MS = 15000
+// Las pestanas ocultas no consultan al servidor: cada pestana abierta sumaba
+// varias consultas por segundo aunque nadie la estuviera mirando.
+const isDocumentHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
 const URGENT_DECISION_SHIELD_COLOR = '#FF7900'
 const URGENT_URGENTE_SHIELD_COLOR = '#FFD700'
 const URGENT_SHIPMENT_SHIELD_COLOR = '#15803d'
@@ -1374,7 +1380,7 @@ function QuickActions({
     let cancelled = false
 
     const syncPendingShipments = async () => {
-      if (cancelled) return
+      if (cancelled || isDocumentHidden()) return
       await fetchPendingTransferShipments({ silent: true })
     }
 
@@ -1388,7 +1394,7 @@ function QuickActions({
     }
 
     void syncPendingShipments()
-    const intervalId = window.setInterval(syncPendingShipments, REMINDERS_POLL_MS)
+    const intervalId = window.setInterval(syncPendingShipments, SHIPMENTS_POLL_MS)
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('focus', handleFocus)
 
@@ -1407,7 +1413,7 @@ function QuickActions({
     let cancelled = false
 
     const syncInTransitShipments = async () => {
-      if (cancelled) return
+      if (cancelled || isDocumentHidden()) return
       await fetchInTransitTransferShipments({ silent: true })
     }
 
@@ -1421,7 +1427,7 @@ function QuickActions({
     }
 
     void syncInTransitShipments()
-    const intervalId = window.setInterval(syncInTransitShipments, REMINDERS_POLL_MS)
+    const intervalId = window.setInterval(syncInTransitShipments, SHIPMENTS_POLL_MS)
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('focus', handleFocus)
 
@@ -2924,7 +2930,9 @@ function QuickActions({
     }
 
     void syncRemindersFromServer()
-    const intervalId = window.setInterval(syncRemindersFromServer, REMINDERS_POLL_MS)
+    const intervalId = window.setInterval(() => {
+      if (!isDocumentHidden()) void syncRemindersFromServer()
+    }, REMINDERS_POLL_MS)
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('focus', handleFocus)
@@ -4464,7 +4472,13 @@ function QuickActions({
   const handleReceiveShipmentDraftFieldChange = useCallback((productId, field, value) => {
     const normalizedProductId = normalizeId(productId)
     if (!normalizedProductId) return
-    setReceiveShipmentError('')
+    const sentForRow = toPositiveInt(receiveShipmentDraftByProductId?.[normalizedProductId]?.cantidad_enviada, 0)
+    const typedQty = field === 'cantidad_recibida' ? toPositiveInt(normalizeIntegerInputString(value), 0) : 0
+    setReceiveShipmentError(
+      field === 'cantidad_recibida' && typedQty > sentForRow
+        ? `No puedes recibir mas de lo enviado (${sentForRow}).`
+        : ''
+    )
 
     setReceiveShipmentDraftByProductId((prev) => {
       const current = prev?.[normalizedProductId]
@@ -4472,8 +4486,14 @@ function QuickActions({
 
       const nextRow = { ...current }
       if (field === 'cantidad_recibida') {
-        const normalizedInput = normalizeIntegerInputString(value)
-        const parsed = normalizedInput === '' ? 0 : toPositiveInt(normalizedInput, 0)
+        let normalizedInput = normalizeIntegerInputString(value)
+        let parsed = normalizedInput === '' ? 0 : toPositiveInt(normalizedInput, 0)
+        // Nunca mas de lo enviado: un envio llega con lo que salio.
+        const sentQty = toPositiveInt(current?.cantidad_enviada, 0)
+        if (parsed > sentQty) {
+          parsed = sentQty
+          normalizedInput = String(sentQty)
+        }
         nextRow.cantidad_recibida_input = normalizedInput
         nextRow.cantidad_recibida = parsed
         const assigned = (Array.isArray(nextRow.ubicaciones) ? nextRow.ubicaciones : []).reduce(
@@ -4528,6 +4548,7 @@ function QuickActions({
       }
     })
   }, [
+    receiveShipmentDraftByProductId,
     inTransitDivisionsByBodegaId,
     inTransitSubdivisionsByDivisionId,
     receiveLocationDivisions,
@@ -5309,16 +5330,24 @@ function QuickActions({
   )
 
   const [receivingProductIds, setReceivingProductIds] = useState(() => new Set())
+  // Copia inmediata de lo que esta en camino al servidor: el estado de React
+  // tarda un render en actualizarse y un segundo click (o "marcar todos", o
+  // la recepcion automatica al abrir) alcanzaba a mandar el mismo producto
+  // otra vez.
+  const receivingProductIdsRef = useRef(new Set())
 
   // Recibe ya estas filas (entran al stock). `blocking` deshabilita la
   // ventana mientras tanto (boton masivo); al marcar un check no se bloquea
   // para poder seguir marcando.
   const receiveRowsNow = useCallback(async (rowsToReceive, { blocking = false } = {}) => {
     const rows = (Array.isArray(rowsToReceive) ? rowsToReceive : []).filter((row) => (
-      !row?.recepcion_registrada && toPositiveInt(row?.cantidad_recibida, 0) > 0
+      !row?.recepcion_registrada &&
+      toPositiveInt(row?.cantidad_recibida, 0) > 0 &&
+      !receivingProductIdsRef.current.has(normalizeId(row?.producto_id))
     ))
     if (!token || !activeInTransitShipment || !rows.length) return
     const ids = rows.map((row) => normalizeId(row?.producto_id))
+    ids.forEach((id) => receivingProductIdsRef.current.add(id))
     setReceiveShipmentError('')
     if (blocking) setReceiveShipmentSubmitting(true)
     setReceivingProductIds((prev) => new Set([...prev, ...ids]))
@@ -5331,6 +5360,9 @@ function QuickActions({
             items: batch.map((row) => ({
               producto_id: toPositiveInt(row?.producto_id, 0),
               cantidad: toPositiveInt(row?.cantidad_recibida, 0),
+              // Lo que esta pantalla cree que ya se recibio: si el servidor
+              // tiene otra cosa, la peticion es repetida y no suma nada.
+              ya_recibido: toPositiveInt(row?.ya_recibido, 0),
               ...(normalizeId(row?.location_draft_subdivision_id)
                 ? { subdivision_id: toPositiveInt(row.location_draft_subdivision_id, 0) }
                 : {}),
@@ -5340,6 +5372,11 @@ function QuickActions({
         token
       )
       const payload = await response.json().catch(() => ({}))
+      if (response.status === 409 && payload?.desactualizada) {
+        // Ya estaba recibido (otra ventana/dispositivo): solo se actualiza.
+        applyReceiveShipmentProgress(payload?.recepcion_progreso)
+        return
+      }
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron recibir los productos.')
       applyReceiveShipmentProgress(payload?.recepcion_progreso)
     }
@@ -5377,6 +5414,7 @@ function QuickActions({
       setReceiveShipmentError(error?.message || 'No se pudieron recibir los productos.')
     } finally {
       if (blocking) setReceiveShipmentSubmitting(false)
+      ids.forEach((id) => receivingProductIdsRef.current.delete(id))
       setReceivingProductIds((prev) => {
         const next = new Set(prev)
         ids.forEach((id) => next.delete(id))
@@ -7432,7 +7470,6 @@ function QuickActions({
                 const row = activeReceiveShipmentRow
                 const rowProductId = normalizeId(row?.producto_id)
                 const missingQty = toPositiveInt(row?.cantidad_faltante, 0)
-                const surplusQty = toPositiveInt(row?.cantidad_sobrante, 0)
                 const selectedBodegaId = normalizeId(row?.location_draft_bodega_id)
                 const selectedBodega = inTransitBodegaById.get(selectedBodegaId) || null
                 const bodegaQuery = normalizeSearchText(row?.location_draft_bodega_query || '')
@@ -7677,21 +7714,6 @@ function QuickActions({
                           <span>Novedad del faltante (obligatoria)</span>
                           <textarea
                             rows={2}
-                            value={String(row?.novedad || '')}
-                            onChange={(event) => {
-                              handleReceiveShipmentDraftFieldChange(rowProductId, 'novedad', event.target.value)
-                              if (receiveShipmentError) setReceiveShipmentError('')
-                            }}
-                            disabled={receiveShipmentSubmitting}
-                          />
-                        </label>
-                      )}
-                      {surplusQty > 0 && (
-                        <label className="quick-actions__receive-note">
-                          <span>Sobrante: {surplusQty} unidad{surplusQty !== 1 ? 'es' : ''} de más — se creará un inconveniente para resolverlo.</span>
-                          <textarea
-                            rows={2}
-                            placeholder="Novedad del sobrante (opcional)"
                             value={String(row?.novedad || '')}
                             onChange={(event) => {
                               handleReceiveShipmentDraftFieldChange(rowProductId, 'novedad', event.target.value)

@@ -179,6 +179,60 @@ class RecepcionParcialTrasladoTests(APITestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def _recibir(self, items):
+        return self.client.post(f"{BASE}/{self.solicitud.id}/recibir-parcial/", {"items": items}, format="json")
+
+    def test_recibir_dos_veces_lo_mismo_no_duplica(self):
+        # Caso TR-SUR-TUM-17: el mismo check llega dos veces (doble click,
+        # "marcar todos" o la recepcion automatica al abrir con datos viejos).
+        primero = self._recibir([{"producto_id": self.p1.id, "cantidad": 5, "ya_recibido": 0}])
+        self.assertEqual(primero.status_code, 200, primero.data)
+        repetido = self._recibir([{"producto_id": self.p1.id, "cantidad": 5, "ya_recibido": 0}])
+        self.assertEqual(repetido.status_code, 409, repetido.data)
+        self.assertEqual(repetido.data["recepcion_progreso"][str(self.p1.id)]["recibido"], 5)
+        # Aunque la pantalla vieja no mande ya_recibido, pasarse de lo enviado se rechaza.
+        sin_marca = self._recibir([{"producto_id": self.p1.id, "cantidad": 5}])
+        self.assertEqual(sin_marca.status_code, 409, sin_marca.data)
+        self.assertEqual(self._stock(self.p1), 5)
+
+    def test_no_se_recibe_mas_de_lo_enviado(self):
+        response = self._recibir([{"producto_id": self.p2.id, "cantidad": 4}])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._stock(self.p2), 0)
+        self._recibir([{"producto_id": self.p2.id, "cantidad": 2}])
+        response = self._recibir([{"producto_id": self.p2.id, "cantidad": 2}])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._stock(self.p2), 2)
+
+    def test_lote_con_error_no_deja_stock_a_medias(self):
+        # Antes el primero quedaba sumado sin quedar en el avance y al
+        # reintentarlo uno por uno se volvia a sumar.
+        response = self._recibir([
+            {"producto_id": self.p1.id, "cantidad": 5},
+            {"producto_id": self.p2.id, "cantidad": 9},
+        ])
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._stock(self.p1), 0)
+        self.solicitud.refresh_from_db()
+        self.assertFalse(self.solicitud.recepcion_progreso)
+
+    def test_cerrar_con_mas_de_lo_enviado_se_rechaza_y_no_crea_sobrante(self):
+        from .models import TrasladoInconveniente
+
+        body = {
+            "resultado": "completo",
+            "items": [
+                {"producto_id": self.p1.id, "cantidad_recibida": 6,
+                 "ubicaciones": [{"subdivision_id": self.nivel.id, "cantidad": 6}]},
+                {"producto_id": self.p2.id, "cantidad_recibida": 3,
+                 "ubicaciones": [{"subdivision_id": self.nivel.id, "cantidad": 3}]},
+            ],
+        }
+        response = self.client.post(f"{BASE}/{self.solicitud.id}/confirmar-recepcion/", body, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._stock(self.p1), 0)
+        self.assertFalse(TrasladoInconveniente.objects.exists())
+
 
 class RecepcionParcialImportacionTests(APITestCase):
     def setUp(self):

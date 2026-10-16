@@ -80,22 +80,24 @@ function Sidebar({
   const [hasPendingInconvenientes, setHasPendingInconvenientes] = useState(false)
 
   const checkPendingInconvenientes = useCallback(async () => {
-    if (!token) return
+    if (!token || document.visibilityState === 'hidden') return
     try {
+      // Solo el conteo: antes se bajaban las listas completas cada 30s.
       const [trasladosRes, importacionesRes] = await Promise.all([
         authFetch(
-          `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/?estado=pendiente`,
+          `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/?estado=pendiente&solo_conteo=1`,
           {},
           token
         ),
-        authFetch(`${API_URL}/importaciones/importaciones/inconvenientes/?estado=pendiente`, {}, token),
+        authFetch(`${API_URL}/importaciones/importaciones/inconvenientes/?estado=pendiente&solo_conteo=1`, {}, token),
       ])
       const [traslados, importaciones] = await Promise.all([
         trasladosRes.ok ? trasladosRes.json().catch(() => []) : [],
         importacionesRes.ok ? importacionesRes.json().catch(() => []) : [],
       ])
-      const trasladosCount = Array.isArray(traslados) ? traslados.length : 0
-      const importacionesCount = Array.isArray(importaciones) ? importaciones.length : 0
+      const countOf = (data) => (Array.isArray(data) ? data.length : Number(data?.count) || 0)
+      const trasladosCount = countOf(traslados)
+      const importacionesCount = countOf(importaciones)
       setHasPendingInconvenientes(trasladosCount + importacionesCount > 0)
     } catch {
       // Silencioso: si falla la verificación, simplemente no se resalta el ítem.
@@ -117,7 +119,7 @@ function Sidebar({
   const [solicitudesWebSinLeer, setSolicitudesWebSinLeer] = useState(0)
 
   const checkSolicitudesWeb = useCallback(async () => {
-    if (!token) return
+    if (!token || document.visibilityState === 'hidden') return
     try {
       const res = await authFetch(`${API_URL}/contacto-web/solicitudes/no-leidas/`, {}, token)
       if (!res.ok) return

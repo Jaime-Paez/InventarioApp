@@ -26,11 +26,13 @@ from app.models import ReminderState
 from configuracion.models import ConfiguracionSistema
 from inventario.models import Inventario, SubDivision
 from inventario.por_ubicar import (
+    RecepcionDesactualizada,
     RecepcionError,
     pending_to_store,
     received_by_product,
     receive_items,
     serialize_progress,
+    serialize_progress_many,
     store_items,
 )
 from productos.models import OEMProducto, Producto, add_producto_referencia
@@ -470,7 +472,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
     def _serialize_importacion_inconveniente(self, inconveniente):
         historial_rows = list(
-            inconveniente.historial.select_related("actor").all().order_by("-created_at", "-id")
+            sorted(
+                inconveniente.historial.all(), key=lambda row: (row.created_at, row.id), reverse=True
+            )
         )
         historial_payload = [
             {
@@ -1102,6 +1106,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         }:
             queryset = queryset.filter(estado=estado)
 
+        # La barra lateral solo necesita saber si hay pendientes.
+        if str(request.query_params.get("solo_conteo") or "").strip() in {"1", "true"}:
+            return Response({"count": queryset.count()}, status=status.HTTP_200_OK)
+
         payload = [self._serialize_importacion_inconveniente(row) for row in queryset]
         attach_product_search(payload)
         return Response(payload, status=status.HTTP_200_OK)
@@ -1417,9 +1425,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "detalles": detalles_payload,
                 "inconvenientes_pendientes": 0,
                 "borrador_recepcion": envio.borrador_recepcion or {},
-                "recepcion_progreso": serialize_progress(envio.recepcion_progreso, envio.sucursal_id),
+                "recepcion_progreso": (envio.recepcion_progreso, envio.sucursal_id),
                 "_source": "importacion",
             })
+
+        # Avance de todos los envios de una vez (antes 2 consultas por envio).
+        for row, progreso in zip(payload, serialize_progress_many([row["recepcion_progreso"] for row in payload])):
+            row["recepcion_progreso"] = progreso
 
         attach_product_search([detalle for row in payload for detalle in row.get("detalles", [])])
         return Response(payload, status=status.HTTP_200_OK)
@@ -1464,7 +1476,22 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     items=request.data.get("items"),
                     sent_by_product=sent,
                 )
+            except RecepcionDesactualizada as exc:
+                # Peticion repetida o vieja: no se suma nada y se devuelve el
+                # avance real para que la pantalla se ponga al dia.
+                # Se lee antes de marcar el rollback (despues ya no se puede consultar).
+                progreso_actual = serialize_progress(envio.recepcion_progreso, envio.sucursal_id)
+                transaction.set_rollback(True)
+                return Response(
+                    {
+                        "detail": str(exc),
+                        "desactualizada": True,
+                        "recepcion_progreso": progreso_actual,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
             except RecepcionError as exc:
+                transaction.set_rollback(True)
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             envio.recepcion_progreso = progreso
             envio.save(update_fields=["recepcion_progreso"])
@@ -1487,6 +1514,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     items=request.data.get("items"),
                 )
             except RecepcionError as exc:
+                transaction.set_rollback(True)
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             envio.recepcion_progreso = progreso
             envio.save(update_fields=["recepcion_progreso"])
@@ -1602,6 +1630,29 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             if product_id not in detalles_by_producto:
                 return Response(
                     {"detail": f"El producto {product_id} no pertenece a este envío."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # El envio a la sucursal sale de lo ya recibido de la importacion:
+            # recibir mas de lo enviado duplicaria stock.
+            detalle = detalles_by_producto[product_id]
+            try:
+                cantidad_recibida = int(raw_item.get("cantidad_recibida") or 0)
+            except (TypeError, ValueError):
+                cantidad_recibida = -1
+            if cantidad_recibida < 0:
+                return Response(
+                    {"detail": f"La cantidad recibida del producto {product_id} no es valida."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if cantidad_recibida > int(detalle.cantidad or 0):
+                return Response(
+                    {
+                        "detail": (
+                            f"No se puede recibir mas de lo enviado del producto "
+                            f"{getattr(detalle.producto, 'codigo', product_id)}: se enviaron "
+                            f"{int(detalle.cantidad or 0)} y se intento recibir {cantidad_recibida}."
+                        )
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 

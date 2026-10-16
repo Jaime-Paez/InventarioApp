@@ -46,11 +46,13 @@ from app.views import (
 )
 from inventario.models import Inventario, SubDivision, Sucursal
 from inventario.por_ubicar import (
+    RecepcionDesactualizada,
     RecepcionError,
     pending_to_store,
     received_by_product,
     receive_items,
     serialize_progress,
+    serialize_progress_many,
     store_items,
 )
 from solicitudes.models import Cliente
@@ -76,6 +78,7 @@ from .models import (
 from .serializers import (
     MovimientoInventarioSerializer,
     SolicitudTrasladoSerializer,
+    build_solicitud_traslado_list_context,
     format_actor_display_name,
     generate_entry_document_number,
     generate_transfer_request_document_number,
@@ -2989,7 +2992,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
     def _serialize_inconveniente(self, inconveniente):
         historial_rows = list(
-            inconveniente.historial.select_related("actor").all().order_by("-created_at", "-id")
+            sorted(
+                inconveniente.historial.all(), key=lambda row: (row.created_at, row.id), reverse=True
+            )
         )
         historial_payload = [
             {
@@ -3162,6 +3167,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 "sucursal_proveedora",
                 "movimiento_salida",
                 "movimiento_entrada",
+                "creado_por",
+                "enviado_por",
+                "rechazada_por",
+                "recibido_por",
             )
             .prefetch_related("detalles__producto")
             .order_by("-fecha", "-id")
@@ -3220,11 +3229,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(sucursal_solicitante_id=int(sucursal_solicitante_raw))
 
         page = self.paginate_queryset(queryset)
+        rows = page if page is not None else list(queryset)
+        # Lo que antes se consultaba por fila/detalle se calcula una vez.
+        serializer = SolicitudTrasladoSerializer(
+            rows, many=True, context=build_solicitud_traslado_list_context(rows)
+        )
         if page is not None:
-            serializer = SolicitudTrasladoSerializer(page, many=True)
             return self.get_paginated_response(serializer.data)
-
-        serializer = SolicitudTrasladoSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(
@@ -4312,7 +4323,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 continue
 
             detalles_payload = []
-            for detalle in movimiento_entrada.detalles.select_related("producto").all():
+            # .all() usa lo precargado; select_related() aca hacia una consulta por envio.
+            for detalle in movimiento_entrada.detalles.all():
                 producto = getattr(detalle, "producto", None)
                 detalles_payload.append(
                     {
@@ -4348,11 +4360,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "descripcion": str(solicitud.descripcion or "").strip(),
                     "detalles": detalles_payload,
                     "inconvenientes_pendientes": pending_issue_count_by_solicitud.get(int(solicitud.id), 0),
-                    "recepcion_progreso": serialize_progress(
-                        solicitud.recepcion_progreso, solicitud.sucursal_solicitante_id
-                    ),
+                    "recepcion_progreso": (solicitud.recepcion_progreso, solicitud.sucursal_solicitante_id),
                 }
             )
+
+        # Avance de todos los envios de una vez (antes 2 consultas por envio).
+        for row, progreso in zip(payload, serialize_progress_many([row["recepcion_progreso"] for row in payload])):
+            row["recepcion_progreso"] = progreso
 
         # Para el buscador de la ventana de recepcion: referencias y OEM.
         attach_product_search([detalle for row in payload for detalle in row.get("detalles", [])])
@@ -4416,7 +4430,22 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     items=request.data.get("items"),
                     sent_by_product=sent,
                 )
+            except RecepcionDesactualizada as exc:
+                # Peticion repetida o vieja: no se suma nada y se devuelve el
+                # avance real para que la pantalla se ponga al dia.
+                # Se lee antes de marcar el rollback (despues ya no se puede consultar).
+                progreso_actual = serialize_progress(solicitud.recepcion_progreso, solicitud.sucursal_solicitante_id)
+                transaction.set_rollback(True)
+                return Response(
+                    {
+                        "detail": str(exc),
+                        "desactualizada": True,
+                        "recepcion_progreso": progreso_actual,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
             except RecepcionError as exc:
+                transaction.set_rollback(True)
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             solicitud.recepcion_progreso = progreso
             solicitud.save(update_fields=["recepcion_progreso", "updated_at"])
@@ -4443,6 +4472,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     items=request.data.get("items"),
                 )
             except RecepcionError as exc:
+                transaction.set_rollback(True)
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             solicitud.recepcion_progreso = progreso
             solicitud.save(update_fields=["recepcion_progreso", "updated_at"])
@@ -4643,6 +4673,21 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            # Un traslado siempre llega con lo que salio de la otra sucursal:
+            # recibir mas de lo enviado solo puede ser una duplicacion, asi
+            # que no se permite (ya no existen "sobrantes" de traslado).
+            if cantidad_recibida > cantidad_enviada:
+                return Response(
+                    {
+                        "detail": (
+                            f"No se puede recibir mas de lo enviado del producto "
+                            f"{getattr(detalle.producto, 'codigo', product_id)}: se enviaron {cantidad_enviada} "
+                            f"y se intento recibir {cantidad_recibida}."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             ubicaciones_raw = raw_item.get("ubicaciones")
             if not isinstance(ubicaciones_raw, list):
                 ubicaciones_raw = []
@@ -4715,7 +4760,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 )
 
             cantidad_faltante = max(0, int(cantidad_enviada - cantidad_recibida))
-            cantidad_sobrante = max(0, int(cantidad_recibida - cantidad_enviada))
             total_faltante += cantidad_faltante
 
             processed_items.append(
@@ -4725,7 +4769,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "cantidad_enviada": cantidad_enviada,
                     "cantidad_recibida": cantidad_recibida,
                     "cantidad_faltante": cantidad_faltante,
-                    "cantidad_sobrante": cantidad_sobrante,
                     "ubicaciones": ubicaciones,
                     "novedad": str(raw_item.get("novedad") or "").strip(),
                 }
@@ -4741,8 +4784,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        total_sobrante = sum(int(item.get("cantidad_sobrante") or 0) for item in processed_items)
 
         if resultado == "completo" and total_faltante > 0:
             return Response(
@@ -4917,48 +4958,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 if inconveniente is not None:
                     inconvenientes_payload.append(self._serialize_inconveniente(inconveniente))
 
-            for item in processed_items:
-                sobrante = int(item.get("cantidad_sobrante") or 0)
-                if sobrante <= 0:
-                    continue
-
-                inconveniente = TrasladoInconveniente.objects.create(
-                    solicitud=solicitud_locked,
-                    movimiento_entrada=movimiento_entrada_locked,
-                    producto_id=int(item["producto_id"]),
-                    tipo=TrasladoInconveniente.Tipos.SOBRANTE,
-                    cantidad_faltante=sobrante,
-                    estado=TrasladoInconveniente.Estados.PENDIENTE,
-                    motivo=str(item.get("novedad") or "").strip(),
-                    creado_por=request.user,
-                )
-                TrasladoInconvenienteHistorial.objects.create(
-                    inconveniente=inconveniente,
-                    accion="detectado",
-                    detalle=(
-                        f"Sobrante detectado en recepcion. Enviado: {item['cantidad_enviada']}, "
-                        f"recibido: {item['cantidad_recibida']}, sobrante: {sobrante}."
-                    ),
-                    actor=request.user,
-                )
-                inconveniente = (
-                    TrasladoInconveniente.objects.select_related(
-                        "solicitud",
-                        "solicitud__sucursal_solicitante",
-                        "solicitud__sucursal_proveedora",
-                        "producto",
-                        "creado_por",
-                        "resuelto_por",
-                        "sucursal_resolucion",
-                        "subdivision_resolucion",
-                    )
-                    .prefetch_related("historial__actor")
-                    .filter(pk=inconveniente.id)
-                    .first()
-                )
-                if inconveniente is not None:
-                    inconvenientes_payload.append(self._serialize_inconveniente(inconveniente))
-
             if nota_general:
                 # Nota general del usuario que recibe ("algo no salio como lo
                 # esperado"), sin ligarse a un producto puntual ni a un
@@ -5030,7 +5029,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 ),
                 "resultado": reception_result,
                 "faltantes": int(total_faltante),
-                "sobrantes": int(total_sobrante),
                 "solicitud": solicitud_output,
                 "inconvenientes": inconvenientes_payload,
                 "recordatorio_enviado": bool(reminder_sent),
@@ -5096,6 +5094,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 Q(solicitud__sucursal_solicitante_id__in=sorted(allowed))
                 | Q(solicitud__sucursal_proveedora_id__in=sorted(allowed))
             )
+
+        # La barra lateral solo necesita saber si hay pendientes.
+        if str(request.query_params.get("solo_conteo") or "").strip() in {"1", "true"}:
+            return Response({"count": queryset.count()}, status=status.HTTP_200_OK)
 
         payload = [self._serialize_inconveniente(row) for row in queryset]
         # Para el buscador de la tabla: referencias y OEM del producto.
