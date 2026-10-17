@@ -398,6 +398,10 @@ export const sanitizeReminder = (reminder) => {
 // localStorage). La fuente de verdad es siempre la base de datos: esta copia
 // solo evita parpadeos entre consultas y se pierde al recargar la pagina.
 let remindersMemoryCache = '[]'
+// Version de la lista que ya tenemos del servidor: si el servidor responde
+// que no cambio, no se vuelve a bajar ni a procesar la lista completa (~1 MB).
+let serverRemindersVersion = ''
+let serverRemindersToken = ''
 
 if (typeof window !== 'undefined') {
   // Limpia la copia vieja que dejaban las versiones anteriores.
@@ -407,6 +411,8 @@ if (typeof window !== 'undefined') {
 const writeRemindersToLocalCache = (reminders) => {
   const normalized = (Array.isArray(reminders) ? reminders : []).map(sanitizeReminder).filter(Boolean)
   remindersMemoryCache = JSON.stringify(normalized)
+  // Cambio local: la proxima consulta trae la lista completa del servidor.
+  serverRemindersVersion = ''
 
   return normalized
 }
@@ -453,7 +459,10 @@ export const syncRemindersToBackend = async (reminders, token) => {
         : []
     const merged = backendReminders.map(sanitizeReminder).filter(Boolean)
     if (!merged.length) return normalized
-    return writeRemindersToLocalCache(merged)
+    const written = writeRemindersToLocalCache(merged)
+    serverRemindersVersion = String(payload?.version || '')
+    serverRemindersToken = effectiveToken
+    return written
   } catch {
     return normalized
   }
@@ -483,20 +492,32 @@ const queueServerReminderSync = (reminders, token) => {
   void flush()
 }
 
-export const fetchRemindersFromBackend = async (token) => {
+// `onlyIfChanged`: devuelve null si el servidor dice que no hubo cambios
+// (el sondeo de QuickActions lo usa para no redibujar cada 4 segundos).
+export const fetchRemindersFromBackend = async (token, { onlyIfChanged = false } = {}) => {
   const effectiveToken = resolveAuthToken(token)
-  if (!effectiveToken) return readRemindersFromStorage()
+  if (!effectiveToken) return onlyIfChanged ? null : readRemindersFromStorage()
 
-  const localSnapshot = readRemindersFromStorage()
   if (pendingServerSnapshot || isServerSyncInFlight) {
-    return localSnapshot
+    return onlyIfChanged ? null : readRemindersFromStorage()
+  }
+
+  if (serverRemindersToken !== effectiveToken) {
+    serverRemindersVersion = ''
+    serverRemindersToken = effectiveToken
   }
 
   try {
-    const response = await authFetch(REMINDERS_BACKEND_ENDPOINT, {}, effectiveToken)
-    if (!response.ok) return readRemindersFromStorage()
+    const url = serverRemindersVersion
+      ? `${REMINDERS_BACKEND_ENDPOINT}?version=${encodeURIComponent(serverRemindersVersion)}`
+      : REMINDERS_BACKEND_ENDPOINT
+    const response = await authFetch(url, {}, effectiveToken)
+    if (!response.ok) return onlyIfChanged ? null : readRemindersFromStorage()
 
     const payload = await response.json().catch(() => ({}))
+    if (payload?.unchanged) {
+      return onlyIfChanged ? null : readRemindersFromStorage()
+    }
     const backendReminders = Array.isArray(payload?.reminders)
       ? payload.reminders
       : Array.isArray(payload)
@@ -508,12 +529,13 @@ export const fetchRemindersFromBackend = async (token) => {
       return existing
     }
     const cached = writeRemindersToLocalCache(normalized)
+    serverRemindersVersion = String(payload?.version || '')
     if (!areRemindersEqual(existing, normalized)) {
       emitRemindersSync()
     }
     return cached
   } catch {
-    return readRemindersFromStorage()
+    return onlyIfChanged ? null : readRemindersFromStorage()
   }
 }
 

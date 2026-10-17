@@ -153,6 +153,8 @@ MIDDLEWARE = [
     # Mide tiempo y consultas de cada peticion (ver rendimiento/middleware.py).
     "rendimiento.middleware.RendimientoMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # Comprime las respuestas (la de recordatorios pesa ~1 MB; comprimida ~80 KB).
+    "django.middleware.gzip.GZipMiddleware",
 
     # WhiteNoise: sirve static en Render (y no rompe local)
     "whitenoise.middleware.WhiteNoiseMiddleware",

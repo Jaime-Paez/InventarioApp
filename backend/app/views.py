@@ -1,7 +1,10 @@
+import hashlib
 import math
 import random
 import re
 import json
+import threading
+import time as _time
 from datetime import date as dt_date, datetime, timedelta, time as dt_time, timezone as dt_timezone
 from uuid import uuid4
 
@@ -2879,11 +2882,74 @@ class UserTableLayoutsAPIView(APIView):
         )
 
 
-_INSPECTION_CHECK_THROTTLE = timedelta(seconds=60)
+# La revision de inspeccion aleatoria / resumenes admin es la parte pesada del
+# sondeo (~70 consultas, varios segundos, con la fila global bloqueada). Las
+# inspecciones son diarias: revisarlas cada pocos minutos alcanza.
+_INSPECTION_CHECK_THROTTLE = timedelta(minutes=3)
+_ALL_USERS_INSPECTION_CHECK_THROTTLE = timedelta(minutes=5)
 _last_inspection_check_by_user = {}
-# Clave para la generacion de inspecciones de todos los revisores, con el
-# mismo limite de una vez por minuto (por proceso).
+# Clave para la generacion de inspecciones de todos los revisores (por proceso).
 _ALL_USERS_INSPECTION_CHECK_KEY = "__todos__"
+
+# Respuesta ya calculada del sondeo de recordatorios (lista de ~1 MB que
+# todos piden cada pocos segundos). Se reutiliza unos segundos por proceso y
+# se invalida cuando este proceso guarda el ReminderState. Entre procesos, lo
+# nuevo tarda como mucho _REMINDERS_CACHE_SECONDS en verse.
+_REMINDERS_CACHE_SECONDS = 8
+_reminders_cache_lock = threading.Lock()
+_reminders_cache = {"at": 0.0, "entry": None}
+
+
+def invalidate_reminders_cache(*_args, **_kwargs):
+    with _reminders_cache_lock:
+        _reminders_cache["entry"] = None
+
+
+def _cached_reminders_entry():
+    with _reminders_cache_lock:
+        entry = _reminders_cache["entry"]
+        if entry and _time.monotonic() - _reminders_cache["at"] < _REMINDERS_CACHE_SECONDS:
+            return entry
+    return None
+
+
+def _store_reminders_entry(reminders, updated_at):
+    """Guarda la lista ya reconstruida (sin el aviso `en_progreso`, que cambia aparte)."""
+    body = json.dumps(reminders, sort_keys=True, default=str, separators=(",", ":"))
+    entry = {
+        "reminders": reminders,
+        "updated_at": updated_at,
+        "version": hashlib.md5(body.encode("utf-8")).hexdigest(),
+    }
+    with _reminders_cache_lock:
+        _reminders_cache["entry"] = entry
+        _reminders_cache["at"] = _time.monotonic()
+    return entry
+
+
+def _reminders_response(entry, client_version):
+    # `en_progreso` sale de la base en cada consulta (es una sola consulta) y
+    # entra en la version, para que se vea apenas el revisor guarda avance.
+    reminders = _annotate_random_inspection_progress(entry["reminders"])
+    in_progress = sorted(
+        str(reminder.get("id"))
+        for reminder in reminders
+        if isinstance(reminder, dict)
+        and isinstance(reminder.get("context"), dict)
+        and reminder["context"].get("en_progreso")
+    )
+    version = hashlib.md5(f"{entry['version']}|{','.join(in_progress)}".encode("utf-8")).hexdigest()
+    # La pantalla manda la version que ya tiene: si no cambio nada, no se
+    # vuelve a mandar (ni a procesar en el navegador) la lista completa.
+    if client_version and client_version == version:
+        return Response(
+            {"unchanged": True, "version": version, "updated_at": entry["updated_at"]},
+            status=status.HTTP_200_OK,
+        )
+    return Response(
+        {"reminders": reminders, "updated_at": entry["updated_at"], "version": version},
+        status=status.HTTP_200_OK,
+    )
 
 
 def _annotate_random_inspection_progress(reminders):
@@ -2945,6 +3011,16 @@ class ReminderStateAPIView(APIView):
         # nuevas) se limita a como mucho una vez por minuto por usuario en
         # vez de en cada poll -- no cambia que hace, solo cada cuanto se
         # invoca.
+        client_version = str(request.query_params.get("version") or "").strip()
+        user_id = getattr(request.user, "id", None)
+        now = timezone.now()
+        last_checked = _last_inspection_check_by_user.get(user_id)
+        due_for_inspection_check = last_checked is None or (now - last_checked) >= _INSPECTION_CHECK_THROTTLE
+        if not due_for_inspection_check:
+            cached = _cached_reminders_entry()
+            if cached is not None:
+                return _reminders_response(cached, client_version)
+
         store = ReminderState.get_global(for_update=False)
         current_payload = (
             store.payload
@@ -2955,11 +3031,6 @@ class ReminderStateAPIView(APIView):
         reminders, transfer_history_changed = _hydrate_transfer_history_from_solicitudes(reminders)
         reminders, urgente_changed = _hydrate_urgente_from_solicitudes(reminders)
         needs_write = reminders != current_payload or transfer_history_changed or urgente_changed
-
-        user_id = getattr(request.user, "id", None)
-        now = timezone.now()
-        last_checked = _last_inspection_check_by_user.get(user_id)
-        due_for_inspection_check = last_checked is None or (now - last_checked) >= _INSPECTION_CHECK_THROTTLE
 
         if needs_write or due_for_inspection_check:
             with transaction.atomic():
@@ -2989,7 +3060,7 @@ class ReminderStateAPIView(APIView):
                     )
                     if (
                         last_all_checked is None
-                        or (now - last_all_checked) >= _INSPECTION_CHECK_THROTTLE
+                        or (now - last_all_checked) >= _ALL_USERS_INSPECTION_CHECK_THROTTLE
                     ):
                         _last_inspection_check_by_user[_ALL_USERS_INSPECTION_CHECK_KEY] = now
                         inspection_payload_changed = (
@@ -3014,13 +3085,8 @@ class ReminderStateAPIView(APIView):
                     store.payload = reminders
                     store.save(update_fields=["payload", "updated_at"])
 
-        return Response(
-            {
-                "reminders": _annotate_random_inspection_progress(reminders),
-                "updated_at": store.updated_at,
-            },
-            status=status.HTTP_200_OK,
-        )
+        entry = _store_reminders_entry(reminders, store.updated_at)
+        return _reminders_response(entry, client_version)
 
     def put(self, request):
         reminders_payload = request.data.get("reminders")
@@ -3085,13 +3151,8 @@ class ReminderStateAPIView(APIView):
             store.payload = merged
             store.save(update_fields=["payload", "updated_at"])
 
-        return Response(
-            {
-                "reminders": _annotate_random_inspection_progress(merged),
-                "updated_at": store.updated_at,
-            },
-            status=status.HTTP_200_OK,
-        )
+        entry = _store_reminders_entry(merged, store.updated_at)
+        return _reminders_response(entry, "")
 
 
 def _normalize_random_inspection_verify_action(value):

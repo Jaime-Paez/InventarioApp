@@ -2902,8 +2902,9 @@ function QuickActions({
       if (remindersPollInFlightRef.current) return
       remindersPollInFlightRef.current = true
       try {
-        const remote = await fetchRemindersFromBackend(token)
-        if (cancelled) return
+        // Si el servidor dice que no cambio nada, no se redibuja.
+        const remote = await fetchRemindersFromBackend(token, { onlyIfChanged: true })
+        if (cancelled || remote === null) return
         // `remote` es un snapshot compartido (guardado por cualquier sesion
         // que haya escrito antes) -- puede traer tarjetas de "solicitud web"
         // que ya se resolvieron desde entonces (la solicitud ya se marco
