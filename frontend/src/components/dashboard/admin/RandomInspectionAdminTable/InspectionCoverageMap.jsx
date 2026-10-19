@@ -188,6 +188,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
     const ok = await onSendMissing({
       usuarioId: missingReviewerId,
       productIds: missingProductIds.slice(0, MAX_LIST_PRODUCTS),
+      divisionId: selectedDivision?.id,
     })
     setSendingMissing(false)
     if (ok) {

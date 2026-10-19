@@ -1192,3 +1192,35 @@ class RecordatorioConservaTextoYHoraTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(despues["time"], antes["time"])
         self.assertEqual(despues["description"], antes["description"])
         self.assertIn(str(self.revisor.id), despues["completedBy"])
+
+
+class AvisoYaContadoTests(InspeccionAleatoriaBaseTestCase):
+    def _ya_contados(self, **body):
+        return self.admin_client.post(f"{BASE_URL}/admin/ya-contados/", body, format="json")
+
+    def test_contado_en_otra_percha_no_cuenta_para_esta(self):
+        # P-1 esta en las perchas A y B y solo se conto la A.
+        Inventario.objects.create(producto=self.producto, subdivision=self.sub_b, cantidad=3)
+        inspection = self._crear_inspeccion(
+            es_por_division=True, division=self.division, sucursal=self.sucursal
+        )
+        self._responder(inspection, {self.producto.id: 10})
+
+        en_b = self._ya_contados(sucursal_id=self.sucursal.id, producto_ids=[self.producto.id], division_id=self.division_b.id)
+        self.assertEqual(en_b.status_code, 200, en_b.data)
+        self.assertEqual(en_b.data["contados"], 0)
+
+        en_a = self._ya_contados(sucursal_id=self.sucursal.id, producto_ids=[self.producto.id], division_id=self.division.id)
+        self.assertEqual(en_a.data["contados"], 1)
+        fila = en_a.data["productos"][0]
+        self.assertEqual(fila["codigo"], "P-1")
+        self.assertEqual(fila["donde"], "Percha A")
+        self.assertEqual(en_a.data["contados_ids"], [self.producto.id])
+
+    def test_conteo_de_toda_la_sucursal_cuenta_en_cualquier_percha(self):
+        inspection = self._crear_inspeccion()
+        self._responder(inspection, {self.producto.id: 10})
+        response = self._ya_contados(division_id=self.division_b.id, producto_ids=[self.producto.id, self.producto_2.id])
+        self.assertEqual(response.data["contados"], 1)
+        self.assertEqual(response.data["total"], 2)
+        self.assertEqual(response.data["productos"][0]["donde"], "Toda la sucursal")

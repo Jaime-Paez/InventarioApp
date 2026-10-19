@@ -4684,10 +4684,16 @@ RECENTLY_COUNTED_DAYS = 30
 
 
 class RandomInspectionRecentlyCountedAPIView(APIView):
-    """Antes de mandar una revision: cuantos de esos productos ya se contaron
+    """Antes de mandar una revision: cuales de esos productos ya se contaron
     en la sucursal en los ultimos 30 dias (para avisar "ya fue contado").
 
-    Body: {sucursal_id, producto_ids} o {division_id[, subdivision_id]}.
+    Body: {sucursal_id, producto_ids[, division_id]} o {division_id[, subdivision_id]}.
+
+    Mismo criterio que el mapa de cobertura: si la revision es de una percha
+    (division_id), solo cuenta lo contado en esa percha o en una revision que
+    cubria toda la sucursal (automatica, lista, subdivision). Antes un conteo
+    en otra percha hacia saltar el aviso para productos que el mapa mostraba
+    como pendientes ahi.
     """
 
     permission_classes = [IsAuthenticated]
@@ -4701,21 +4707,20 @@ class RandomInspectionRecentlyCountedAPIView(APIView):
         division_id = _normalize_int(request.data.get("division_id"), 0)
         subdivision_id = _normalize_int(request.data.get("subdivision_id"), 0) or None
         sucursal_id = _normalize_int(request.data.get("sucursal_id"), 0)
-        product_ids = set()
+        raw_ids = request.data.get("producto_ids")
+        if raw_ids is not None and not isinstance(raw_ids, list):
+            return Response({"detail": "producto_ids debe ser una lista."}, status=status.HTTP_400_BAD_REQUEST)
+        product_ids = {pid for pid in (_normalize_int(raw, 0) for raw in (raw_ids or [])) if pid > 0}
         if division_id > 0:
             division = Division.objects.select_related("bodega").filter(pk=division_id).first()
             if division is None:
                 return Response({"detail": "La division no existe."}, status=status.HTTP_404_NOT_FOUND)
             sucursal_id = int(division.bodega.sucursal_id)
-            product_ids = {
-                int(candidate["producto_id"])
-                for candidate in _collect_division_inspection_candidates(division_id, subdivision_id)
-            }
-        else:
-            raw_ids = request.data.get("producto_ids") or []
-            if not isinstance(raw_ids, list):
-                return Response({"detail": "producto_ids debe ser una lista."}, status=status.HTTP_400_BAD_REQUEST)
-            product_ids = {pid for pid in (_normalize_int(raw, 0) for raw in raw_ids) if pid > 0}
+            if not product_ids:
+                product_ids = {
+                    int(candidate["producto_id"])
+                    for candidate in _collect_division_inspection_candidates(division_id, subdivision_id)
+                }
         if sucursal_id <= 0:
             return Response({"detail": "Debes indicar la sucursal."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -4729,13 +4734,51 @@ class RandomInspectionRecentlyCountedAPIView(APIView):
                     revisado_en__gte=since,
                 )
                 .exclude(estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE)
-                .values("producto_id", "producto__codigo", "revisado_en")
+                .values(
+                    "producto_id",
+                    "producto__codigo",
+                    "producto__nombre",
+                    "revisado_en",
+                    "inspeccion__usuario__first_name",
+                    "inspeccion__usuario__last_name",
+                    "inspeccion__usuario__email",
+                    "inspeccion__es_por_division",
+                    "inspeccion__es_por_subdivision",
+                    "inspeccion__division_id",
+                    "inspeccion__division__nombre",
+                    "inspeccion__subdivision__nombre",
+                )
             )
             for row in rows:
+                division_scoped = bool(row["inspeccion__es_por_division"]) and not row["inspeccion__es_por_subdivision"]
+                if division_id > 0 and division_scoped and int(row["inspeccion__division_id"] or 0) != division_id:
+                    continue
                 pid = int(row["producto_id"])
                 current = latest_by_product.get(pid)
                 if current is None or row["revisado_en"] > current["revisado_en"]:
                     latest_by_product[pid] = row
+
+        def where(row):
+            if row["inspeccion__es_por_subdivision"]:
+                return " / ".join(
+                    part for part in (
+                        _normalize_text(row["inspeccion__division__nombre"]),
+                        _normalize_text(row["inspeccion__subdivision__nombre"]),
+                    ) if part
+                ) or "Subdivision"
+            if row["inspeccion__es_por_division"]:
+                return _normalize_text(row["inspeccion__division__nombre"]) or "Percha"
+            return "Toda la sucursal"
+
+        def who(row):
+            name = " ".join(
+                part for part in (
+                    _normalize_text(row["inspeccion__usuario__first_name"]),
+                    _normalize_text(row["inspeccion__usuario__last_name"]),
+                ) if part
+            )
+            return name or _normalize_text(row["inspeccion__usuario__email"])
+
         ordered = sorted(latest_by_product.values(), key=lambda row: row["revisado_en"], reverse=True)
         return Response(
             {
@@ -4743,9 +4786,17 @@ class RandomInspectionRecentlyCountedAPIView(APIView):
                 "contados": len(latest_by_product),
                 "dias": RECENTLY_COUNTED_DAYS,
                 "ultimo_conteo": _parse_iso_timestamp(ordered[0]["revisado_en"]) if ordered else "",
+                "contados_ids": sorted(latest_by_product),
                 "productos": [
-                    {"codigo": _normalize_text(row["producto__codigo"]), "revisado_en": _parse_iso_timestamp(row["revisado_en"])}
-                    for row in ordered[:10]
+                    {
+                        "producto_id": int(row["producto_id"]),
+                        "codigo": _normalize_text(row["producto__codigo"]),
+                        "nombre": _normalize_text(row["producto__nombre"]),
+                        "revisado_en": _parse_iso_timestamp(row["revisado_en"]),
+                        "revisor": who(row),
+                        "donde": where(row),
+                    }
+                    for row in ordered[:50]
                 ],
             },
             status=status.HTTP_200_OK,

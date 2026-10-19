@@ -11,7 +11,7 @@ import '../../QuickActions/QuickActions.css'
 import '../../movimientos/CreateSalida.css'
 import './RandomInspectionAdminTable.css'
 import InspectionCoverageMap from './InspectionCoverageMap'
-import ConfirmDialog from '../../common/unsavedChanges/ConfirmDialog'
+import RecountWarningDialog from './RecountWarningDialog'
 import CascadeDropdown from '../../common/CascadeDropdown'
 import BlockerNotice from '../../common/BlockerNotice'
 
@@ -367,7 +367,10 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       sendInFlightRef.current = false
     }
   }, [])
-  const askIfRecentlyCounted = useCallback(async (body) => {
+  // Devuelve {proceed, productIds}: productIds solo cambia si el admin elige
+  // "Enviar solo los no contados" (allowOnlyNew, para listas de productos).
+  const askIfRecentlyCounted = useCallback(async (body, { allowOnlyNew = false } = {}) => {
+    const requested = Array.isArray(body?.producto_ids) ? body.producto_ids : null
     try {
       const response = await authFetch(
         `${API_URL}/recordatorios/inspeccion-aleatoria/admin/ya-contados/`,
@@ -375,18 +378,25 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         token
       )
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok || !Number(payload?.contados)) return true
-      return await new Promise((resolve) => {
+      if (!response.ok || !Number(payload?.contados)) return { proceed: true, productIds: requested }
+      const choice = await new Promise((resolve) => {
         setRecountConfirm({
-          message: `${payload.contados} de ${payload.total} producto(s) ya fueron contados en los ultimos ${payload.dias} dias${
-            payload.ultimo_conteo ? ` (ultimo conteo: ${formatDateTime(payload.ultimo_conteo)})` : ''
-          }. ¿Seguro quieres seguir con la revision?`,
-          codes: (Array.isArray(payload.productos) ? payload.productos : []).map((row) => row.codigo).filter(Boolean),
+          total: Number(payload.total) || 0,
+          contados: Number(payload.contados) || 0,
+          dias: payload.dias,
+          productos: Array.isArray(payload.productos) ? payload.productos : [],
+          allowOnlyNew: allowOnlyNew && Boolean(requested),
           resolve,
         })
       })
+      if (choice === 'cancel') return { proceed: false, productIds: requested }
+      if (choice === 'only_new' && requested) {
+        const counted = new Set((payload.contados_ids || []).map((id) => normalizeId(id)))
+        return { proceed: true, productIds: requested.filter((id) => !counted.has(normalizeId(id))) }
+      }
+      return { proceed: true, productIds: requested }
     } catch {
-      return true
+      return { proceed: true, productIds: requested }
     }
   }, [token])
 
@@ -398,7 +408,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     const hora = resolveSendNowHour()
     if (!hora) { notifyError('Debes seleccionar la hora del recordatorio.'); return }
 
-    const proceed = await askIfRecentlyCounted({
+    const { proceed } = await askIfRecentlyCounted({
       division_id: divisionId,
       ...(divisionSubdivisionId ? { subdivision_id: divisionSubdivisionId } : {}),
     })
@@ -640,11 +650,14 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     const hora = resolveSendNowHour()
     if (!hora) { notifyError('Debes seleccionar la hora del recordatorio.'); return }
 
-    const proceed = await askIfRecentlyCounted({
-      sucursal_id: listSucursalId,
-      producto_ids: listProducts.map((item) => item.id),
-    })
-    if (!proceed) return
+    const { proceed, productIds: idsToSend } = await askIfRecentlyCounted(
+      {
+        sucursal_id: listSucursalId,
+        producto_ids: listProducts.map((item) => item.id),
+      },
+      { allowOnlyNew: true }
+    )
+    if (!proceed || !idsToSend?.length) return
 
     setListSending(true)
     try {
@@ -655,7 +668,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
           body: JSON.stringify({
             sucursal_id: listSucursalId,
             usuario_id: listUsuarioId,
-            producto_ids: listProducts.map((item) => item.id),
+            producto_ids: idsToSend,
             hora_recordatorio: hora,
           }),
         },
@@ -676,10 +689,19 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   }, [token, listSucursalId, listUsuarioId, listProducts, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
 
   // Desde el mapa: mandar a revisar los productos que faltan de una percha.
-  const sendProductListToReviewer = useCallback(async ({ sucursalId, usuarioId, productIds }) => {
-    if (!token || !sucursalId || !usuarioId || !productIds?.length) return false
-    const proceed = await askIfRecentlyCounted({ sucursal_id: sucursalId, producto_ids: productIds })
-    if (!proceed) return false
+  const sendProductListToReviewer = useCallback(async ({ sucursalId, usuarioId, productIds: requestedIds, divisionId }) => {
+    if (!token || !sucursalId || !usuarioId || !requestedIds?.length) return false
+    // Desde el mapa se manda la percha: el aviso usa el mismo criterio que el
+    // mapa (lo contado en otra percha no cuenta para esta).
+    const { proceed, productIds } = await askIfRecentlyCounted(
+      {
+        sucursal_id: sucursalId,
+        producto_ids: requestedIds,
+        ...(divisionId ? { division_id: divisionId } : {}),
+      },
+      { allowOnlyNew: true }
+    )
+    if (!proceed || !productIds?.length) return false
     const now = new Date()
     const hora = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
     try {
@@ -1584,16 +1606,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         />
       )}
 
-      <ConfirmDialog
-        open={Boolean(recountConfirm)}
-        title="Ya fue contado"
-        message={recountConfirm?.message}
-        details={recountConfirm?.codes?.length ? (
-          <p className="inspection-admin__recount-codes">{`Por ejemplo: ${recountConfirm.codes.slice(0, 6).join(', ')}${recountConfirm.codes.length > 6 ? '...' : ''}`}</p>
-        ) : null}
-        confirmLabel="Seguir con la revision"
-        onCancel={() => { recountConfirm?.resolve(false); setRecountConfirm(null) }}
-        onConfirm={() => { recountConfirm?.resolve(true); setRecountConfirm(null) }}
+      <RecountWarningDialog
+        warning={recountConfirm}
+        onResolve={(choice) => { recountConfirm?.resolve(choice); setRecountConfirm(null) }}
       />
 
       <div className="inspection-admin__body">

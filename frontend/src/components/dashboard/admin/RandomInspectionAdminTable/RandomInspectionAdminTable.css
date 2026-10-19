@@ -1655,3 +1655,73 @@ body.app-theme-dark .inspection-admin__found-tag {
   border-color: var(--color-border-dark);
   background: var(--color-surface-dark);
 }
+
+/* Aviso "Algunos productos ya se contaron" antes de mandar una revision. */
+.recount-warning {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.recount-warning__table-wrap {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.recount-warning__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.recount-warning__table th,
+.recount-warning__table td {
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.recount-warning__table th {
+  position: sticky;
+  top: 0;
+  background: var(--modal-color, #fff);
+  font-weight: 700;
+}
+
+.recount-warning__table tr:last-child td {
+  border-bottom: 0;
+}
+
+.recount-warning__code {
+  display: block;
+  font-weight: 700;
+}
+
+.recount-warning__name {
+  display: block;
+  opacity: 0.75;
+}
+
+.recount-warning__more {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+@media (max-width: 560px) {
+  .recount-warning__table th:nth-child(3),
+  .recount-warning__table td:nth-child(3) {
+    display: none;
+  }
+}
+
+body.app-theme-dark .recount-warning__table th {
+  background: var(--color-surface-darker);
+}
+
+body.app-theme-dark .recount-warning__table-wrap,
+body.app-theme-dark .recount-warning__table th,
+body.app-theme-dark .recount-warning__table td {
+  border-color: var(--color-border-dark);
+}
