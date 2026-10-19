@@ -522,6 +522,21 @@ class InspeccionPorListaTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self._diferencias(inspection), 1)
 
+    def test_la_misma_lista_repetida_no_crea_otra_inspeccion(self):
+        # Doble click en "Enviar lista": antes se creaban 2 o 3 iguales.
+        primera = self._enviar_lista(producto_ids=[self.producto.id, self.producto_2.id])
+        repetida = self._enviar_lista(producto_ids=[self.producto_2.id, self.producto.id])
+        self.assertEqual(repetida.status_code, 200, repetida.data)
+        self.assertTrue(repetida.data["ya_enviada"])
+        self.assertEqual(repetida.data["inspeccion_id"], primera.data["inspeccion_id"])
+        self.assertEqual(
+            InspeccionAleatoriaDiaria.objects.filter(usuario=self.revisor, es_por_lista=True).count(), 1
+        )
+        # Una lista distinta si crea otra, y la nueva queda pendiente para el revisor.
+        otra = self._enviar_lista(producto_ids=[self.producto.id])
+        self.assertNotEqual(otra.data["inspeccion_id"], primera.data["inspeccion_id"])
+        self.assertNotIn("ya_enviada", otra.data)
+
     def test_lista_no_reemplaza_la_inspeccion_automatica(self):
         self._enviar_lista(producto_ids=[self.producto.id])
         self.admin_client.get("/recordatorios/estado/")
@@ -1114,3 +1129,66 @@ class AgregarProductoEncontradoTests(InspeccionAleatoriaBaseTestCase):
         ProductoReferencia.objects.create(producto=self.producto, valor="ZZ-REF-1234")
         response = self.revisor_client.get(f"{BASE_URL}/{self.inspection.id}/buscar-producto/?q=1234")
         self.assertEqual([row["codigo"] for row in response.data["results"]], ["P-1"])
+
+
+class MismoProductoEnDosInspeccionesTests(InspeccionAleatoriaBaseTestCase):
+    def _verificar(self, item, cantidad):
+        return self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/",
+            {"accion": "aprobar", "cantidad_confirmada": cantidad, "nota": "ok"},
+            format="json",
+        )
+
+    def test_aprobar_las_dos_no_resta_la_diferencia_dos_veces(self):
+        # El mismo producto en la automatica y en una lista: los dos conteos
+        # dan 8 contra 10 en el sistema. Antes quedaba 10 -> 8 -> 6.
+        automatica = self._crear_inspeccion()
+        lista = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
+        self.assertEqual(self._responder(automatica, {self.producto.id: 8}).status_code, 200)
+        self.assertEqual(self._responder(lista, {self.producto.id: 8}).status_code, 200)
+
+        primera = self._verificar(automatica.items.get(), 8)
+        self.assertEqual(primera.status_code, 200, primera.data)
+        self.assertEqual(self._stock(), 8)
+        segunda = self._verificar(lista.items.get(), 8)
+        self.assertEqual(segunda.status_code, 200, segunda.data)
+        self.assertEqual(self._stock(), 8)
+        item = lista.items.get()
+        self.assertEqual(item.verificacion_estado, InspeccionAleatoriaItem.EstadosVerificacion.APROBADA)
+        self.assertIn(f"#{automatica.id}", item.nota_verificacion or "")
+
+    def test_segundo_admin_recibe_aviso_de_ya_verificado(self):
+        inspection = self._crear_inspeccion()
+        self._responder(inspection, {self.producto.id: 8})
+        item = inspection.items.get()
+        self._verificar(item, 8)
+        otra = self._verificar(item, 8)
+        self.assertEqual(otra.status_code, 400)
+        self.assertTrue(otra.data["ya_verificado"])
+        self.assertEqual(self._stock(), 8)
+
+
+class RecordatorioConservaTextoYHoraTests(InspeccionAleatoriaBaseTestCase):
+    def test_enviar_el_conteo_de_una_lista_no_cambia_su_texto_ni_su_hora(self):
+        response = self.admin_client.post(
+            f"{BASE_URL}/enviar-lista/",
+            {
+                "sucursal_id": self.sucursal.id,
+                "usuario_id": self.revisor.id,
+                "producto_ids": [self.producto.id],
+                "hora_recordatorio": "23:59",
+            },
+            format="json",
+        )
+        inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
+
+        def reminder():
+            store = ReminderState.get_global()
+            return next(r for r in store.payload if r.get("id") == f"insp-{inspection.id}")
+
+        antes = reminder()
+        self.assertEqual(self._responder(inspection, {self.producto.id: 10}).status_code, 200)
+        despues = reminder()
+        self.assertEqual(despues["time"], antes["time"])
+        self.assertEqual(despues["description"], antes["description"])
+        self.assertIn(str(self.revisor.id), despues["completedBy"])

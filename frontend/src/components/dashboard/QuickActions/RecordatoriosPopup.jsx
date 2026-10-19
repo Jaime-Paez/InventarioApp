@@ -3032,8 +3032,23 @@ function RecordatoriosPopup({
                           )
                         )
                         const isInspectionInProgress = isPendingInspectionAlert && !isAdminSummaryReminder && Boolean(currentReminderId) && hasRandomInspectionDraft(reminder)
+                        // Solo es "ya realizaste el conteo" si la inspeccion es de quien
+                        // mira; si es de otro revisor se dice si el ya la hizo.
+                        const inspectionRecipients = (Array.isArray(reminder?.recipients) ? reminder.recipients : [])
+                        const inspectionRecipientIds = inspectionRecipients.map((recipient) => normalizeId(recipient?.id)).filter(Boolean)
+                        const isInspectionForViewer = inspectionRecipientIds.some((id) => currentUserIdSet.has(id))
+                        const isOthersInspectionDailyReminder = (
+                          isRandomInspectionDailyReminder(reminder) && !isInspectionForViewer
+                        )
+                        const othersInspectionReviewerName = inspectionRecipients
+                          .map((recipient) => String(recipient?.name || '').trim())
+                          .filter(Boolean)
+                          .join(', ') || 'el revisor'
+                        const othersInspectionDone = reminderCompletedByIds(reminder)
+                          .some((id) => inspectionRecipientIds.includes(normalizeId(id)))
                         const isCompletedInspectionDailyReminder = (
                           isRandomInspectionDailyReminder(reminder) &&
+                          isInspectionForViewer &&
                           !isPendingInspectionAlert
                         )
                         const isCompletedAdminSummaryReminder = isAdminSummaryReminder && !isPendingInspectionAlert
@@ -3424,7 +3439,15 @@ function RecordatoriosPopup({
                                     {isOpeningTransfer ? 'Abriendo...' : 'Resolver inconveniente'}
                                   </button>
                                 ) : isCompletedInspectionDailyReminder ? (
-                                  <span className="recordatorios-popup__action-placeholder">Ya realizaste el conteo</span>
+                                  <span className="recordatorios-popup__action-placeholder">
+                                    {reminder?.context?.disculpada ? 'Te disculparon de este conteo' : 'Ya realizaste el conteo'}
+                                  </span>
+                                ) : isOthersInspectionDailyReminder ? (
+                                  <span className="recordatorios-popup__action-placeholder">
+                                    {othersInspectionDone
+                                      ? `Conteo realizado por ${othersInspectionReviewerName}`
+                                      : `Pendiente: ${othersInspectionReviewerName} aun no realiza el conteo`}
+                                  </span>
                                 ) : isSolicitudClienteReminder && typeof onOpenSolicitudCliente === 'function' ? (
                                   <button
                                     type="button"

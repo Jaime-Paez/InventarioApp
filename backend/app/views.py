@@ -1351,9 +1351,20 @@ def _upsert_random_inspection_reminder(
             break
 
     if target_index is not None:
-        merged = _merge_reminder(existing_payload[target_index], reminder)
+        existing_reminder = existing_payload[target_index]
+        merged = _merge_reminder(existing_reminder, reminder)
         if merged is None:
             return False
+        # Un recordatorio que ya existe conserva su hora: reenviar con una hora
+        # mas tarde escondia uno que ya se estaba mostrando (o a medias). Y al
+        # enviar el conteo (sin branch_nombre) conserva su texto: antes una
+        # lista o division completada pasaba a decir "Inspeccion aleatoria
+        # diaria..." a las 09:00.
+        if isinstance(existing_reminder, dict):
+            if existing_reminder.get("time"):
+                merged["time"] = existing_reminder["time"]
+            if branch_nombre is None and existing_reminder.get("description"):
+                merged["description"] = existing_reminder["description"]
         if mark_completed or inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA:
             completed_by = set(_merge_completed_by(merged.get("completedBy") or [], [recipient_id]))
             merged["completedBy"] = sorted(completed_by)
@@ -2900,9 +2911,17 @@ _reminders_cache_lock = threading.Lock()
 _reminders_cache = {"at": 0.0, "entry": None}
 
 
-def invalidate_reminders_cache(*_args, **_kwargs):
+def _clear_reminders_cache():
     with _reminders_cache_lock:
         _reminders_cache["entry"] = None
+
+
+def invalidate_reminders_cache(*_args, **_kwargs):
+    _clear_reminders_cache()
+    # post_save corre antes del commit: un sondeo en ese momento todavia lee
+    # la fila vieja y la guardaba 8 s (lo recien enviado/contado se veia como
+    # antes). Se vuelve a limpiar cuando el cambio ya esta confirmado.
+    transaction.on_commit(_clear_reminders_cache)
 
 
 def _cached_reminders_entry():
@@ -2974,8 +2993,20 @@ def _annotate_random_inspection_progress(reminders):
 
     in_progress_ids = {
         int(pk)
+        # Solo las que siguen pendientes: al enviar el conteo la version
+        # tambien sube y la verificacion del admin salia como "en progreso".
         for pk in InspeccionAleatoriaDiaria.objects.filter(
             pk__in=inspection_ids, borrador_version__gt=0
+        )
+        .exclude(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA)
+        .values_list("pk", flat=True)
+    }
+    # Disculpada por el admin: el revisor no la hizo, no debe decir "ya
+    # realizaste el conteo".
+    excused_ids = {
+        int(pk)
+        for pk in InspeccionAleatoriaDiaria.objects.filter(
+            pk__in=inspection_ids, disculpada=True
         ).values_list("pk", flat=True)
     }
     annotated = []
@@ -2986,9 +3017,15 @@ def _annotate_random_inspection_progress(reminders):
             and _normalize_id(context.get("type")) == RANDOM_INSPECTION_CONTEXT_TYPE
         ):
             inspection_id = _normalize_int(context.get("id"), 0)
+            # "En progreso" es del recordatorio del revisor, no del de verificar.
+            is_reviewer_reminder = _normalize_id(reminder.get("kind")) == RANDOM_INSPECTION_KIND
             reminder = {
                 **reminder,
-                "context": {**context, "en_progreso": inspection_id in in_progress_ids},
+                "context": {
+                    **context,
+                    "en_progreso": is_reviewer_reminder and inspection_id in in_progress_ids,
+                    "disculpada": is_reviewer_reminder and inspection_id in excused_ids,
+                },
             }
         annotated.append(reminder)
     return annotated
@@ -3016,7 +3053,10 @@ class ReminderStateAPIView(APIView):
         now = timezone.now()
         last_checked = _last_inspection_check_by_user.get(user_id)
         due_for_inspection_check = last_checked is None or (now - last_checked) >= _INSPECTION_CHECK_THROTTLE
-        if not due_for_inspection_check:
+        # `fresh=1`: la pantalla acaba de hacer algo (enviar un conteo, una
+        # inspeccion...) y necesita verlo ya, no la copia de hasta 8 s.
+        wants_fresh = str(request.query_params.get("fresh") or "").strip() == "1"
+        if not due_for_inspection_check and not wants_fresh:
             cached = _cached_reminders_entry()
             if cached is not None:
                 return _reminders_response(cached, client_version)
@@ -3324,6 +3364,11 @@ class RandomInspectionRespondAPIView(APIView):
             )
 
         with transaction.atomic():
+            # Mismo orden de bloqueo que el sondeo de recordatorios y los envios
+            # (primero el ReminderState, despues la inspeccion). Al reves, enviar
+            # el conteo mientras corria la revision periodica podia trabarse y
+            # Postgres cancelaba el envio del revisor (error 500).
+            ReminderState.get_global(for_update=True)
             inspection = _lock_random_inspection(inspection_id)
             if inspection is None:
                 return Response(
@@ -4038,8 +4083,14 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 InspeccionAleatoriaItem.EstadosVerificacion.APROBADA,
                 InspeccionAleatoriaItem.EstadosVerificacion.RECHAZADA,
             }:
+                # Otro admin ya lo decidio: la pantalla lo da por decidido y
+                # sigue con el siguiente en vez de quedarse trabada.
                 return Response(
-                    {"detail": "Este item ya fue verificado previamente."},
+                    {
+                        "detail": "Este item ya fue verificado previamente.",
+                        "ya_verificado": True,
+                        "verificacion_estado": str(item.verificacion_estado or ""),
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -4176,9 +4227,35 @@ class RandomInspectionVerifyItemAPIView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                adjustment = _apply_random_inspection_adjustment(
-                    item, int(cantidad_confirmada), confirmed_by_location or None
-                )
+                # El ajuste es "confirmado - stock al contar". Si este producto ya
+                # se ajusto con otra inspeccion aprobada DESPUES de este conteo
+                # (mismo producto en dos inspecciones), el stock ya refleja un
+                # conteo igual o mas nuevo: aplicarlo otra vez restaria/sumaria
+                # la diferencia dos veces (10 -> 8 -> 6).
+                newer_adjustment = None
+                if item.revisado_en is not None:
+                    newer_adjustment = (
+                        InspeccionAleatoriaItem.objects.filter(
+                            sucursal_id=item.sucursal_id,
+                            producto_id=item.producto_id,
+                            verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.APROBADA,
+                            verificado_en__gte=item.revisado_en,
+                        )
+                        .exclude(pk=item.pk)
+                        .order_by("-verificado_en")
+                        .first()
+                    )
+                if newer_adjustment is not None:
+                    adjustment = {"delta_total": 0, "por_ubicacion": [], "residual": 0}
+                    skipped_note = (
+                        f"Sin ajuste de stock: ya se ajusto con la inspeccion "
+                        f"#{int(newer_adjustment.inspeccion_id)}, aprobada despues de este conteo."
+                    )
+                    note = f"{note} · {skipped_note}" if note else skipped_note
+                else:
+                    adjustment = _apply_random_inspection_adjustment(
+                        item, int(cantidad_confirmada), confirmed_by_location or None
+                    )
                 if confirmed_by_location:
                     # Queda registrado lo confirmado en cada ubicacion.
                     item.conteo_ubicaciones = [
@@ -4256,11 +4333,19 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 for idx, reminder in enumerate(normalized_payload):
                     if _normalize_id(reminder.get("id")) != verify_reminder_id:
                         continue
+                    # Ya no queda nada por verificar: cumplido para todos los
+                    # admins que lo recibieron (antes solo para quien termino y
+                    # los demas lo seguian viendo "Por verificar").
+                    recipient_ids = [
+                        _normalize_id(recipient.get("id"))
+                        for recipient in (reminder.get("recipients") or [])
+                        if isinstance(recipient, dict) and _normalize_id(recipient.get("id"))
+                    ]
                     completed_ids = sorted(
                         set(
                             _merge_completed_by(
                                 reminder.get("completedBy") or [],
-                                [actor_id],
+                                [actor_id, *recipient_ids],
                             )
                         )
                     )
@@ -5337,7 +5422,10 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 )
             else:
                 inspection.total_items = inspection.total_items + len(new_items)
-                inspection.save(update_fields=["total_items"])
+                # Sube la version: si el revisor la tiene abierta, su pantalla
+                # trae los productos nuevos (si no, al enviar le faltaban).
+                inspection.borrador_version = int(inspection.borrador_version or 0) + 1
+                inspection.save(update_fields=["total_items", "borrador_version", "updated_at"])
 
             # Los items se muestran por id: se crean ya en el orden de la percha.
             new_items = _sort_candidates_by_location(
@@ -5513,6 +5601,36 @@ class RandomInspectionSendListAPIView(APIView):
 
         with transaction.atomic():
             store = ReminderState.get_global(for_update=True)
+
+            # La misma lista repetida (doble click o reintento) para el mismo
+            # revisor y aun pendiente: se devuelve la que ya existe en vez de
+            # crear otra igual. El bloqueo del ReminderState de arriba hace que
+            # dos envios a la vez pasen de a uno por aqui.
+            requested_ids = set(product_ids)
+            for existing in (
+                InspeccionAleatoriaDiaria.objects.filter(
+                    usuario=user,
+                    sucursal_id=sucursal_id,
+                    es_por_lista=True,
+                    fecha_programada=scheduled_date,
+                )
+                .exclude(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA)
+                .prefetch_related("items")
+            ):
+                if {int(item.producto_id) for item in existing.items.all()} == requested_ids:
+                    return Response(
+                        {
+                            "usuario_id": int(user.id),
+                            "nombre": _format_user_display_name(user),
+                            "sucursal_id": sucursal_id,
+                            "sucursal_nombre": sucursal.nombre,
+                            "inspeccion_id": int(existing.id),
+                            "productos": len(product_ids),
+                            "codigos_no_encontrados": not_found_codes,
+                            "ya_enviada": True,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
 
             coverage = _calculate_random_inspection_coverage(
                 user,

@@ -3514,7 +3514,7 @@ function QuickActions({
       life: 4200,
     })
     if (token) {
-      void fetchRemindersFromBackend(token)
+      void fetchRemindersFromBackend(token, { fresh: true })
         .then((remoteReminders) => setReminders(remoteReminders))
         .catch(() => {})
     }
@@ -5158,7 +5158,7 @@ function QuickActions({
         randomInspectionDirtyItemsRef.current = new Map()
         randomInspectionMetaDirtyRef.current = false
         closeRandomInspectionModal()
-        const remoteReminders = await fetchRemindersFromBackend(token)
+        const remoteReminders = await fetchRemindersFromBackend(token, { fresh: true })
         setReminders(remoteReminders)
       } catch (error) {
         setRandomInspectionError(
@@ -5251,7 +5251,7 @@ function QuickActions({
           setActiveRandomInspection(latestInspection)
         }
 
-        const remoteReminders = await fetchRemindersFromBackend(token)
+        const remoteReminders = await fetchRemindersFromBackend(token, { fresh: true })
         setReminders(remoteReminders)
 
         toast.current?.show({

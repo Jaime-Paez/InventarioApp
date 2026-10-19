@@ -128,6 +128,8 @@ const sanitizeReminderContext = (rawContext) => {
   if (rawContext?.en_progreso !== undefined) {
     result.en_progreso = Boolean(rawContext.en_progreso)
   }
+  // Inspeccion que el admin disculpo (tambien lo calcula el backend al leer).
+  if (rawContext?.disculpada) result.disculpada = true
   const solicitanteId = normalizeId(rawContext?.sucursal_solicitante_id)
   if (solicitanteId) result.sucursal_solicitante_id = solicitanteId
   const proveedoraId = normalizeId(rawContext?.sucursal_proveedora_id)
@@ -494,7 +496,8 @@ const queueServerReminderSync = (reminders, token) => {
 
 // `onlyIfChanged`: devuelve null si el servidor dice que no hubo cambios
 // (el sondeo de QuickActions lo usa para no redibujar cada 4 segundos).
-export const fetchRemindersFromBackend = async (token, { onlyIfChanged = false } = {}) => {
+// `fresh`: despues de una accion propia, salta la copia del servidor (hasta 8 s).
+export const fetchRemindersFromBackend = async (token, { onlyIfChanged = false, fresh = false } = {}) => {
   const effectiveToken = resolveAuthToken(token)
   if (!effectiveToken) return onlyIfChanged ? null : readRemindersFromStorage()
 
@@ -508,9 +511,10 @@ export const fetchRemindersFromBackend = async (token, { onlyIfChanged = false }
   }
 
   try {
-    const url = serverRemindersVersion
-      ? `${REMINDERS_BACKEND_ENDPOINT}?version=${encodeURIComponent(serverRemindersVersion)}`
-      : REMINDERS_BACKEND_ENDPOINT
+    const params = []
+    if (serverRemindersVersion && !fresh) params.push(`version=${encodeURIComponent(serverRemindersVersion)}`)
+    if (fresh) params.push('fresh=1')
+    const url = params.length ? `${REMINDERS_BACKEND_ENDPOINT}?${params.join('&')}` : REMINDERS_BACKEND_ENDPOINT
     const response = await authFetch(url, {}, effectiveToken)
     if (!response.ok) return onlyIfChanged ? null : readRemindersFromStorage()
 
@@ -1080,6 +1084,16 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
   const decisionStatus = getReminderDecisionStatus(reminder)
   const contextType = normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_')
   const isTransferContext = contextType === 'solicitud_traslado'
+
+  if (!isForCurrentUser && isRandomInspectionDaily) {
+    // Inspeccion de otro (por ejemplo, la que el admin acaba de enviar): se
+    // muestra si el revisor ya la hizo o no. Antes salia como "Informativo"
+    // y la ventana la pintaba como "Ya realizaste el conteo".
+    const doneByRecipient = reminderCompletedByIds(reminder).some((id) => recipientIds.includes(id))
+    return doneByRecipient
+      ? { label: 'Realizada', className: 'info', canMarkSeen: false }
+      : { label: 'Pendiente del revisor', className: 'info', canMarkSeen: false }
+  }
 
   if (!isForCurrentUser) {
     return {

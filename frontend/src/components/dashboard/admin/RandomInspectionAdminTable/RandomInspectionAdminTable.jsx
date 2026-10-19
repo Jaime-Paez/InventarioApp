@@ -354,6 +354,19 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   // "Este ya fue contado": antes de mandar una revision se consulta cuantos de
   // esos productos ya se contaron hace poco y, si hay, se pide confirmar.
   const [recountConfirm, setRecountConfirm] = useState(null)
+  // Un solo envio a la vez: el boton recien se deshabilitaba despues de
+  // consultar "ya contados", y un doble click alcanzaba a mandar la misma
+  // lista 2 o 3 veces (inspecciones repetidas para el revisor).
+  const sendInFlightRef = useRef(false)
+  const runExclusiveSend = useCallback(async (send) => {
+    if (sendInFlightRef.current) return false
+    sendInFlightRef.current = true
+    try {
+      return await send()
+    } finally {
+      sendInFlightRef.current = false
+    }
+  }, [])
   const askIfRecentlyCounted = useCallback(async (body) => {
     try {
       const response = await authFetch(
@@ -650,7 +663,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       )
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo enviar la lista.')
-      notifySuccess(`Lista enviada: ${payload.productos} producto(s) para ${payload.nombre}.`)
+      notifySuccess(payload?.ya_enviada
+        ? `Esa lista ya estaba enviada a ${payload.nombre} y sigue pendiente: no se duplico.`
+        : `Lista enviada: ${payload.productos} producto(s) para ${payload.nombre}.`)
       setShowSendNowDialog(false)
     } catch (error) {
       notifyError(error?.message || 'No se pudo enviar la lista.')
@@ -683,7 +698,9 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       )
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo enviar la revision.')
-      notifySuccess(`Revision enviada: ${payload.productos} producto(s) para ${payload.nombre}.`)
+      notifySuccess(payload?.ya_enviada
+        ? `Esa revision ya estaba enviada a ${payload.nombre} y sigue pendiente: no se duplico.`
+        : `Revision enviada: ${payload.productos} producto(s) para ${payload.nombre}.`)
       return true
     } catch (error) {
       notifyError(error?.message || 'No se pudo enviar la revision.')
@@ -1365,14 +1382,21 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
         token
       )
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
+      // Otro admin ya lo verifico: se toma su decision y se sigue con el siguiente.
+      const alreadyVerified = !response.ok && payload?.ya_verificado
+      if (!response.ok && !alreadyVerified) {
         throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar la verificacion.')
+      }
+      if (alreadyVerified) {
+        notifySuccess('Este producto ya lo verifico otro administrador; se pasa al siguiente.')
       }
       const nextDecisions = {
         ...verifyWizardDecisions,
-        [itemId]: action === 'aprobar'
-          ? 'aprobada'
-          : action === 'reubicar' ? 'reubicada' : action === 'mover_aqui' ? 'movida' : 'rechazada',
+        [itemId]: alreadyVerified
+          ? (String(payload?.verificacion_estado || '').trim().toLowerCase() === 'rechazada' ? 'rechazada' : 'aprobada')
+          : action === 'aprobar'
+            ? 'aprobada'
+            : action === 'reubicar' ? 'reubicada' : action === 'mover_aqui' ? 'movida' : 'rechazada',
       }
       setVerifyWizardDecisions(nextDecisions)
       setVerifyWizardConfirming(false)
@@ -1392,7 +1416,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
     } finally {
       setVerifyWizardSubmitting(false)
     }
-  }, [token, verifyWizardDecisions, verifyWizardDrafts, verifyWizardIndex, verifyWizardItems])
+  }, [token, verifyWizardDecisions, verifyWizardDrafts, verifyWizardIndex, verifyWizardItems, notifySuccess])
 
     // Todas las sucursales (con o sin revisores asignados) -- el modo
   // "Division" del envio manual necesita poder elegir cualquiera de ellas,
@@ -1556,7 +1580,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
           onClose={() => setCoverageMapBranch(null)}
           reviewers={sendNowSummary.find((branch) => branch.id === normalizeId(coverageMapBranch.id))?.reviewers || []}
           reviewersLoading={assignmentsLoading}
-          onSendMissing={(payload) => sendProductListToReviewer({ ...payload, sucursalId: coverageMapBranch.id })}
+          onSendMissing={(payload) => runExclusiveSend(() => sendProductListToReviewer({ ...payload, sucursalId: coverageMapBranch.id }))}
         />
       )}
 
@@ -2809,7 +2833,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 <button
                   type="button"
                   className="create-user__action create-user__action--primary"
-                  onClick={() => void sendList()}
+                  onClick={() => void runExclusiveSend(sendList)}
                   disabled={listSending || listBulkLoading || !listSucursalId || !listUsuarioId || listProducts.length === 0}
                 >
                   {listSending ? 'Enviando...' : `Enviar lista (${listProducts.length})`}
@@ -2818,7 +2842,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 <button
                   type="button"
                   className="create-user__action create-user__action--primary"
-                  onClick={() => void sendDivision()}
+                  onClick={() => void runExclusiveSend(sendDivision)}
                   disabled={divisionSending || !divisionId || !divisionUsuarioId}
                 >
                   {divisionSending ? 'Enviando...' : 'Enviar division completa'}
@@ -2827,7 +2851,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                 <button
                   type="button"
                   className="create-user__action create-user__action--primary"
-                  onClick={() => void sendNow()}
+                  onClick={() => void runExclusiveSend(sendNow)}
                   disabled={sendNowLoading || sendNowDialogLoading || sendNowSummary.length === 0 || sendNowSelectedUserIds.size === 0}
                 >
                   {sendNowLoading ? 'Enviando...' : 'Enviar ahora'}
