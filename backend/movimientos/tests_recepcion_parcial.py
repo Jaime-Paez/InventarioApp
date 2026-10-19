@@ -283,3 +283,36 @@ class RecepcionParcialImportacionTests(APITestCase):
         self.assertEqual(total, 4)
         self.envio.refresh_from_db()
         self.assertEqual(self.envio.estado, ImportacionEnvio.ESTADO_RECIBIDO)
+
+
+class FaltanteEnvioImportacionTests(RecepcionParcialImportacionTests):
+    def test_faltante_al_cerrar_queda_en_inconvenientes(self):
+        from importaciones.models import ImportacionInconveniente
+
+        url = f"/importaciones/importaciones/envios/{self.envio.id}"
+        nivel = SubDivision.objects.create(
+            division=Division.objects.create(
+                bodega=Bodega.objects.get(sucursal=self.sucursal),
+                tipo_division=TipoDivision.objects.get_or_create(nombre="General")[0],
+                nombre="B1",
+            ),
+            nombre="01",
+        )
+        response = self.client.post(
+            f"{url}/confirmar-recepcion/",
+            {"items": [{
+                "producto_id": self.producto.id,
+                "cantidad_recibida": 3,
+                "novedad": "Caja abierta",
+                "ubicaciones": [{"subdivision_id": nivel.id, "cantidad": 3}],
+            }]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["faltantes"], 1)
+        issue = ImportacionInconveniente.objects.get(producto=self.producto)
+        self.assertEqual(issue.tipo, ImportacionInconveniente.Tipos.FALTANTE)
+        self.assertEqual((issue.cantidad_esperada, issue.cantidad_recibida, issue.cantidad_diferencia), (4, 3, 1))
+        self.assertIn("Norte", issue.motivo)
+        self.assertIn("Caja abierta", issue.motivo)
+        self.assertEqual(issue.estado, ImportacionInconveniente.Estados.PENDIENTE)

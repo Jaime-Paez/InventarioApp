@@ -49,6 +49,60 @@ from .models import (
 from .serializers import ImportacionDetalleSerializer, ImportacionSerializer, generate_next_importacion_code
 
 
+
+def create_envio_shortage_issues(envio, recibido_por_producto, *, actor=None, novedades=None):
+    """Crea un inconveniente de FALTANTE por cada producto del envio a la
+    sucursal que llego de menos. No duplica: si ya hay uno de este envio para
+    ese producto, no crea otro. Devuelve los inconvenientes creados."""
+    novedades = novedades or {}
+    sucursal_nombre = str(getattr(envio.sucursal, "nombre", "") or "").strip() or f"sucursal {envio.sucursal_id}"
+    detalle_importacion_por_producto = {
+        int(detalle.producto_id): detalle
+        for detalle in envio.importacion.detalles.filter(producto_id__isnull=False)
+    }
+    marca = f"envio #{int(envio.id)}"
+    creados = []
+    for detalle in envio.detalles.select_related("producto"):
+        product_id = int(detalle.producto_id)
+        enviado = int(detalle.cantidad or 0)
+        recibido = max(0, int(recibido_por_producto.get(product_id, 0) or 0))
+        if recibido >= enviado:
+            continue
+        ya_existe = ImportacionInconveniente.objects.filter(
+            importacion_id=envio.importacion_id,
+            producto_id=product_id,
+            tipo=ImportacionInconveniente.Tipos.FALTANTE,
+            motivo__icontains=marca,
+        ).exists()
+        if ya_existe:
+            continue
+        diferencia = enviado - recibido
+        novedad = str(novedades.get(product_id) or "").strip()
+        motivo = f"Faltante al recibir en {sucursal_nombre} ({marca})." + (f" Novedad: {novedad}" if novedad else "")
+        inconveniente = ImportacionInconveniente.objects.create(
+            importacion_id=envio.importacion_id,
+            detalle=detalle_importacion_por_producto.get(product_id),
+            producto_id=product_id,
+            tipo=ImportacionInconveniente.Tipos.FALTANTE,
+            cantidad_esperada=enviado,
+            cantidad_recibida=recibido,
+            cantidad_diferencia=diferencia,
+            estado=ImportacionInconveniente.Estados.PENDIENTE,
+            motivo=motivo,
+            creado_por=actor,
+        )
+        ImportacionInconvenienteHistorial.objects.create(
+            inconveniente=inconveniente,
+            accion="detectado",
+            detalle=(
+                f"Faltante de {diferencia} unidades al recibir el envio en {sucursal_nombre}. "
+                f"Enviado: {enviado}, recibido: {recibido}."
+            ),
+            actor=actor,
+        )
+        creados.append(inconveniente)
+    return creados
+
 class _StripLeadingZerosSQL(Func):
     """Quita ceros a la izquierda de una referencia en la base (deja al menos
     un caracter) para poder comparar '0042' con '42' como la misma referencia.
@@ -1670,10 +1724,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 )
             # Lo recibido por partes ya esta en el stock: solo se suma la diferencia.
             ya_recibido_por_producto = received_by_product(envio_locked.recepcion_progreso)
+            # Total recibido por producto (para los faltantes); lo que no vino
+            # en `items` cuenta con lo ya recibido por partes.
+            recibido_total_por_producto = dict(ya_recibido_por_producto)
+            novedad_por_producto = {}
 
             for raw_item in items:
                 product_id = int(raw_item.get("producto_id"))
                 cantidad_recibida = int(raw_item.get("cantidad_recibida") or 0)
+                recibido_total_por_producto[product_id] = cantidad_recibida
+                novedad_por_producto[product_id] = str(raw_item.get("novedad") or "").strip()
                 ya_recibido = int(ya_recibido_por_producto.get(product_id, 0))
                 if cantidad_recibida < ya_recibido:
                     transaction.set_rollback(True)
@@ -1723,6 +1783,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             envio_locked.recibido_por = request.user
             envio_locked.save(update_fields=["estado", "fecha_recepcion", "recibido_por"])
 
+            # Lo que llego de menos a la sucursal queda como inconveniente
+            # (antes solo se sumaba al stock y el faltante no aparecia en
+            # Inconvenientes).
+            faltantes = create_envio_shortage_issues(
+                envio_locked,
+                recibido_total_por_producto,
+                actor=request.user,
+                novedades=novedad_por_producto,
+            )
+
             # El precio ya se aplico al catalogo al aceptar la importacion (ver
             # ImportacionViewSet.importar) -- no se vuelve a tocar aqui para no
             # pisar un ajuste manual de precio hecho despues de aceptarla y
@@ -1734,7 +1804,15 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             self._create_importacion_reminder(envio.importacion, None, admin_ids, request.user)
 
         return Response(
-            {"detail": "Recepción registrada correctamente.", "recordatorio_enviado": bool(admin_ids)},
+            {
+                "detail": (
+                    f"Recepción registrada con {len(faltantes)} producto(s) faltante(s): quedaron en Inconvenientes."
+                    if faltantes
+                    else "Recepción registrada correctamente."
+                ),
+                "recordatorio_enviado": bool(admin_ids),
+                "faltantes": len(faltantes),
+            },
             status=status.HTTP_200_OK,
         )
 
