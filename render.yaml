@@ -3,10 +3,14 @@ services:
     name: inventarioapp-backend
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && python manage.py migrate --noinput && python manage.py collectstatic --noinput
+    buildCommand: pip install -r requirements.txt && python manage.py migrar_seguro && python manage.py collectstatic --noinput
     startCommand: gunicorn core.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile -
     healthCheckPath: /ping/
     envVars:
+      # Fija Python: si Render cambia su version por defecto, pandas/numpy
+      # podian dejar de instalarse y el build fallaba sin cambios propios.
+      - key: PYTHON_VERSION
+        value: "3.13.7"
       - key: DEBUG
         value: "0"
       - key: ALLOWED_HOSTS
