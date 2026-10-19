@@ -120,7 +120,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
   const [localAssignmentMap, setLocalAssignmentMap] = useState({})
   const [assignmentsSaving, setAssignmentsSaving] = useState(false)
   const [isEditingAssignments, setIsEditingAssignments] = useState(false)
-  const [configData, setConfigData] = useState({ hora_recordatorio: '', cantidad_productos: '' })
+  const [configData, setConfigData] = useState({ hora_recordatorio: '', cantidad_productos: '', inspeccion_automatica: false })
   const [configLoading, setConfigLoading] = useState(false)
   const [showSendNowDialog, setShowSendNowDialog] = useState(false)
   const [sendNowLoading, setSendNowLoading] = useState(false)
@@ -232,6 +232,7 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       setConfigData({
         hora_recordatorio: payload?.hora_recordatorio ?? '',
         cantidad_productos: payload?.cantidad_productos != null ? String(payload.cantidad_productos) : '',
+        inspeccion_automatica: Boolean(payload?.inspeccion_automatica),
       })
     } catch (error) {
       notifyError(error?.message || 'No se pudo cargar la configuracion.')
@@ -2957,6 +2958,22 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
                         onChange={(e) => setConfigData((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
                         disabled={!isEditingAssignments || configLoading || assignmentsSaving}
                       />
+                    </label>
+                    <label className="create-user__field inspection-admin__auto-toggle">
+                      <span>Inspeccion automatica diaria</span>
+                      <span className="inspection-admin__auto-toggle-row">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(configData.inspeccion_automatica)}
+                          onChange={(e) => setConfigData((prev) => ({ ...prev, inspeccion_automatica: e.target.checked }))}
+                          disabled={!isEditingAssignments || configLoading || assignmentsSaving}
+                        />
+                        <small>
+                          {configData.inspeccion_automatica
+                            ? 'Activada: cada dia el sistema le crea una inspeccion a cada revisor.'
+                            : 'Apagada: solo existen las inspecciones que se envian desde aqui.'}
+                        </small>
+                      </span>
                     </label>
                   </div>
 

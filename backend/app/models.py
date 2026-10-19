@@ -81,6 +81,9 @@ class InspeccionAleatoriaConfiguracion(models.Model):
         blank=True,
         help_text="Hora del dia en que se envia el recordatorio de inspeccion aleatoria.",
     )
+    # Inspeccion automatica diaria (una al dia a cada revisor sin que nadie la
+    # envie). Apagada: solo existen las que el admin envia.
+    inspeccion_automatica = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

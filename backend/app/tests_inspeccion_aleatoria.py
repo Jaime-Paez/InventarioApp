@@ -1,4 +1,4 @@
-from datetime import time as dt_time
+from datetime import time as dt_time, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -50,6 +50,8 @@ class InspeccionAleatoriaBaseTestCase(TestCase):
         )
         config = InspeccionAleatoriaConfiguracion.get_global()
         config.hora_recordatorio = dt_time(0, 0)
+        # Estas pruebas cubren tambien la automatica (en produccion esta apagada).
+        config.inspeccion_automatica = True
         config.save()
 
         self.revisor_client = APIClient()
@@ -1224,3 +1226,38 @@ class AvisoYaContadoTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(response.data["contados"], 1)
         self.assertEqual(response.data["total"], 2)
         self.assertEqual(response.data["productos"][0]["donde"], "Toda la sucursal")
+
+
+
+class InspeccionAutomaticaApagadaTests(InspeccionAleatoriaBaseTestCase):
+    def test_apagada_no_crea_inspecciones_y_quita_resumenes_vacios(self):
+        config = InspeccionAleatoriaConfiguracion.get_global()
+        config.inspeccion_automatica = False
+        config.save()
+        # Resumen viejo de un dia que se quedo sin inspecciones.
+        store = ReminderState.get_global()
+        ayer = timezone.localdate() - timedelta(days=1)
+        store.payload = [
+            {
+                "id": f"insp-admin-summary-{ayer.isoformat()}",
+                "date": ayer.isoformat(),
+                "time": "09:00",
+                "description": "Resumen",
+                "kind": "inspeccion_aleatoria_resumen_admin",
+                "context": {"type": "inspeccion_aleatoria", "id": ayer.isoformat(), "label": "Resumen"},
+                "recipients": [{"id": str(self.admin.id), "name": "Admin"}],
+                "creator": {"id": "sistema", "name": "Sistema"},
+                "completedBy": [],
+            }
+        ]
+        store.save()
+
+        self.revisor_client.get("/recordatorios/estado/")
+        self.admin_client.get("/recordatorios/estado/")
+
+        self.assertFalse(InspeccionAleatoriaDiaria.objects.filter(usuario=self.revisor).exists())
+        ids = [r.get("id") for r in ReminderState.get_global().payload]
+        self.assertNotIn(f"insp-admin-summary-{ayer.isoformat()}", ids)
+
+        config_response = self.admin_client.get(f"{BASE_URL}/configuracion/")
+        self.assertFalse(config_response.data["inspeccion_automatica"])

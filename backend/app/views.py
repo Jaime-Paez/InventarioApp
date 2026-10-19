@@ -1393,6 +1393,9 @@ def _ensure_daily_random_inspection_for_user(user, store):
 
     # Use hora_recordatorio from config if set, otherwise fall back to RANDOM_INSPECTION_START_HOUR
     config = InspeccionAleatoriaConfiguracion.get_global()
+    # Apagada: el sistema no crea inspecciones solo, solo las que envia el admin.
+    if not config.inspeccion_automatica:
+        return None, False
     hora_config = config.hora_recordatorio
     if hora_config is None:
         return None, False
@@ -2200,6 +2203,18 @@ def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=N
         .select_related("usuario")
     )
     if not inspections_today:
+        # Dia sin inspecciones (por ejemplo, se borraron las automaticas que
+        # nadie empezo): su resumen ya no tiene nada pendiente y se quita, si
+        # no quedaba en rojo para siempre.
+        summary_id = f"insp-admin-summary-{(reminder_date or today).isoformat()}"
+        payload = store.payload if isinstance(store.payload, list) else []
+        kept = [
+            item for item in payload
+            if not (isinstance(item, dict) and _normalize_id(item.get("id")) == summary_id)
+        ]
+        if len(kept) != len(payload):
+            store.payload = kept
+            return True
         return False
 
     user_map = {}
@@ -5092,6 +5107,7 @@ class RandomInspectionConfigAPIView(APIView):
             {
                 "hora_recordatorio": hora.strftime("%H:%M") if hora else "",
                 "cantidad_productos": int(sys_config.random_inspection_items_per_day),
+                "inspeccion_automatica": bool(config.inspeccion_automatica),
             },
             status=status.HTTP_200_OK,
         )
@@ -5122,7 +5138,11 @@ class RandomInspectionConfigAPIView(APIView):
                     {"detail": "Formato de hora invalido. Usa HH:MM."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            config.save(update_fields=["hora_recordatorio", "updated_at"])
+            update_fields = ["hora_recordatorio", "updated_at"]
+            if "inspeccion_automatica" in request.data:
+                config.inspeccion_automatica = bool(request.data.get("inspeccion_automatica"))
+                update_fields.append("inspeccion_automatica")
+            config.save(update_fields=update_fields)
 
             cantidad_raw = request.data.get("cantidad_productos")
             if cantidad_raw not in (None, ""):
@@ -5143,6 +5163,7 @@ class RandomInspectionConfigAPIView(APIView):
             {
                 "hora_recordatorio": hora.strftime("%H:%M") if hora else "",
                 "cantidad_productos": int(sys_config.random_inspection_items_per_day),
+                "inspeccion_automatica": bool(config.inspeccion_automatica),
             },
             status=status.HTTP_200_OK,
         )

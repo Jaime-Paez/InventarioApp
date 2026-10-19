@@ -1725,3 +1725,21 @@ body.app-theme-dark .recount-warning__table th,
 body.app-theme-dark .recount-warning__table td {
   border-color: var(--color-border-dark);
 }
+
+.inspection-admin__auto-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+}
+
+.inspection-admin__auto-toggle-row input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.inspection-admin__auto-toggle-row small {
+  line-height: 1.35;
+  opacity: 0.8;
+}
