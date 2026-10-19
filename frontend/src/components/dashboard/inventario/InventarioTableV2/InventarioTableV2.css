@@ -489,3 +489,16 @@
 .dashboard-shell.dark .inventario-v2__in-transit {
   color: #60a5fa;
 }
+
+/* Primera fila de la tarjeta de ubicaciones: la principal (la que decide el
+   ojo en rojo). */
+.inventario-v2__location-hover-principal {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  vertical-align: middle;
+}

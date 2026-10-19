@@ -316,11 +316,16 @@ function ProductoDetails({
       }))
       .filter((entry) => Boolean(entry?.subdivisionId))
 
+    const ordenUbicaciones = payload?.orden_ubicaciones && typeof payload.orden_ubicaciones === 'object'
+      ? payload.orden_ubicaciones
+      : {}
+
     return {
       branches,
       bodegas,
       subdivisions,
       inventarioEntries,
+      ordenUbicaciones,
     }
   }, [])
 
@@ -2204,6 +2209,7 @@ function ProductoDetails({
                     bodegas={resolvedInventoryContext?.bodegas || []}
                     subdivisions={resolvedInventoryContext?.subdivisions || []}
                     inventarioEntries={resolvedInventoryContext?.inventarioEntries || []}
+                    ordenUbicaciones={resolvedInventoryContext?.ordenUbicaciones || {}}
                     editableBranchIds={editableProductBranchIds ? Array.from(editableProductBranchIds) : null}
                     fullyEditableBranchIds={
                       !isAdminByRole

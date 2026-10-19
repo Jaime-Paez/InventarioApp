@@ -2480,6 +2480,9 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                   >
                     <td title={String(location?.bodega_nombre || '-').trim()}>
                       {String(location?.bodega_nombre || '-').trim()}
+                      {index === 0 && (
+                        <span className="inventario-v2__location-hover-principal">Principal</span>
+                      )}
                     </td>
                     <td title={String(location?.ubicacion || '-').trim()}>
                       {String(location?.ubicacion || '-').trim()}

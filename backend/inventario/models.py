@@ -113,3 +113,41 @@ class Inventario(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - representación legible
         return f"{self.producto.codigo} - {self.subdivision.nombre} ({self.cantidad} uds)"
+
+
+class ProductoUbicacionOrden(models.Model):
+    """Orden de las ubicaciones de un producto que eligio el usuario
+    (arrastrando en la pestana Ubicaciones). En cada sucursal, la primera es
+    la ubicacion principal: la que se muestra en la tabla y la que pone el ojo
+    en rojo cuando le queda poco stock.
+
+    Va aparte del Inventario porque esas filas se borran al quedar en 0 al
+    mover stock, y el orden elegido no se debe perder.
+    """
+
+    producto = models.ForeignKey(
+        "productos.Producto",
+        on_delete=models.CASCADE,
+        related_name="orden_ubicaciones",
+    )
+    subdivision = models.ForeignKey(
+        SubDivision,
+        on_delete=models.CASCADE,
+        related_name="orden_productos",
+    )
+    orden = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Orden de ubicacion de producto"
+        verbose_name_plural = "Orden de ubicaciones de productos"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["producto", "subdivision"], name="producto_ubicacion_orden_unico"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["producto", "orden"], name="prod_ubic_orden_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - representacion legible
+        return f"{self.producto_id} - {self.subdivision_id}: {self.orden}"

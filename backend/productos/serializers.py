@@ -741,11 +741,23 @@ class ProductoDetailSerializer(ProductoSerializer):
             ),
         )
 
+        # Orden de ubicaciones elegido por el usuario: {subdivision_id: orden}
+        # (en cada sucursal, la primera es la principal).
+        from inventario.models import ProductoUbicacionOrden
+
+        orden_ubicaciones = {
+            str(row["subdivision_id"]): int(row["orden"])
+            for row in ProductoUbicacionOrden.objects.filter(producto_id=obj.id).values(
+                "subdivision_id", "orden"
+            )
+        }
+
         return {
             "branches": branches,
             "bodegas": bodegas,
             "subdivisions": subdivisions,
             "inventario_entries": inventory_entries,
+            "orden_ubicaciones": orden_ubicaciones,
         }
 
     def get_calificacion_resumen(self, obj):

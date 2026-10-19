@@ -1,6 +1,6 @@
 import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowLeftRight, Check, X } from 'lucide-react'
+import { ArrowLeftRight, Check, GripVertical, X } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../InventarioDetails/InventarioDetails.css'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -57,6 +57,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     bodegas = [],
     subdivisions = [],
     inventarioEntries = [],
+    ordenUbicaciones = {},
     editableBranchIds = null,
     fullyEditableBranchIds = null,
     disabled = false,
@@ -69,6 +70,13 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   const [transferSaving, setTransferSaving] = useState(false)
   const [error, setError] = useState(null)
   const [locations, setLocations] = useState([])
+  // Orden de ubicaciones elegido por el usuario: {subdivisionId: orden}. En
+  // cada sucursal la primera es la principal (la que pone el ojo en rojo en
+  // la tabla cuando le queda poco). Se guarda en el servidor al soltar.
+  const [locationOrder, setLocationOrder] = useState(() => ({ ...(ordenUbicaciones || {}) }))
+  const [orderSaving, setOrderSaving] = useState(false)
+  const [dragState, setDragState] = useState(null) // { uid, sucursalId, step }
+  const dragOrderRef = useRef(null)
   const [locationDraft, setLocationDraft] = useState({
     sucursalId: '',
     bodegaId: '',
@@ -972,17 +980,161 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     reset: resetEditorState,
   }))
 
-  const sortedLocations = useMemo(() => {
-    return [...locations].sort((a, b) => {
-      const sucursalCompare = (a.sucursalNombre || '').localeCompare(b.sucursalNombre || '', 'es', { sensitivity: 'base' })
-      if (sucursalCompare !== 0) return sucursalCompare
-      const bodegaCompare = (a.bodegaNombre || '').localeCompare(b.bodegaNombre || '', 'es', { sensitivity: 'base' })
-      if (bodegaCompare !== 0) return bodegaCompare
-      const divisionCompare = (a.divisionNombre || '').localeCompare(b.divisionNombre || '', 'es', { sensitivity: 'base' })
-      if (divisionCompare !== 0) return divisionCompare
-      return (a.subdivisionNombre || '').localeCompare(b.subdivisionNombre || '', 'es', { sensitivity: 'base' })
+  useEffect(() => {
+    setLocationOrder({ ...(ordenUbicaciones || {}) })
+  }, [ordenUbicaciones])
+
+  const compareByName = useCallback((a, b) => {
+    const bodegaCompare = (a.bodegaNombre || '').localeCompare(b.bodegaNombre || '', 'es', { sensitivity: 'base' })
+    if (bodegaCompare !== 0) return bodegaCompare
+    const divisionCompare = (a.divisionNombre || '').localeCompare(b.divisionNombre || '', 'es', { sensitivity: 'base' })
+    if (divisionCompare !== 0) return divisionCompare
+    return (a.subdivisionNombre || '').localeCompare(b.subdivisionNombre || '', 'es', { sensitivity: 'base' })
+  }, [])
+
+  // Por sucursal (por nombre) y dentro de cada una: el orden elegido; las sin
+  // orden van al final por nombre. Sin orden elegido en la sucursal se usa la
+  // misma regla que la tabla: por nombre y la principal es la primera con stock.
+  const orderLocations = useCallback((items, order) => {
+    const bySucursal = new Map()
+    items.forEach((location) => {
+      const key = String(location.sucursalId || '')
+      if (!bySucursal.has(key)) bySucursal.set(key, [])
+      bySucursal.get(key).push(location)
     })
-  }, [locations])
+    const groups = Array.from(bySucursal.values()).sort((a, b) => (
+      (a[0]?.sucursalNombre || '').localeCompare(b[0]?.sucursalNombre || '', 'es', { sensitivity: 'base' })
+    ))
+    return groups.flatMap((group) => {
+      const orderOf = (location) => {
+        const value = order?.[String(location.subdivisionId)]
+        return value === undefined || value === null ? null : Number(value)
+      }
+      const hasOrder = group.some((location) => orderOf(location) !== null)
+      if (hasOrder) {
+        return [...group].sort((a, b) => {
+          const oa = orderOf(a)
+          const ob = orderOf(b)
+          if (oa !== null && ob !== null && oa !== ob) return oa - ob
+          if (oa !== null && ob === null) return -1
+          if (oa === null && ob !== null) return 1
+          return compareByName(a, b)
+        })
+      }
+      const byName = [...group].sort(compareByName)
+      const principal = byName.find((location) => Number(location.cantidad || 0) > 0) || byName[0]
+      return [principal, ...byName.filter((location) => location !== principal)]
+    })
+  }, [compareByName])
+
+  const sortedLocations = useMemo(
+    () => orderLocations(locations, dragOrderRef.current?.preview || locationOrder),
+    // dragState cambia en cada paso del arrastre y fuerza el recalculo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [locations, locationOrder, orderLocations, dragState]
+  )
+
+  // Posicion de cada fila dentro de su sucursal (0 = principal).
+  const positionByUid = useMemo(() => {
+    const counters = new Map()
+    const positions = new Map()
+    sortedLocations.forEach((location) => {
+      const key = String(location.sucursalId || '')
+      const index = counters.get(key) || 0
+      positions.set(location.uid, index)
+      counters.set(key, index + 1)
+    })
+    return positions
+  }, [sortedLocations])
+
+  // Solo las ya guardadas se ordenan (una nueva sin guardar aun puede cambiar
+  // de subdivision).
+  const isSavedLocation = (location) => String(location?.uid || '').startsWith('entry-')
+
+  const saveBranchOrder = useCallback(async (sucursalId, subdivisionIds, previousOrder) => {
+    if (!token || !productId || !subdivisionIds.length) return
+    setOrderSaving(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/inventario/inventario/orden-ubicaciones/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            producto_id: Number(productId),
+            sucursal_id: Number(sucursalId),
+            subdivision_ids: subdivisionIds.map((id) => Number(id)),
+          }),
+        },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar el orden de las ubicaciones.')
+      }
+    } catch (err) {
+      setLocationOrder(previousOrder)
+      setLocationError(err?.message || 'No se pudo guardar el orden de las ubicaciones.')
+    } finally {
+      setOrderSaving(false)
+    }
+  }, [productId, token])
+
+  // Arrastre con el agarre (mouse y pantalla tactil): mientras se mueve se
+  // reacomoda la vista; al soltar se guarda el orden de esa sucursal.
+  const handleDragHandlePointerDown = useCallback((event, location) => {
+    if (orderSaving || !isSavedLocation(location) || !canManageBranchLocation(location.sucursalId)) return
+    event.preventDefault()
+    const sucursalKey = String(location.sucursalId || '')
+    const branchRows = orderLocations(locations, locationOrder)
+      .filter((row) => String(row.sucursalId || '') === sucursalKey && isSavedLocation(row))
+    if (branchRows.length < 2) return
+    const initialIds = branchRows.map((row) => String(row.subdivisionId))
+    const toOrder = (list) => {
+      const next = { ...locationOrder }
+      list.forEach((id, index) => { next[id] = index })
+      return next
+    }
+    dragOrderRef.current = {
+      ids: initialIds,
+      sucursalId: sucursalKey,
+      dragged: String(location.subdivisionId),
+      preview: toOrder(initialIds),
+    }
+    setDragState({ uid: location.uid, sucursalId: sucursalKey, step: 0 })
+
+    const handleMove = (moveEvent) => {
+      const current = dragOrderRef.current
+      if (!current) return
+      const target = document
+        .elementFromPoint(moveEvent.clientX, moveEvent.clientY)
+        ?.closest?.('[data-location-sub]')
+      if (!target || target.getAttribute('data-location-branch') !== current.sucursalId) return
+      const overId = target.getAttribute('data-location-sub')
+      if (!overId || overId === current.dragged || !current.ids.includes(overId)) return
+      const draggedIndex = current.ids.indexOf(current.dragged)
+      const overIndex = current.ids.indexOf(overId)
+      const next = current.ids.filter((id) => id !== current.dragged)
+      next.splice(next.indexOf(overId) + (draggedIndex < overIndex ? 1 : 0), 0, current.dragged)
+      current.ids = next
+      current.preview = toOrder(next)
+      setDragState((prev) => (prev ? { ...prev, step: (prev.step || 0) + 1 } : prev))
+    }
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      window.removeEventListener('pointercancel', handleUp)
+      const current = dragOrderRef.current
+      dragOrderRef.current = null
+      setDragState(null)
+      if (!current || current.ids.join(',') === initialIds.join(',')) return
+      const previousOrder = locationOrder
+      setLocationOrder(current.preview)
+      void saveBranchOrder(current.sucursalId, current.ids, previousOrder)
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+    window.addEventListener('pointercancel', handleUp)
+  }, [canManageBranchLocation, locationOrder, locations, orderLocations, orderSaving, saveBranchOrder])
 
   if (!branches.length) {
     return (
@@ -1519,8 +1671,38 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
             return (
               <Fragment key={location.uid}>
-                <div className="create-user__locations-row">
-                  <span data-label="Sucursal">
+                <div
+                  className={`create-user__locations-row${dragState?.uid === location.uid ? ' inventario-editor__row--dragging' : ''}`}
+                  data-location-sub={String(location.subdivisionId || '')}
+                  data-location-branch={String(location.sucursalId || '')}
+                >
+                  <span data-label="Sucursal" className="inventario-editor__branch-cell">
+                    {(() => {
+                      const position = positionByUid.get(location.uid) ?? 0
+                      const canReorder = isSavedLocation(location) && canManageRow && !orderSaving
+                      const isPrincipal = position === 0
+                      const principalLow = isPrincipal && Number(location.cantidad || 0) <= 1
+                      return (
+                        <span className="inventario-editor__order">
+                          <button
+                            type="button"
+                            className="inventario-editor__drag-handle"
+                            onPointerDown={(event) => handleDragHandlePointerDown(event, location)}
+                            disabled={!canReorder}
+                            aria-label="Arrastrar para cambiar el orden (la primera es la principal)"
+                            title={canReorder ? 'Arrastra para ordenar: la primera de la sucursal es la principal' : undefined}
+                          >
+                            <GripVertical size={16} />
+                          </button>
+                          <span
+                            className={`inventario-editor__order-badge${isPrincipal ? ' inventario-editor__order-badge--principal' : ''}${principalLow ? ' inventario-editor__order-badge--low' : ''}`}
+                            title={principalLow ? 'Ubicacion principal con poco stock' : undefined}
+                          >
+                            {isPrincipal ? 'Principal' : `${position + 1}`}
+                          </span>
+                        </span>
+                      )
+                    })()}
                     {canInlineEdit
                       ? makeDropdown('sucursal', location.sucursalNombre || 'Sucursal', branches, (b) => b.nombre || `Sucursal ${b.id}`, (b) => b.id, false)
                       : location.sucursalNombre}

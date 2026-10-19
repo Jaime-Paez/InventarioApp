@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
 from django.db.models import (
+    BooleanField,
     Case,
     CharField,
     Count,
@@ -17,7 +18,7 @@ from django.db.models import (
     Value,
     When,
 )
-from django.db.models.functions import Coalesce, Concat
+from django.db.models.functions import Coalesce, Concat, Lower
 from django.utils.dateparse import parse_date
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -68,14 +69,68 @@ from movimientos.transfer_helpers import (
 # Inventario se pinta de rojo cuando la sucursal tiene varias ubicaciones y
 # alguna del almacen esta en este nivel o por debajo ("menos de 2 unidades").
 LOW_STOCK_LOCATION_THRESHOLD = 1
-LOW_STOCK_BODEGA_PREFIX = "almacen"
 
 
-def _is_low_stock_location(bodega_nombre, cantidad):
-    return (
-        strip_accents(str(bodega_nombre or "").strip()).startswith(LOW_STOCK_BODEGA_PREFIX)
-        and int(cantidad or 0) <= LOW_STOCK_LOCATION_THRESHOLD
+def is_low_stock_principal(cantidad):
+    return int(cantidad or 0) <= LOW_STOCK_LOCATION_THRESHOLD
+
+
+def get_user_location_order(product_ids):
+    """{(producto_id, subdivision_id): orden} elegido por el usuario."""
+    from .models import ProductoUbicacionOrden
+
+    ids = sorted({int(pid) for pid in product_ids if int(pid or 0) > 0})
+    if not ids:
+        return {}
+    return {
+        (int(row["producto_id"]), int(row["subdivision_id"])): int(row["orden"])
+        for row in ProductoUbicacionOrden.objects.filter(producto_id__in=ids).values(
+            "producto_id", "subdivision_id", "orden"
+        )
+    }
+
+
+def order_branch_locations(product_id, locations, user_order):
+    """Ubicaciones de un producto en una sucursal, la principal primero.
+
+    - Con orden elegido por el usuario: ese orden (las que no tienen orden van
+      al final, por nombre) y la principal es la primera, aunque este en 0
+      (asi se ve en rojo cuando se vacio).
+    - Sin orden elegido: como antes, por nombre y la principal es la primera
+      con stock.
+    """
+    def name_key(item):
+        return (
+            str(item.get("bodega_nombre") or "").lower(),
+            str(item.get("division_nombre") or "").lower(),
+            str(item.get("subdivision_nombre") or "").lower(),
+            int(item.get("bodega_id") or 0),
+            int(item.get("division_id") or 0),
+            int(item.get("subdivision_id") or 0),
+        )
+
+    def order_of(item):
+        return user_order.get((int(product_id), int(item.get("subdivision_id") or 0)))
+
+    has_user_order = any(order_of(item) is not None for item in locations)
+    if has_user_order:
+        ordered = sorted(
+            locations,
+            key=lambda item: (
+                0 if order_of(item) is not None else 1,
+                order_of(item) if order_of(item) is not None else 0,
+                name_key(item),
+            ),
+        )
+        return ordered, ordered[0]
+
+    ordered = sorted(locations, key=name_key)
+    principal = next(
+        (item for item in ordered if int(item.get("cantidad") or 0) > 0),
+        ordered[0],
     )
+    return [principal] + [item for item in ordered if item is not principal], principal
+
 
 LOCATION_CATALOG_SCOPED_READ_MODULE_KEYS = (
     RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
@@ -929,31 +984,16 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 }
             )
 
+        # Orden elegido por el usuario (arrastrando en Ubicaciones).
+        user_order = get_user_location_order(normalized_product_ids)
+
         payload_by_product = {}
         for (product_id, branch_id), locations in locations_by_product_branch.items():
             # Sin stock en ninguna ubicacion de la sucursal: igual que antes,
             # la celda queda vacia.
             if not any(int(location.get("cantidad") or 0) > 0 for location in locations):
                 continue
-            # Orden fijo por nombre (no por cantidad) para que la ubicacion
-            # principal no cambie de lugar cuando el stock se mueve entre
-            # bodegas de la misma sucursal (ej. Almacen Matriz vs Bodega
-            # Matriz) -- el usuario espera siempre el mismo orden.
-            ordered_locations = sorted(
-                locations,
-                key=lambda item: (
-                    str(item.get("bodega_nombre") or "").lower(),
-                    str(item.get("division_nombre") or "").lower(),
-                    str(item.get("subdivision_nombre") or "").lower(),
-                    int(item.get("bodega_id") or 0),
-                    int(item.get("division_id") or 0),
-                    int(item.get("subdivision_id") or 0),
-                ),
-            )
-            # La principal es la primera con stock (una en 0 nunca lo es).
-            principal = next(
-                location for location in ordered_locations if int(location.get("cantidad") or 0) > 0
-            )
+            ordered_locations, principal = order_branch_locations(product_id, locations, user_order)
             ordered_locations = [principal] + [
                 location for location in ordered_locations if location is not principal
             ]
@@ -963,7 +1003,8 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "division_nombre": principal.get("division_nombre") or "",
                 "subdivision_nombre": principal.get("subdivision_nombre") or "",
                 "cantidad": int(principal.get("cantidad") or 0),
-                "stock_bajo": _is_low_stock_location(principal.get("bodega_nombre"), principal.get("cantidad")),
+                "stock_bajo": is_low_stock_principal(principal.get("cantidad")),
+                "orden_definido": (int(product_id), int(principal.get("subdivision_id") or 0)) in user_order,
             }
             additional_locations = [
                 {
@@ -972,7 +1013,8 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     "division_nombre": location.get("division_nombre") or "",
                     "subdivision_nombre": location.get("subdivision_nombre") or "",
                     "cantidad": int(location.get("cantidad") or 0),
-                    "stock_bajo": _is_low_stock_location(location.get("bodega_nombre"), location.get("cantidad")),
+                    # El rojo es solo de la principal: las demas son respaldo.
+                    "stock_bajo": False,
                 }
                 for location in ordered_locations[1:]
             ]
@@ -982,12 +1024,11 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "ubicacion_principal": principal_payload["ubicacion"],
                 "ubicaciones_adicionales": additional_locations,
                 "total_ubicaciones": len(ordered_locations),
-                # Rojo solo cuando hay ojo (varias ubicaciones) y alguna del
-                # almacen esta baja.
-                "tiene_stock_bajo": len(ordered_locations) > 1 and any(
-                    _is_low_stock_location(location.get("bodega_nombre"), location.get("cantidad"))
-                    for location in ordered_locations
-                ),
+                # Rojo solo cuando hay ojo (varias ubicaciones) y a la
+                # principal (la primera del orden, de cualquier bodega) le
+                # queda poco. Antes miraba cualquier ubicacion del almacen.
+                "tiene_stock_bajo": len(ordered_locations) > 1
+                and is_low_stock_principal(principal.get("cantidad")),
             }
 
         return payload_by_product
@@ -1236,28 +1277,97 @@ class InventarioViewSet(viewsets.ModelViewSet):
             bajo_field = f"ubicacion_bajo_sucursal_{branch.id}"
             if bajo_field in ordering_param:
                 # Misma regla que "tiene_stock_bajo" del payload: varias
-                # ubicaciones en la sucursal, alguna con stock, y alguna
-                # del almacen (sumada por subdivision) en el umbral o por debajo.
+                # ubicaciones en la sucursal, alguna con stock, y a la
+                # principal (la primera del orden del usuario; si no hay
+                # orden, la primera por nombre con stock) le queda poco.
                 branch_q = Q(inventarios__subdivision__division__bodega__sucursal_id=branch.id)
-                low_subdivision_exists = Exists(
+                from .models import ProductoUbicacionOrden
+
+                user_principal = Subquery(
+                    ProductoUbicacionOrden.objects.filter(
+                        producto_id=OuterRef("id"),
+                        subdivision__division__bodega__sucursal_id=branch.id,
+                    )
+                    .filter(
+                        Exists(
+                            Inventario.objects.filter(
+                                producto_id=OuterRef("producto_id"),
+                                subdivision_id=OuterRef("subdivision_id"),
+                            )
+                        )
+                    )
+                    .order_by(
+                        "orden",
+                        Lower("subdivision__division__bodega__nombre"),
+                        Lower("subdivision__division__nombre"),
+                        Lower("subdivision__nombre"),
+                        "subdivision_id",
+                    )
+                    .values("subdivision_id")[:1],
+                    output_field=IntegerField(),
+                )
+                fallback_principal = Subquery(
                     Inventario.objects.filter(
                         producto_id=OuterRef("id"),
                         subdivision__division__bodega__sucursal_id=branch.id,
-                        subdivision__division__bodega__nombre__unaccent__istartswith=LOW_STOCK_BODEGA_PREFIX,
                     )
-                    .values("subdivision_id")
+                    .values(
+                        "subdivision_id",
+                        "subdivision__division__bodega__nombre",
+                        "subdivision__division__nombre",
+                        "subdivision__nombre",
+                        "subdivision__division__bodega_id",
+                        "subdivision__division_id",
+                    )
                     .annotate(_total=Sum("cantidad"))
-                    .filter(_total__lte=LOW_STOCK_LOCATION_THRESHOLD)
+                    .filter(_total__gt=0)
+                    .order_by(
+                        Lower("subdivision__division__bodega__nombre"),
+                        Lower("subdivision__division__nombre"),
+                        Lower("subdivision__nombre"),
+                        "subdivision__division__bodega_id",
+                        "subdivision__division_id",
+                        "subdivision_id",
+                    )
+                    .values("subdivision_id")[:1],
+                    output_field=IntegerField(),
                 )
                 aggregated_queryset = aggregated_queryset.annotate(
+                    **{f"_ub_princ_{branch.id}": Coalesce(user_principal, fallback_principal)}
+                ).annotate(
                     **{
+                        f"_ub_princ_qty_{branch.id}": Coalesce(
+                            Subquery(
+                                Inventario.objects.filter(
+                                    producto_id=OuterRef("id"),
+                                    subdivision_id=OuterRef(f"_ub_princ_{branch.id}"),
+                                )
+                                .values("producto_id")
+                                .annotate(_total=Sum("cantidad"))
+                                .values("_total")[:1],
+                                output_field=IntegerField(),
+                            ),
+                            Value(0),
+                            output_field=IntegerField(),
+                        ),
                         f"_ub_count_{branch.id}": Count(
                             "inventarios__subdivision", filter=branch_q, distinct=True
                         ),
                         f"_ub_pos_{branch.id}": Count(
                             "inventarios__id", filter=branch_q & Q(inventarios__cantidad__gt=0)
                         ),
-                        f"_ub_low_{branch.id}": low_subdivision_exists,
+                    }
+                )
+                aggregated_queryset = aggregated_queryset.annotate(
+                    **{
+                        f"_ub_low_{branch.id}": Case(
+                            When(
+                                **{f"_ub_princ_qty_{branch.id}__lte": LOW_STOCK_LOCATION_THRESHOLD},
+                                then=Value(True),
+                            ),
+                            default=Value(False),
+                            output_field=BooleanField(),
+                        )
                     }
                 ).annotate(
                     **{
@@ -1427,6 +1537,65 @@ class InventarioViewSet(viewsets.ModelViewSet):
             },
         )
         return queryset.distinct() if needs_distinct else queryset
+
+    @action(detail=False, methods=["post"], url_path="orden-ubicaciones")
+    def orden_ubicaciones(self, request):
+        """Guarda el orden de las ubicaciones de un producto en una sucursal
+        (la primera es la principal). Body: {producto_id, sucursal_id,
+        subdivision_ids: [en orden]}. Reemplaza el orden de esa sucursal."""
+        from .models import ProductoUbicacionOrden
+
+        producto_id = int(request.data.get("producto_id") or 0)
+        sucursal_id = int(request.data.get("sucursal_id") or 0)
+        raw_ids = request.data.get("subdivision_ids")
+        if producto_id <= 0 or sucursal_id <= 0 or not isinstance(raw_ids, list) or not raw_ids:
+            return Response(
+                {"detail": "Debes enviar producto_id, sucursal_id y subdivision_ids (lista)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            INVENTARIO_WRITE_SCOPE_MODULE_KEYS,
+            sucursal_id,
+            action_key="puede_actualizar",
+        )
+        from productos.models import Producto
+
+        if not Producto.objects.filter(pk=producto_id).exists():
+            return Response({"detail": "El producto no existe."}, status=status.HTTP_404_NOT_FOUND)
+        subdivision_ids = []
+        for raw in raw_ids:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if value > 0 and value not in subdivision_ids:
+                subdivision_ids.append(value)
+        valid_ids = set(
+            SubDivision.objects.filter(
+                pk__in=subdivision_ids, division__bodega__sucursal_id=sucursal_id
+            ).values_list("id", flat=True)
+        )
+        if valid_ids != set(subdivision_ids):
+            return Response(
+                {"detail": "Una o mas ubicaciones no pertenecen a esa sucursal."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            ProductoUbicacionOrden.objects.filter(
+                producto_id=producto_id,
+                subdivision__division__bodega__sucursal_id=sucursal_id,
+            ).delete()
+            ProductoUbicacionOrden.objects.bulk_create(
+                [
+                    ProductoUbicacionOrden(producto_id=producto_id, subdivision_id=sub_id, orden=index)
+                    for index, sub_id in enumerate(subdivision_ids)
+                ]
+            )
+        return Response(
+            {"orden": {str(sub_id): index for index, sub_id in enumerate(subdivision_ids)}},
+            status=status.HTTP_200_OK,
+        )
 
     def perform_create(self, serializer):
         subdivision = serializer.validated_data.get("subdivision")
