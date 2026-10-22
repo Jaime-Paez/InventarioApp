@@ -122,6 +122,11 @@
 .inventario-map-preview__plan-wrapper--popup {
   flex: 1;
   min-height: 0;
+  /* El plano va a escala real (como en Bodegas): si es mas alto que la
+     ventana se recorre con scroll en vez de aplastarlo. */
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
 }
 
 .inventario-map-preview__plan {
@@ -140,21 +145,23 @@
 
 .inventario-map-preview__plan--popup {
   width: 100%;
-  height: 100%;
-  max-height: calc(95vh - 220px);
-  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  max-width: 1500px;
   margin: 0 auto;
+  border-radius: 10px;
+  background-size: 24px 24px;
 }
 
 .inventario-map-preview__location {
   position: absolute;
-  border-radius: 7px;
+  border-radius: 8px;
   border: 1px solid var(--color-border);
-  padding: 4px;
+  padding: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.65rem;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   color: var(--color-text-primary);
   text-align: center;
@@ -164,6 +171,7 @@
 
 .inventario-map-preview__location span {
   display: block;
+  width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -173,11 +181,15 @@
   writing-mode: vertical-rl;
   text-orientation: mixed;
   transform: rotate(180deg);
-  white-space: normal;
+  width: auto;
+  height: 100%;
 }
 
 .inventario-map-preview__location--active {
-  box-shadow: 0 0 0 2px color-mix(in srgb, #dc2626 22%, transparent);
+  z-index: 1;
+  border-width: 2px;
+  color: #b91c1c;
+  box-shadow: 0 0 0 4px color-mix(in srgb, #dc2626 22%, transparent);
 }
 
 .inventario-map-preview__hint {

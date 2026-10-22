@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import './BodegaLocationPreview.css'
 
 const DEFAULT_COLOR = '#4f8df8'
 const HIGHLIGHT_COLOR = '#dc2626'
 const TYPE_COLORS = ['#4f8df8', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14b8a6']
+// Mismo orden de tipos que el editor de Bodegas, para que cada tipo tenga el
+// mismo color en los dos mapas.
+const DEFAULT_TYPES = ['Estantería', 'Cajonera', 'Muebles']
 const VERTICAL_LABEL_RATIO = 1.6
 
 const normalizeKey = (value) =>
@@ -69,13 +72,14 @@ const resolvePlanSize = (bodega, locations) => {
 }
 
 const buildTypeColors = (locations) => {
-  const map = new Map()
-  let index = 0
+  // Igual que BodegaLayoutEditor: primero los tipos por defecto y luego los
+  // que aparezcan, cada uno con el color de su posicion en esa lista.
+  const types = [...DEFAULT_TYPES]
   locations.forEach((location) => {
-    if (!location.tipo || map.has(location.tipo)) return
-    map.set(location.tipo, TYPE_COLORS[index % TYPE_COLORS.length])
-    index += 1
+    if (location.tipo && !types.includes(location.tipo)) types.push(location.tipo)
   })
+  const map = new Map()
+  types.forEach((type, index) => map.set(type, TYPE_COLORS[index % TYPE_COLORS.length]))
   return map
 }
 
@@ -83,6 +87,7 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
   const [isOpen, setIsOpen] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [portalRoot, setPortalRoot] = useState(null)
+  const activeLocationRef = useRef(null)
   useEffect(() => {
     if (portalRoot) return
     setPortalRoot(getPortalHost())
@@ -118,7 +123,13 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
     }
 
     document.addEventListener('keydown', handleKeyDown)
+    // El plano se ve a escala real (con scroll si es alto): se lleva la vista
+    // hasta la ubicacion del producto.
+    const frame = window.requestAnimationFrame(() => {
+      activeLocationRef.current?.scrollIntoView({ block: 'center', inline: 'center' })
+    })
     return () => {
+      window.cancelAnimationFrame(frame)
       document.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = previousOverflow
     }
@@ -171,13 +182,15 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
                     const height = planSize.height ? (location.alto / planSize.height) * 100 : 0
                     const isActive = highlightedId != null && location.id === highlightedId
                     const isVertical = location.alto > location.ancho * VERTICAL_LABEL_RATIO
-                    const baseColor = typeColors.get(location.tipo) || DEFAULT_COLOR
+                    const baseColor = typeColors.get(location.tipo || DEFAULT_TYPES[0]) || DEFAULT_COLOR
                     const borderColor = isActive ? HIGHLIGHT_COLOR : baseColor
-                    const backgroundColor = isActive ? toRgba(HIGHLIGHT_COLOR, 0.2) : toRgba(baseColor, 0.15)
+                    // Mismo relleno que el editor de Bodegas (color del tipo al ~13%).
+                    const backgroundColor = isActive ? toRgba(HIGHLIGHT_COLOR, 0.22) : toRgba(baseColor, 0.13)
 
                     return (
                       <div
                         key={location.id}
+                        ref={isActive ? activeLocationRef : undefined}
                         className={`inventario-map-preview__location${isActive ? ' inventario-map-preview__location--active' : ''}${isVertical ? ' inventario-map-preview__location--vertical' : ''}`}
                         style={{
                           left: `${left}%`,
