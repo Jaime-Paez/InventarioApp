@@ -2409,7 +2409,7 @@ function TrasladosInconvenientesTable({
                             <div className="transfer-issues-details__decision-wrap">
                               <DecisionButton
                                 variant="primary"
-                                label={`Sumar a ${String(selectedIssue?.sucursal_origen_nombre || 'la matriz').trim()} (de donde salió)`}
+                                label="Sumar a Matriz (origen)"
                                 tooltip="Las unidades nunca salieron de la sucursal desde la que se envió la importación: se suman de vuelta en su inventario, en la ubicación que elijas."
                                 active={resolverDecision === 'sumar_origen'}
                                 onClick={() => {
