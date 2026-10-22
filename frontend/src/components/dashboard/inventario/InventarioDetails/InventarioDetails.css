@@ -171,12 +171,19 @@
 
 /* Orden de ubicaciones (pestana Ubicaciones): agarre a la izquierda para
    arrastrar; "Principal" como etiqueta discreta bajo el nombre de la bodega. */
-.inventario-editor__branch-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+/* El agarre va pegado a la izquierda (alineado en todas las filas) y el
+   nombre de la sucursal centrado en el resto de la celda. */
+.create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) > .inventario-editor__branch-cell {
+  position: relative;
+  padding-left: 44px;
   min-width: 0;
+}
+
+.inventario-editor__branch-cell > .inventario-editor__drag-handle {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
 }
 
 /* El nombre se parte en dos lineas en vez de cortarse ("9 de Octubre (M..."). */
@@ -210,16 +217,40 @@
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.inventario-editor__drag-handle:hover:not(:disabled),
+.inventario-editor__drag-handle:hover:not([data-disabled='true']),
 .inventario-editor__drag-handle:focus-visible {
   border-color: var(--color-border);
   background: rgba(15, 23, 42, 0.05);
   color: var(--color-text-primary, #0f172a);
 }
 
-.inventario-editor__drag-handle:disabled {
+.inventario-editor__drag-handle[data-disabled='true'] {
   opacity: 0.3;
-  cursor: default;
+  cursor: help;
+}
+
+.inventario-editor__drag-handle[data-disabled='true']:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
+.inventario-editor__order-help {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.inventario-editor__order-help svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+body.app-theme-dark .inventario-editor__order-help {
+  color: var(--color-text-dark, #cbd5e1);
 }
 
 .inventario-editor__bodega-cell {
@@ -304,7 +335,7 @@ body.app-theme-dark .inventario-editor__drag-handle {
   color: var(--color-text-dark, #cbd5e1);
 }
 
-body.app-theme-dark .inventario-editor__drag-handle:hover:not(:disabled),
+body.app-theme-dark .inventario-editor__drag-handle:hover:not([data-disabled='true']),
 body.app-theme-dark .inventario-editor__drag-handle:focus-visible {
   border-color: var(--color-border-dark);
   background: rgba(255, 255, 255, 0.06);

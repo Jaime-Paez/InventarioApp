@@ -1044,12 +1044,6 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     })
     return { positionByUid: positions, countBySucursal: counters }
   }, [sortedLocations])
-  // Si ninguna sucursal tiene 2 o mas ubicaciones no hay nada que ordenar y
-  // no se deja el espacio del agarre (cortaba el nombre de la sucursal).
-  const anyBranchReorderable = useMemo(
-    () => Array.from(countBySucursal.values()).some((count) => count > 1),
-    [countBySucursal]
-  )
 
   // Solo las ya guardadas se ordenan (una nueva sin guardar aun puede cambiar
   // de subdivision).
@@ -1222,6 +1216,16 @@ const InventarioEditor = forwardRef(function InventarioEditor(
             {showLocationForm ? 'Cancelar' : 'Agregar ubicacion'}
           </button>
         </div>
+
+        {sortedLocations.length > 0 && (
+          <p className="inventario-editor__order-help">
+            <GripVertical size={14} aria-hidden="true" />
+            <span>
+              Arrastra las filas para elegir la ubicacion <strong>principal</strong> de cada sucursal (la primera).
+              Es la que se muestra en la tabla y la que pone el ojo en rojo cuando le queda poco stock.
+            </span>
+          </p>
+        )}
 
         {showLocationForm && !hasEditableBranch && (
           <BlockerNotice
@@ -1756,20 +1760,28 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   data-location-saved={isSavedLocation(location) ? '1' : '0'}
                 >
                   <span data-label="Sucursal" className="inventario-editor__branch-cell">
-                    {(countBySucursal.get(String(location.sucursalId || '')) || 0) > 1 ? (
-                      <button
-                        type="button"
-                        className="inventario-editor__drag-handle"
-                        onPointerDown={(event) => handleDragHandlePointerDown(event, location)}
-                        disabled={!(isSavedLocation(location) && canManageRow && !orderSaving)}
-                        aria-label="Arrastrar para ordenar (la primera de la sucursal es la principal)"
-                        title="Arrastra para ordenar: la primera de la sucursal es la principal"
-                      >
-                        <GripVertical size={18} />
-                      </button>
-                    ) : anyBranchReorderable ? (
-                      <span className="inventario-editor__drag-spacer" aria-hidden="true" />
-                    ) : null}
+                    {(() => {
+                      const onlyOne = (countBySucursal.get(String(location.sucursalId || '')) || 0) < 2
+                      const canDrag = !onlyOne && isSavedLocation(location) && canManageRow && !orderSaving
+                      const hint = onlyOne
+                        ? 'Unica ubicacion en esta sucursal: ya es la principal'
+                        : (canDrag
+                          ? 'Arrastra para ordenar: la primera de la sucursal es la principal'
+                          : 'No tienes permiso para ordenar las ubicaciones de esta sucursal')
+                      return (
+                        <button
+                          type="button"
+                          className="inventario-editor__drag-handle"
+                          onPointerDown={(event) => { if (canDrag) handleDragHandlePointerDown(event, location) }}
+                          aria-disabled={!canDrag}
+                          data-disabled={canDrag ? undefined : 'true'}
+                          aria-label={hint}
+                          title={hint}
+                        >
+                          <GripVertical size={18} />
+                        </button>
+                      )
+                    })()}
                     <span className="inventario-editor__branch-name">
                       {canInlineEdit
                         ? makeDropdown('sucursal', location.sucursalNombre || 'Sucursal', branches, (b) => b.nombre || `Sucursal ${b.id}`, (b) => b.id, false)
@@ -1780,8 +1792,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                     {canInlineEdit
                       ? makeDropdown('bodega', location.bodegaNombre || 'Bodega', rowBodegas, (b) => b.nombre || `Bodega ${b.id}`, (b) => b.id, !location.sucursalId, isBodegaFullyUsed)
                       : <span>{location.bodegaNombre}</span>}
-                    {(positionByUid.get(location.uid) ?? 0) === 0 &&
-                      (countBySucursal.get(String(location.sucursalId || '')) || 0) > 1 && (
+                    {(positionByUid.get(location.uid) ?? 0) === 0 && (
                       <span className="inventario-editor__principal-tag">Principal</span>
                     )}
                   </span>
