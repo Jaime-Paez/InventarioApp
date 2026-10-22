@@ -80,9 +80,15 @@ function ImportProductSearch({ value, onChange, shown, total }) {
   )
 }
 
-const ImportSearchEmptyRow = ({ query, style }) => (
-  <div className="create-user__locations-row create-user__locations-row--empty" style={style}>
-    <span>{`Ningún producto coincide con "${String(query || '').trim()}".`}</span>
+// Ocupa todo el ancho de la tabla, no solo la primera columna.
+const ImportSearchEmptyRow = ({ query }) => (
+  <div
+    className="create-user__locations-row create-user__locations-row--empty"
+    style={{ gridTemplateColumns: '1fr', gridColumn: '1 / -1', width: '100%' }}
+  >
+    <span style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '14px 12px' }}>
+      {`Ningún producto coincide con "${String(query || '').trim()}".`}
+    </span>
   </div>
 )
 
@@ -2089,7 +2095,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                           <span key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</span>
                         ))}
                       </div>
-                      {filter.trim() && !filteredRows.length && <ImportSearchEmptyRow query={filter} style={{ gridTemplateColumns: '1fr' }} />}
+                      {filter.trim() && !filteredRows.length && <ImportSearchEmptyRow query={filter} />}
                       {filteredRows.map((row) => {
                         const rowDist = distribution[row.id] || {}
                         const assigned = Object.values(rowDist).reduce((s, v) => s + (parseInt(v) || 0), 0)
@@ -3142,7 +3148,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                     {!detalles.length ? (
                       <div className="create-user__locations-row create-user__locations-row--empty imp-details__productos-row" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
                     ) : productSearch.trim() && !detalles.some((d) => importItemMatches(d, productSearch)) ? (
-                      <ImportSearchEmptyRow query={productSearch} style={{ gridTemplateColumns: '1fr' }} />
+                      <ImportSearchEmptyRow query={productSearch} />
                     ) : detalles.filter((d) => importItemMatches(d, productSearch)).map((d, i) => {
                       const sinCat = !d.producto?.id
                       const creadoAqui = !sinCat && d.producto?.creado_desde_importacion === imp.id
@@ -3449,7 +3455,7 @@ function HistorialConfirmacionModal({ imp, onClose }) {
                   <span>No hay historial de confirmación para esta importación.</span>
                 </div>
               ) : productSearch.trim() && !historial.some((row) => importItemMatches(row, productSearch)) ? (
-                <ImportSearchEmptyRow query={productSearch} style={{ gridTemplateColumns: '1fr' }} />
+                <ImportSearchEmptyRow query={productSearch} />
               ) : historial.filter((row) => importItemMatches(row, productSearch)).map((row, i) => {
                 const envios = distribucion.porCodigo.get(row.codigo) || []
                 return (
