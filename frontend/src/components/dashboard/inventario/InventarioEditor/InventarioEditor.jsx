@@ -707,12 +707,29 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     // alcance de sucursal de canManageBranchLocation -- eso solo aplica a
     // agregar/eliminar ubicaciones (que si cambian el total), no a mover.
     setTransferUid(location.uid)
-    setTransferDraft({
-      bodegaId: location.bodegaId,
-      divisionId: location.divisionId,
-      subdivisionId: '',
-      cantidad: String(location.cantidad || 1),
-    })
+    // Si el producto ya tiene otra ubicacion en la misma sucursal, el destino
+    // viene elegido con ella (la primera del orden: la principal, o la
+    // siguiente si se mueve desde la principal). Si no, queda la misma
+    // bodega/division para elegir la subdivision.
+    const otherInBranch = orderLocations(locations, locationOrder).find((item) => (
+      item.uid !== location.uid &&
+      String(item.sucursalId || '') === String(location.sucursalId || '') &&
+      item.subdivisionId &&
+      String(item.subdivisionId) !== String(location.subdivisionId)
+    ))
+    setTransferDraft(otherInBranch
+      ? {
+        bodegaId: String(otherInBranch.bodegaId || ''),
+        divisionId: String(otherInBranch.divisionId || ''),
+        subdivisionId: String(otherInBranch.subdivisionId || ''),
+        cantidad: String(location.cantidad || 1),
+      }
+      : {
+        bodegaId: location.bodegaId,
+        divisionId: location.divisionId,
+        subdivisionId: '',
+        cantidad: String(location.cantidad || 1),
+      })
     setLocationError('')
     setOpenTransferDropdown(null)
   }
