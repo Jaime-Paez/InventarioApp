@@ -50,6 +50,14 @@ from .serializers import ImportacionDetalleSerializer, ImportacionSerializer, ge
 
 
 
+def get_matriz_sucursal():
+    """Sucursal desde la que se reparten las importaciones (la "matriz", igual
+    que en el reparto de ImportacionesTable): de ahi salen los envios."""
+    from inventario.models import Sucursal
+
+    return Sucursal.objects.filter(nombre__icontains="matriz").order_by("id").first()
+
+
 def create_envio_shortage_issues(envio, recibido_por_producto, *, actor=None, novedades=None):
     """Crea un inconveniente de FALTANTE por cada producto del envio a la
     sucursal que llego de menos. No duplica: si ya hay uno de este envio para
@@ -524,6 +532,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             return full_name
         return str(getattr(user, "email", "") or "").strip()
 
+    def _envio_origin_payload(self, inconveniente):
+        if not inconveniente.envio_id:
+            return {"sucursal_origen_id": None, "sucursal_origen_nombre": ""}
+        if not hasattr(self, "_matriz_cache"):
+            self._matriz_cache = get_matriz_sucursal()
+        matriz = self._matriz_cache
+        if matriz is None or int(matriz.id) == int(inconveniente.envio.sucursal_id):
+            return {"sucursal_origen_id": None, "sucursal_origen_nombre": ""}
+        return {"sucursal_origen_id": int(matriz.id), "sucursal_origen_nombre": str(matriz.nombre or "").strip()}
+
     def _serialize_importacion_inconveniente(self, inconveniente):
         historial_rows = list(
             sorted(
@@ -561,6 +579,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 if inconveniente.envio_id
                 else ""
             ),
+            # De donde salio el envio (la matriz): si las unidades nunca
+            # salieron, se suman ahi.
+            **self._envio_origin_payload(inconveniente),
             "producto_codigo": str(getattr(getattr(inconveniente, "producto", None), "codigo", "") or "").strip(),
             "producto_nombre": str(getattr(getattr(inconveniente, "producto", None), "nombre", "") or "").strip(),
             "tipo": str(inconveniente.tipo or "faltante").strip(),
@@ -1218,7 +1239,26 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         envio_subdivision = None
         if inconveniente.envio_id and inconveniente.estado == ImportacionInconveniente.Estados.PENDIENTE:
             # Faltante del envio a una sucursal: como un faltante de traslado.
-            valid_decisions = {"sumar_solicitante", "perdido"}
+            valid_decisions = {"sumar_solicitante", "sumar_origen", "perdido"}
+            if decision == "sumar_origen":
+                # Nunca salieron de la matriz: se suman en su ubicacion de ahi.
+                matriz = get_matriz_sucursal()
+                try:
+                    subdivision_id = int(request.data.get("subdivision_id"))
+                except (TypeError, ValueError):
+                    subdivision_id = 0
+                envio_subdivision = (
+                    SubDivision.objects.select_related("division__bodega__sucursal")
+                    .filter(pk=subdivision_id, division__bodega__sucursal_id=getattr(matriz, "id", None))
+                    .first()
+                    if matriz is not None
+                    else None
+                )
+                if envio_subdivision is None:
+                    return Response(
+                        {"detail": "Elige la ubicacion de la matriz donde sumar las unidades."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
             if decision == "sumar_solicitante":
                 try:
                     subdivision_id = int(request.data.get("subdivision_id"))
@@ -1282,8 +1322,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if decision == "sumar_solicitante":
-                # Aparecieron en la sucursal: se suman donde se encontraron.
+            if decision in {"sumar_solicitante", "sumar_origen"}:
+                # Aparecieron (en la sucursal destino, o nunca salieron de la
+                # matriz): se suman donde se encontraron.
                 inv, _ = Inventario.objects.select_for_update().get_or_create(
                     producto_id=inconveniente_locked.producto_id,
                     subdivision_id=envio_subdivision.id,
@@ -1293,9 +1334,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 Inventario.objects.filter(pk=inv.pk).update(
                     cantidad=F("cantidad") + int(inconveniente_locked.cantidad_diferencia or 0)
                 )
-                resolucion = ImportacionInconveniente.Resoluciones.SUMADO_SUCURSAL
+                resolucion = (
+                    ImportacionInconveniente.Resoluciones.SUMADO_SUCURSAL
+                    if decision == "sumar_solicitante"
+                    else ImportacionInconveniente.Resoluciones.SUMADO_ORIGEN
+                )
                 estado_resultado = ImportacionInconveniente.Estados.RESUELTO
-                action_label = "sumado_a_sucursal"
+                action_label = "sumado_a_sucursal" if decision == "sumar_solicitante" else "sumado_a_origen"
             elif decision == "perdido":
                 resolucion = ImportacionInconveniente.Resoluciones.PERDIDO
                 estado_resultado = ImportacionInconveniente.Estados.PERDIDO
@@ -1340,6 +1385,12 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 detail_text = (
                     f"Las {inconveniente_locked.cantidad_diferencia} unidades faltantes aparecieron y se "
                     f"sumaron en {inconveniente_locked.envio.sucursal.nombre} "
+                    f"({envio_subdivision.division.nombre} / {envio_subdivision.nombre})."
+                )
+            elif decision == "sumar_origen":
+                detail_text = (
+                    f"Las {inconveniente_locked.cantidad_diferencia} unidades nunca salieron de "
+                    f"{envio_subdivision.division.bodega.sucursal.nombre}: se sumaron ahi "
                     f"({envio_subdivision.division.nombre} / {envio_subdivision.nombre})."
                 )
             elif decision == "perdido":

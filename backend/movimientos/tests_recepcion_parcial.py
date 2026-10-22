@@ -367,3 +367,28 @@ class FaltanteEnvioImportacionTests(RecepcionParcialImportacionTests):
         self.assertEqual(issue.estado, "perdido")
         total = Inventario.objects.filter(producto=self.producto).aggregate(t=Sum("cantidad"))["t"]
         self.assertEqual(total, 3)
+
+    def test_faltante_de_envio_se_suma_en_la_matriz(self):
+        from importaciones.viewsets import get_matriz_sucursal
+
+        matriz = get_matriz_sucursal() or Sucursal.objects.create(nombre="9 de Octubre (Matriz)", direccion="Av 9")
+        nivel_matriz = SubDivision.objects.create(
+            division=Division.objects.create(
+                bodega=Bodega.objects.create(sucursal=matriz, nombre="Almacén Matriz"),
+                tipo_division=TipoDivision.objects.get_or_create(nombre="General")[0],
+                nombre="07:04",
+            ),
+            nombre="03",
+        )
+        issue = self._faltante_de_envio()
+        listado = self.client.get("/importaciones/importaciones/inconvenientes/?estado=pendiente")
+        fila = next(row for row in listado.data if row["id"] == issue.id)
+        self.assertEqual(fila["sucursal_origen_id"], matriz.id)
+
+        # Una ubicacion de Norte no vale para sumar en la matriz.
+        self.assertEqual(self._resolver(issue, decision="sumar_origen", subdivision_id=self.nivel.id).status_code, 400)
+        response = self._resolver(issue, decision="sumar_origen", subdivision_id=nivel_matriz.id)
+        self.assertEqual(response.status_code, 200, response.data)
+        issue.refresh_from_db()
+        self.assertEqual(issue.resolucion, "sumado_origen")
+        self.assertEqual(Inventario.objects.get(producto=self.producto, subdivision=nivel_matriz).cantidad, 1)

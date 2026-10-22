@@ -80,6 +80,7 @@ const formatResolucion = (value) => {
   const normalized = String(value || '').trim().toLowerCase()
   if (normalized === 'sumar_solicitante') return 'Sumado a sucursal destino'
   if (normalized === 'sumado_sucursal') return 'Sumado a sucursal destino'
+  if (normalized === 'sumado_origen') return 'Sumado a la sucursal de origen'
   if (normalized === 'sumar_proveedora') return 'Sumado a sucursal proveedora'
   if (normalized === 'perdido') return 'Marcado como desaparecido'
   if (normalized === 'restar_proveedora') return 'Restado de sucursal proveedora'
@@ -434,6 +435,7 @@ function TrasladosInconvenientesTable({
     if (!selectedIssue) return ''
     if (resolverDecision === 'sumar_solicitante' || resolverDecision === 'devolver_proveedora') return normalizeId(selectedIssue?.sucursal_solicitante_id)
     if (resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora') return normalizeId(selectedIssue?.sucursal_proveedora_id)
+    if (resolverDecision === 'sumar_origen') return normalizeId(selectedIssue?.sucursal_origen_id)
     return ''
   }, [resolverDecision, selectedIssue])
 
@@ -444,6 +446,9 @@ function TrasladosInconvenientesTable({
     }
     if (resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora') {
       return String(selectedIssue?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'
+    }
+    if (resolverDecision === 'sumar_origen') {
+      return String(selectedIssue?.sucursal_origen_nombre || '').trim() || 'Matriz'
     }
     return ''
   }, [resolverDecision, selectedIssue])
@@ -1494,7 +1499,7 @@ function TrasladosInconvenientesTable({
 
     if (!isImportacion || isEnvioIssue) {
       if (
-        (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora') &&
+        (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora' || resolvedDecision === 'sumar_origen') &&
         !normalizeId(resolverSubdivisionId)
       ) {
         setResolverError('Debes seleccionar bodega, división y subdivisión para sumar inventario.')
@@ -1533,7 +1538,7 @@ function TrasladosInconvenientesTable({
         motivo: String(resolverMotivo || '').trim(),
       }
       if (!isImportacion || isEnvioIssue) {
-        if (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora') {
+        if (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora' || resolvedDecision === 'sumar_origen') {
           body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
         }
         if (resolvedDecision === 'devolver_proveedora') {
@@ -2396,10 +2401,29 @@ function TrasladosInconvenientesTable({
                         <>
                           <p className="muted transfer-issues-details__hint">
                             {selectedIssue?.envio_id
-                              ? `Faltante del envío de la importación a ${String(selectedIssue?.sucursal_solicitante || 'la sucursal').trim()}. Decide si las unidades aparecieron (se suman en la sucursal destino) o se marcan como desaparecidas.`
+                              ? `Faltante del envío de la importación a ${String(selectedIssue?.sucursal_solicitante || 'la sucursal').trim()}. Decide si las unidades aparecieron en la sucursal destino, si nunca salieron de ${String(selectedIssue?.sucursal_origen_nombre || 'la matriz').trim()} (de donde salió el envío) o si se marcan como desaparecidas.`
                               : 'Decide si este faltante debe sumarse en la sucursal proveedora, en la sucursal destino, o marcarse como desaparecido.'}
                           </p>
-                          <div className={`transfer-issues-details__decisions${selectedIssue?.envio_id ? ' transfer-issues-details__decisions--two' : ''}`}>
+                          <div className={`transfer-issues-details__decisions${selectedIssue?.envio_id && !selectedIssue?.sucursal_origen_id ? ' transfer-issues-details__decisions--two' : ''}`}>
+                            {selectedIssue?.envio_id && selectedIssue?.sucursal_origen_id && (
+                            <div className="transfer-issues-details__decision-wrap">
+                              <DecisionButton
+                                variant="primary"
+                                label={`Sumar a ${String(selectedIssue?.sucursal_origen_nombre || 'la matriz').trim()} (de donde salió)`}
+                                tooltip="Las unidades nunca salieron de la sucursal desde la que se envió la importación: se suman de vuelta en su inventario, en la ubicación que elijas."
+                                active={resolverDecision === 'sumar_origen'}
+                                onClick={() => {
+                                  setResolverDecision('sumar_origen')
+                                  setResolverBodegaId('')
+                                  setResolverDivisionId('')
+                                  setResolverSubdivisionId('')
+                                  setResolverNeedsManualLocation(false)
+                                  closeResolverLocationDropdown()
+                                }}
+                                disabled={resolverSubmitting}
+                              />
+                            </div>
+                            )}
                             {!selectedIssue?.envio_id && (
                             <div className="transfer-issues-details__decision-wrap">
                               <DecisionButton
@@ -2457,7 +2481,7 @@ function TrasladosInconvenientesTable({
                         </>
                       )}
 
-                      {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora' || resolverDecision === 'devolver_proveedora') && (
+                      {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'sumar_origen' || resolverDecision === 'restar_proveedora' || resolverDecision === 'devolver_proveedora') && (
                         <label className="create-user__field create-user__field--full transfer-issues-details__field">
                           <span>{resolverDecision === 'devolver_proveedora' ? `Donde restar en destino (${resolverTargetBranchLabel})` : `Ubicacion (${resolverTargetBranchLabel})`}</span>
                           <div className="create-entrada__location-picker-grid">

@@ -230,6 +230,7 @@ class ImportacionInconveniente(models.Model):
         REPOSICION_ACORDADA = "reposicion_acordada", "Reposición acordada"
         # Faltantes del envio a una sucursal (como un traslado).
         SUMADO_SUCURSAL = "sumado_sucursal", "Sumado a la sucursal destino"
+        SUMADO_ORIGEN = "sumado_origen", "Sumado a la sucursal de origen (matriz)"
 
     importacion = models.ForeignKey(
         Importacion,
