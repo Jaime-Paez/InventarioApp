@@ -606,3 +606,23 @@
 .dashboard-shell.dark .transfer-issues-cantidad--sobrante {
   color: #86efac;
 }
+
+/* Sumar dejando el producto en POR UBICAR (se guarda despues en "Por guardar"). */
+.transfer-issues-details__por-ubicar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.transfer-issues-details__por-ubicar input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.transfer-issues-details__por-ubicar label {
+  cursor: pointer;
+}

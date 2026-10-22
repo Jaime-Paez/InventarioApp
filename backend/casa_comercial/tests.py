@@ -4,7 +4,6 @@ from rest_framework.test import APITestCase
 
 import uuid
 
-from marcas.models import Marca
 from productos.models import Producto
 
 from .models import CasaComercial
@@ -33,58 +32,37 @@ class CasaComercialListadoTests(APITestCase):
         self.assertIn("results", response.data)
         self.assertEqual(response.data["results"][0]["codigo"], codigo)
 
-    def test_crear_casa_comercial_sin_codigo_genera_codigo_automatico(self):
-        url = reverse("casa-comercial-casas-list")
-        payload = {
-            "nombre": "Ford",
-        }
+    def _crear(self, **payload):
+        return self.client.post(reverse("casa-comercial-casas-list"), payload, format="json")
 
-        response = self.client.post(url, payload, format="json")
+    def test_casa_local_usa_codigo_fijo_cl_o_clo(self):
+        # Las locales no tienen codigo propio: "CL", o "CLO" si venden originales,
+        # y se pueden repetir entre si (lo escrito a mano se ignora).
+        normal = self._crear(nombre="Repuestos Quito", tipo="local", codigo="XYZ")
+        self.assertEqual(normal.status_code, 201, normal.data)
+        self.assertEqual(normal.data["codigo"], "CL")
+        otra = self._crear(nombre="Otra local", tipo="local")
+        self.assertEqual(otra.data["codigo"], "CL")
+        original = self._crear(nombre="Original local", tipo="local", es_original=True)
+        self.assertEqual(original.data["codigo"], "CLO")
 
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(response.data["codigo"], "FRD")
-        self.assertTrue(CasaComercial.objects.filter(codigo="FRD").exists())
-
-    def test_crear_casa_comercial_con_colision_genera_codigo_alterno(self):
-        CasaComercial.objects.create(nombre="Base", codigo="FRD")
-        url = reverse("casa-comercial-casas-list")
-        payload = {
-            "nombre": "Ford",
-        }
-
-        response = self.client.post(url, payload, format="json")
-
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(response.data["codigo"], "FRO")
-        self.assertNotEqual(response.data["codigo"], "FRD")
-
-    def test_crear_casa_comercial_ignora_codigo_manual(self):
-        url = reverse("casa-comercial-casas-list")
-        payload = {
-            "nombre": "Nissan",
-            "codigo": "XYZ",
-        }
-
-        response = self.client.post(url, payload, format="json")
-
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertNotEqual(response.data["codigo"], "XYZ")
-        self.assertEqual(response.data["codigo"], "NSS")
+    def test_casa_de_importacion_usa_su_codigo_sin_repetir(self):
+        primera = self._crear(nombre="Ford", tipo="importacion", codigo=" frd ")
+        self.assertEqual(primera.status_code, 201, primera.data)
+        self.assertEqual(primera.data["codigo"], "FRD")
+        repetida = self._crear(nombre="Ford 2", tipo="importacion", codigo="FRD")
+        self.assertEqual(repetida.status_code, 400)
+        sin_codigo = self._crear(nombre="Nissan", tipo="importacion")
+        self.assertEqual(sin_codigo.status_code, 400)
 
     def test_no_permite_eliminar_casa_comercial_asociada_a_producto(self):
         casa = CasaComercial.objects.create(
             nombre="Casa Bloqueada",
             codigo=f"CB{uuid.uuid4().hex[:4].upper()}",
         )
-        marca = Marca.objects.create(
-            nombre="Marca Bloqueada",
-            codigo=f"MB{uuid.uuid4().hex[:4].upper()}",
-        )
         producto = Producto.objects.create(
             codigo=f"P{uuid.uuid4().hex[:6].upper()}",
             nombre="Producto Casa Bloqueada",
-            descripcion="Producto de prueba",
-            marca=marca,
             precio=10,
         )
         producto.casas_comerciales.add(casa)

@@ -6,6 +6,9 @@ import { Toast } from 'primereact/toast'
 import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
 import ReceiveCompleteDialog from './ReceiveCompleteDialog'
+import PorGuardar from './PorGuardar'
+import LlegadaDialog from './LlegadaDialog'
+import { requestPorGuardarRefresh } from './porGuardarEvents'
 import BlockerNotice from '../common/BlockerNotice'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
 import urgentNotificationAudioSrc from '../common/reminders/urgentnotifications.mp3'
@@ -65,6 +68,11 @@ const URGENT_URGENTE_REJECTED_TRANSFER_MESSAGE = '¡Urgente! Corrige tu solicitu
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
+// Recepcion en dos pasos (traslados e importaciones): 1) "llego": se cuenta y
+// todo entra al stock en POR UBICAR (ya se puede vender); 2) "Por guardar":
+// despues se guarda cada producto en su ubicacion. En el paso 1 ya no se
+// eligen ubicaciones.
+const RECEPCION_EN_DOS_PASOS = true
 // Envios pendientes/en camino cambian poco: no hace falta pedirlos cada 4s
 // (al volver a la pestana o enfocarla se piden al instante igual).
 const SHIPMENTS_POLL_MS = 15000
@@ -567,6 +575,8 @@ function QuickActions({
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false)
   const [isPendingShipmentsOpen, setIsPendingShipmentsOpen] = useState(false)
   const [isInTransitShipmentsOpen, setIsInTransitShipmentsOpen] = useState(false)
+  // Paso 1 de la recepcion: envio abierto para "Confirmar llegada".
+  const [llegadaShipment, setLlegadaShipment] = useState(null)
   const [isTransferSendModalOpen, setIsTransferSendModalOpen] = useState(false)
   const [isReceiveShipmentModalOpen, setIsReceiveShipmentModalOpen] = useState(false)
   const [isRandomInspectionModalOpen, setIsRandomInspectionModalOpen] = useState(false)
@@ -2400,7 +2410,7 @@ function QuickActions({
         const missingQty = Math.max(0, sentQty - receivedQty)
         const surplusQty = Math.max(0, receivedQty - sentQty)
         const selectedSubdivisionId = normalizeId(row?.location_draft_subdivision_id)
-        const locations = !isRegistered && selectedSubdivisionId && receivedQty > 0
+        const locations = !RECEPCION_EN_DOS_PASOS && !isRegistered && selectedSubdivisionId && receivedQty > 0
           ? [{ subdivision_id: selectedSubdivisionId, cantidad: receivedQty }]
           : []
         const assignedQty = locations.reduce(
@@ -2484,7 +2494,9 @@ function QuickActions({
       const assignedQty = toPositiveInt(row?.cantidad_asignada, 0)
 
       if (row?.recepcion_registrada) {
-        // Ya esta en el stock; para cerrar solo falta guardar lo de POR UBICAR.
+        // Ya esta en el stock. En dos pasos, lo de POR UBICAR se guarda
+        // despues ("Por guardar") y no impide cerrar la recepcion.
+        if (RECEPCION_EN_DOS_PASOS) return ''
         return requireReviewed && toPositiveInt(row?.pendiente_guardar, 0) > 0
           ? `Guarda en su ubicacion ${productLabel} (esta en POR UBICAR).`
           : ''
@@ -2495,7 +2507,7 @@ function QuickActions({
       if (receivedQty === 0 && !row?.recepcion_revisada) {
         return `Ingresa la cantidad recibida de ${productLabel}.`
       }
-      if (assignedQty !== receivedQty) {
+      if (!RECEPCION_EN_DOS_PASOS && assignedQty !== receivedQty) {
         return `Selecciona una ubicacion valida para ${productLabel}.`
       }
       return ''
@@ -4211,6 +4223,14 @@ function QuickActions({
         showErrorToast('No se pudo abrir el envío en camino.')
         return
       }
+      if (RECEPCION_EN_DOS_PASOS) {
+        // Paso 1: solo se confirma que llego (resumen de lo enviado); el
+        // conteo y las ubicaciones se hacen despues en "Por guardar".
+        setIsInTransitShipmentsOpen(false)
+        setIsReceiveShipmentModalOpen(false)
+        setLlegadaShipment(shipment)
+        return
+      }
       const markBlocked = (reason) => {
         setInTransitShipmentBlockers((prev) => ({ ...prev, [shipmentId]: reason }))
         showErrorToast(`No se puede recibir: ${reason}`)
@@ -5364,7 +5384,7 @@ function QuickActions({
               // Lo que esta pantalla cree que ya se recibio: si el servidor
               // tiene otra cosa, la peticion es repetida y no suma nada.
               ya_recibido: toPositiveInt(row?.ya_recibido, 0),
-              ...(normalizeId(row?.location_draft_subdivision_id)
+              ...(!RECEPCION_EN_DOS_PASOS && normalizeId(row?.location_draft_subdivision_id)
                 ? { subdivision_id: toPositiveInt(row.location_draft_subdivision_id, 0) }
                 : {}),
             })),
@@ -5380,6 +5400,7 @@ function QuickActions({
       }
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudieron recibir los productos.')
       applyReceiveShipmentProgress(payload?.recepcion_progreso)
+      requestPorGuardarRefresh()
     }
     try {
       let receivedCount = rows.length
@@ -5440,11 +5461,16 @@ function QuickActions({
     // fallo no se hace nada automatico.
     if (inTransitSubdivisionsLoading || openingInTransitShipmentId || !inTransitSubdivisions.length) return
     autoReceivedShipmentRef.current = activeInTransitShipmentKey
-    const withLocation = receiveShipmentReceivableRows.filter((row) => normalizeId(row?.location_draft_subdivision_id))
+    // En dos pasos no hace falta ubicacion: lo marcado se recibe a POR UBICAR.
+    const withLocation = RECEPCION_EN_DOS_PASOS
+      ? receiveShipmentReceivableRows
+      : receiveShipmentReceivableRows.filter((row) => normalizeId(row?.location_draft_subdivision_id))
     // Marcados sin ubicacion: se les quita el check (no se reciben solos).
-    receiveShipmentReceivableRows
-      .filter((row) => !normalizeId(row?.location_draft_subdivision_id))
-      .forEach((row) => handleReceiveShipmentReviewToggle(normalizeId(row?.producto_id), false))
+    if (!RECEPCION_EN_DOS_PASOS) {
+      receiveShipmentReceivableRows
+        .filter((row) => !normalizeId(row?.location_draft_subdivision_id))
+        .forEach((row) => handleReceiveShipmentReviewToggle(normalizeId(row?.producto_id), false))
+    }
     if (withLocation.length) {
       void receiveRowsNow(withLocation, { blocking: true })
     }
@@ -5625,6 +5651,8 @@ function QuickActions({
             String(payload?.detail || '').trim() || 'No se pudo confirmar la recepción del envío.'
           )
         }
+        // Lo recibido quedo en POR UBICAR: el contador de "Por guardar" se actualiza.
+        requestPorGuardarRefresh()
 
         const backendReminderSent = Boolean(payload?.recordatorio_enviado)
         if (backendReminderSent) {
@@ -5750,7 +5778,38 @@ function QuickActions({
           )}
         </button>
       ))}
+      {llegadaShipment && (
+        <LlegadaDialog
+          shipment={llegadaShipment}
+          token={token}
+          darkMode={darkMode}
+          onClose={() => setLlegadaShipment(null)}
+          onConfirmed={(shipment) => {
+            setLlegadaShipment(null)
+            // Sale de "Envios en camino" y pasa a "Por guardar".
+            setInTransitShipments((prev) => (Array.isArray(prev)
+              ? prev.filter((item) => !(normalizeId(item?.id) === normalizeId(shipment?.id) && item?._source === shipment?._source))
+              : prev))
+            requestPorGuardarRefresh()
+            toast.current?.show({
+              severity: 'success',
+              summary: 'Llegada confirmada',
+              detail: 'Ahora verifica y guarda cada producto en "Por guardar".',
+              life: 4200,
+            })
+          }}
+        />
+      )}
       <div className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}>
+        {RECEPCION_EN_DOS_PASOS && canViewInTransitShipments && (
+          <div className="quick-actions__pending-shipments por-guardar__dock">
+            <PorGuardar
+              token={token}
+              darkMode={darkMode}
+              onSaved={(message) => toast.current?.show({ severity: 'success', summary: 'Guardado', detail: message, life: 2600 })}
+            />
+          </div>
+        )}
         {canOpenInTransitShipments && hasInTransitShipments && (
           <div
             ref={inTransitShipmentsRef}
@@ -7194,9 +7253,15 @@ function QuickActions({
                         Producto
                       </span>
                       <div className="quick-actions__receive-list-header-locations">
-                        <span className="quick-actions__receive-list-header-cell">Bodega</span>
-                        <span className="quick-actions__receive-list-header-cell">Division</span>
-                        <span className="quick-actions__receive-list-header-cell">Subdivision</span>
+                        {RECEPCION_EN_DOS_PASOS ? (
+                          <span className="quick-actions__receive-list-header-cell">Llega a</span>
+                        ) : (
+                          <>
+                            <span className="quick-actions__receive-list-header-cell">Bodega</span>
+                            <span className="quick-actions__receive-list-header-cell">Division</span>
+                            <span className="quick-actions__receive-list-header-cell">Subdivision</span>
+                          </>
+                        )}
                       </div>
                       <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--stat quick-actions__receive-list-header-cell--expected">
                         Esperado
@@ -7348,7 +7413,14 @@ function QuickActions({
                             </div>
                           </div>
 
-                          {(!isRegistered || pendingToStore > 0) && (
+                          {RECEPCION_EN_DOS_PASOS && (
+                          <div className="quick-actions__receive-location-row quick-actions__receive-location-row--review quick-actions__receive-location-row--two-step">
+                            <span className={`quick-actions__receive-por-ubicar${isRegistered ? ' is-received' : ''}`}>
+                              {isRegistered ? `Recibido · ${toPositiveInt(row?.ya_recibido, 0)} en POR UBICAR` : 'Entra a POR UBICAR'}
+                            </span>
+                          </div>
+                          )}
+                          {!RECEPCION_EN_DOS_PASOS && (!isRegistered || pendingToStore > 0) && (
                           <div className="quick-actions__receive-location-row quick-actions__receive-location-row--review">
                             <div className="quick-actions__receive-location-field">
                               <small>Bodega</small>
@@ -7404,7 +7476,7 @@ function QuickActions({
                           )}
 
                           {/* Estado de la recepcion por partes (visible tambien en la lista). */}
-                          {(isRegistered || (isReviewed && !selectedSubdivisionId)) && (
+                          {!RECEPCION_EN_DOS_PASOS && (isRegistered || (isReviewed && !selectedSubdivisionId)) && (
                             <div
                               className={`quick-actions__receive-item-state${
                                 isRegistered ? (pendingToStore > 0 ? ' is-to-store' : ' is-received') : ' is-no-location'
@@ -7802,7 +7874,7 @@ function QuickActions({
                 </>
               ) : (
                 <>
-                  {receiveShipmentStorableRows.length > 0 && (
+                  {!RECEPCION_EN_DOS_PASOS && receiveShipmentStorableRows.length > 0 && (
                     <button
                       type="button"
                       className="quick-actions__receive-btn quick-actions__receive-btn--ghost"

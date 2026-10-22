@@ -355,12 +355,15 @@ def in_transit_by_product_branch(product_ids, branch_ids=None):
         return {}
     result = {}
 
-    def add(key, tipo, doc_id, codigo, cantidad):
+    def add(key, tipo, doc_id, codigo, cantidad, llego=False):
         if cantidad <= 0:
             return
         bucket = result.setdefault(key, {"total": 0, "documentos": []})
         bucket["total"] += cantidad
-        bucket["documentos"].append({"tipo": tipo, "id": doc_id, "codigo": codigo, "cantidad": cantidad})
+        # llego: ya se confirmo la llegada y falta guardarlo ("Por guardar").
+        bucket["documentos"].append(
+            {"tipo": tipo, "id": doc_id, "codigo": codigo, "cantidad": cantidad, "llego": bool(llego)}
+        )
 
     traslados = SolicitudTraslado.objects.filter(
         estado=SolicitudTraslado.Estados.APROBADA,
@@ -390,6 +393,7 @@ def in_transit_by_product_branch(product_ids, branch_ids=None):
                 int(traslado.id),
                 str(traslado.no_documento or "").strip(),
                 int(detalle["cantidad"] or 0) - recibido,
+                llego=bool(traslado.llegada_confirmada_en),
             )
 
     envios = ImportacionEnvio.objects.filter(estado=ImportacionEnvio.ESTADO_PENDIENTE).select_related("importacion")
@@ -409,5 +413,6 @@ def in_transit_by_product_branch(product_ids, branch_ids=None):
                 int(envio.id),
                 str(getattr(envio.importacion, "codigo", "") or "").strip(),
                 int(detalle["cantidad"] or 0) - recibido,
+                llego=bool(envio.llegada_confirmada_en),
             )
     return result

@@ -200,6 +200,10 @@ function TrasladosInconvenientesTable({
   const [resolverSubdivisions, setResolverSubdivisions] = useState([])
   const [resolverSubdivisionsLoading, setResolverSubdivisionsLoading] = useState(false)
   const [resolverNeedsManualLocation, setResolverNeedsManualLocation] = useState(false)
+  // Sumar sin ubicacion definitiva: entra a POR UBICAR y se guarda despues en
+  // "Por guardar". Viene marcado si el producto no tiene ubicacion ahi.
+  const [resolverPorUbicar, setResolverPorUbicar] = useState(false)
+  const resolverPorUbicarTouchedRef = useRef(false)
   const [resolverLocationDropdownField, setResolverLocationDropdownField] = useState('')
   const [resolverLocationDropdownDirection, setResolverLocationDropdownDirection] = useState('down')
   const [resolverLocationDropdownMaxHeight, setResolverLocationDropdownMaxHeight] = useState(null)
@@ -1097,6 +1101,19 @@ function TrasladosInconvenientesTable({
     }
   }, [resolverLocationDropdownField, showDetailsModal, updateResolverLocationDropdownPlacement])
 
+  // Al elegir "sumar", si el producto no tiene ubicacion en esa sucursal
+  // viene marcado POR UBICAR (se guarda despues); si tiene, su ubicacion.
+  useEffect(() => {
+    const isSumar = resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'sumar_origen'
+    if (!isSumar) {
+      resolverPorUbicarTouchedRef.current = false
+      setResolverPorUbicar(false)
+      return
+    }
+    if (resolverPorUbicarTouchedRef.current || resolverSubdivisionsLoading) return
+    setResolverPorUbicar(!normalizeId(resolverSubdivisionId))
+  }, [resolverDecision, resolverSubdivisionId, resolverSubdivisionsLoading])
+
   const handleResolverLocationPick = useCallback(
     (field, optionId) => {
       const normalizedField = String(field || '').trim().toLowerCase()
@@ -1500,6 +1517,7 @@ function TrasladosInconvenientesTable({
     if (!isImportacion || isEnvioIssue) {
       if (
         (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora' || resolvedDecision === 'sumar_origen') &&
+        !resolverPorUbicar &&
         !normalizeId(resolverSubdivisionId)
       ) {
         setResolverError('Debes seleccionar bodega, división y subdivisión para sumar inventario.')
@@ -1539,7 +1557,11 @@ function TrasladosInconvenientesTable({
       }
       if (!isImportacion || isEnvioIssue) {
         if (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora' || resolvedDecision === 'sumar_origen') {
-          body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
+          if (resolverPorUbicar) {
+            body.por_ubicar = true
+          } else {
+            body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
+          }
         }
         if (resolvedDecision === 'devolver_proveedora') {
           body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
@@ -1583,6 +1605,7 @@ function TrasladosInconvenientesTable({
     resolverDecision,
     resolverFechaPrometida,
     resolverMotivo,
+    resolverPorUbicar,
     resolverProvSubdivisionId,
     resolverSubdivisionId,
     selectedIssue,
@@ -2484,6 +2507,24 @@ function TrasladosInconvenientesTable({
                       {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'sumar_origen' || resolverDecision === 'restar_proveedora' || resolverDecision === 'devolver_proveedora') && (
                         <label className="create-user__field create-user__field--full transfer-issues-details__field">
                           <span>{resolverDecision === 'devolver_proveedora' ? `Donde restar en destino (${resolverTargetBranchLabel})` : `Ubicacion (${resolverTargetBranchLabel})`}</span>
+                          {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'sumar_origen') && (
+                            <span className="transfer-issues-details__por-ubicar">
+                              <input
+                                type="checkbox"
+                                id="resolver-por-ubicar"
+                                checked={resolverPorUbicar}
+                                onChange={(event) => {
+                                  resolverPorUbicarTouchedRef.current = true
+                                  setResolverPorUbicar(event.target.checked)
+                                }}
+                                disabled={resolverSubmitting}
+                              />
+                              <label htmlFor="resolver-por-ubicar">
+                                Dejar en <strong>POR UBICAR</strong> y guardarlo despues (en "Por guardar")
+                              </label>
+                            </span>
+                          )}
+                          {!(resolverPorUbicar && (resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'sumar_origen')) && (
                           <div className="create-entrada__location-picker-grid">
                             <div className="create-entrada__location-picker-item">
                               <small>Bodega</small>
@@ -2741,15 +2782,16 @@ function TrasladosInconvenientesTable({
                               </div>
                             </div>
                           </div>
+                          )}
                           {resolverSubdivisionsLoading ? (
                             <small className="transfer-issues-details__loading">
                               <Loader2 size={12} />
                               Cargando subdivisiones...
                             </small>
                           ) : null}
-                          {!resolverSubdivisionsLoading && resolverNeedsManualLocation && !resolverSubdivisionId ? (
+                          {!resolverPorUbicar && !resolverSubdivisionsLoading && resolverNeedsManualLocation && !resolverSubdivisionId ? (
                             <small className="transfer-issues-details__manual-location-hint">
-                              Este producto no tiene ubicación previa en esta sucursal. Selecciona bodega, división y subdivisión.
+                              Este producto no tiene ubicación previa en esta sucursal. Selecciona bodega, división y subdivisión, o déjalo en POR UBICAR.
                             </small>
                           ) : null}
                         </label>

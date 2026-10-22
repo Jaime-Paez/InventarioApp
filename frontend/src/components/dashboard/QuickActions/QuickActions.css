@@ -3870,3 +3870,27 @@
 .quick-actions__inspection-add-panel .quick-actions__inspection-add-location-row {
   grid-template-columns: minmax(0, 1fr) auto;
 }
+
+/* Recepcion en dos pasos: en vez de elegir ubicacion, todo entra a POR UBICAR. */
+.quick-actions__receive-step--list .quick-actions__receive-location-row--two-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+
+.quick-actions__receive-por-ubicar {
+  padding: 4px 10px;
+  border: 1px dashed var(--color-border);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.quick-actions__receive-por-ubicar.is-received {
+  border-style: solid;
+  border-color: color-mix(in srgb, #16a34a 45%, transparent);
+  color: #15803d;
+}

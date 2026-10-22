@@ -502,3 +502,12 @@
   font-weight: 700;
   vertical-align: middle;
 }
+
+/* Ya llego y falta guardarlo ("Por guardar"): naranja en vez de azul. */
+.inventario-v2__in-transit--por-guardar {
+  color: #d97706;
+}
+
+.dashboard-shell.dark .inventario-v2__in-transit--por-guardar {
+  color: #fbbf24;
+}

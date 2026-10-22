@@ -28,6 +28,8 @@ from inventario.models import Inventario, SubDivision
 from inventario.por_ubicar import (
     RecepcionDesactualizada,
     RecepcionError,
+    add_stock,
+    get_por_ubicar_subdivision,
     pending_to_store,
     received_by_product,
     receive_items,
@@ -1240,11 +1242,21 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if inconveniente.envio_id and inconveniente.estado == ImportacionInconveniente.Estados.PENDIENTE:
             # Faltante del envio a una sucursal: como un faltante de traslado.
             valid_decisions = {"sumar_solicitante", "sumar_origen", "perdido"}
+            usar_por_ubicar = bool(request.data.get("por_ubicar"))
             if decision == "sumar_origen":
                 # Nunca salieron de la matriz: se suman en su ubicacion de ahi.
                 matriz = get_matriz_sucursal()
+                if usar_por_ubicar and matriz is not None:
+                    por_ubicar_sub = get_por_ubicar_subdivision(matriz.id)
+                    subdivision_override = por_ubicar_sub.id if por_ubicar_sub else 0
+                else:
+                    subdivision_override = None
                 try:
-                    subdivision_id = int(request.data.get("subdivision_id"))
+                    subdivision_id = (
+                        int(subdivision_override)
+                        if subdivision_override is not None
+                        else int(request.data.get("subdivision_id"))
+                    )
                 except (TypeError, ValueError):
                     subdivision_id = 0
                 envio_subdivision = (
@@ -1261,7 +1273,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     )
             if decision == "sumar_solicitante":
                 try:
-                    subdivision_id = int(request.data.get("subdivision_id"))
+                    if usar_por_ubicar:
+                        por_ubicar_sub = get_por_ubicar_subdivision(inconveniente.envio.sucursal_id)
+                        subdivision_id = por_ubicar_sub.id if por_ubicar_sub else 0
+                    else:
+                        subdivision_id = int(request.data.get("subdivision_id"))
                 except (TypeError, ValueError):
                     subdivision_id = 0
                 envio_subdivision = (
@@ -1560,6 +1576,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     sucursal_id__in=allowed_ids,
                 )
 
+        # Ya se confirmo que llego: se guarda desde "Por guardar".
+        qs = qs.filter(llegada_confirmada_en__isnull=True)
         qs = qs.select_related("importacion", "sucursal").prefetch_related(
             "detalles__producto"
         ).order_by("-fecha", "-id")
@@ -1624,6 +1642,20 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND,
                 )
         return envio, None
+
+    @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/confirmar-llegada")
+    def confirmar_llegada_envio(self, request, envio_id=None):
+        """Paso 1 de la recepcion: el envio llego. No suma stock: cada
+        producto se verifica y se suma al guardarlo en su ubicacion."""
+        with transaction.atomic():
+            envio, error = self._get_pending_envio_for_user(request, envio_id, lock=True)
+            if error is not None:
+                return error
+            if not envio.llegada_confirmada_en:
+                envio.llegada_confirmada_en = timezone.now()
+                envio.llegada_confirmada_por = request.user
+                envio.save(update_fields=["llegada_confirmada_en", "llegada_confirmada_por"])
+        return Response({"llegada_confirmada_en": envio.llegada_confirmada_en}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/recibir-parcial")
     def recibir_parcial_envio(self, request, envio_id=None):
@@ -1831,11 +1863,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     {"detail": "El envío ya fue recibido."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            if pending_to_store(envio_locked.recepcion_progreso, envio_locked.sucursal_id) > 0:
-                return Response(
-                    {"detail": "Guarda en su ubicacion los productos que quedaron en POR UBICAR antes de cerrar la recepcion."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            # Proceso en dos pasos: cerrar la recepcion ("llego") ya no exige
+            # haber guardado lo de POR UBICAR; eso se hace despues en "Por guardar".
             # Lo recibido por partes ya esta en el stock: solo se suma la diferencia.
             ya_recibido_por_producto = received_by_product(envio_locked.recepcion_progreso)
             # Total recibido por producto (para los faltantes); lo que no vino
@@ -1865,6 +1894,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 if ya_recibido and cantidad_recibida <= 0:
                     ubicaciones_raw = []
 
+                ubicado = 0
                 if isinstance(ubicaciones_raw, list) and ubicaciones_raw:
                     for ub in ubicaciones_raw:
                         subdivision_id = int(ub.get("subdivision_id") or 0)
@@ -1877,20 +1907,20 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                                 defaults={"cantidad": 0},
                             )
                             Inventario.objects.filter(pk=inv.pk).update(cantidad=F("cantidad") + qty)
-                elif cantidad_recibida > 0:
-                    subdivision = SubDivision.objects.filter(
-                        division__bodega__sucursal_id=envio.sucursal_id
-                    ).first()
-                    if subdivision:
-                        inv, _ = Inventario.objects.get_or_create(
-                            producto_id=product_id,
-                            subdivision=subdivision,
-                            referencia="",
-                            defaults={"cantidad": 0},
+                            ubicado += qty
+                # Lo que no se ubico entra a POR UBICAR (paso 1 "llego"); antes
+                # iba a la primera subdivision cualquiera de la sucursal, o se
+                # perdia si las ubicaciones sumaban menos.
+                resto = cantidad_recibida - ubicado
+                if resto > 0:
+                    por_ubicar_sub = get_por_ubicar_subdivision(envio.sucursal_id)
+                    if por_ubicar_sub is None:
+                        transaction.set_rollback(True)
+                        return Response(
+                            {"detail": "La sucursal de destino no tiene bodegas para recibir."},
+                            status=status.HTTP_400_BAD_REQUEST,
                         )
-                        Inventario.objects.filter(pk=inv.pk).update(
-                            cantidad=F("cantidad") + cantidad_recibida
-                        )
+                    add_stock(por_ubicar_sub.id, product_id, resto)
 
             envio_locked.estado = ImportacionEnvio.ESTADO_RECIBIDO
             envio_locked.fecha_recepcion = timezone.localdate()

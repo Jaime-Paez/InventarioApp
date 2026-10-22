@@ -1597,6 +1597,320 @@ class InventarioViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    def _por_guardar_branch_ids(self, request):
+        """Sucursales donde el usuario puede guardar lo de POR UBICAR: las de
+        inventario y las de entradas (quien recibe). None = todas."""
+        readable = None
+        for module_key in (RolPermiso.Modulos.INVENTARIO, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS):
+            ids = get_readable_sucursal_ids(request.user, module_key)
+            if ids is None:
+                return None
+            readable = (readable or set()) | {int(branch_id) for branch_id in ids}
+        return readable or set()
+
+    def _arrived_shipments(self, allowed, sucursal_id=None):
+        """Traslados y envios de importacion que ya llegaron (paso 1) y tienen
+        productos sin guardar. Lo guardado ya esta en `recepcion_progreso`."""
+        from importaciones.models import ImportacionEnvio
+        from movimientos.models import DetalleMovimiento, SolicitudTraslado
+
+        from .por_ubicar import received_by_product
+
+        traslados = (
+            SolicitudTraslado.objects.filter(
+                estado=SolicitudTraslado.Estados.APROBADA,
+                llegada_confirmada_en__isnull=False,
+                movimiento_entrada__isnull=False,
+            )
+            .exclude(movimiento_entrada__estado_movimiento__nombre__icontains="recib")
+            .exclude(movimiento_entrada__estado_movimiento__nombre__icontains="parcial")
+            .select_related("sucursal_solicitante", "sucursal_proveedora")
+        )
+        envios = ImportacionEnvio.objects.filter(
+            estado=ImportacionEnvio.ESTADO_PENDIENTE,
+            llegada_confirmada_en__isnull=False,
+        ).select_related("importacion", "sucursal")
+        if sucursal_id:
+            traslados = traslados.filter(sucursal_solicitante_id=sucursal_id)
+            envios = envios.filter(sucursal_id=sucursal_id)
+        if allowed is not None:
+            traslados = traslados.filter(sucursal_solicitante_id__in=sorted(allowed))
+            envios = envios.filter(sucursal_id__in=sorted(allowed))
+
+        shipments = []
+        traslados = list(traslados)
+        detalles_by_entrada = defaultdict(list)
+        for detalle in DetalleMovimiento.objects.filter(
+            movimiento_inventario_id__in=[t.movimiento_entrada_id for t in traslados]
+        ).select_related("producto"):
+            detalles_by_entrada[int(detalle.movimiento_inventario_id)].append(
+                (detalle.producto, int(detalle.cantidad or 0))
+            )
+        for traslado in traslados:
+            shipments.append(
+                {
+                    "tipo": "traslado",
+                    "id": int(traslado.id),
+                    "codigo": str(traslado.no_documento or "").strip(),
+                    "origen": str(getattr(traslado.sucursal_proveedora, "nombre", "") or "").strip(),
+                    "sucursal_id": int(traslado.sucursal_solicitante_id),
+                    "sucursal_nombre": str(getattr(traslado.sucursal_solicitante, "nombre", "") or "").strip(),
+                    "llegada_confirmada_en": traslado.llegada_confirmada_en,
+                    "_progreso": traslado.recepcion_progreso,
+                    "_detalles": detalles_by_entrada.get(int(traslado.movimiento_entrada_id), []),
+                }
+            )
+        for envio in envios.prefetch_related("detalles__producto"):
+            shipments.append(
+                {
+                    "tipo": "importacion",
+                    "id": int(envio.id),
+                    "codigo": str(getattr(envio.importacion, "codigo", "") or "").strip(),
+                    "origen": "Importacion",
+                    "sucursal_id": int(envio.sucursal_id),
+                    "sucursal_nombre": str(getattr(envio.sucursal, "nombre", "") or "").strip(),
+                    "llegada_confirmada_en": envio.llegada_confirmada_en,
+                    "_progreso": envio.recepcion_progreso,
+                    "_detalles": [(d.producto, int(d.cantidad or 0)) for d in envio.detalles.all()],
+                }
+            )
+
+        for shipment in shipments:
+            guardado = received_by_product(shipment.pop("_progreso"))
+            items = []
+            for producto, enviado in shipment.pop("_detalles"):
+                ya = int(guardado.get(int(producto.id), 0))
+                items.append(
+                    {
+                        "producto_id": int(producto.id),
+                        "producto_codigo": producto.codigo or "",
+                        "producto_nombre": producto.nombre or "",
+                        "enviado": enviado,
+                        "guardado": ya,
+                        "pendiente": max(0, enviado - ya),
+                    }
+                )
+            items.sort(key=lambda item: (item["pendiente"] == 0, item["producto_codigo"].lower()))
+            shipment["items"] = items
+        shipments.sort(key=lambda item: (item["sucursal_nombre"].lower(), str(item["llegada_confirmada_en"])))
+        return shipments
+
+    @action(detail=False, methods=["get"], url_path="por-guardar")
+    def por_guardar(self, request):
+        """Paso 2 de la recepcion ("Por guardar"):
+        - envios: traslados y envios de importacion que ya llegaron; cada
+          producto se verifica (cuanto llego) y se suma al guardarlo en su
+          ubicacion. Mientras tanto se ve entre parentesis en el inventario.
+        - productos: lo que haya en POR UBICAR (ya en stock) por guardar.
+        Con cada producto va la ubicacion sugerida (su principal en esa
+        sucursal) y, por sucursal, las ubicaciones donde se puede guardar.
+        `?solo_conteo=1` = contador del boton."""
+        from .por_ubicar import POR_UBICAR_NOMBRE
+
+        allowed = self._por_guardar_branch_ids(request)
+        sucursal_raw = str(request.query_params.get("sucursal_id") or "").strip()
+        sucursal_id = int(sucursal_raw) if sucursal_raw.isdigit() else None
+        rows_qs = Inventario.objects.filter(
+            cantidad__gt=0,
+            subdivision__nombre__iexact=POR_UBICAR_NOMBRE,
+            subdivision__division__nombre__iexact=POR_UBICAR_NOMBRE,
+        )
+        if sucursal_id:
+            rows_qs = rows_qs.filter(subdivision__division__bodega__sucursal_id=sucursal_id)
+        if allowed is not None:
+            rows_qs = rows_qs.filter(subdivision__division__bodega__sucursal_id__in=sorted(allowed))
+
+        shipments = self._arrived_shipments(allowed, sucursal_id)
+
+        if str(request.query_params.get("solo_conteo") or "").strip() in {"1", "true"}:
+            pending_lines = sum(1 for s in shipments for item in s["items"] if item["pendiente"] > 0)
+            por_ubicar_lines = rows_qs.values("producto_id", "subdivision_id").distinct().count()
+            return Response({"count": pending_lines + por_ubicar_lines})
+
+        rows = list(
+            rows_qs.values(
+                "producto_id",
+                "producto__codigo",
+                "producto__nombre",
+                "subdivision_id",
+                "subdivision__division__bodega__sucursal_id",
+                "subdivision__division__bodega__sucursal__nombre",
+            ).annotate(total=Sum("cantidad"))
+        )
+        product_ids = sorted(
+            {int(row["producto_id"]) for row in rows}
+            | {int(item["producto_id"]) for s in shipments for item in s["items"]}
+        )
+        branch_ids = sorted(
+            {int(row["subdivision__division__bodega__sucursal_id"]) for row in rows}
+            | {int(s["sucursal_id"]) for s in shipments}
+        )
+
+        # Ubicaciones donde se puede guardar (todas menos POR UBICAR).
+        storage = {}
+        for sub in (
+            SubDivision.objects.filter(division__bodega__sucursal_id__in=branch_ids)
+            .exclude(nombre__iexact=POR_UBICAR_NOMBRE, division__nombre__iexact=POR_UBICAR_NOMBRE)
+            .select_related("division__bodega")
+            .order_by("division__bodega__nombre", "division__nombre", "nombre", "id")
+        ):
+            storage.setdefault(int(sub.division.bodega.sucursal_id), []).append(
+                {
+                    "id": int(sub.id),
+                    "bodega": sub.division.bodega.nombre,
+                    "division": sub.division.nombre,
+                    "subdivision": sub.nombre,
+                    "label": f"{sub.division.bodega.nombre} / {sub.division.nombre} / {sub.nombre}",
+                }
+            )
+
+        # Ubicacion sugerida: la principal del producto en esa sucursal (fuera de POR UBICAR).
+        existing = defaultdict(list)
+        for loc in (
+            Inventario.objects.filter(
+                producto_id__in=product_ids,
+                subdivision__division__bodega__sucursal_id__in=branch_ids,
+            )
+            .exclude(
+                subdivision__nombre__iexact=POR_UBICAR_NOMBRE,
+                subdivision__division__nombre__iexact=POR_UBICAR_NOMBRE,
+            )
+            .values(
+                "producto_id",
+                "subdivision_id",
+                "subdivision__nombre",
+                "subdivision__division_id",
+                "subdivision__division__nombre",
+                "subdivision__division__bodega_id",
+                "subdivision__division__bodega__nombre",
+                "subdivision__division__bodega__sucursal_id",
+            )
+            .annotate(cantidad=Sum("cantidad"))
+        ):
+            existing[(int(loc["producto_id"]), int(loc["subdivision__division__bodega__sucursal_id"]))].append(
+                {
+                    "subdivision_id": int(loc["subdivision_id"]),
+                    "subdivision_nombre": loc["subdivision__nombre"] or "",
+                    "division_id": int(loc["subdivision__division_id"]),
+                    "division_nombre": loc["subdivision__division__nombre"] or "",
+                    "bodega_id": int(loc["subdivision__division__bodega_id"]),
+                    "bodega_nombre": loc["subdivision__division__bodega__nombre"] or "",
+                    "cantidad": int(loc["cantidad"] or 0),
+                }
+            )
+        user_order = get_user_location_order(product_ids)
+
+        def suggestion(pid, branch_id):
+            locations = existing.get((pid, branch_id)) or []
+            principal = order_branch_locations(pid, locations, user_order)[1] if locations else None
+            if not principal:
+                return {"sugerida_subdivision_id": None, "sugerida_label": ""}
+            return {
+                "sugerida_subdivision_id": int(principal["subdivision_id"]),
+                "sugerida_label": (
+                    f"{principal['bodega_nombre']} / {principal['division_nombre']} / {principal['subdivision_nombre']}"
+                ),
+            }
+
+        for shipment in shipments:
+            for item in shipment["items"]:
+                item.update(suggestion(item["producto_id"], shipment["sucursal_id"]))
+
+        payload = []
+        for row in rows:
+            pid = int(row["producto_id"])
+            branch_id = int(row["subdivision__division__bodega__sucursal_id"])
+            payload.append(
+                {
+                    "producto_id": pid,
+                    "producto_codigo": row["producto__codigo"] or "",
+                    "producto_nombre": row["producto__nombre"] or "",
+                    "sucursal_id": branch_id,
+                    "sucursal_nombre": row["subdivision__division__bodega__sucursal__nombre"] or "",
+                    "cantidad": int(row["total"] or 0),
+                    **suggestion(pid, branch_id),
+                }
+            )
+        payload.sort(key=lambda item: (item["sucursal_nombre"].lower(), item["producto_codigo"].lower()))
+        return Response(
+            {
+                "envios": shipments,
+                "productos": payload,
+                "ubicaciones": {str(branch_id): items for branch_id, items in storage.items()},
+            }
+        )
+
+    @action(detail=False, methods=["post"], url_path="guardar-por-ubicar")
+    def guardar_por_ubicar(self, request):
+        """Mueve desde POR UBICAR a su ubicacion. Body: {items: [{producto_id,
+        sucursal_id, subdivision_id, cantidad?}]} (sin cantidad = todo)."""
+        from .por_ubicar import POR_UBICAR_NOMBRE, add_stock, get_por_ubicar_subdivision, take_stock
+
+        items = request.data.get("items")
+        if not isinstance(items, list) or not items:
+            return Response({"detail": "Debes enviar los productos a guardar en `items`."}, status=status.HTTP_400_BAD_REQUEST)
+        allowed = self._por_guardar_branch_ids(request)
+        results = []
+        with transaction.atomic():
+            for raw in items:
+                try:
+                    pid = int(raw.get("producto_id"))
+                    branch_id = int(raw.get("sucursal_id"))
+                    subdivision_id = int(raw.get("subdivision_id"))
+                except (TypeError, ValueError, AttributeError):
+                    transaction.set_rollback(True)
+                    return Response(
+                        {"detail": "Cada producto debe tener producto, sucursal y ubicacion validos."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if allowed is not None and branch_id not in allowed:
+                    transaction.set_rollback(True)
+                    return Response({"detail": "No tienes acceso a esa sucursal."}, status=status.HTTP_403_FORBIDDEN)
+                destino = (
+                    SubDivision.objects.select_related("division")
+                    .filter(pk=subdivision_id, division__bodega__sucursal_id=branch_id)
+                    .first()
+                )
+                if destino is None:
+                    transaction.set_rollback(True)
+                    return Response(
+                        {"detail": "La ubicacion no pertenece a la sucursal."}, status=status.HTTP_400_BAD_REQUEST
+                    )
+                if (
+                    str(destino.nombre or "").strip().upper() == POR_UBICAR_NOMBRE
+                    and str(destino.division.nombre or "").strip().upper() == POR_UBICAR_NOMBRE
+                ):
+                    transaction.set_rollback(True)
+                    return Response(
+                        {"detail": "Elige una ubicacion distinta de POR UBICAR."}, status=status.HTTP_400_BAD_REQUEST
+                    )
+                por_ubicar = get_por_ubicar_subdivision(branch_id, create=False)
+                if por_ubicar is None:
+                    transaction.set_rollback(True)
+                    return Response({"detail": "No hay nada en POR UBICAR en esa sucursal."}, status=status.HTTP_400_BAD_REQUEST)
+                disponible = sum(
+                    int(qty or 0)
+                    for qty in Inventario.objects.filter(subdivision_id=por_ubicar.id, producto_id=pid).values_list(
+                        "cantidad", flat=True
+                    )
+                )
+                cantidad = disponible
+                if raw.get("cantidad") not in (None, ""):
+                    try:
+                        cantidad = int(raw.get("cantidad"))
+                    except (TypeError, ValueError):
+                        cantidad = -1
+                if cantidad <= 0 or cantidad > disponible:
+                    transaction.set_rollback(True)
+                    return Response(
+                        {"detail": f"Cantidad no valida: en POR UBICAR hay {disponible} de este producto."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                movido = take_stock(por_ubicar.id, pid, cantidad)
+                add_stock(destino.id, pid, movido)
+                results.append({"producto_id": pid, "sucursal_id": branch_id, "subdivision_id": destino.id, "cantidad": movido})
+        return Response({"guardados": results})
+
     def perform_create(self, serializer):
         subdivision = serializer.validated_data.get("subdivision")
         sucursal_id = getattr(

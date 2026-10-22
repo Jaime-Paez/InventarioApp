@@ -48,6 +48,8 @@ from inventario.models import Inventario, SubDivision, Sucursal
 from inventario.por_ubicar import (
     RecepcionDesactualizada,
     RecepcionError,
+    add_stock,
+    get_por_ubicar_subdivision,
     pending_to_store,
     received_by_product,
     receive_items,
@@ -4321,6 +4323,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
             if "recib" in estado_name or "parcial" in estado_name:
                 continue
+            # Ya se confirmo que llego: se guarda desde "Por guardar".
+            if solicitud.llegada_confirmada_en:
+                continue
 
             detalles_payload = []
             # .all() usa lo precargado; select_related() aca hacia una consulta por envio.
@@ -4406,6 +4411,24 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return solicitud, entrada, None
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/confirmar-llegada",
+    )
+    def confirmar_llegada_traslado(self, request, solicitud_id=None):
+        """Paso 1 de la recepcion: el traslado llego. No suma stock: cada
+        producto se verifica y se suma al guardarlo en su ubicacion."""
+        with transaction.atomic():
+            solicitud, _entrada, error = self._get_open_transfer_for_reception(request, solicitud_id, lock=True)
+            if error is not None:
+                return error
+            if not solicitud.llegada_confirmada_en:
+                solicitud.llegada_confirmada_en = timezone.now()
+                solicitud.llegada_confirmada_por = request.user
+                solicitud.save(update_fields=["llegada_confirmada_en", "llegada_confirmada_por", "updated_at"])
+        return Response({"llegada_confirmada_en": solicitud.llegada_confirmada_en}, status=status.HTTP_200_OK)
 
     @action(
         detail=False,
@@ -4615,11 +4638,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         # Lo recibido por partes ya esta en el stock: al cerrar solo se suma la
         # diferencia (cantidad recibida total - ya recibido).
         ya_recibido_por_producto = received_by_product(solicitud.recepcion_progreso)
-        if pending_to_store(solicitud.recepcion_progreso, solicitud.sucursal_solicitante_id) > 0:
-            return Response(
-                {"detail": "Guarda en su ubicacion los productos que quedaron en POR UBICAR antes de cerrar la recepcion."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # Proceso en dos pasos: cerrar la recepcion ("llego") ya no exige
+        # haber guardado lo de POR UBICAR; eso se hace despues en "Por guardar".
 
         processed_items = []
         seen_product_ids = set()
@@ -4738,26 +4758,19 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 )
             cantidad_por_sumar = cantidad_recibida - ya_recibido
 
-            if cantidad_por_sumar > 0 and not ubicaciones:
-                return Response(
-                    {
-                        "detail": (
-                            f"Debes ubicar el producto {product_id} en al menos una subdivision."
-                        )
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if cantidad_ubicada != cantidad_por_sumar:
+            # Lo que no se ubica al recibir entra a POR UBICAR (paso 1 "llego");
+            # despues se guarda en su ubicacion desde "Por guardar".
+            if cantidad_ubicada > cantidad_por_sumar:
                 return Response(
                     {
                         "detail": (
                             f"La suma de ubicaciones para producto {product_id} ({cantidad_ubicada}) "
-                            f"debe coincidir con la cantidad por recibir ({cantidad_por_sumar})."
+                            f"no puede ser mayor a la cantidad por recibir ({cantidad_por_sumar})."
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            cantidad_por_ubicar = cantidad_por_sumar - cantidad_ubicada
 
             cantidad_faltante = max(0, int(cantidad_enviada - cantidad_recibida))
             total_faltante += cantidad_faltante
@@ -4770,6 +4783,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "cantidad_recibida": cantidad_recibida,
                     "cantidad_faltante": cantidad_faltante,
                     "ubicaciones": ubicaciones,
+                    "por_ubicar": cantidad_por_ubicar,
                     "novedad": str(raw_item.get("novedad") or "").strip(),
                 }
             )
@@ -4882,6 +4896,15 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         producto_id=int(item["producto_id"]),
                         cantidad=int(ubicacion["cantidad"]),
                     )
+                if int(item.get("por_ubicar") or 0) > 0:
+                    por_ubicar_sub = get_por_ubicar_subdivision(solicitud_locked.sucursal_solicitante_id)
+                    if por_ubicar_sub is None:
+                        transaction.set_rollback(True)
+                        return Response(
+                            {"detail": "La sucursal de destino no tiene bodegas para recibir."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    add_stock(por_ubicar_sub.id, int(item["producto_id"]), int(item["por_ubicar"]))
 
             estado_destino = self._resolve_estado_movimiento(
                 "recibido" if total_faltante <= 0 else "parcialmente recibido",
@@ -5244,6 +5267,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     target_branch_id = int(inconveniente_locked.solicitud.sucursal_proveedora_id)
 
                 subdivision_id_raw = str(request.data.get("subdivision_id") or "").strip()
+                # Sumar sin ubicacion definitiva: entra a POR UBICAR y despues
+                # se guarda desde "Por guardar" (no aplica a restar).
+                usar_por_ubicar = bool(request.data.get("por_ubicar")) and decision != "restar_proveedora"
+                if usar_por_ubicar:
+                    subdivision = get_por_ubicar_subdivision(target_branch_id)
+                    if subdivision is None:
+                        return Response(
+                            {"detail": "La sucursal no tiene bodegas para dejarlo en POR UBICAR."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    subdivision_id_raw = str(subdivision.id)
                 if not subdivision_id_raw.isdigit():
                     return Response(
                         {"detail": "Debes indicar una subdivision valida para ajustar inventario."},

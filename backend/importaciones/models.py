@@ -172,6 +172,17 @@ class ImportacionEnvio(models.Model):
     )
     # Recepcion por partes: {"<producto_id>": {"recibido", "por_ubicar"}} (ver
     # inventario/por_ubicar.py). Lo recibido ya esta en el stock de la sucursal.
+    # Paso 1 de la recepcion ("llego"): se confirma que el envio llego, sin
+    # sumar stock. Lo que llego se verifica y suma al guardarlo en su ubicacion
+    # ("Por guardar"); mientras tanto se ve entre parentesis en el inventario.
+    llegada_confirmada_en = models.DateTimeField(null=True, blank=True)
+    llegada_confirmada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="importacion_envios_llegada_confirmada",
+    )
     recepcion_progreso = models.JSONField(
         default=dict,
         blank=True,

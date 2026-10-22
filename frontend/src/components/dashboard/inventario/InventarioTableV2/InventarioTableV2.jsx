@@ -1056,11 +1056,18 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     // recibir): "(5)" en azul; al pasar el mouse, de que documentos vienen.
     const transit = branchId != null ? rowData?.[`en_camino_sucursal_${branchId}`] : null
     const transitTotal = Number(transit?.total || 0)
+    // Lo que ya llego y falta guardar ("Por guardar") tambien va entre
+    // parentesis hasta que se guarde en su ubicacion.
+    const transitDocs = Array.isArray(transit?.documentos) ? transit.documentos : []
+    const porGuardarTotal = transitDocs.filter((doc) => doc?.llego).reduce((sum, doc) => sum + Number(doc?.cantidad || 0), 0)
+    const enCaminoTotal = transitTotal - porGuardarTotal
     const transitTooltip = transitTotal > 0
       ? [
-        `En camino: ${transitTotal}`,
-        ...(Array.isArray(transit?.documentos) ? transit.documentos : []).map((doc) => (
-          `${doc?.tipo === 'importacion' ? 'Importación' : 'Traslado'} ${String(doc?.codigo || `#${doc?.id}`).trim()}: ${Number(doc?.cantidad || 0)}`
+        [enCaminoTotal > 0 && `En camino: ${enCaminoTotal}`, porGuardarTotal > 0 && `Llegó, por guardar: ${porGuardarTotal}`]
+          .filter(Boolean)
+          .join(' · '),
+        ...transitDocs.map((doc) => (
+          `${doc?.tipo === 'importacion' ? 'Importación' : 'Traslado'} ${String(doc?.codigo || `#${doc?.id}`).trim()}: ${Number(doc?.cantidad || 0)}${doc?.llego ? ' (por guardar)' : ''}`
         )),
       ].join(' · ')
       : ''
@@ -1075,7 +1082,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         </span>
         {transitTotal > 0 && (
           <span
-            className="inventario-v2__in-transit"
+            className={`inventario-v2__in-transit${porGuardarTotal > 0 && enCaminoTotal <= 0 ? ' inventario-v2__in-transit--por-guardar' : ''}`}
             data-pr-tooltip={transitTooltip}
             aria-label={transitTooltip}
           >
