@@ -39,6 +39,52 @@ const getReferenciasTexto = (producto, detalle = null) => [
   detalle?.referencia,
 ].filter(Boolean).join(' ')
 
+const normalizeImportSearch = (value) =>
+  String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+// Buscador de productos dentro de una importacion (todas las etapas): por
+// codigo, descripcion, OEM y referencias; varias palabras = todas deben estar.
+const importItemMatches = (item, query) => {
+  const terms = normalizeImportSearch(query).split(/\s+/).filter(Boolean)
+  if (!terms.length) return true
+  const producto = item?.producto || {}
+  const text = normalizeImportSearch([
+    item?.codigo, item?.nombre, item?.oem, item?.referencia, item?.producto_busqueda,
+    producto?.codigo, producto?.nombre, getProductoOem(producto), getReferenciasTexto(producto, item),
+  ].join(' '))
+  return terms.every((term) => text.includes(term))
+}
+
+function ImportProductSearch({ value, onChange, shown, total }) {
+  return (
+    <div className="imp-product-search">
+      <div className="search-input-container">
+        <input
+          type="text"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="search-input"
+          placeholder="Buscar producto (código, descripción, OEM o referencia)"
+          aria-label="Buscar producto en esta importación"
+        />
+        <i className="pi pi-search search-input-icon" />
+      </div>
+      {String(value || '').trim() && (
+        <span className="imp-product-search__count">
+          {`${shown} de ${total}`}
+          <button type="button" className="imp-product-search__clear" onClick={() => onChange('')}>Limpiar</button>
+        </span>
+      )}
+    </div>
+  )
+}
+
+const ImportSearchEmptyRow = ({ query, style }) => (
+  <div className="create-user__locations-row create-user__locations-row--empty" style={style}>
+    <span>{`Ningún producto coincide con "${String(query || '').trim()}".`}</span>
+  </div>
+)
+
 // OEMProductoSerializer manda "producto" como su __str__ ("Nombre (Codigo)"),
 // no como objeto — se separa el código (paréntesis al final) del nombre para
 // poder mostrarlo en su propia columna en vez de mezclado en un solo texto.
@@ -1188,11 +1234,10 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     }
   }
 
-  const filteredRows = useMemo(() => {
-    const q = filter.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter(r => [r.codigo, r.nombre, r.oem, r.referencia, r.producto_busqueda].some(v => String(v || '').toLowerCase().includes(q)))
-  }, [rows, filter])
+  const filteredRows = useMemo(
+    () => (filter.trim() ? rows.filter((r) => importItemMatches(r, filter)) : rows),
+    [rows, filter]
+  )
 
   const checkedCount = rows.filter(r => r.checked).length
   const allChecked = checkedCount === rows.length && rows.length > 0
@@ -1877,12 +1922,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   </div>
                 </article>
 
-                <div className="quick-actions__receive-search-bar">
-                  <div className="quick-actions__receive-search">
-                    <input type="text" placeholder="Buscar por código o nombre..." value={filter} onChange={(e) => setFilter(e.target.value)} />
-                    {filter && <button type="button" className="quick-actions__receive-search-clear" onClick={() => setFilter('')}>×</button>}
-                  </div>
-                </div>
+                <ImportProductSearch value={filter} onChange={setFilter} shown={filteredRows.length} total={rows.length} />
 
                 <div className="create-user__locations-table importaciones-modal__products-table imp-receive__table" onKeyDown={handleProductsGridKeyDown}>
                   <div className="create-user__locations-row create-user__locations-row--head imp-receive__productos-row">
@@ -2037,6 +2077,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   const matrizSucursal = findMatrizSucursal(sucursales)
                   const gridCols = `minmax(72px, 0.4fr) minmax(140px, 1.6fr) 56px repeat(${sucursales.length}, 62px)`
                   return (
+                    <>
+                    <ImportProductSearch value={filter} onChange={setFilter} shown={filteredRows.length} total={rows.length} />
                     <div className="create-user__locations-table importaciones-modal__products-table imp-distribucion__table" onKeyDown={handleDistributionGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head imp-distribucion__productos-row" style={{ gridTemplateColumns: gridCols }}>
                         <span style={{ justifyContent: 'flex-start' }}>Código</span>
@@ -2046,7 +2088,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                           <span key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</span>
                         ))}
                       </div>
-                      {rows.map((row) => {
+                      {filter.trim() && !filteredRows.length && <ImportSearchEmptyRow query={filter} style={{ gridTemplateColumns: '1fr' }} />}
+                      {filteredRows.map((row) => {
                         const rowDist = distribution[row.id] || {}
                         const assigned = Object.values(rowDist).reduce((s, v) => s + (parseInt(v) || 0), 0)
                         const ceiling = getCantidadRecibidaCeiling(row)
@@ -2109,6 +2152,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         )
                       })}
                     </div>
+                    </>
                   )
                 })()}
               </div>
@@ -2604,6 +2648,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 const DETAILS_VIEWPORT_PADDING = 12
 
 function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, moduleActions, onOpenOrigen }) {
+  // Buscador de productos de esta importacion.
+  const [productSearch, setProductSearch] = useState('')
   const canMarcarLlegada = moduleActions?.puede_marcar_llegada === true
   const [showReceive, setShowReceive] = useState(false)
   const [showHistorial, setShowHistorial] = useState(false)
@@ -3079,6 +3125,12 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       <h4>Listado de productos</h4>
                     </div>
                   </div>
+                  <ImportProductSearch
+                    value={productSearch}
+                    onChange={setProductSearch}
+                    shown={detalles.filter((d) => importItemMatches(d, productSearch)).length}
+                    total={detalles.length}
+                  />
                   <div className="imp-details__productos-table-wrap">
                   <div className="create-user__locations-table importaciones-modal__products-table imp-details__productos-table">
                     <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row" style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
@@ -3088,7 +3140,9 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                     </div>
                     {!detalles.length ? (
                       <div className="create-user__locations-row create-user__locations-row--empty imp-details__productos-row" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
-                    ) : detalles.map((d, i) => {
+                    ) : productSearch.trim() && !detalles.some((d) => importItemMatches(d, productSearch)) ? (
+                      <ImportSearchEmptyRow query={productSearch} style={{ gridTemplateColumns: '1fr' }} />
+                    ) : detalles.filter((d) => importItemMatches(d, productSearch)).map((d, i) => {
                       const sinCat = !d.producto?.id
                       const creadoAqui = !sinCat && d.producto?.creado_desde_importacion === imp.id
                       const codigo = d.producto?.codigo || d.codigo || '-'
@@ -3310,6 +3364,8 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
 }
 
 function HistorialConfirmacionModal({ imp, onClose }) {
+  // Buscador de productos de esta importacion.
+  const [productSearch, setProductSearch] = useState('')
   const historial = Array.isArray(imp.historial_confirmacion) ? imp.historial_confirmacion : []
   // A qué sucursales se envió cada producto y en qué cantidad, indexado por
   // código (historial_confirmacion no guarda producto_id, solo el código).
@@ -3372,6 +3428,14 @@ function HistorialConfirmacionModal({ imp, onClose }) {
           </header>
 
           <div className="imp-aceptados-popup__body">
+            {historial.length > 0 && (
+              <ImportProductSearch
+                value={productSearch}
+                onChange={setProductSearch}
+                shown={historial.filter((row) => importItemMatches(row, productSearch)).length}
+                total={historial.length}
+              />
+            )}
             <div className="imp-historial__table-wrap">
             <div className="create-user__locations-table importaciones-modal__products-table imp-historial__table">
               <div className="create-user__locations-row create-user__locations-row--head imp-historial__row" style={{ gridTemplateColumns: historialGridTemplate }}>
@@ -3383,7 +3447,9 @@ function HistorialConfirmacionModal({ imp, onClose }) {
                 <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}>
                   <span>No hay historial de confirmación para esta importación.</span>
                 </div>
-              ) : historial.map((row, i) => {
+              ) : productSearch.trim() && !historial.some((row) => importItemMatches(row, productSearch)) ? (
+                <ImportSearchEmptyRow query={productSearch} style={{ gridTemplateColumns: '1fr' }} />
+              ) : historial.filter((row) => importItemMatches(row, productSearch)).map((row, i) => {
                 const envios = distribucion.porCodigo.get(row.codigo) || []
                 return (
                 <div key={i} className="create-user__locations-row imp-historial__row" style={{ gridTemplateColumns: historialGridTemplate }}>
@@ -5050,6 +5116,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
 }
 
 function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOpenBorrador }) {
+  // Buscador de productos de esta importacion.
+  const [productSearch, setProductSearch] = useState('')
   const [step, setStep] = useState('casa')
   const [nextCode, setNextCode] = useState('IMP-')
   const [selectedCasa, setSelectedCasa] = useState(null)
@@ -6082,6 +6150,14 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                         </div>
                       </div>
 
+                      {details.length > 0 && (
+                        <ImportProductSearch
+                          value={productSearch}
+                          onChange={setProductSearch}
+                          shown={details.filter((item) => importItemMatches(item, productSearch)).length}
+                          total={details.length}
+                        />
+                      )}
                       <div className="create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table" onKeyDown={handleProductsGridKeyDown}>
                         <div className="create-user__locations-row create-user__locations-row--head">
                           <span>Código</span>
@@ -6225,7 +6301,9 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                               reason="Agrega al menos uno con el buscador de esta tabla, con «+ Agregar nuevo producto» o con «+ Aceptados de solicitudes»."
                             />
                           </div>
-                        ) : details.map((item) => {
+                        ) : productSearch.trim() && !details.some((item) => importItemMatches(item, productSearch)) ? (
+                          <ImportSearchEmptyRow query={productSearch} />
+                        ) : details.filter((item) => importItemMatches(item, productSearch)).map((item) => {
                           const sinCatalogo = !item.producto?.id
                           const codigo = item.producto?.codigo || item.codigo || ''
                           const nombre = item.producto?.nombre || item.nombre || ''
@@ -6578,6 +6656,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
 }
 
 function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions }) {
+  // Buscador de productos de esta importacion.
+  const [productSearch, setProductSearch] = useState('')
   const canEdit = moduleActions?.puede_actualizar !== false
   const canDelete = moduleActions?.puede_eliminar !== false
   const canImportar = moduleActions?.puede_importar === true
@@ -7873,6 +7953,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                       )}
                     </div>
 
+                    {details.length > 0 && (
+                      <ImportProductSearch
+                        value={productSearch}
+                        onChange={setProductSearch}
+                        shown={details.filter((item) => importItemMatches(item, productSearch)).length}
+                        total={details.length}
+                      />
+                    )}
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`} onKeyDown={handleProductsGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head imp-sticky-head" ref={productsHeadRef}>
                         <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span>
@@ -8050,7 +8138,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
                       {!details.length ? (
                         <div className="create-user__locations-row create-user__locations-row--empty"><span>Sin productos agregados.</span></div>
-                      ) : details.map((item) => {
+                      ) : productSearch.trim() && !details.some((item) => importItemMatches(item, productSearch)) ? (
+                        <ImportSearchEmptyRow query={productSearch} />
+                      ) : details.filter((item) => importItemMatches(item, productSearch)).map((item) => {
                         const sinCatalogo = !item.producto?.id
                         const creadoAqui = !sinCatalogo && item.producto?.creado_desde_importacion === imp.id
                         const codigo = item.producto?.codigo || item.codigo || ''
