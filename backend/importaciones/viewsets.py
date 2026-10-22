@@ -72,8 +72,7 @@ def create_envio_shortage_issues(envio, recibido_por_producto, *, actor=None, no
             importacion_id=envio.importacion_id,
             producto_id=product_id,
             tipo=ImportacionInconveniente.Tipos.FALTANTE,
-            motivo__icontains=marca,
-        ).exists()
+        ).filter(Q(envio_id=envio.id) | Q(motivo__icontains=marca)).exists()
         if ya_existe:
             continue
         diferencia = enviado - recibido
@@ -81,6 +80,7 @@ def create_envio_shortage_issues(envio, recibido_por_producto, *, actor=None, no
         motivo = f"Faltante al recibir en {sucursal_nombre} ({marca})." + (f" Novedad: {novedad}" if novedad else "")
         inconveniente = ImportacionInconveniente.objects.create(
             importacion_id=envio.importacion_id,
+            envio=envio,
             detalle=detalle_importacion_por_producto.get(product_id),
             producto_id=product_id,
             tipo=ImportacionInconveniente.Tipos.FALTANTE,
@@ -550,6 +550,17 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 getattr(getattr(inconveniente.importacion, "casa_comercial", None), "nombre", "") or ""
             ).strip(),
             "producto_id": int(inconveniente.producto_id),
+            # Faltante del envio a una sucursal: se resuelve como traslado
+            # (sumar en esa sucursal o desaparecido), no con reclamo.
+            "envio_id": int(inconveniente.envio_id) if inconveniente.envio_id else None,
+            "sucursal_solicitante_id": (
+                int(inconveniente.envio.sucursal_id) if inconveniente.envio_id else None
+            ),
+            "sucursal_solicitante_nombre": (
+                str(getattr(inconveniente.envio.sucursal, "nombre", "") or "").strip()
+                if inconveniente.envio_id
+                else ""
+            ),
             "producto_codigo": str(getattr(getattr(inconveniente, "producto", None), "codigo", "") or "").strip(),
             "producto_nombre": str(getattr(getattr(inconveniente, "producto", None), "nombre", "") or "").strip(),
             "tipo": str(inconveniente.tipo or "faltante").strip(),
@@ -1146,6 +1157,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "producto",
                 "creado_por",
                 "resuelto_por",
+                "envio__sucursal",
             )
             .prefetch_related("historial__actor")
             .order_by("-created_at", "-id")
@@ -1181,7 +1193,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             )
 
         inconveniente = (
-            ImportacionInconveniente.objects.select_related("importacion", "producto")
+            ImportacionInconveniente.objects.select_related("importacion", "producto", "envio__sucursal")
             .filter(pk=inconveniente_id)
             .first()
         )
@@ -1203,7 +1215,26 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         decision = str(request.data.get("decision") or "").strip().lower()
         motivo = str(request.data.get("motivo") or "").strip()
 
-        if inconveniente.estado == ImportacionInconveniente.Estados.RECLAMADO:
+        envio_subdivision = None
+        if inconveniente.envio_id and inconveniente.estado == ImportacionInconveniente.Estados.PENDIENTE:
+            # Faltante del envio a una sucursal: como un faltante de traslado.
+            valid_decisions = {"sumar_solicitante", "perdido"}
+            if decision == "sumar_solicitante":
+                try:
+                    subdivision_id = int(request.data.get("subdivision_id"))
+                except (TypeError, ValueError):
+                    subdivision_id = 0
+                envio_subdivision = (
+                    SubDivision.objects.select_related("division")
+                    .filter(pk=subdivision_id, division__bodega__sucursal_id=inconveniente.envio.sucursal_id)
+                    .first()
+                )
+                if envio_subdivision is None:
+                    return Response(
+                        {"detail": "Elige la ubicacion de la sucursal destino donde sumar las unidades."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+        elif inconveniente.estado == ImportacionInconveniente.Estados.RECLAMADO:
             valid_decisions = {"olvidar", "solucion"}
         else:
             es_sobrante = inconveniente.tipo == ImportacionInconveniente.Tipos.SOBRANTE
@@ -1251,7 +1282,25 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if decision == "reportado_proveedor":
+            if decision == "sumar_solicitante":
+                # Aparecieron en la sucursal: se suman donde se encontraron.
+                inv, _ = Inventario.objects.select_for_update().get_or_create(
+                    producto_id=inconveniente_locked.producto_id,
+                    subdivision_id=envio_subdivision.id,
+                    referencia="",
+                    defaults={"cantidad": 0},
+                )
+                Inventario.objects.filter(pk=inv.pk).update(
+                    cantidad=F("cantidad") + int(inconveniente_locked.cantidad_diferencia or 0)
+                )
+                resolucion = ImportacionInconveniente.Resoluciones.SUMADO_SUCURSAL
+                estado_resultado = ImportacionInconveniente.Estados.RESUELTO
+                action_label = "sumado_a_sucursal"
+            elif decision == "perdido":
+                resolucion = ImportacionInconveniente.Resoluciones.PERDIDO
+                estado_resultado = ImportacionInconveniente.Estados.PERDIDO
+                action_label = "marcado_como_perdido"
+            elif decision == "reportado_proveedor":
                 resolucion = ImportacionInconveniente.Resoluciones.REPORTADO_PROVEEDOR
                 estado_resultado = ImportacionInconveniente.Estados.RECLAMADO
                 action_label = "reclamado_a_proveedor"
@@ -1274,7 +1323,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
             inconveniente_locked.estado = estado_resultado
             inconveniente_locked.resolucion = resolucion
-            inconveniente_locked.motivo = motivo
+            # En los del envio el motivo es la novedad de la recepcion: no se
+            # pisa con la nota de la resolucion (esa va al historial).
+            if not inconveniente_locked.envio_id or not inconveniente_locked.motivo:
+                inconveniente_locked.motivo = motivo
             inconveniente_locked.resuelto_por = request.user
             update_fields = ["estado", "resolucion", "motivo", "resuelto_por", "updated_at"]
             if decision == "solucion":
@@ -1284,7 +1336,18 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             inconveniente_locked.save(update_fields=update_fields)
 
             tipo_label = "faltante" if inconveniente_locked.tipo == ImportacionInconveniente.Tipos.FALTANTE else "sobrante"
-            if decision == "reportado_proveedor":
+            if decision == "sumar_solicitante":
+                detail_text = (
+                    f"Las {inconveniente_locked.cantidad_diferencia} unidades faltantes aparecieron y se "
+                    f"sumaron en {inconveniente_locked.envio.sucursal.nombre} "
+                    f"({envio_subdivision.division.nombre} / {envio_subdivision.nombre})."
+                )
+            elif decision == "perdido":
+                detail_text = (
+                    f"Las {inconveniente_locked.cantidad_diferencia} unidades faltantes del envio se marcaron "
+                    "como desaparecidas."
+                )
+            elif decision == "reportado_proveedor":
                 detail_text = (
                     f"Se genero un reclamo al proveedor por el {tipo_label} de "
                     f"{inconveniente_locked.cantidad_diferencia} unidades."

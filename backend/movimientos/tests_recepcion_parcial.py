@@ -316,3 +316,54 @@ class FaltanteEnvioImportacionTests(RecepcionParcialImportacionTests):
         self.assertIn("Norte", issue.motivo)
         self.assertIn("Caja abierta", issue.motivo)
         self.assertEqual(issue.estado, ImportacionInconveniente.Estados.PENDIENTE)
+
+    def _faltante_de_envio(self):
+        from importaciones.models import ImportacionInconveniente
+
+        url = f"/importaciones/importaciones/envios/{self.envio.id}"
+        self.nivel = SubDivision.objects.create(
+            division=Division.objects.create(
+                bodega=Bodega.objects.get(sucursal=self.sucursal),
+                tipo_division=TipoDivision.objects.get_or_create(nombre="General")[0],
+                nombre="B2",
+            ),
+            nombre="01",
+        )
+        self.client.post(
+            f"{url}/confirmar-recepcion/",
+            {"items": [{
+                "producto_id": self.producto.id,
+                "cantidad_recibida": 3,
+                "ubicaciones": [{"subdivision_id": self.nivel.id, "cantidad": 3}],
+            }]},
+            format="json",
+        )
+        return ImportacionInconveniente.objects.get(producto=self.producto)
+
+    def _resolver(self, issue, **body):
+        return self.client.post(
+            f"/importaciones/importaciones/inconvenientes/{issue.id}/resolver/", body, format="json"
+        )
+
+    def test_faltante_de_envio_se_resuelve_como_traslado(self):
+        issue = self._faltante_de_envio()
+        self.assertEqual(issue.envio_id, self.envio.id)
+        # El reclamo al proveedor no aplica a lo que falto entre la importacion y la sucursal.
+        self.assertEqual(self._resolver(issue, decision="reportado_proveedor").status_code, 400)
+
+        response = self._resolver(issue, decision="sumar_solicitante", subdivision_id=self.nivel.id, motivo="Estaba en otra caja")
+        self.assertEqual(response.status_code, 200, response.data)
+        issue.refresh_from_db()
+        self.assertEqual((issue.estado, issue.resolucion), ("resuelto", "sumado_sucursal"))
+        self.assertIn("Norte", issue.motivo)  # se conserva la novedad original
+        total = Inventario.objects.filter(producto=self.producto).aggregate(t=Sum("cantidad"))["t"]
+        self.assertEqual(total, 4)
+
+    def test_faltante_de_envio_desaparecido(self):
+        issue = self._faltante_de_envio()
+        response = self._resolver(issue, decision="perdido")
+        self.assertEqual(response.status_code, 200, response.data)
+        issue.refresh_from_db()
+        self.assertEqual(issue.estado, "perdido")
+        total = Inventario.objects.filter(producto=self.producto).aggregate(t=Sum("cantidad"))["t"]
+        self.assertEqual(total, 3)

@@ -228,10 +228,22 @@ class ImportacionInconveniente(models.Model):
         PERDIDO = "perdido", "Perdido / no recuperable"
         DEVOLVER_PROVEEDOR = "devolver_proveedor", "Devuelto al proveedor"
         REPOSICION_ACORDADA = "reposicion_acordada", "Reposición acordada"
+        # Faltantes del envio a una sucursal (como un traslado).
+        SUMADO_SUCURSAL = "sumado_sucursal", "Sumado a la sucursal destino"
 
     importacion = models.ForeignKey(
         Importacion,
         on_delete=models.CASCADE,
+        related_name="inconvenientes",
+    )
+    # Si viene de recibir un envio en una sucursal (no de la llegada desde el
+    # proveedor): se resuelve como un traslado (sumar en la sucursal o
+    # desaparecido), no con un reclamo al proveedor.
+    envio = models.ForeignKey(
+        "ImportacionEnvio",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="inconvenientes",
     )
     detalle = models.ForeignKey(

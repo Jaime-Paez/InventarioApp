@@ -79,6 +79,7 @@ const formatEstado = (value) => {
 const formatResolucion = (value) => {
   const normalized = String(value || '').trim().toLowerCase()
   if (normalized === 'sumar_solicitante') return 'Sumado a sucursal destino'
+  if (normalized === 'sumado_sucursal') return 'Sumado a sucursal destino'
   if (normalized === 'sumar_proveedora') return 'Sumado a sucursal proveedora'
   if (normalized === 'perdido') return 'Marcado como desaparecido'
   if (normalized === 'restar_proveedora') return 'Restado de sucursal proveedora'
@@ -332,7 +333,8 @@ function TrasladosInconvenientesTable({
           producto_resumen: reason ? `${productCode || productName} | Novedad: ${reason}` : (productCode || productName),
           cantidad_faltante: diffQty,
           sucursal_proveedora: String(row?.casa_comercial_nombre || '-').trim() || '-',
-          sucursal_solicitante: '-',
+          // Faltante del envio a una sucursal: esa es la sucursal destino.
+          sucursal_solicitante: String(row?.sucursal_solicitante_nombre || '').trim() || '-',
           solicitud_no_documento: String(row?.importacion_codigo || row?.importacion_id || '-').trim() || '-',
         }
       }),
@@ -1486,8 +1488,11 @@ function TrasladosInconvenientesTable({
     }
 
     const isImportacion = selectedIssue?.origen === 'importacion'
+    // Faltante del envio de una importacion a una sucursal: se resuelve como
+    // un traslado (sumar en la sucursal destino o desaparecido).
+    const isEnvioIssue = isImportacion && Boolean(normalizeId(selectedIssue?.envio_id))
 
-    if (!isImportacion) {
+    if (!isImportacion || isEnvioIssue) {
       if (
         (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora') &&
         !normalizeId(resolverSubdivisionId)
@@ -1527,7 +1532,7 @@ function TrasladosInconvenientesTable({
         decision: resolvedDecision,
         motivo: String(resolverMotivo || '').trim(),
       }
-      if (!isImportacion) {
+      if (!isImportacion || isEnvioIssue) {
         if (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora') {
           body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
         }
@@ -2203,7 +2208,7 @@ function TrasladosInconvenientesTable({
                       </>
                     ) : (
                     <>
-                      {selectedIssue?.origen === 'importacion' && selectedIssue?.estado === 'reclamado' && (
+                      {selectedIssue?.origen === 'importacion' && !selectedIssue?.envio_id && selectedIssue?.estado === 'reclamado' && (
                         <>
                           <p className="muted transfer-issues-details__hint">
                             Ya se generó un reclamo al proveedor. Decide si se olvida el proceso o si ya se acordó una solución.
@@ -2265,7 +2270,7 @@ function TrasladosInconvenientesTable({
                           {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
                         </>
                       )}
-                      {selectedIssue?.origen === 'importacion' && selectedIssue?.estado !== 'reclamado' && (
+                      {selectedIssue?.origen === 'importacion' && !selectedIssue?.envio_id && selectedIssue?.estado !== 'reclamado' && (
                         <>
                           <p className="muted transfer-issues-details__hint">
                             {selectedIssue?.tipo === 'sobrante'
@@ -2333,7 +2338,7 @@ function TrasladosInconvenientesTable({
                           {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
                         </>
                       )}
-                      {selectedIssue?.origen !== 'importacion' && (
+                      {(selectedIssue?.origen !== 'importacion' || Boolean(selectedIssue?.envio_id)) && (
                       <>
                       {selectedIssue?.tipo === 'sobrante' ? (
                         <>
@@ -2390,9 +2395,12 @@ function TrasladosInconvenientesTable({
                       ) : (
                         <>
                           <p className="muted transfer-issues-details__hint">
-                            Decide si este faltante debe sumarse en la sucursal proveedora, en la sucursal destino, o marcarse como desaparecido.
+                            {selectedIssue?.envio_id
+                              ? `Faltante del envío de la importación a ${String(selectedIssue?.sucursal_solicitante || 'la sucursal').trim()}. Decide si las unidades aparecieron (se suman en la sucursal destino) o se marcan como desaparecidas.`
+                              : 'Decide si este faltante debe sumarse en la sucursal proveedora, en la sucursal destino, o marcarse como desaparecido.'}
                           </p>
-                          <div className="transfer-issues-details__decisions">
+                          <div className={`transfer-issues-details__decisions${selectedIssue?.envio_id ? ' transfer-issues-details__decisions--two' : ''}`}>
+                            {!selectedIssue?.envio_id && (
                             <div className="transfer-issues-details__decision-wrap">
                               <DecisionButton
                                 variant="primary"
@@ -2410,6 +2418,7 @@ function TrasladosInconvenientesTable({
                                 disabled={resolverSubmitting}
                               />
                             </div>
+                            )}
                             <div className="transfer-issues-details__decision-wrap">
                               <DecisionButton
                                 variant="success"
