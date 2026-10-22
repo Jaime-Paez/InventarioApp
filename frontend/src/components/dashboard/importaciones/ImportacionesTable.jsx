@@ -64,7 +64,8 @@ function ImportProductSearch({ value, onChange, shown, total }) {
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className="search-input"
-          placeholder="Buscar producto (código, descripción, OEM o referencia)"
+          placeholder="Buscar producto"
+          title="Busca por código, descripción, OEM o referencia"
           aria-label="Buscar producto en esta importación"
         />
         <i className="pi pi-search search-input-icon" />

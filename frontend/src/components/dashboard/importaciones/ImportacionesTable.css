@@ -2287,8 +2287,11 @@ body.app-theme-dark .imp-receive-footer-hint {
 }
 
 .imp-product-search .search-input-container {
-  flex: 1 1 320px;
-  max-width: 520px;
+  flex: 0 1 auto;
+  min-width: 220px;
+  max-width: 220px;
+  height: 24px;
+  padding: 4px 8px;
 }
 
 .imp-product-search .search-input {
