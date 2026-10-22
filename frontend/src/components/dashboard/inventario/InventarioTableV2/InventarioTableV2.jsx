@@ -1147,7 +1147,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             <button
               type="button"
               className={`inventario-v2__location-eye${hasLowStock ? ' inventario-v2__location-eye--low' : ''}`}
-              aria-label={`Ver otras ubicaciones en ${branch.nombre}${hasLowStock ? ' (alguna con poco stock)' : ''}`}
+              aria-label={`Ver otras ubicaciones en ${branch.nombre}${hasLowStock ? ' (la principal tiene poco stock)' : ''}`}
               onClick={(event) => {
                 event.preventDefault()
                 event.stopPropagation()

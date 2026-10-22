@@ -169,29 +169,37 @@
   }
 }
 
-/* Orden de ubicaciones (pestana Ubicaciones): agarre para arrastrar y
-   etiqueta "Principal" / posicion. La principal en rojo si le queda poco. */
+/* Orden de ubicaciones (pestana Ubicaciones): agarre a la izquierda para
+   arrastrar; "Principal" como etiqueta discreta bajo el nombre de la bodega. */
 .inventario-editor__branch-cell {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   min-width: 0;
 }
 
-.inventario-editor__order {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
+/* El nombre se parte en dos lineas en vez de cortarse ("9 de Octubre (M..."). */
+.inventario-editor__branch-name {
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.inventario-editor__drag-handle,
+.inventario-editor__drag-spacer {
   flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
 }
 
 .inventario-editor__drag-handle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -199,79 +207,118 @@
   color: var(--color-text-secondary, #64748b);
   cursor: grab;
   touch-action: none;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.inventario-editor__drag-handle:hover:not(:disabled) {
+.inventario-editor__drag-handle:hover:not(:disabled),
+.inventario-editor__drag-handle:focus-visible {
   border-color: var(--color-border);
-  background: rgba(15, 23, 42, 0.04);
-}
-
-.inventario-editor__drag-handle:active:not(:disabled) {
-  cursor: grabbing;
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--color-text-primary, #0f172a);
 }
 
 .inventario-editor__drag-handle:disabled {
-  opacity: 0.35;
+  opacity: 0.3;
   cursor: default;
 }
 
-.inventario-editor__order-badge {
-  min-width: 22px;
-  padding: 1px 6px;
+.inventario-editor__bodega-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.inventario-editor__principal-tag {
+  padding: 1px 8px;
+  border: 1px solid currentColor;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
-  font-size: 0.7rem;
-  font-weight: 700;
-  line-height: 1.4;
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  opacity: 0.7;
+}
+
+/* Mientras se arrastra: en su lugar queda un hueco tenue. */
+.create-user__locations-row.inventario-editor__row--placeholder {
+  opacity: 0.35;
+}
+
+/* La fila levantada que sigue al puntero. */
+.inventario-editor__drag-ghost {
+  position: fixed;
+  z-index: 6000;
+  display: grid;
+  align-items: center;
+  padding: 0;
+  border: 1px solid var(--color-primary, #1d4ed8);
+  border-radius: 12px;
+  background: var(--modal-color, #fff);
+  color: var(--color-text-primary, #0f172a);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.22);
+  pointer-events: none;
+  transform: scale(1.01);
+}
+
+.inventario-editor__drag-ghost > span {
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
   text-align: center;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--color-text-secondary, #64748b);
 }
 
-.inventario-editor__order-badge--principal {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-  color: #fff;
+.inventario-editor__drag-ghost-branch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 600;
 }
 
-.inventario-editor__order-badge--low {
-  border-color: #dc2626;
-  background: #dc2626;
-  color: #fff;
+.inventario-editor__drag-ghost-qty {
+  font-weight: 700;
 }
 
-.create-user__locations-row.inventario-editor__row--dragging {
-  position: relative;
-  z-index: 1;
-  background: rgba(37, 99, 235, 0.08);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+/* Donde va a caer. */
+.inventario-editor__drop-line {
+  position: fixed;
+  z-index: 6001;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-primary, #1d4ed8);
+  pointer-events: none;
+}
+
+body.inventario-editor--dragging,
+body.inventario-editor--dragging * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 body.app-theme-dark .inventario-editor__drag-handle {
   color: var(--color-text-dark, #cbd5e1);
 }
 
-body.app-theme-dark .inventario-editor__drag-handle:hover:not(:disabled) {
+body.app-theme-dark .inventario-editor__drag-handle:hover:not(:disabled),
+body.app-theme-dark .inventario-editor__drag-handle:focus-visible {
   border-color: var(--color-border-dark);
   background: rgba(255, 255, 255, 0.06);
-}
-
-body.app-theme-dark .inventario-editor__order-badge {
-  border-color: var(--color-border-dark);
-  color: var(--color-text-dark, #cbd5e1);
-}
-
-body.app-theme-dark .inventario-editor__order-badge--principal {
-  border-color: var(--color-primary);
   color: #fff;
 }
 
-body.app-theme-dark .inventario-editor__order-badge--low {
-  border-color: #ef4444;
-  background: #ef4444;
-  color: #fff;
+body.app-theme-dark .inventario-editor__drag-ghost {
+  background: var(--color-surface-darker, #0f172a);
+  color: var(--color-text-dark, #e2e8f0);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.5);
 }
 
-body.app-theme-dark .create-user__locations-row.inventario-editor__row--dragging {
-  background: rgba(96, 165, 250, 0.12);
+@media (prefers-reduced-motion: reduce) {
+  .inventario-editor__drag-ghost {
+    transform: none;
+  }
 }

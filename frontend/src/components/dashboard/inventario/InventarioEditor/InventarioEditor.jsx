@@ -1,4 +1,4 @@
-import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeftRight, Check, GripVertical, X } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
@@ -75,8 +75,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   // la tabla cuando le queda poco). Se guarda en el servidor al soltar.
   const [locationOrder, setLocationOrder] = useState(() => ({ ...(ordenUbicaciones || {}) }))
   const [orderSaving, setOrderSaving] = useState(false)
-  const [dragState, setDragState] = useState(null) // { uid, sucursalId, step }
-  const dragOrderRef = useRef(null)
+  const [dragState, setDragState] = useState(null) // fila levantada: posicion y destino
   const [locationDraft, setLocationDraft] = useState({
     sucursalId: '',
     bodegaId: '',
@@ -1028,14 +1027,13 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   }, [compareByName])
 
   const sortedLocations = useMemo(
-    () => orderLocations(locations, dragOrderRef.current?.preview || locationOrder),
-    // dragState cambia en cada paso del arrastre y fuerza el recalculo.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [locations, locationOrder, orderLocations, dragState]
+    () => orderLocations(locations, locationOrder),
+    [locations, locationOrder, orderLocations]
   )
 
-  // Posicion de cada fila dentro de su sucursal (0 = principal).
-  const positionByUid = useMemo(() => {
+  // Posicion de cada fila dentro de su sucursal (0 = principal) y cuantas
+  // ubicaciones tiene cada sucursal (con una sola no hay nada que ordenar).
+  const { positionByUid, countBySucursal } = useMemo(() => {
     const counters = new Map()
     const positions = new Map()
     sortedLocations.forEach((location) => {
@@ -1044,8 +1042,14 @@ const InventarioEditor = forwardRef(function InventarioEditor(
       positions.set(location.uid, index)
       counters.set(key, index + 1)
     })
-    return positions
+    return { positionByUid: positions, countBySucursal: counters }
   }, [sortedLocations])
+  // Si ninguna sucursal tiene 2 o mas ubicaciones no hay nada que ordenar y
+  // no se deja el espacio del agarre (cortaba el nombre de la sucursal).
+  const anyBranchReorderable = useMemo(
+    () => Array.from(countBySucursal.values()).some((count) => count > 1),
+    [countBySucursal]
+  )
 
   // Solo las ya guardadas se ordenan (una nueva sin guardar aun puede cambiar
   // de subdivision).
@@ -1079,62 +1083,103 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     }
   }, [productId, token])
 
-  // Arrastre con el agarre (mouse y pantalla tactil): mientras se mueve se
-  // reacomoda la vista; al soltar se guarda el orden de esa sucursal.
+  // Al soltar, las filas se deslizan desde donde estaban hasta su nuevo lugar
+  // (en vez de saltar): se guarda donde estaba cada una y se anima la diferencia.
+  const flipFromRef = useRef(null)
+  useLayoutEffect(() => {
+    const from = flipFromRef.current
+    if (!from) return
+    flipFromRef.current = null
+    document.querySelectorAll('[data-location-row]').forEach((element) => {
+      const previousTop = from.get(element.getAttribute('data-location-row'))
+      if (previousTop === undefined) return
+      const delta = previousTop - element.getBoundingClientRect().top
+      if (!delta) return
+      element.style.transition = 'none'
+      element.style.transform = `translateY(${delta}px)`
+      // Fuerza el layout antes de animar de vuelta a su lugar.
+      void element.offsetHeight
+      element.style.transition = 'transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1)'
+      element.style.transform = ''
+      const clear = () => {
+        element.style.transition = ''
+        element.removeEventListener('transitionend', clear)
+      }
+      element.addEventListener('transitionend', clear)
+    })
+  }, [sortedLocations])
+
+  // Arrastre con el agarre (mouse y pantalla tactil): la fila se levanta y
+  // sigue al puntero, una linea marca donde va a caer y al soltar se reacomoda
+  // y se guarda el orden de esa sucursal.
   const handleDragHandlePointerDown = useCallback((event, location) => {
     if (orderSaving || !isSavedLocation(location) || !canManageBranchLocation(location.sucursalId)) return
+    const rowElement = event.currentTarget.closest('[data-location-row]')
+    if (!rowElement) return
     event.preventDefault()
     const sucursalKey = String(location.sucursalId || '')
-    const branchRows = orderLocations(locations, locationOrder)
-      .filter((row) => String(row.sucursalId || '') === sucursalKey && isSavedLocation(row))
-    if (branchRows.length < 2) return
-    const initialIds = branchRows.map((row) => String(row.subdivisionId))
-    const toOrder = (list) => {
-      const next = { ...locationOrder }
-      list.forEach((id, index) => { next[id] = index })
-      return next
+    const rows = Array.from(
+      document.querySelectorAll(`[data-location-row][data-location-branch="${sucursalKey}"][data-location-saved="1"]`)
+    ).map((element) => ({
+      uid: element.getAttribute('data-location-row'),
+      subdivisionId: element.getAttribute('data-location-sub'),
+      rect: element.getBoundingClientRect(),
+    }))
+    if (rows.length < 2) return
+    const fromIndex = rows.findIndex((row) => row.uid === location.uid)
+    if (fromIndex < 0) return
+    const rect = rows[fromIndex].rect
+    const others = rows.filter((row) => row.uid !== location.uid)
+    const offsetY = event.clientY - rect.top
+    // Mismas columnas que la tabla, para que la fila levantada calce con ella.
+    const gridTemplateColumns = window.getComputedStyle(rowElement).gridTemplateColumns
+    const minTop = rows[0].rect.top - rect.height / 2
+    const maxTop = rows[rows.length - 1].rect.bottom - rect.height / 2
+
+    const computeState = (clientY) => {
+      const insertIndex = others.filter((row) => row.rect.top + row.rect.height / 2 < clientY).length
+      const indicatorTop = insertIndex === 0 ? others[0].rect.top : others[insertIndex - 1].rect.bottom
+      return {
+        uid: location.uid,
+        label: location,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+        gridTemplateColumns,
+        top: Math.min(maxTop, Math.max(minTop, clientY - offsetY)),
+        insertIndex,
+        // Sin linea si la fila quedaria donde ya esta.
+        indicatorTop: insertIndex === fromIndex ? null : indicatorTop,
+      }
     }
-    dragOrderRef.current = {
-      ids: initialIds,
-      sucursalId: sucursalKey,
-      dragged: String(location.subdivisionId),
-      preview: toOrder(initialIds),
-    }
-    setDragState({ uid: location.uid, sucursalId: sucursalKey, step: 0 })
+    let current = computeState(event.clientY)
+    setDragState(current)
+    document.body.classList.add('inventario-editor--dragging')
 
     const handleMove = (moveEvent) => {
-      const current = dragOrderRef.current
-      if (!current) return
-      const target = document
-        .elementFromPoint(moveEvent.clientX, moveEvent.clientY)
-        ?.closest?.('[data-location-sub]')
-      if (!target || target.getAttribute('data-location-branch') !== current.sucursalId) return
-      const overId = target.getAttribute('data-location-sub')
-      if (!overId || overId === current.dragged || !current.ids.includes(overId)) return
-      const draggedIndex = current.ids.indexOf(current.dragged)
-      const overIndex = current.ids.indexOf(overId)
-      const next = current.ids.filter((id) => id !== current.dragged)
-      next.splice(next.indexOf(overId) + (draggedIndex < overIndex ? 1 : 0), 0, current.dragged)
-      current.ids = next
-      current.preview = toOrder(next)
-      setDragState((prev) => (prev ? { ...prev, step: (prev.step || 0) + 1 } : prev))
+      current = computeState(moveEvent.clientY)
+      setDragState(current)
     }
     const handleUp = () => {
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
       window.removeEventListener('pointercancel', handleUp)
-      const current = dragOrderRef.current
-      dragOrderRef.current = null
+      document.body.classList.remove('inventario-editor--dragging')
       setDragState(null)
-      if (!current || current.ids.join(',') === initialIds.join(',')) return
+      if (current.insertIndex === fromIndex) return
+      const nextIds = others.map((row) => row.subdivisionId)
+      nextIds.splice(current.insertIndex, 0, rows[fromIndex].subdivisionId)
       const previousOrder = locationOrder
-      setLocationOrder(current.preview)
-      void saveBranchOrder(current.sucursalId, current.ids, previousOrder)
+      const nextOrder = { ...locationOrder }
+      nextIds.forEach((id, index) => { nextOrder[id] = index })
+      flipFromRef.current = new Map(rows.map((row) => [row.uid, row.rect.top]))
+      setLocationOrder(nextOrder)
+      void saveBranchOrder(sucursalKey, nextIds, previousOrder)
     }
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp)
     window.addEventListener('pointercancel', handleUp)
-  }, [canManageBranchLocation, locationOrder, locations, orderLocations, orderSaving, saveBranchOrder])
+  }, [canManageBranchLocation, locationOrder, orderSaving, saveBranchOrder])
 
   if (!branches.length) {
     return (
@@ -1473,6 +1518,38 @@ const InventarioEditor = forwardRef(function InventarioEditor(
             </div>
           )}
 
+          {dragState && createPortal(
+            <>
+              {dragState.indicatorTop !== null && (
+                <div
+                  className="inventario-editor__drop-line"
+                  style={{ top: dragState.indicatorTop - 2, left: dragState.left, width: dragState.width }}
+                />
+              )}
+              <div
+                className="inventario-editor__drag-ghost"
+                style={{
+                  top: dragState.top,
+                  left: dragState.left,
+                  width: dragState.width,
+                  height: dragState.height,
+                  gridTemplateColumns: dragState.gridTemplateColumns,
+                }}
+              >
+                <span className="inventario-editor__drag-ghost-branch">
+                  <GripVertical size={18} />
+                  {dragState.label?.sucursalNombre}
+                </span>
+                <span>{dragState.label?.bodegaNombre}</span>
+                <span>{dragState.label?.divisionNombre}</span>
+                <span>{dragState.label?.subdivisionNombre}</span>
+                <span className="inventario-editor__drag-ghost-qty">{dragState.label?.cantidad}</span>
+                <span />
+              </div>
+            </>,
+            getPortalHost()
+          )}
+
           {sortedLocations.map((location) => {
             const canManageRow = canManageBranchLocation(location.sucursalId)
             const canInlineEdit = !editorDisabled && canInlineEditBranchLocation(location.sucursalId)
@@ -1672,45 +1749,41 @@ const InventarioEditor = forwardRef(function InventarioEditor(
             return (
               <Fragment key={location.uid}>
                 <div
-                  className={`create-user__locations-row${dragState?.uid === location.uid ? ' inventario-editor__row--dragging' : ''}`}
+                  className={`create-user__locations-row inventario-editor__row${dragState?.uid === location.uid ? ' inventario-editor__row--placeholder' : ''}`}
+                  data-location-row={location.uid}
                   data-location-sub={String(location.subdivisionId || '')}
                   data-location-branch={String(location.sucursalId || '')}
+                  data-location-saved={isSavedLocation(location) ? '1' : '0'}
                 >
                   <span data-label="Sucursal" className="inventario-editor__branch-cell">
-                    {(() => {
-                      const position = positionByUid.get(location.uid) ?? 0
-                      const canReorder = isSavedLocation(location) && canManageRow && !orderSaving
-                      const isPrincipal = position === 0
-                      const principalLow = isPrincipal && Number(location.cantidad || 0) <= 1
-                      return (
-                        <span className="inventario-editor__order">
-                          <button
-                            type="button"
-                            className="inventario-editor__drag-handle"
-                            onPointerDown={(event) => handleDragHandlePointerDown(event, location)}
-                            disabled={!canReorder}
-                            aria-label="Arrastrar para cambiar el orden (la primera es la principal)"
-                            title={canReorder ? 'Arrastra para ordenar: la primera de la sucursal es la principal' : undefined}
-                          >
-                            <GripVertical size={16} />
-                          </button>
-                          <span
-                            className={`inventario-editor__order-badge${isPrincipal ? ' inventario-editor__order-badge--principal' : ''}${principalLow ? ' inventario-editor__order-badge--low' : ''}`}
-                            title={principalLow ? 'Ubicacion principal con poco stock' : undefined}
-                          >
-                            {isPrincipal ? 'Principal' : `${position + 1}`}
-                          </span>
-                        </span>
-                      )
-                    })()}
-                    {canInlineEdit
-                      ? makeDropdown('sucursal', location.sucursalNombre || 'Sucursal', branches, (b) => b.nombre || `Sucursal ${b.id}`, (b) => b.id, false)
-                      : location.sucursalNombre}
+                    {(countBySucursal.get(String(location.sucursalId || '')) || 0) > 1 ? (
+                      <button
+                        type="button"
+                        className="inventario-editor__drag-handle"
+                        onPointerDown={(event) => handleDragHandlePointerDown(event, location)}
+                        disabled={!(isSavedLocation(location) && canManageRow && !orderSaving)}
+                        aria-label="Arrastrar para ordenar (la primera de la sucursal es la principal)"
+                        title="Arrastra para ordenar: la primera de la sucursal es la principal"
+                      >
+                        <GripVertical size={18} />
+                      </button>
+                    ) : anyBranchReorderable ? (
+                      <span className="inventario-editor__drag-spacer" aria-hidden="true" />
+                    ) : null}
+                    <span className="inventario-editor__branch-name">
+                      {canInlineEdit
+                        ? makeDropdown('sucursal', location.sucursalNombre || 'Sucursal', branches, (b) => b.nombre || `Sucursal ${b.id}`, (b) => b.id, false)
+                        : location.sucursalNombre}
+                    </span>
                   </span>
-                  <span data-label="Bodega">
+                  <span data-label="Bodega" className="inventario-editor__bodega-cell">
                     {canInlineEdit
                       ? makeDropdown('bodega', location.bodegaNombre || 'Bodega', rowBodegas, (b) => b.nombre || `Bodega ${b.id}`, (b) => b.id, !location.sucursalId, isBodegaFullyUsed)
-                      : location.bodegaNombre}
+                      : <span>{location.bodegaNombre}</span>}
+                    {(positionByUid.get(location.uid) ?? 0) === 0 &&
+                      (countBySucursal.get(String(location.sucursalId || '')) || 0) > 1 && (
+                      <span className="inventario-editor__principal-tag">Principal</span>
+                    )}
                   </span>
                   <span data-label="Division">
                     {canInlineEdit
