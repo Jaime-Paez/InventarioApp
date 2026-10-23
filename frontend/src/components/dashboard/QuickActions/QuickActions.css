@@ -1421,6 +1421,25 @@
   border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
 }
 
+/* "Por ubicar": recibir sin ubicacion y guardarlo despues en "Por ubicar". */
+.quick-actions__receive-dropdown-option--por-ubicar {
+  display: grid;
+  gap: 2px;
+  border-style: dashed;
+  border-color: color-mix(in srgb, #d97706 45%, var(--color-border));
+  background: color-mix(in srgb, #d97706 8%, var(--color-surface));
+}
+
+.quick-actions__receive-dropdown-option--por-ubicar small {
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+}
+
+.quick-actions__receive-dropdown-option--por-ubicar:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #d97706 65%, var(--color-border));
+  background: color-mix(in srgb, #d97706 14%, var(--color-surface));
+}
+
 .quick-actions__receive-location-add-btn {
   border: 1px solid color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
   border-radius: 8px;

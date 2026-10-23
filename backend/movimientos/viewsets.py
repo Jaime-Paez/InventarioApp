@@ -4740,6 +4740,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     for loc in (data.get("ubicaciones") or [])
                     if isinstance(loc, dict) and loc.get("subdivision_id") and loc.get("cantidad") is not None
                 ],
+                # Eligio "Por ubicar": se recibe sin ubicacion y se guarda despues.
+                "por_ubicar": bool(data.get("por_ubicar", False)),
             }
 
         # Nota general del envio ("hay una novedad general" + texto): tambien
