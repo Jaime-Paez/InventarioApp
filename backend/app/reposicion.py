@@ -26,7 +26,7 @@ import math
 import time
 from statistics import NormalDist
 
-from django.db.models import Avg, Max, Sum
+from django.db.models import Avg, Count, Max, Sum
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -90,9 +90,10 @@ def _supplier_leadtimes(config):
             if casa.tipo == CasaComercial.TIPO_IMPORTACION
             else config.proveedor_local_dias
         )
-        # Estimado: el de sus importaciones o el "dias de entrega" del proveedor.
+        # Estimado: el "dias de entrega" configurado en el proveedor o, si no
+        # tiene, el promedio estimado de sus importaciones.
         own_estimate = float(casa.dias_entrega) if getattr(casa, "dias_entrega", None) else None
-        estimate = estimated.get(int(casa.id)) or own_estimate
+        estimate = own_estimate or estimated.get(int(casa.id))
         result[int(casa.id)] = {
             "dias": real.get(int(casa.id)) or estimate or float(default),
             "fuente": "proveedor" if int(casa.id) in real else ("estimado" if estimate else "defecto"),
@@ -800,7 +801,37 @@ def _serialize_config(config):
             for field, (cast, _low, _high) in CONFIG_FIELDS.items()}
     data["sucursal_central_id"] = _central_branch_id(config)
     data["sucursales"] = [{"id": int(s.id), "nombre": s.nombre} for s in Sucursal.objects.order_by("nombre")]
+    data["proveedores"] = _serialize_supplier_leadtimes(config)
     return data
+
+
+def _serialize_supplier_leadtimes(config):
+    """Tiempo de entrega de cada casa comercial: el que usa el modelo, su
+    fuente, el promedio real de sus importaciones y el estimado editable."""
+    from casa_comercial.models import CasaComercial
+    from importaciones.models import Importacion
+
+    real_count = {
+        int(row["casa_comercial_id"]): int(row["total"])
+        for row in Importacion.objects.filter(dias_reales_entrega__gt=0)
+        .values("casa_comercial_id")
+        .annotate(total=Count("id"))
+        if row["casa_comercial_id"]
+    }
+    leadtimes = _supplier_leadtimes(config)
+    result = []
+    for casa in CasaComercial.objects.order_by("nombre").only("id", "nombre", "tipo", "dias_entrega"):
+        usado = leadtimes.get(int(casa.id)) or {}
+        result.append({
+            "id": int(casa.id),
+            "nombre": casa.nombre,
+            "tipo": casa.tipo,
+            "dias_entrega": casa.dias_entrega,
+            "importaciones_reales": real_count.get(int(casa.id), 0),
+            "dias_usados": round(float(usado.get("dias") or 0), 1),
+            "fuente": usado.get("fuente") or "defecto",
+        })
+    return result
 
 
 class ReposicionConfigAPIView(APIView):
@@ -841,6 +872,30 @@ class ReposicionConfigAPIView(APIView):
                 if sucursal is None:
                     return Response({"detail": "Sucursal central invalida."}, status=status.HTTP_400_BAD_REQUEST)
                 config.sucursal_central = sucursal
+        # Dias de entrega estimados por proveedor: {casa_comercial_id: dias | null}.
+        supplier_days = {}
+        raw_suppliers = request.data.get("proveedores_dias") or {}
+        if not isinstance(raw_suppliers, dict):
+            return Response({"detail": "proveedores_dias debe ser un objeto."}, status=status.HTTP_400_BAD_REQUEST)
+        for raw_id, raw_days in raw_suppliers.items():
+            try:
+                casa_id = int(raw_id)
+                days = None if raw_days in (None, "") else int(float(raw_days))
+            except (TypeError, ValueError):
+                return Response({"detail": "Dias de entrega de proveedor invalidos."}, status=status.HTTP_400_BAD_REQUEST)
+            if days is not None and (days < 0 or days > 365):
+                return Response(
+                    {"detail": "Los dias de entrega del proveedor deben estar entre 0 y 365."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            supplier_days[casa_id] = days or None
         config.save()
+        if supplier_days:
+            from casa_comercial.models import CasaComercial
+
+            for casa in CasaComercial.objects.filter(pk__in=supplier_days.keys()):
+                if casa.dias_entrega != supplier_days[int(casa.id)]:
+                    casa.dias_entrega = supplier_days[int(casa.id)]
+                    casa.save(update_fields=["dias_entrega"])
         _CACHE["key"] = None
         return Response(_serialize_config(config))

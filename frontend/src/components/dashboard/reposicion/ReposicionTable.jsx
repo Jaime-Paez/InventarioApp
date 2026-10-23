@@ -57,6 +57,8 @@ const POLITICA_LABEL = {
   sin_demanda: '—',
 }
 
+const FUENTE_LABEL = { proveedor: 'real', estimado: 'estimado', defecto: 'por defecto' }
+
 const CONFIG_FIELDS = [
   { key: 'ventana_dias', label: 'Historia de ventas (días)', hint: 'Días usados para calcular la venta diaria μ y su variación σ.' },
   { key: 'nivel_servicio_a', label: 'Nivel de servicio A (%)', hint: 'Probabilidad de no quedarse sin stock. 97,7% → z = 2.' },
@@ -66,8 +68,8 @@ const CONFIG_FIELDS = [
   { key: 'corte_b', label: 'Corte clase B (% del valor)' },
   { key: 'revision_dias', label: 'Revisión periódica r (días)', hint: 'Cada cuánto se revisan los productos C.' },
   { key: 'traslado_dias', label: 'Entrega por traslado (días)', hint: 'Tiempo L de las sucursales que se abastecen de la central.' },
-  { key: 'proveedor_local_dias', label: 'Entrega proveedor local (días)', hint: 'L por defecto si el proveedor no tiene historia.' },
-  { key: 'proveedor_importacion_dias', label: 'Entrega importación (días)' },
+  { key: 'proveedor_local_dias', label: 'Entrega proveedor local por defecto (días)', hint: 'Solo para proveedores locales sin días reales ni estimados.' },
+  { key: 'proveedor_importacion_dias', label: 'Entrega importación por defecto (días)', hint: 'Solo para proveedores de importación sin días reales ni estimados.' },
   { key: 'costo_pedido', label: 'Costo por pedido ($)', hint: 'Para la cantidad económica de pedido (EOQ).' },
   { key: 'costo_mantener_pct', label: 'Costo de mantener (% anual)' },
   { key: 'max_dias_pedido', label: 'Pedido máximo (días de venta)', hint: 'Tope de la cantidad Q.' },
@@ -139,6 +141,7 @@ function ReposicionTable({ token }) {
   const [config, setConfig] = useState(null)
   const [configDraft, setConfigDraft] = useState(null)
   const [configSaving, setConfigSaving] = useState(false)
+  const [proveedorSearch, setProveedorSearch] = useState('')
   const [exporting, setExporting] = useState('')
   const requestRef = useRef(0)
 
@@ -191,8 +194,13 @@ function ReposicionTable({ token }) {
 
   const openConfig = async () => {
     try {
-      const current = config || await loadConfig()
-      setConfigDraft({ ...current })
+      // Siempre fresco: los dias por proveedor cambian con cada importacion.
+      const current = await loadConfig()
+      setProveedorSearch('')
+      setConfigDraft({
+        ...current,
+        proveedores_dias: Object.fromEntries((current.proveedores || []).map((p) => [p.id, p.dias_entrega ?? ''])),
+      })
     } catch (err) {
       toast.current?.show({ severity: 'error', summary: 'Configuración', detail: err.message, life: 3500 })
     }
@@ -205,6 +213,13 @@ function ReposicionTable({ token }) {
       const body = {}
       CONFIG_FIELDS.forEach(({ key }) => { body[key] = configDraft[key] })
       body.sucursal_central_id = configDraft.sucursal_central_id || ''
+      // Solo los proveedores cuyo estimado cambio.
+      const proveedoresDias = {}
+      ;(configDraft.proveedores || []).forEach((p) => {
+        const value = configDraft.proveedores_dias?.[p.id] ?? ''
+        if (String(value) !== String(p.dias_entrega ?? '')) proveedoresDias[p.id] = value
+      })
+      if (Object.keys(proveedoresDias).length) body.proveedores_dias = proveedoresDias
       const response = await authFetch(
         `${API_URL}/reposicion/configuracion/`,
         { method: 'PATCH', body: JSON.stringify(body) },
@@ -354,20 +369,6 @@ function ReposicionTable({ token }) {
               aria-label="Buscar producto"
             />
           </label>
-          <div className="reposicion__actions-right">
-            <button type="button" className="reposicion__btn reposicion__btn--primary" onClick={() => setImportOpen(true)}>
-              <PackagePlus size={14} />
-              Sugerencia de importación
-            </button>
-            <button type="button" className="reposicion__btn" onClick={() => void load({ recalcular: true })} disabled={loading}>
-              <RefreshCw size={14} className={loading ? 'is-spinning' : undefined} />
-              Recalcular
-            </button>
-            <button type="button" className="reposicion__btn" onClick={() => void openConfig()}>
-              <Settings size={14} />
-              Configuración
-            </button>
-          </div>
         </div>
       </div>
 
@@ -375,7 +376,7 @@ function ReposicionTable({ token }) {
         {resumen && (
           <section className="reposicion__summary" aria-label="Inventario por causa">
             <div className="reposicion__summary-head">
-              <div>
+              <div className="reposicion__summary-title">
                 <h4>Inventario por causa</h4>
                 <p>
                   {`Valor a costo${sucursalId ? '' : ' de todas las sucursales'} · ventas de los últimos ${data?.meta?.ventana_dias || '-'} días · central: ${data?.meta?.sucursal_central_nombre || '-'}`}
@@ -399,11 +400,9 @@ function ReposicionTable({ token }) {
                 return (
                   <div key={causa.key} className="reposicion__cause" tabIndex={0} {...hintProps(causaInfo(causa.key, cfg))}>
                     <span className={`reposicion__dot is-${causa.key}`} />
-                    <div>
-                      <small>{causa.label}</small>
-                      <strong>{money(value)}</strong>
-                      <em>{totalCausas ? `${((value / totalCausas) * 100).toFixed(1)}%` : '0%'}</em>
-                    </div>
+                    <small>{causa.label}</small>
+                    <strong>{money(value)}</strong>
+                    <em>{totalCausas ? `${((value / totalCausas) * 100).toFixed(1)}%` : '0%'}</em>
                   </div>
                 )
               })}
@@ -415,6 +414,29 @@ function ReposicionTable({ token }) {
           <div className="reposicion__table-toolbar">
             <span className="reposicion__filters-text">{filtroTexto()}</span>
             <div className="users-header__right">
+              <button type="button" className="reposicion__btn reposicion__btn--primary" onClick={() => setImportOpen(true)}>
+                <PackagePlus size={14} />
+                Sugerencia de importación
+              </button>
+              <button
+                type="button"
+                className="reposicion__btn reposicion__btn--icon"
+                onClick={() => void load({ recalcular: true })}
+                disabled={loading}
+                title="Recalcular"
+                aria-label="Recalcular"
+              >
+                <RefreshCw size={14} className={loading ? 'is-spinning' : undefined} />
+              </button>
+              <button
+                type="button"
+                className="reposicion__btn reposicion__btn--icon"
+                onClick={() => void openConfig()}
+                title="Configuración"
+                aria-label="Configuración"
+              >
+                <Settings size={14} />
+              </button>
               <span className="users-header__count">{`Reg. ${stale ? '…' : Number(data?.count || 0)}`}</span>
               <button
                 className="users-circle users-circle--excel"
@@ -587,6 +609,86 @@ function ReposicionTable({ token }) {
                   {field.hint && <small>{field.hint}</small>}
                 </label>
               ))}
+              <section className="reposicion__suppliers reposicion__field--wide" aria-label="Días de entrega por proveedor">
+                <div className="reposicion__suppliers-head">
+                  <div>
+                    <span>Días de entrega por proveedor</span>
+                    <small>
+                      El modelo usa el promedio real de sus importaciones recibidas; si no hay, el estimado de aquí;
+                      si está vacío, el valor por defecto de arriba.
+                    </small>
+                  </div>
+                  <label className="reposicion__search">
+                    <Search size={14} aria-hidden="true" />
+                    <input
+                      type="search"
+                      value={proveedorSearch}
+                      onChange={(event) => setProveedorSearch(event.target.value)}
+                      placeholder="Buscar proveedor"
+                      aria-label="Buscar proveedor"
+                    />
+                  </label>
+                </div>
+                {(configDraft.proveedores || []).length === 0 ? (
+                  <p className="reposicion__suppliers-empty">
+                    No hay casas comerciales registradas. Créalas en Casas comerciales para configurar sus días de entrega.
+                  </p>
+                ) : (
+                  <div className="reposicion__suppliers-wrap">
+                    <table className="reposicion__suppliers-table">
+                      <thead>
+                        <tr>
+                          <th>Proveedor</th>
+                          <th>Tipo</th>
+                          <th className="is-num" title="Promedio de días reales de sus importaciones recibidas">Real</th>
+                          <th className="is-num">Estimado (días)</th>
+                          <th className="is-num" title="Días que usa hoy el cálculo">Usa</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(configDraft.proveedores || [])
+                          .filter((p) => !proveedorSearch.trim() || p.nombre.toLowerCase().includes(proveedorSearch.trim().toLowerCase()))
+                          .map((p) => {
+                            const hasReal = p.importaciones_reales > 0
+                            return (
+                              <tr key={p.id}>
+                                <td>{p.nombre}</td>
+                                <td>{p.tipo === 'importacion' ? 'Importación' : 'Local'}</td>
+                                <td className="is-num">
+                                  {hasReal ? `${p.dias_usados} d` : '—'}
+                                  {hasReal && <small>{` (${p.importaciones_reales} imp.)`}</small>}
+                                </td>
+                                <td className="is-num">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="365"
+                                    step="1"
+                                    value={configDraft.proveedores_dias?.[p.id] ?? ''}
+                                    placeholder={String(p.tipo === 'importacion' ? cfg.proveedor_importacion_dias ?? '' : cfg.proveedor_local_dias ?? '')}
+                                    title={hasReal ? 'Tiene días reales: el estimado solo se usará si no los tuviera.' : undefined}
+                                    onChange={(event) => {
+                                      const value = event.target.value
+                                      setConfigDraft((prev) => ({
+                                        ...prev,
+                                        proveedores_dias: { ...prev.proveedores_dias, [p.id]: value },
+                                      }))
+                                    }}
+                                  />
+                                </td>
+                                <td className="is-num">
+                                  <span className={`reposicion__source is-${p.fuente}`}>
+                                    {`${p.dias_usados} d · ${FUENTE_LABEL[p.fuente] || p.fuente}`}
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
             </div>
             <footer>
               <button type="button" className="reposicion__btn" onClick={() => setConfigDraft(null)} disabled={configSaving}>Cancelar</button>

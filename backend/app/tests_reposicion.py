@@ -207,6 +207,36 @@ class ReposicionTests(TestCase):
         # Las demas sucursales: traslado desde la central.
         self.assertEqual(rows[(self.norte.id, "RAP")]["fuente_entrega"], "traslado")
 
+    def test_dias_de_entrega_editables_por_proveedor(self):
+        from casa_comercial.models import CasaComercial
+
+        casa = CasaComercial.objects.create(nombre="LOCAL", codigo="LOC", tipo=CasaComercial.TIPO_LOCAL)
+        self.rapido.casas_comerciales.add(casa)
+        response = self.client_admin.get("/reposicion/configuracion/")
+        proveedor = next(p for p in response.data["proveedores"] if p["id"] == casa.id)
+        self.assertEqual(proveedor["fuente"], "defecto")
+        self.assertEqual(proveedor["dias_usados"], 3.0)
+
+        response = self.client_admin.patch(
+            "/reposicion/configuracion/", {"proveedores_dias": {str(casa.id): 8}}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        casa.refresh_from_db()
+        self.assertEqual(casa.dias_entrega, 8)
+        proveedor = next(p for p in response.data["proveedores"] if p["id"] == casa.id)
+        self.assertEqual((proveedor["dias_usados"], proveedor["fuente"]), (8.0, "estimado"))
+        rows, _ = self._rows()
+        self.assertEqual(rows[(self.matriz.id, "RAP")]["dias_entrega"], 8.0)
+
+        # Vaciarlo vuelve al valor por defecto del tipo de proveedor.
+        self.client_admin.patch("/reposicion/configuracion/", {"proveedores_dias": {str(casa.id): ""}}, format="json")
+        casa.refresh_from_db()
+        self.assertIsNone(casa.dias_entrega)
+        bad = self.client_admin.patch(
+            "/reposicion/configuracion/", {"proveedores_dias": {str(casa.id): 900}}, format="json"
+        )
+        self.assertEqual(bad.status_code, 400)
+
     def test_sugerencia_de_importacion_por_proveedor(self):
         from casa_comercial.models import CasaComercial
         from importaciones.models import Importacion, ImportacionDetalle
