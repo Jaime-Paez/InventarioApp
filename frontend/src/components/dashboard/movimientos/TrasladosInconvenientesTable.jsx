@@ -2337,6 +2337,11 @@ function TrasladosInconvenientesTable({
     if (!isActiveIssue(item) || hasDraftDecision(drafts[item.row_key])) section.done += 1
     else section.pending += 1
   })
+  // Los ya aplicados van al final para tener los pendientes arriba. Los que solo
+  // tienen borrador no se mueven: la fila saltaria mientras se elige la opcion.
+  branchSections.forEach((section) => {
+    section.items.sort((a, b) => Number(!isActiveIssue(a)) - Number(!isActiveIssue(b)))
+  })
 
   return (
     <div className="users-page transfer-issues-page">
