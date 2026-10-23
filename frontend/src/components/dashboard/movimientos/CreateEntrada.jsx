@@ -3167,7 +3167,7 @@ function CreateEntrada({
         emitRemindersSync()
       }
 
-      onCreated?.(data)
+      onCreated?.(data, { isCompraLocal: isCompraEntrada })
       return true
       } catch (err) {
         notifyError(err.message || 'Ocurrió un error al crear la entrada.')
@@ -3192,6 +3192,7 @@ function CreateEntrada({
       formData.sucursalId,
       formData.sucursalObjetivoId,
       formData.subTipoId,
+      isCompraEntrada,
       isDevolucion,
       isVenta,
       notifyError,

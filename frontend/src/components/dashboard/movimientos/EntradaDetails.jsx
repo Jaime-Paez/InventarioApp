@@ -418,6 +418,7 @@ function EntradaDetails({
   cancellingTransfer = false,
   onResubmitTransfer,
   resubmittingTransfer = false,
+  onDistribuirCompra,
 }) {
   const [formData, setFormData] = useState(emptyForm)
   const [creatorInfo, setCreatorInfo] = useState({
@@ -4042,6 +4043,16 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                     </button>
                   )}
                 </>
+              )}
+              {!isEditing && !hasPreviewData && selectedSubTipoName.includes('compra') && typeof onDistribuirCompra === 'function' && (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={() => onDistribuirCompra(entradaId)}
+                  disabled={loadingData}
+                >
+                  Enviar a sucursales
+                </button>
               )}
               {isPreviewGuardadoSolicitud && effectiveAllowEdit && !isRejectedSolicitudRibbon && (
                 <button

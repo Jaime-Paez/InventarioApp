@@ -1480,6 +1480,16 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 {"detail": "Este registro fue migrado del sistema anterior y no se puede eliminar."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if instance.envios_compra.exists():
+            return Response(
+                {
+                    "detail": (
+                        "Esta compra local ya se envio a otras sucursales, asi que no se puede eliminar. "
+                        "Si hubo un error, corrigelo con un ajuste de inventario en cada sucursal."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         inventory_action = str(
             request.query_params.get("inventory_action") or "keep"
         ).strip().lower()
@@ -2676,6 +2686,211 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 updated.append(item)
             store.payload = _normalize_reminder_list(updated)
             store.save(update_fields=["payload", "updated_at"])
+
+    def _compra_local_distribucion_payload(self, instance):
+        enviado = {}
+        envios = []
+        for envio in instance.envios_compra.select_related("sucursal").prefetch_related("detalles"):
+            items = []
+            for detalle in envio.detalles.all():
+                pid = int(detalle.producto_id)
+                enviado[pid] = enviado.get(pid, 0) + int(detalle.cantidad or 0)
+                items.append({"producto_id": pid, "cantidad": int(detalle.cantidad or 0)})
+            envios.append(
+                {
+                    "id": int(envio.id),
+                    "sucursal_id": int(envio.sucursal_id),
+                    "sucursal_nombre": str(envio.sucursal.nombre or "").strip(),
+                    "estado": envio.estado,
+                    "llegada_confirmada": bool(envio.llegada_confirmada_en),
+                    "fecha": envio.fecha,
+                    "detalles": items,
+                }
+            )
+        comprado = {}
+        productos = {}
+        for detalle in instance.detalles.select_related("producto"):
+            if not detalle.producto_id:
+                continue
+            pid = int(detalle.producto_id)
+            comprado[pid] = comprado.get(pid, 0) + int(detalle.cantidad or 0)
+            productos[pid] = detalle.producto
+        return {
+            "sucursal_id": int(instance.sucursal_id),
+            "sucursal_nombre": str(getattr(instance.sucursal, "nombre", "") or "").strip(),
+            "no_documento": str(instance.no_documento or "").strip(),
+            "productos": [
+                {
+                    "producto_id": pid,
+                    "codigo": str(productos[pid].codigo or "").strip(),
+                    "nombre": str(productos[pid].nombre or "").strip(),
+                    "cantidad": cantidad,
+                    "enviado": enviado.get(pid, 0),
+                }
+                for pid, cantidad in comprado.items()
+            ],
+            "envios": envios,
+            "borrador": instance.borrador_distribucion or {},
+        }
+
+    @action(detail=True, methods=["get", "post", "patch"], url_path="distribucion-compra")
+    def distribucion_compra(self, request, pk=None):
+        """Reparte una compra local a otras sucursales, como el paso de
+        distribucion de una importacion: lo enviado sale del stock de la
+        sucursal de la compra y llega a cada sucursal como un envio que se
+        recibe igual que el de una importacion (Envios pendientes -> confirmar
+        llegada -> Por ubicar -> terminar conteo).
+
+        POST body: {distribuciones: [{producto_id, sucursal_id, cantidad}],
+        destinatarios_por_sucursal: [{sucursal_id, user_ids}]}.
+        PATCH body: {borrador: {...}}: guarda el reparto a medio hacer.
+        """
+        from importaciones.models import ImportacionEnvio, ImportacionEnvioDetalle
+        from importaciones.viewsets import create_envio_reminder
+
+        from .serializers import MovimientoInventarioSerializer
+
+        instance = self.get_object()
+        helper = MovimientoInventarioSerializer(context=self.get_serializer_context())
+        is_compra_local = (
+            helper._resolve_subtipo_key(instance.sub_tipo_movimiento) == "compra_local"
+            and helper._entry_adds_stock(instance)
+            and not instance.es_legado
+        )
+        if not is_compra_local:
+            return Response(
+                {"detail": "Solo una compra local ya recibida se puede enviar a otras sucursales."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if request.method == "GET":
+            return Response(self._compra_local_distribucion_payload(instance), status=status.HTTP_200_OK)
+        if request.method == "PATCH":
+            borrador = request.data.get("borrador")
+            instance.borrador_distribucion = borrador if isinstance(borrador, dict) else {}
+            instance.save(update_fields=["borrador_distribucion"])
+            return Response({"borrador": instance.borrador_distribucion}, status=status.HTTP_200_OK)
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+            instance.sucursal_id,
+            field_label="sucursal",
+            action_key="puede_crear",
+        )
+
+        por_sucursal = {}
+        for raw in request.data.get("distribuciones") or []:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                producto_id = int(raw.get("producto_id") or 0)
+                sucursal_id = int(raw.get("sucursal_id") or 0)
+                cantidad = int(raw.get("cantidad") or 0)
+            except (TypeError, ValueError):
+                continue
+            if producto_id <= 0 or sucursal_id <= 0 or cantidad <= 0:
+                continue
+            if sucursal_id == int(instance.sucursal_id):
+                continue
+            items = por_sucursal.setdefault(sucursal_id, {})
+            items[producto_id] = items.get(producto_id, 0) + cantidad
+        if not por_sucursal:
+            return Response(
+                {"detail": "Indica cuantas unidades van a otra sucursal."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sucursales = {s.id: s for s in Sucursal.objects.filter(id__in=sorted(por_sucursal))}
+        faltan = sorted(set(por_sucursal) - set(sucursales))
+        if faltan:
+            return Response(
+                {"detail": "Una o mas sucursales destino no existen."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            # Bloquea la compra: dos repartos a la vez no pueden pasarse de lo comprado.
+            MovimientoInventario.objects.select_for_update().filter(pk=instance.pk).first()
+            payload = self._compra_local_distribucion_payload(instance)
+            productos = {item["producto_id"]: item for item in payload["productos"]}
+            a_enviar = {}
+            for items in por_sucursal.values():
+                for producto_id, cantidad in items.items():
+                    a_enviar[producto_id] = a_enviar.get(producto_id, 0) + cantidad
+
+            errores = []
+            for producto_id, cantidad in a_enviar.items():
+                producto = productos.get(producto_id)
+                if producto is None:
+                    errores.append(f"El producto {producto_id} no esta en esta compra.")
+                    continue
+                disponible = producto["cantidad"] - producto["enviado"]
+                if cantidad > disponible:
+                    errores.append(
+                        f"{producto['codigo']}: quieres enviar {cantidad} pero de esta compra quedan {max(0, disponible)} por repartir."
+                    )
+                    continue
+                en_sucursal = (
+                    Inventario.objects.filter(
+                        producto_id=producto_id,
+                        subdivision__division__bodega__sucursal_id=instance.sucursal_id,
+                    ).aggregate(total=Coalesce(Sum("cantidad"), 0))["total"]
+                    or 0
+                )
+                if cantidad > en_sucursal:
+                    errores.append(
+                        f"{producto['codigo']}: quieres enviar {cantidad} pero en {payload['sucursal_nombre']} hay {en_sucursal}."
+                    )
+            if errores:
+                transaction.set_rollback(True)
+                return Response({"detail": " ".join(errores)}, status=status.HTTP_400_BAD_REQUEST)
+
+            stock_reductions = {}
+            for producto_id, cantidad in a_enviar.items():
+                helper._adjust_stock(instance.sucursal, producto_id, -cantidad)
+                stock_reductions.setdefault(int(instance.sucursal_id), set()).add(producto_id)
+            for sucursal_id, items in por_sucursal.items():
+                envio = ImportacionEnvio.objects.create(compra_local=instance, sucursal_id=sucursal_id)
+                ImportacionEnvioDetalle.objects.bulk_create(
+                    [
+                        ImportacionEnvioDetalle(envio=envio, producto_id=producto_id, cantidad=cantidad)
+                        for producto_id, cantidad in items.items()
+                    ]
+                )
+            helper._reject_pending_transfers_due_to_stock_changes(stock_reductions)
+            instance.borrador_distribucion = {}
+            instance.save(update_fields=["borrador_distribucion"])
+
+        label = f"Compra local {str(instance.no_documento or '').strip()}".strip()
+        User = get_user_model()
+        for dest in request.data.get("destinatarios_por_sucursal") or []:
+            if not isinstance(dest, dict):
+                continue
+            try:
+                sucursal_id = int(dest.get("sucursal_id") or 0)
+            except (TypeError, ValueError):
+                continue
+            user_ids = [uid for uid in (dest.get("user_ids") or []) if uid]
+            if sucursal_id not in por_sucursal or not user_ids:
+                continue
+            recipients = [
+                {"id": str(u.pk), "name": f"{u.first_name} {u.last_name}".strip() or u.username}
+                for u in User.objects.filter(id__in=user_ids, is_active=True)
+            ]
+            create_envio_reminder(
+                recipients=recipients,
+                actor_user=request.user,
+                description=f"Hay un envío en camino de {label} hacia tu sucursal.",
+                context_type="entrada",
+                context_id=instance.pk,
+                label=label,
+                sucursal_id=sucursal_id,
+            )
+
+        instance.refresh_from_db()
+        response = self._compra_local_distribucion_payload(instance)
+        response[REMINDERS_SYNC_FLAG] = True
+        return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="aceptar-garantia")
     def aceptar_garantia(self, request, pk=None):

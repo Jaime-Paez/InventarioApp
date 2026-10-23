@@ -63,16 +63,64 @@ def get_matriz_sucursal():
     return Sucursal.objects.filter(nombre__icontains="matriz").order_by("id").first()
 
 
+def get_envio_origen_sucursal(envio):
+    """Sucursal de la que salio el envio: la de la compra local, o la matriz
+    si viene de una importacion."""
+    if envio.compra_local_id:
+        return envio.compra_local.sucursal
+    return get_matriz_sucursal()
+
+
+def create_envio_reminder(*, recipients, actor_user, description, context_type, context_id, label, sucursal_id):
+    """Recordatorio de un envio a sucursales (importacion o compra local)."""
+    if not recipients:
+        return
+    actor_name = f"{actor_user.first_name} {actor_user.last_name}".strip() or actor_user.username
+    actor = {"id": str(actor_user.pk), "name": actor_name}
+    now = timezone.localtime(timezone.now())
+    created_at = timezone.now().isoformat()
+    reminder = {
+        "id": str(uuid4()),
+        "date": now.strftime("%Y-%m-%d"),
+        "time": now.strftime("%H:%M"),
+        "description": description,
+        "creator": actor,
+        "recipients": recipients,
+        "context": {
+            "type": context_type,
+            "id": str(context_id),
+            "label": label,
+            "sucursal_destino_id": str(sucursal_id) if sucursal_id is not None else "",
+        },
+        "kind": "recordatorio_general",
+        "createdAt": created_at,
+        "decision": {"status": "enviado", "reason": "", "by": actor, "at": created_at, "assignedRecipients": []},
+        "transferHistory": [{"stage": "enviado", "label": "Enviado", "description": description, "at": created_at, "actor": actor}],
+        "completedBy": [],
+    }
+
+    with transaction.atomic():
+        store = ReminderState.get_global(for_update=True)
+        payload = store.payload if isinstance(store.payload, list) else []
+        payload.insert(0, reminder)
+        store.payload = payload
+        store.save(update_fields=["payload", "updated_at"])
+
+
 def create_envio_shortage_issues(envio, recibido_por_producto, *, actor=None, novedades=None):
     """Crea un inconveniente de FALTANTE por cada producto del envio a la
     sucursal que llego de menos. No duplica: si ya hay uno de este envio para
     ese producto, no crea otro. Devuelve los inconvenientes creados."""
     novedades = novedades or {}
     sucursal_nombre = str(getattr(envio.sucursal, "nombre", "") or "").strip() or f"sucursal {envio.sucursal_id}"
-    detalle_importacion_por_producto = {
-        int(detalle.producto_id): detalle
-        for detalle in envio.importacion.detalles.filter(producto_id__isnull=False)
-    }
+    detalle_importacion_por_producto = (
+        {
+            int(detalle.producto_id): detalle
+            for detalle in envio.importacion.detalles.filter(producto_id__isnull=False)
+        }
+        if envio.importacion_id
+        else {}
+    )
     marca = f"envio #{int(envio.id)}"
     creados = []
     for detalle in envio.detalles.select_related("producto"):
@@ -83,6 +131,7 @@ def create_envio_shortage_issues(envio, recibido_por_producto, *, actor=None, no
             continue
         ya_existe = ImportacionInconveniente.objects.filter(
             importacion_id=envio.importacion_id,
+            compra_local_id=envio.compra_local_id,
             producto_id=product_id,
             tipo=ImportacionInconveniente.Tipos.FALTANTE,
         ).filter(Q(envio_id=envio.id) | Q(motivo__icontains=marca)).exists()
@@ -93,6 +142,7 @@ def create_envio_shortage_issues(envio, recibido_por_producto, *, actor=None, no
         motivo = f"Faltante al recibir en {sucursal_nombre} ({marca})." + (f" Novedad: {novedad}" if novedad else "")
         inconveniente = ImportacionInconveniente.objects.create(
             importacion_id=envio.importacion_id,
+            compra_local_id=envio.compra_local_id,
             envio=envio,
             detalle=detalle_importacion_por_producto.get(product_id),
             producto_id=product_id,
@@ -538,12 +588,15 @@ class ImportacionViewSet(viewsets.ModelViewSet):
     def _envio_origin_payload(self, inconveniente):
         if not inconveniente.envio_id:
             return {"sucursal_origen_id": None, "sucursal_origen_nombre": ""}
-        if not hasattr(self, "_matriz_cache"):
-            self._matriz_cache = get_matriz_sucursal()
-        matriz = self._matriz_cache
-        if matriz is None or int(matriz.id) == int(inconveniente.envio.sucursal_id):
+        if inconveniente.envio.compra_local_id:
+            origen = inconveniente.envio.compra_local.sucursal
+        else:
+            if not hasattr(self, "_matriz_cache"):
+                self._matriz_cache = get_matriz_sucursal()
+            origen = self._matriz_cache
+        if origen is None or int(origen.id) == int(inconveniente.envio.sucursal_id):
             return {"sucursal_origen_id": None, "sucursal_origen_nombre": ""}
-        return {"sucursal_origen_id": int(matriz.id), "sucursal_origen_nombre": str(matriz.nombre or "").strip()}
+        return {"sucursal_origen_id": int(origen.id), "sucursal_origen_nombre": str(origen.nombre or "").strip()}
 
     def _serialize_importacion_inconveniente(self, inconveniente):
         historial_rows = list(
@@ -562,13 +615,17 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             }
             for row in historial_rows
         ]
+        origen_documento = inconveniente.compra_local if inconveniente.compra_local_id else inconveniente.importacion
 
         return {
             "id": int(inconveniente.id),
-            "importacion_id": int(inconveniente.importacion_id),
-            "importacion_codigo": str(getattr(inconveniente.importacion, "codigo", "") or "").strip(),
+            "importacion_id": int(inconveniente.importacion_id) if inconveniente.importacion_id else None,
+            "compra_local_id": int(inconveniente.compra_local_id) if inconveniente.compra_local_id else None,
+            "importacion_codigo": str(
+                getattr(origen_documento, "no_documento" if inconveniente.compra_local_id else "codigo", "") or ""
+            ).strip(),
             "casa_comercial_nombre": str(
-                getattr(getattr(inconveniente.importacion, "casa_comercial", None), "nombre", "") or ""
+                getattr(getattr(origen_documento, "casa_comercial", None), "nombre", "") or ""
             ).strip(),
             "producto_id": int(inconveniente.producto_id),
             # Faltante del envio a una sucursal: se resuelve como traslado
@@ -1208,10 +1265,12 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             ImportacionInconveniente.objects.select_related(
                 "importacion",
                 "importacion__casa_comercial",
+                "compra_local__casa_comercial",
                 "producto",
                 "creado_por",
                 "resuelto_por",
                 "envio__sucursal",
+                "envio__compra_local__sucursal",
                 "detalle",
             )
             .prefetch_related("historial__actor")
@@ -1232,6 +1291,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         importacion_id = str(request.query_params.get("importacion_id") or "").strip()
         if importacion_id.isdigit():
             queryset = queryset.filter(importacion_id=int(importacion_id))
+        compra_local_id = str(request.query_params.get("compra_local_id") or "").strip()
+        if compra_local_id.isdigit():
+            queryset = queryset.filter(compra_local_id=int(compra_local_id))
 
         # La barra lateral solo necesita saber si hay pendientes.
         if str(request.query_params.get("solo_conteo") or "").strip() in {"1", "true"}:
@@ -1310,8 +1372,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             valid_decisions = {"sumar_solicitante", "sumar_origen", "perdido", "reportado_proveedor"}
             usar_por_ubicar = bool(request.data.get("por_ubicar"))
             if decision == "sumar_origen":
-                # Nunca salieron de la matriz: se suman en su ubicacion de ahi.
-                matriz = get_matriz_sucursal()
+                # Nunca salieron de la matriz (o de la sucursal de la compra
+                # local): se suman en su ubicacion de ahi.
+                matriz = get_envio_origen_sucursal(inconveniente.envio)
                 if usar_por_ubicar and matriz is not None:
                     por_ubicar_sub = get_por_ubicar_subdivision(matriz.id)
                     subdivision_override = por_ubicar_sub.id if por_ubicar_sub else 0
@@ -1543,10 +1606,6 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if not recipients:
             return
 
-        actor_name = f"{actor_user.first_name} {actor_user.last_name}".strip() or actor_user.username
-        actor = {"id": str(actor_user.pk), "name": actor_name}
-        now = timezone.localtime(timezone.now())
-        created_at = timezone.now().isoformat()
         label = f"Importación {importacion.codigo}"
         if sucursal_id is None:
             if inconvenientes_resumen:
@@ -1558,33 +1617,34 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 description = f"La {label} ha sido recibida y está siendo distribuida."
         else:
             description = f"Hay un envío en camino de {label} hacia tu sucursal."
+        create_envio_reminder(
+            recipients=recipients,
+            actor_user=actor_user,
+            description=description,
+            context_type="importacion",
+            context_id=importacion.pk,
+            label=label,
+            sucursal_id=sucursal_id,
+        )
 
-        reminder = {
-            "id": str(uuid4()),
-            "date": now.strftime("%Y-%m-%d"),
-            "time": now.strftime("%H:%M"),
-            "description": description,
-            "creator": actor,
-            "recipients": recipients,
-            "context": {
-                "type": "importacion",
-                "id": str(importacion.pk),
-                "label": label,
-                "sucursal_destino_id": str(sucursal_id) if sucursal_id is not None else "",
-            },
-            "kind": "recordatorio_general",
-            "createdAt": created_at,
-            "decision": {"status": "enviado", "reason": "", "by": actor, "at": created_at, "assignedRecipients": []},
-            "transferHistory": [{"stage": "enviado", "label": "Enviado", "description": description, "at": created_at, "actor": actor}],
-            "completedBy": [],
-        }
-
-        with transaction.atomic():
-            store = ReminderState.get_global(for_update=True)
-            payload = store.payload if isinstance(store.payload, list) else []
-            payload.insert(0, reminder)
-            store.payload = payload
-            store.save(update_fields=["payload", "updated_at"])
+    def _create_envio_admin_reminder(self, envio, admin_ids, actor_user):
+        if envio.importacion_id:
+            self._create_importacion_reminder(envio.importacion, None, admin_ids, actor_user)
+            return
+        User = get_user_model()
+        recipients = [
+            {"id": str(u.pk), "name": f"{u.first_name} {u.last_name}".strip() or u.username}
+            for u in User.objects.filter(id__in=admin_ids, is_active=True)
+        ]
+        create_envio_reminder(
+            recipients=recipients,
+            actor_user=actor_user,
+            description=f"El envío de la {envio.origen_label} a {envio.sucursal.nombre} fue recibido.",
+            context_type="entrada",
+            context_id=envio.compra_local_id,
+            label=envio.origen_label,
+            sucursal_id=None,
+        )
 
     @action(detail=False, methods=["post"], url_path="parse-excel-iniciar")
     def parse_excel_iniciar(self, request):
@@ -1650,7 +1710,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
         # Ya se confirmo que llego: se guarda desde "Por guardar".
         qs = qs.filter(llegada_confirmada_en__isnull=True)
-        qs = qs.select_related("importacion", "sucursal").prefetch_related(
+        qs = qs.select_related("importacion", "compra_local", "sucursal").prefetch_related(
             "detalles__producto"
         ).order_by("-fecha", "-id")
 
@@ -1670,16 +1730,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             payload.append({
                 "id": int(envio.id),
                 "envio_id": int(envio.id),
-                "no_documento": str(envio.importacion.codigo or "").strip(),
+                "no_documento": envio.origen_codigo,
                 "fecha": envio.fecha,
                 "sucursal_solicitante_id": int(envio.sucursal_id),
                 "sucursal_solicitante": str(getattr(envio.sucursal, "nombre", "") or "").strip(),
                 "sucursal_proveedora_id": None,
-                "sucursal_proveedora": "Importación",
+                "sucursal_proveedora": "Compra local" if envio.compra_local_id else "Importación",
                 "movimiento_salida_id": None,
                 "movimiento_entrada_id": None,
                 "estado_entrada": "Pendiente",
-                "descripcion": f"Envío de Importación {envio.importacion.codigo}",
+                "descripcion": f"Envío de {envio.origen_label}",
                 "detalles": detalles_payload,
                 "inconvenientes_pendientes": 0,
                 "borrador_recepcion": envio.borrador_recepcion or {},
@@ -1806,7 +1866,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         User = get_user_model()
         admin_ids = [u.pk for u in User.objects.filter(is_active=True) if is_app_admin(u)]
         if admin_ids:
-            self._create_importacion_reminder(envio.importacion, None, admin_ids, request.user)
+            self._create_envio_admin_reminder(envio, admin_ids, request.user)
 
         return Response(
             {
@@ -1957,7 +2017,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
     def confirmar_recepcion_envio(self, request, envio_id=None):
         try:
             envio = (
-                ImportacionEnvio.objects.select_related("importacion", "sucursal")
+                ImportacionEnvio.objects.select_related("importacion", "compra_local", "sucursal")
                 .prefetch_related("detalles__producto")
                 .get(pk=envio_id, estado=ImportacionEnvio.ESTADO_PENDIENTE)
             )
@@ -2108,7 +2168,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         User = get_user_model()
         admin_ids = [u.pk for u in User.objects.filter(is_active=True) if is_app_admin(u)]
         if admin_ids:
-            self._create_importacion_reminder(envio.importacion, None, admin_ids, request.user)
+            self._create_envio_admin_reminder(envio, admin_ids, request.user)
 
         return Response(
             {

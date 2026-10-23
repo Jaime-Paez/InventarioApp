@@ -102,6 +102,8 @@ const isActiveIssue = (issue) => ACTIVE_ISSUE_STATES.has(String(issue?.estado_ke
 // muestra el documento y dentro se resuelve cada producto.
 const getIssueGroupKey = (row) => {
   if (row?.origen === 'importacion') {
+    // Faltante del envio de una compra local: se agrupa por la compra.
+    if (normalizeId(row?.compra_local_id)) return `compra-${normalizeId(row?.compra_local_id)}`
     return `importacion-${normalizeId(row?.importacion_id) || normalizeId(row?.solicitud_no_documento)}`
   }
   return `traslado-${normalizeId(row?.solicitud_id) || normalizeId(row?.solicitud_no_documento)}`
@@ -175,7 +177,7 @@ const getDecisionOptions = (issue) => {
   }
   const options = []
   if (issue.envio_id) {
-    if (issue.sucursal_origen_id) options.push(option('sumar_origen', 'Sumar a Matriz', 'primary'))
+    if (issue.sucursal_origen_id) options.push(option('sumar_origen', `Sumar a ${String(issue.sucursal_origen_nombre || '').trim() || 'Matriz'}`, 'primary'))
   } else {
     options.push(option('sumar_proveedora', 'Sumar a proveedora', 'primary'))
   }
@@ -507,7 +509,7 @@ function TrasladosInconvenientesTable({
         return {
           ...row,
           origen: 'importacion',
-          origen_label: 'Importación',
+          origen_label: normalizeId(row?.compra_local_id) ? 'Compra local' : 'Importación',
           row_key: rowId ? `importacion-${rowId}` : keyFallback,
           estado_key: state || 'pendiente',
           estado_label: formatEstado(row?.estado),
@@ -1163,7 +1165,9 @@ function TrasladosInconvenientesTable({
       try {
         const url =
           group.origen === 'importacion'
-            ? `${API_URL}/importaciones/importaciones/inconvenientes/?importacion_id=${encodeURIComponent(normalizeId(first?.importacion_id))}`
+            ? (normalizeId(first?.compra_local_id)
+              ? `${API_URL}/importaciones/importaciones/inconvenientes/?compra_local_id=${encodeURIComponent(normalizeId(first?.compra_local_id))}`
+              : `${API_URL}/importaciones/importaciones/inconvenientes/?importacion_id=${encodeURIComponent(normalizeId(first?.importacion_id))}`)
             : `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/?solicitud_id=${encodeURIComponent(normalizeId(first?.solicitud_id))}`
         const response = await authFetch(url, {}, token)
         if (!response.ok) throw new Error('No se pudieron cargar los productos de este inconveniente.')

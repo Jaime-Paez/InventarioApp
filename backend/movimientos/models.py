@@ -100,6 +100,13 @@ class MovimientoInventario(models.Model):
         blank=True,
         help_text="Proveedor asociado al movimiento (compra local o importacion).",
     )
+    # Reparto de una compra local a otras sucursales a medio hacer (cantidades
+    # por sucursal, destinatarios y paso), para retomarlo al reabrir.
+    borrador_distribucion = models.JSONField(
+        default=dict,
+        blank=True,
+        db_default=models.Value({}, output_field=models.JSONField()),
+    )
     es_legado = models.BooleanField(
         default=False,
         db_index=True,

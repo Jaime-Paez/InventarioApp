@@ -1678,6 +1678,23 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         validated_data.pop("solicitud_traslado", None)
         overrides = self.parse_location_overrides(validated_data.pop("ajustes_ubicacion", None))
 
+        # Compra local ya repartida a otras sucursales: lo enviado salio de su
+        # stock, asi que sus cantidades y su sucursal ya no se pueden cambiar.
+        if instance.pk and instance.envios_compra.exists():
+            nueva_sucursal = validated_data.get("sucursal", instance.sucursal)
+            cambia_cantidades = detalles_data is not None and quantities_by_product(
+                detalles_data
+            ) != quantities_by_product(instance.detalles.all())
+            if cambia_cantidades or getattr(nueva_sucursal, "id", None) != instance.sucursal_id:
+                raise serializers.ValidationError(
+                    {
+                        "detalles": (
+                            "Esta compra local ya se envio a otras sucursales: no puedes cambiar sus "
+                            "cantidades ni su sucursal (si puedes cambiar precios, costos y factura)."
+                        )
+                    }
+                )
+
         # Entrada que ya sumo al inventario y lo sigue haciendo en la misma
         # sucursal: se aplica solo la diferencia por producto.
         if detalles_data is not None and not getattr(instance, "garantia_pendiente", False):

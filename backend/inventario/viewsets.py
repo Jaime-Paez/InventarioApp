@@ -1621,7 +1621,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
         envios = ImportacionEnvio.objects.filter(
             estado=ImportacionEnvio.ESTADO_PENDIENTE,
             llegada_confirmada_en__isnull=False,
-        ).select_related("importacion", "sucursal")
+        ).select_related("importacion", "compra_local", "sucursal")
         if sucursal_id:
             envios = envios.filter(sucursal_id=sucursal_id)
         if allowed is not None:
@@ -1659,7 +1659,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 {
                     "tipo": "importacion",
                     "id": int(envio.id),
-                    "codigo": str(getattr(envio.importacion, "codigo", "") or "").strip(),
+                    "codigo": envio.origen_codigo,
                     "origen": "Importacion",
                     "sucursal_id": int(envio.sucursal_id),
                     "sucursal_nombre": str(getattr(envio.sucursal, "nombre", "") or "").strip(),

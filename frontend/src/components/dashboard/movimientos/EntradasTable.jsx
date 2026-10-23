@@ -10,6 +10,7 @@ import { Button } from 'primereact/button'
 
 import CreateEntrada from './CreateEntrada'
 import EntradaDetails from './EntradaDetails'
+import CompraLocalDistribucionModal from './CompraLocalDistribucionModal'
 import './EntradasTable.css'
 import '../admin/UsersTable/UsersTable.css'
 import useModalAnimation from '../common/useModalAnimation'
@@ -221,6 +222,7 @@ function EntradasTable({
   const [resubmittingTransfer, setResubmittingTransfer] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [distribucionCompraId, setDistribucionCompraId] = useState(null)
   const [selectedSolicitudPreview, setSelectedSolicitudPreview] = useState(null)
   const [selectedRows, setSelectedRows] = useState([])
   const [prefetchedTipoMovimientos, setPrefetchedTipoMovimientos] = useState([])
@@ -1058,11 +1060,14 @@ function EntradasTable({
     }
   }, [])
 
-  const handleCreated = (createdPayload) => {
+  const handleCreated = (createdPayload, { isCompraLocal = false } = {}) => {
     setCreatePrefillTransferRequest(null)
     setShowCreateModal(false)
     setSelectedRows([])
     refreshData({ page: 1 })
+    // Compra local recien creada: como en una importacion, se reparte de una
+    // vez a las demas sucursales (o se deja todo donde se compro).
+    if (isCompraLocal && createdPayload?.id) setDistribucionCompraId(createdPayload.id)
     const isSolicitudTraslado = Boolean(createdPayload?.sucursal_solicitante_id && createdPayload?.sucursal_proveedora_id)
     const isGuardado = String(createdPayload?.estado || '').trim().toLowerCase() === 'guardado'
     toast.current?.show({
@@ -1724,6 +1729,24 @@ function EntradasTable({
         cancellingTransfer={cancellingTransfer}
         onResubmitTransfer={handleResubmitTransfer}
         resubmittingTransfer={resubmittingTransfer}
+        onDistribuirCompra={(id) => setDistribucionCompraId(id)}
+      />
+
+      <CompraLocalDistribucionModal
+        open={Boolean(distribucionCompraId)}
+        entradaId={distribucionCompraId}
+        token={token}
+        onClose={() => setDistribucionCompraId(null)}
+        onSent={(_, nombres) => {
+          setDistribucionCompraId(null)
+          refreshData()
+          toast.current?.show({
+            severity: 'success',
+            summary: 'Enviado',
+            detail: `Envio en camino a ${nombres.join(', ')}. Lo reciben desde Envios pendientes.`,
+            life: 3500,
+          })
+        }}
       />
 
       {shouldRenderSearchModal && (

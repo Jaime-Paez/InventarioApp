@@ -400,7 +400,9 @@ def in_transit_by_product_branch(product_ids, branch_ids=None):
                 int(detalle["cantidad"] or 0) - recibido,
             )
 
-    envios = ImportacionEnvio.objects.filter(estado=ImportacionEnvio.ESTADO_PENDIENTE).select_related("importacion")
+    envios = ImportacionEnvio.objects.filter(estado=ImportacionEnvio.ESTADO_PENDIENTE).select_related(
+        "importacion", "compra_local"
+    )
     if branch_ids is not None:
         envios = envios.filter(sucursal_id__in=sorted({int(b) for b in branch_ids}))
     envios_by_id = {int(envio.id): envio for envio in envios}
@@ -417,7 +419,7 @@ def in_transit_by_product_branch(product_ids, branch_ids=None):
         ).values("envio_id", "producto_id", "cantidad"):
             envio = envios_by_id[int(detalle["envio_id"])]
             pid = int(detalle["producto_id"])
-            codigo = str(getattr(envio.importacion, "codigo", "") or "").strip()
+            codigo = envio.origen_codigo
             if envio.llegada_confirmada_en:
                 entry = por_contar.get(int(envio.id), {}).get(str(pid)) or {}
                 add((pid, int(envio.sucursal_id)), "importacion", int(envio.id), codigo,

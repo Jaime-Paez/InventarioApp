@@ -31,17 +31,8 @@
   animation-fill-mode: both;
 }
 
-.dashboard-shell.enter .quick-actions__pending-shipments:not(.quick-actions__in-transit) {
-  animation: quick-actions-slide-in 1s cubic-bezier(.81,.39,.27,.84);
-  animation-delay: 0.8s;
-  animation-fill-mode: both;
-}
-
-.dashboard-shell.enter .quick-actions__in-transit {
-  animation: in-transit-slide-down 1.4s cubic-bezier(0.16, 1, 0.3, 1);
-  animation-delay: 1.8s;
-  animation-fill-mode: both;
-}
+/* Las pildoras (Por ubicar, Envios en camino, Envios pendientes) no entran de
+   lado: solo bajan desde fuera de la pantalla (ver QuickActions.css). */
 
 .dashboard-shell.enter .workspace__hero {
   animation: welcome-fade-in 1s cubic-bezier(.81,.39,.27,.84);
@@ -135,18 +126,6 @@
 
   100% {
     transform: translateX(150px);
-  }
-}
-
-@keyframes in-transit-slide-down {
-  0% {
-    transform: translateY(-32px);
-    opacity: 0;
-  }
-
-  100% {
-    transform: translateY(0);
-    opacity: 1;
   }
 }
 

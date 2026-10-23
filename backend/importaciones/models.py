@@ -142,10 +142,21 @@ class ImportacionEnvio(models.Model):
         (ESTADO_RECIBIDO, "Recibido"),
     ]
 
+    # Un envio sale de una importacion o de una compra local (entrada de
+    # subtipo compra_local repartida a otras sucursales); se recibe igual.
     importacion = models.ForeignKey(
         Importacion,
         on_delete=models.CASCADE,
         related_name="envios",
+        null=True,
+        blank=True,
+    )
+    compra_local = models.ForeignKey(
+        "movimientos.MovimientoInventario",
+        on_delete=models.CASCADE,
+        related_name="envios_compra",
+        null=True,
+        blank=True,
     )
     sucursal = models.ForeignKey(
         "inventario.Sucursal",
@@ -194,8 +205,19 @@ class ImportacionEnvio(models.Model):
         verbose_name = "Envío de importación"
         verbose_name_plural = "Envíos de importación"
 
+    @property
+    def origen_codigo(self):
+        if self.compra_local_id:
+            return str(self.compra_local.no_documento or "").strip()
+        return str(getattr(self.importacion, "codigo", "") or "").strip()
+
+    @property
+    def origen_label(self):
+        prefix = "Compra local" if self.compra_local_id else "Importación"
+        return f"{prefix} {self.origen_codigo}".strip()
+
     def __str__(self):
-        return f"Envío {self.importacion.codigo} → {self.sucursal.nombre}"
+        return f"Envío {self.origen_codigo} → {self.sucursal.nombre}"
 
 
 class ImportacionEnvioDetalle(models.Model):
@@ -243,10 +265,20 @@ class ImportacionInconveniente(models.Model):
         SUMADO_SUCURSAL = "sumado_sucursal", "Sumado a la sucursal destino"
         SUMADO_ORIGEN = "sumado_origen", "Sumado a la sucursal de origen (matriz)"
 
+    # Los faltantes del envio de una compra local no tienen importacion.
     importacion = models.ForeignKey(
         Importacion,
         on_delete=models.CASCADE,
         related_name="inconvenientes",
+        null=True,
+        blank=True,
+    )
+    compra_local = models.ForeignKey(
+        "movimientos.MovimientoInventario",
+        on_delete=models.CASCADE,
+        related_name="inconvenientes_envio_compra",
+        null=True,
+        blank=True,
     )
     # Si viene de recibir un envio en una sucursal (no de la llegada desde el
     # proveedor): se resuelve como un traslado (sumar en la sucursal o
@@ -322,7 +354,8 @@ class ImportacionInconveniente(models.Model):
         verbose_name_plural = "Inconvenientes de importación"
 
     def __str__(self):
-        return f"{self.importacion.codigo} - {self.producto.codigo} ({self.tipo}: {self.cantidad_diferencia})"
+        origen = self.compra_local.no_documento if self.compra_local_id else getattr(self.importacion, "codigo", "")
+        return f"{origen} - {self.producto.codigo} ({self.tipo}: {self.cantidad_diferencia})"
 
 
 class ImportacionInconvenienteHistorial(models.Model):
