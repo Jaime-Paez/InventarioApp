@@ -882,8 +882,12 @@ function CreateSalida({
   )
 
   const resolvedEstadoMovimientoId = useMemo(() => {
+    // El estado elegido solo vale si pertenece al tipo de salida actual: al pasar de
+    // Venta a Traslado quedaba "Vendido" y el backend rechazaba el traslado.
     const selectedId = String(formData.estadoId || '').trim()
-    if (selectedId) return selectedId
+    if (selectedId && estadoReadOnlyOptions.some((estado) => String(estado.id) === selectedId)) {
+      return selectedId
+    }
     if (defaultEstadoMovimientoId) return defaultEstadoMovimientoId
     if (!isTraslado) return ''
     const fallback = findEstadoByPreference(estados, [
@@ -892,7 +896,7 @@ function CreateSalida({
       'parcialmente recibido',
     ])
     return fallback?.id ? String(fallback.id) : ''
-  }, [defaultEstadoMovimientoId, estados, formData.estadoId, isTraslado])
+  }, [defaultEstadoMovimientoId, estadoReadOnlyOptions, estados, formData.estadoId, isTraslado])
   // Solo se avisa cuando los catalogos cargaron bien: si fallaron, el problema es otro.
   const missingEstadoMovimiento = Boolean(
     formData.subTipoId && catalogsLoaded && !catalogsLoading && !resolvedEstadoMovimientoId
@@ -3296,7 +3300,7 @@ function CreateSalida({
       }
     }
 
-    const estadoMovimientoId = String(formData.estadoId || resolvedEstadoMovimientoId || '').trim()
+    const estadoMovimientoId = String(resolvedEstadoMovimientoId || '').trim()
 
     if (!salidaTipoId) {
       notifyError('No se encontró el tipo de movimiento de salida.')
