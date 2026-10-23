@@ -15,7 +15,7 @@ import SubTipoButtonSelector from './SubTipoButtonSelector'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
 import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
-import { productDetailMatches } from '../common/productDetailMatches'
+import { matchesFirst, productDetailMatches } from '../common/productDetailMatches'
 import {
   emitRemindersSync,
   extractUserId,
@@ -414,8 +414,13 @@ function CreateEntrada({
   const [details, setDetails] = useState([])
   // Buscador rapido de productos dentro de este movimiento.
   const [productSearch, setProductSearch] = useState('')
+  // Lo que coincide va primero; el resto sigue visible debajo.
+  const productMatchCount = useMemo(
+    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)).length : details.length),
+    [details, productSearch]
+  )
   const filteredDetails = useMemo(
-    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)) : details),
+    () => (productSearch.trim() ? matchesFirst(details, (detail) => productDetailMatches(detail, productSearch)) : details),
     [details, productSearch]
   )
   const [detailDraft, setDetailDraft] = useState(initialDetail)
@@ -4216,7 +4221,7 @@ function CreateEntrada({
                     <ProductListSearch
                       value={productSearch}
                       onChange={setProductSearch}
-                      shown={filteredDetails.length}
+                      shown={productMatchCount}
                       total={details.length}
                     />
                   )}
@@ -4556,7 +4561,7 @@ function CreateEntrada({
                       </div>
                     )}
 
-                    {details.length > 0 && !filteredDetails.length && <ProductSearchEmptyRow query={productSearch} />}
+                    {details.length > 0 && !productMatchCount && <ProductSearchEmptyRow query={productSearch} />}
 
                     {filteredDetails.map((detail) => {
                       const stockAvailable = Number(

@@ -21,6 +21,23 @@ const readErrorMessage = async (response, fallback) => {
   return String(detail || fallback)
 }
 
+const SPANISH_MONTH_ABBR = {
+  enero: 'Ene', febrero: 'Feb', marzo: 'Mar', abril: 'Abr', mayo: 'May', junio: 'Jun',
+  julio: 'Jul', agosto: 'Ago', septiembre: 'Sep', setiembre: 'Sep', octubre: 'Oct',
+  noviembre: 'Nov', diciembre: 'Dic',
+}
+
+// "9 de Octubre (Matriz)" no cabe como encabezado de columna: "9 Oct" (el
+// nombre completo queda en el title), igual que en el reparto de importaciones.
+const shortSucursalLabel = (nombre) => {
+  const value = String(nombre || '').trim()
+  if (!value) return '(Sin nombre)'
+  const match = value.match(/^(\d{1,2})\s+de\s+([a-zñáéíóú]+)/i)
+  if (!match) return value
+  const abbr = SPANISH_MONTH_ABBR[match[2].toLowerCase()]
+  return abbr ? `${match[1]} ${abbr}` : value
+}
+
 const parseList = (data) => (Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : [])
 
 function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent }) {
@@ -331,8 +348,8 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
                   <span style={{ justifyContent: 'flex-start' }}>Código</span>
                   <span style={{ justifyContent: 'flex-start' }}>Descripción</span>
                   <span style={{ justifyContent: 'center' }}>Total</span>
-                  <span title={origen?.nombre}>{origen?.nombre || 'Origen'}</span>
-                  {destinos.map((suc) => <span key={suc.id} title={suc.nombre}>{suc.nombre}</span>)}
+                  <span title={origen?.nombre}>{shortSucursalLabel(origen?.nombre || 'Origen')}</span>
+                  {destinos.map((suc) => <span key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</span>)}
                 </div>
                 {rows.map((row) => {
                   const sent = sentFor(row)

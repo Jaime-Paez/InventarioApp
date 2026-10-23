@@ -10,6 +10,7 @@ import PorGuardar from './PorGuardar'
 import LlegadaDialog from './LlegadaDialog'
 import { requestPorGuardarRefresh } from './porGuardarEvents'
 import BlockerNotice from '../common/BlockerNotice'
+import { matchesFirst } from '../common/productDetailMatches'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
 import urgentNotificationAudioSrc from '../common/reminders/urgentnotifications.mp3'
 import { API_URL, authFetch } from '../../../utils/api'
@@ -2429,15 +2430,17 @@ function QuickActions({
       })
   }, [receiveShipmentDraftByProductId, receiveShipmentProgress])
 
+  // Codigo, descripcion, referencia(s) u OEM.
+  const receiveShipmentRowMatches = useCallback((row, term) =>
+    `${row?.producto_codigo || ''} ${row?.producto_nombre || ''} ${row?.producto_busqueda || ''}`.toLowerCase().includes(term), [])
+  const receiveShipmentMatchCount = useMemo(() => {
+    const term = receiveShipmentFilter.trim().toLowerCase()
+    return term ? receiveShipmentRows.filter((row) => receiveShipmentRowMatches(row, term)).length : receiveShipmentRows.length
+  }, [receiveShipmentRows, receiveShipmentFilter, receiveShipmentRowMatches])
+  // Al buscar no se oculta nada: lo que coincide va primero (en el orden elegido).
   const filteredReceiveShipmentRows = useMemo(() => {
     const term = receiveShipmentFilter.trim().toLowerCase()
-    const filtered = term
-      ? receiveShipmentRows.filter((row) => {
-          // Codigo, descripcion, referencia(s) u OEM.
-          const text = `${row?.producto_codigo || ''} ${row?.producto_nombre || ''} ${row?.producto_busqueda || ''}`.toLowerCase()
-          return text.includes(term)
-        })
-      : [...receiveShipmentRows]
+    const filtered = [...receiveShipmentRows]
 
     if (receiveShipmentSort === 'bodega_first') {
       filtered.sort((a, b) => {
@@ -2456,8 +2459,8 @@ function QuickActions({
       )
     }
 
-    return filtered
-  }, [receiveShipmentRows, receiveShipmentFilter, receiveShipmentSort])
+    return term ? matchesFirst(filtered, (row) => receiveShipmentRowMatches(row, term)) : filtered
+  }, [receiveShipmentRows, receiveShipmentFilter, receiveShipmentSort, receiveShipmentRowMatches])
 
   const receiveShipmentTransferCode = useMemo(
     () => String(activeInTransitShipment?.no_documento || activeInTransitShipment?.id || '').trim(),
@@ -5853,7 +5856,7 @@ function QuickActions({
 
                       return (
                         <button
-                          key={`in-transit-shipment-${shipmentId || doc || 'row'}`}
+                          key={`in-transit-shipment-${shipment?._source || 'traslado'}-${shipmentId || doc || 'row'}`}
                           type="button"
                           className="quick-actions__pending-shipments-item quick-actions__in-transit-item"
                           onClick={() => {
@@ -7123,7 +7126,7 @@ function QuickActions({
                           Productos
                           <strong>
                             {receiveShipmentFilter.trim()
-                              ? `${filteredReceiveShipmentRows.length}/${receiveShipmentRows.length}`
+                              ? `${receiveShipmentMatchCount}/${receiveShipmentRows.length}`
                               : receiveShipmentRows.length}
                           </strong>
                         </span>
@@ -7184,7 +7187,7 @@ function QuickActions({
                     </div>
                     {receiveShipmentFilter.trim() && (
                       <span className="quick-actions__receive-search-count">
-                        {filteredReceiveShipmentRows.length} de {receiveShipmentRows.length}
+                        {receiveShipmentMatchCount} de {receiveShipmentRows.length}
                       </span>
                     )}
                     <div className="quick-actions__receive-sort" ref={receiveSortDropdownRef}>
@@ -7250,7 +7253,7 @@ function QuickActions({
                       </span>
                       <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--check" />
                     </div>
-                    {filteredReceiveShipmentRows.length === 0 && receiveShipmentFilter.trim() && (
+                    {receiveShipmentMatchCount === 0 && receiveShipmentFilter.trim() && (
                       <div className="quick-actions__receive-empty-filter">
                         <span>Sin resultados para "<strong>{receiveShipmentFilter.trim()}</strong>"</span>
                       </div>

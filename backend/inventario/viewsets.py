@@ -1660,7 +1660,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     "tipo": "importacion",
                     "id": int(envio.id),
                     "codigo": envio.origen_codigo,
-                    "origen": "Importacion",
+                    "origen": "Compra local" if envio.compra_local_id else "Importacion",
                     "sucursal_id": int(envio.sucursal_id),
                     "sucursal_nombre": str(getattr(envio.sucursal, "nombre", "") or "").strip(),
                     "llegada_confirmada_en": envio.llegada_confirmada_en,

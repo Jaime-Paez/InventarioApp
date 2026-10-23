@@ -65,7 +65,7 @@ function LlegadaDialog({ shipment, token, darkMode, onClose, onConfirmed }) {
       <div className="llegada-dialog__card">
         <header className="llegada-dialog__header">
           <div>
-            <h3>{`Importación: #${doc}`}</h3>
+            <h3>{`${shipment?.sucursal_proveedora === 'Compra local' ? 'Compra local' : 'Importación'}: #${doc}`}</h3>
             <p>
               {[hacia && `Para ${hacia}`, shipment?.fecha && `enviado el ${formatDate(shipment.fecha)}`]
                 .filter(Boolean)

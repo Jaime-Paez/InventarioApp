@@ -4,6 +4,7 @@ import { CheckCircle2, Search, X } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDateTime } from '../../../utils/dateFormat'
 import BlockerNotice from '../common/BlockerNotice'
+import { matchesFirst } from '../common/productDetailMatches'
 import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
 import LocationPicker from './LocationPicker'
 import { POR_GUARDAR_REFRESH_EVENT } from './porGuardarEvents'
@@ -234,14 +235,20 @@ function PorGuardar({ token, darkMode, onSaved }) {
 
   const term = normalize(query)
   const matches = (item) => !term || normalize(`${item.producto_codigo} ${item.producto_nombre}`).includes(term)
+  // Al buscar no se oculta nada: lo que coincide va primero.
   const visibleShipments = useMemo(
-    () => shipments
-      .map((shipment) => ({ ...shipment, visibleItems: shipment.items.filter(matches) }))
-      .filter((shipment) => !term || shipment.visibleItems.length || normalize(shipment.codigo).includes(term)),
+    () => {
+      const list = shipments.map((shipment) => ({
+        ...shipment,
+        visibleItems: term ? matchesFirst(shipment.items, matches) : shipment.items,
+      }))
+      if (!term) return list
+      return matchesFirst(list, (shipment) => shipment.items.some(matches) || normalize(shipment.codigo).includes(term))
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [shipments, term]
   )
-  const visiblePorUbicar = porUbicar.filter(matches)
+  const visiblePorUbicar = term ? matchesFirst(porUbicar, matches) : porUbicar
   const isEmpty = !shipments.length && !porUbicar.length
 
   const renderLocation = (key, branchId, suggestedId) => (
@@ -265,7 +272,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
         className={`quick-actions__pending-shipments-trigger por-guardar__trigger${count > 0 ? ' has-items' : ''}`}
         onClick={() => setOpen(true)}
         aria-label={`Por ubicar: ${count} producto(s)`}
-        title="Importaciones que ya llegaron: cuenta lo que queda y guardalo en su ubicacion"
+        title="Envios que ya llegaron (importaciones y compras locales): cuenta lo que queda y guardalo en su ubicacion"
       >
         <span>Por ubicar</span>
         <span className="quick-actions__pending-shipments-count">{count}</span>
@@ -284,7 +291,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
               <div>
                 <h3>Por ubicar</h3>
                 <p>
-                  Importaciones que ya llegaron: están en el inventario entre paréntesis y ya se pueden vender.
+                  Envíos que ya llegaron (importaciones y compras locales): están en el inventario entre paréntesis y ya se pueden vender.
                   Cuenta <strong>lo que queda</strong> de cada producto (lo vendido ya se descontó) y guárdalo en su
                   ubicación. Al terminar, lo que no aparezca queda como faltante en Inconvenientes.
                 </p>
@@ -312,7 +319,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
               {loading && isEmpty ? (
                 <p className="por-guardar__empty">Cargando...</p>
               ) : isEmpty ? (
-                <p className="por-guardar__empty">No hay nada por ubicar. Cuando confirmes la llegada de una importación, aparece aquí.</p>
+                <p className="por-guardar__empty">No hay nada por ubicar. Cuando confirmes la llegada de un envío (importación o compra local), aparece aquí.</p>
               ) : (
                 <>
                   {visibleShipments.map((shipment) => {
@@ -321,7 +328,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                       <section key={shipmentKey(shipment)} className="por-guardar__shipment">
                         <header className="por-guardar__shipment-head">
                           <div>
-                            <strong>{`Importación #${shipment.codigo}`}</strong>
+                            <strong>{`${shipment.origen === 'Compra local' ? 'Compra local' : 'Importación'} #${shipment.codigo}`}</strong>
                             <span>
                               {[
                                 `Para ${shipment.sucursal_nombre}`,

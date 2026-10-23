@@ -18,7 +18,7 @@ function ProductListSearch({ value, onChange, shown, total }) {
       </div>
       {String(value || '').trim() && (
         <span className="product-list-search__count">
-          {`${shown} de ${total}`}
+          {shown ? `${shown} de ${total} coinciden (van primero)` : 'Ninguno coincide'}
           <button type="button" className="product-list-search__clear" onClick={() => onChange('')}>Limpiar</button>
         </span>
       )}

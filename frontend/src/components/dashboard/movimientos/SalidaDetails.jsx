@@ -13,7 +13,7 @@ import { normalizeId } from '../common/reminders/remindersStorage'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
 import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
-import { productDetailMatches } from '../common/productDetailMatches'
+import { matchesFirst, productDetailMatches } from '../common/productDetailMatches'
 import { tipoEnvioLabel } from './tipoEnvio'
 import useUnsavedChangesGuard from '../common/unsavedChanges/useUnsavedChangesGuard'
 
@@ -308,8 +308,13 @@ function SalidaDetails({
   const [details, setDetails] = useState([])
   // Buscador rapido de productos dentro de este movimiento.
   const [productSearch, setProductSearch] = useState('')
+  // Lo que coincide va primero; el resto sigue visible debajo.
+  const productMatchCount = useMemo(
+    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)).length : details.length),
+    [details, productSearch]
+  )
   const filteredDetails = useMemo(
-    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)) : details),
+    () => (productSearch.trim() ? matchesFirst(details, (detail) => productDetailMatches(detail, productSearch)) : details),
     [details, productSearch]
   )
   const [detailDraft, setDetailDraft] = useState(initialDetail)
@@ -2066,7 +2071,7 @@ function SalidaDetails({
                     <ProductListSearch
                       value={productSearch}
                       onChange={setProductSearch}
-                      shown={filteredDetails.length}
+                      shown={productMatchCount}
                       total={details.length}
                     />
                   )}
@@ -2229,7 +2234,7 @@ function SalidaDetails({
                       </div>
                     )}
 
-                    {details.length > 0 && !filteredDetails.length && <ProductSearchEmptyRow query={productSearch} />}
+                    {details.length > 0 && !productMatchCount && <ProductSearchEmptyRow query={productSearch} />}
 
                     {filteredDetails.map((detail) => (
                       <div key={detail.uid} className="create-user__locations-row">

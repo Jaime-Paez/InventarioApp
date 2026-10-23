@@ -12,7 +12,7 @@ import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
 import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
-import { productDetailMatches } from '../common/productDetailMatches'
+import { matchesFirst, productDetailMatches } from '../common/productDetailMatches'
 import EntradaAjustePreview from './EntradaAjustePreview'
 import {
   emitRemindersSync,
@@ -456,8 +456,13 @@ function EntradaDetails({
   const [details, setDetails] = useState([])
   // Buscador rapido de productos dentro de este movimiento.
   const [productSearch, setProductSearch] = useState('')
+  // Lo que coincide va primero; el resto sigue visible debajo.
+  const productMatchCount = useMemo(
+    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)).length : details.length),
+    [details, productSearch]
+  )
   const filteredDetails = useMemo(
-    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)) : details),
+    () => (productSearch.trim() ? matchesFirst(details, (detail) => productDetailMatches(detail, productSearch)) : details),
     [details, productSearch]
   )
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
@@ -3269,7 +3274,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                     <ProductListSearch
                       value={productSearch}
                       onChange={setProductSearch}
-                      shown={filteredDetails.length}
+                      shown={productMatchCount}
                       total={details.length}
                     />
                   )}
@@ -3484,7 +3489,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       </div>
                     )}
 
-                    {details.length > 0 && !filteredDetails.length && <ProductSearchEmptyRow query={productSearch} />}
+                    {details.length > 0 && !productMatchCount && <ProductSearchEmptyRow query={productSearch} />}
 
                     {filteredDetails.map((detail) => {
                         const productId = String(detail.productoId || detail.producto_id || '').trim()
