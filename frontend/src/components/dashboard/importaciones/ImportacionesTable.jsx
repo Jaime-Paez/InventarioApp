@@ -7239,6 +7239,44 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
   }
 
+  // Sugerencia: lista simple de productos, sin columnas de verificacion.
+  const handleDownloadSugerenciaExcel = async () => {
+    try {
+      const XLSXStyle = (await import('xlsx-js-style')).default
+      const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
+      const border = { top: bt, bottom: bt, left: bt, right: bt }
+      const headers = ['Orden', 'Código', 'Descripción', 'OEM', 'Referencia', 'Precio', 'Cantidad']
+      const hdrS = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: '1e3a5f' }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { ...border, bottom: { style: 'medium', color: { rgb: '2563EB' } } } }
+      const sortedDetails = [...details].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
+      const rows = sortedDetails.map((item) => [
+        item.orden ?? '',
+        item.producto?.codigo || item.codigo || 'SIN CATÁLOGO',
+        item.producto?.nombre || item.nombre || '',
+        getProductoOem(item.producto) || item.oem || '',
+        item.producto?.referencia || item.referencia || '',
+        item.producto?.precio != null ? +Number(item.producto.precio).toFixed(2) : '',
+        +Number(item.cantidad || 0),
+      ])
+      const worksheet = XLSXStyle.utils.aoa_to_sheet([headers, ...rows])
+      headers.forEach((_, ci) => { worksheet[XLSXStyle.utils.encode_cell({ r: 0, c: ci })].s = hdrS })
+      rows.forEach((row, ri) => {
+        const bg = (ri + 1) % 2 === 0 ? 'EFF6FF' : 'FFFFFF'
+        row.forEach((_, ci) => {
+          const cell = worksheet[XLSXStyle.utils.encode_cell({ r: ri + 1, c: ci })]
+          if (cell) cell.s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(ci === 5 ? { numFmt: '0.00' } : {}) }
+        })
+      })
+      worksheet['!cols'] = [{ wch: 8 }, { wch: 14 }, { wch: 32 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 10 }]
+      worksheet['!rows'] = [{ hpt: 22 }]
+      const workbook = XLSXStyle.utils.book_new()
+      XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Sugerencia')
+      XLSXStyle.writeFile(workbook, `sugerencia-${imp?.codigo || imp?.estado}.xlsx`)
+    } catch (e) {
+      console.error(e)
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el Excel.', life: 3500 })
+    }
+  }
+
   const handleDownloadVerificarExcel = async () => {
     try {
       const XLSXStyle = (await import('xlsx-js-style')).default
@@ -8346,6 +8384,16 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                 )}
               </div>
               <div className="user-details__footer-right">
+                {imp?.estado === 'borrador' && (
+                  <button
+                    type="button"
+                    className="users-circle users-circle--excel"
+                    title="Descargar Excel"
+                    onClick={handleDownloadSugerenciaExcel}
+                  >
+                    <i className="pi pi-file-excel" />
+                  </button>
+                )}
                 {isVerificarOrConfirmacion && (
                   <div className="imp-verificar-excel-dropdown" ref={verificarExcelDropdownRef}>
                     <button
