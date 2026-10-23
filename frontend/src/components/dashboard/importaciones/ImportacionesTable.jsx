@@ -3727,6 +3727,17 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // izq./der. que no es parte del sufijo de casa).
   const CODIGO_BASE_LENGTH = 5
 
+  // Calificador de lado (izq./der.) que va DESPUÉS del sufijo de casa, p. ej.
+  // "C1130CL-L". Se separa del código antes de buscar el sufijo de casa y se
+  // vuelve a pegar al final del código sugerido ("C1130" + casa + "-L").
+  const LADO_SUFFIX_RE = /\s*-\s*([LR])$/
+
+  const splitLado = (codigo) => {
+    const m = codigo.match(LADO_SUFFIX_RE)
+    if (!m) return { codigo, lado: '' }
+    return { codigo: codigo.slice(0, m.index), lado: `-${m[1]}` }
+  }
+
   const deriveSuggestedCodigo = (row, casaCodigo) => {
     const targetSuffix = (casaCodigo || '').trim().toUpperCase()
     if (!targetSuffix) return ''
@@ -3735,14 +3746,14 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       allCandidates.push(match, ...(match.alternos || []))
     }
     for (const candidate of allCandidates) {
-      const candidateCodigo = (candidate.codigo || '').trim().toUpperCase()
+      const { codigo: candidateCodigo, lado } = splitLado((candidate.codigo || '').trim().toUpperCase())
       if (!candidateCodigo) continue
       for (const otherSuffix of candidate.casas_comerciales_codigos || []) {
         const suffix = (otherSuffix || '').trim().toUpperCase()
         if (!suffix || suffix === targetSuffix) continue
         if (candidateCodigo.endsWith(suffix)) {
           const base = candidateCodigo.slice(0, candidateCodigo.length - suffix.length)
-          if (base) return `${base}${targetSuffix}`
+          if (base) return `${base}${targetSuffix}${lado}`
         }
       }
     }
@@ -3752,10 +3763,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     // registrado), se usa el largo fijo del base en vez de intentar
     // adivinar dónde termina el sufijo.
     for (const candidate of allCandidates) {
-      const candidateCodigo = (candidate.codigo || '').trim().toUpperCase()
+      const { codigo: candidateCodigo, lado } = splitLado((candidate.codigo || '').trim().toUpperCase())
       if (candidateCodigo.length > CODIGO_BASE_LENGTH) {
         const base = candidateCodigo.slice(0, CODIGO_BASE_LENGTH)
-        return `${base}${targetSuffix}`
+        return `${base}${targetSuffix}${lado}`
       }
     }
     return ''
