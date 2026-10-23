@@ -606,3 +606,104 @@
 .dashboard-shell.dark .transfer-issues-cantidad--sobrante {
   color: #86efac;
 }
+
+/* Un inconveniente por documento: celda con la lista de productos. */
+.transfer-issues-group-cell {
+  display: grid;
+  gap: 2px;
+  min-width: 220px;
+}
+
+.transfer-issues-group-cell strong {
+  font-weight: 800;
+}
+
+.transfer-issues-group-cell span,
+.transfer-issues-group-cell small {
+  font-size: 0.78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transfer-issues-group-cell small {
+  color: var(--color-text-secondary);
+}
+
+/* Lista de productos dentro del detalle: cada uno se resuelve por separado. */
+.transfer-issues-group__list {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.transfer-issues-group__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.transfer-issues-group__item:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.transfer-issues-group__item.is-active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.transfer-issues-group__item:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.transfer-issues-group__item-main {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.transfer-issues-group__item-main strong {
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.transfer-issues-group__item-main small {
+  font-size: 0.76rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transfer-issues-group__item-qty {
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.transfer-issues-group__item-action {
+  min-width: 56px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .transfer-issues-group__item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}

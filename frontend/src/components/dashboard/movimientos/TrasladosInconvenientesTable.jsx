@@ -108,6 +108,79 @@ const formatHistorialAccion = (value) => {
   return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : '-'
 }
 
+const ACTIVE_ISSUE_STATES = new Set(['pendiente', 'reclamado'])
+const isActiveIssue = (issue) => ACTIVE_ISSUE_STATES.has(String(issue?.estado_key || issue?.estado || '').trim().toLowerCase())
+
+// Un inconveniente por documento (traslado, envio o importacion): la tabla
+// muestra el documento y dentro se resuelve cada producto.
+const getIssueGroupKey = (row) => {
+  if (row?.origen === 'importacion') {
+    return `importacion-${normalizeId(row?.importacion_id) || normalizeId(row?.solicitud_no_documento)}-${normalizeId(row?.envio_id) || 'casa'}`
+  }
+  return `traslado-${normalizeId(row?.solicitud_id) || normalizeId(row?.solicitud_no_documento)}`
+}
+
+const getIssueGroupState = (items) => {
+  const states = items.map((item) => String(item?.estado_key || '').trim().toLowerCase())
+  if (states.includes('pendiente')) return 'pendiente'
+  if (states.includes('reclamado')) return 'reclamado'
+  if (states.length && states.every((state) => state === 'perdido')) return 'perdido'
+  return 'resuelto'
+}
+
+const getIssueProductLabel = (item) =>
+  item?.tipo === 'otro'
+    ? 'Otro inconveniente'
+    : `${String(item?.producto_codigo || '-').trim()} - ${String(item?.producto_nombre || '-').trim()}`
+
+const buildIssueGroups = (list) => {
+  const groups = new Map()
+  ;(Array.isArray(list) ? list : []).forEach((row) => {
+    const key = getIssueGroupKey(row)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(row)
+  })
+  return Array.from(groups.entries()).map(([key, items]) => {
+    const first = items[0]
+    const state = getIssueGroupState(items)
+    const activos = items.filter(isActiveIssue).length
+    const cerrados = items.length - activos
+    const latest = items.reduce(
+      (acc, item) => (new Date(item?.created_at || 0).getTime() > new Date(acc?.created_at || 0).getTime() ? item : acc),
+      first
+    )
+    return {
+      id: key,
+      row_key: key,
+      items,
+      origen: first?.origen,
+      origen_label: first?.origen_label,
+      solicitud_id: first?.solicitud_id,
+      solicitud_no_documento: first?.solicitud_no_documento,
+      movimiento_entrada_id: first?.movimiento_entrada_id,
+      sucursal_solicitante_id: first?.sucursal_solicitante_id,
+      sucursal_proveedora: first?.sucursal_proveedora,
+      sucursal_solicitante: first?.sucursal_solicitante,
+      productos_count: items.length,
+      productos_resumen: items.map(getIssueProductLabel).join(' | '),
+      productos_busqueda: items
+        .map((item) => [item?.producto_codigo, item?.producto_nombre, item?.producto_busqueda, item?.motivo].filter(Boolean).join(' '))
+        .join(' '),
+      cantidad_faltante: items.reduce((acc, item) => acc + Math.abs(Number(item?.cantidad_faltante) || 0), 0),
+      estado_key: state,
+      estado_label: formatEstado(state),
+      resolucion_label:
+        items.length === 1
+          ? first?.resolucion_label
+          : cerrados
+            ? `${cerrados} de ${items.length} resueltos`
+            : '-',
+      created_at: latest?.created_at,
+      created_at_label: latest?.created_at_label,
+    }
+  }).sort((a, b) => new Date(b?.created_at || 0).getTime() - new Date(a?.created_at || 0).getTime())
+}
+
 const createInitialFilters = () => ({
   global: { value: null, matchMode: FilterMatchMode.CONTAINS },
 })
@@ -147,7 +220,7 @@ function TrasladosInconvenientesTable({
   // Ajusta automaticamente el ancho de las columnas para llenar el espacio
   // disponible en pantallas grandes, sin comprimir en pantallas chicas.
   useEffect(() => attachAutoExpandColumns(tableWrapperRef.current), [])
-  const widthHandlers = useMemo(() => makeWidthStateHandlers('traslados-inconvenientes-table-state-v2'), [])
+  const widthHandlers = useMemo(() => makeWidthStateHandlers('traslados-inconvenientes-table-state-v3'), [])
   const [tableResetKey, setTableResetKey] = useState(0)
   const quickSearchInputRef = useRef(null)
   const clickTimerRef = useRef(null)
@@ -161,9 +234,8 @@ function TrasladosInconvenientesTable({
     () => [
       { nombrevar: 'origen_label', header: 'Origen', filterPlaceholder: 'Buscar por origen' },
       { nombrevar: 'solicitud_no_documento', header: 'Documento', filterPlaceholder: 'Buscar por documento' },
-      { nombrevar: 'producto_nombre', header: 'Descripción', filterPlaceholder: 'Buscar por producto' },
-      { nombrevar: 'producto_codigo', header: 'Código', filterPlaceholder: 'Buscar por codigo' },
-      { nombrevar: 'cantidad_faltante', header: 'Faltante', filterPlaceholder: 'Buscar por faltante' },
+      { nombrevar: 'productos_resumen', header: 'Productos', filterPlaceholder: 'Buscar por producto' },
+      { nombrevar: 'cantidad_faltante', header: 'Unidades', filterPlaceholder: 'Buscar por unidades' },
       { nombrevar: 'sucursal_proveedora', header: 'Sucursal proveedora', filterPlaceholder: 'Buscar por proveedora' },
       { nombrevar: 'sucursal_solicitante', header: 'Sucursal destino', filterPlaceholder: 'Buscar por destino' },
       { nombrevar: 'estado_label', header: 'Estado', filterPlaceholder: 'Buscar por estado' },
@@ -185,6 +257,7 @@ function TrasladosInconvenientesTable({
   const [selectedRows, setSelectedRows] = useState([])
 
   const [selectedIssue, setSelectedIssue] = useState(null)
+  const [selectedGroupKey, setSelectedGroupKey] = useState('')
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -409,7 +482,7 @@ function TrasladosInconvenientesTable({
   }, [fetchRows])
 
   useEffect(() => {
-    const stored = tableLayoutStore.getItem('traslados-inconvenientes-table-columns')
+    const stored = tableLayoutStore.getItem('traslados-inconvenientes-table-columns-v2')
     if (stored) {
       try {
         const parsed = JSON.parse(stored)
@@ -419,12 +492,18 @@ function TrasladosInconvenientesTable({
           .filter(Boolean)
         setSelectedColumns(restored.length ? restored : columnsData)
       } catch {
-        tableLayoutStore.removeItem('traslados-inconvenientes-table-columns')
+        tableLayoutStore.removeItem('traslados-inconvenientes-table-columns-v2')
       }
     }
     // No cleanup-based flush here: handleCheckboxChangeColumn already
     // persists synchronously on every real change.
   }, [columnsData])
+
+  const groupedRows = useMemo(() => buildIssueGroups(rows), [rows])
+  const selectedGroup = useMemo(
+    () => groupedRows.find((group) => group.row_key === selectedGroupKey) || null,
+    [groupedRows, selectedGroupKey]
+  )
 
   const selectedRowIds = useMemo(
     () => new Set((selectedRows || []).map((row) => row?.row_key).filter(Boolean)),
@@ -928,8 +1007,10 @@ function TrasladosInconvenientesTable({
   }, [])
 
   const openDetails = useCallback(
-    (row) => {
-      setSelectedIssue(row || null)
+    (group) => {
+      const items = Array.isArray(group?.items) ? group.items : []
+      setSelectedGroupKey(group?.row_key || '')
+      setSelectedIssue(items.find(isActiveIssue) || items[0] || null)
       setShowDetailsModal(true)
       setIsMaximized(false)
       setIsResizingModal(false)
@@ -942,12 +1023,24 @@ function TrasladosInconvenientesTable({
   )
 
   useEffect(() => {
-    if (!pendingOpenSolicitudId || !rows.length) return
-    const matches = rows.filter((r) => normalizeId(r.solicitud_id) === normalizeId(pendingOpenSolicitudId))
-    if (!matches.length) return
-    if (matches.length === 1) openDetails(matches[0])
+    if (!pendingOpenSolicitudId || !groupedRows.length) return
+    const match = groupedRows.find(
+      (group) => group.origen === 'traslado' && normalizeId(group.solicitud_id) === normalizeId(pendingOpenSolicitudId)
+    )
+    if (!match) return
+    openDetails(match)
     onPendingOpenHandled?.()
-  }, [pendingOpenSolicitudId, rows, openDetails, onPendingOpenHandled])
+  }, [pendingOpenSolicitudId, groupedRows, openDetails, onPendingOpenHandled])
+
+  const selectIssueInGroup = useCallback(
+    (issue) => {
+      if (!issue || resolverSubmitting) return
+      if (issue.row_key === selectedIssue?.row_key) return
+      setSelectedIssue(issue)
+      resetResolverState()
+    },
+    [resetResolverState, resolverSubmitting, selectedIssue?.row_key]
+  )
 
   const ensureRowSelected = useCallback((rowData) => {
     if (!rowData) return
@@ -1315,12 +1408,12 @@ function TrasladosInconvenientesTable({
   }, [])
 
   const autoFitColumns = useCallback(() => {
-    autoFitTableColumns(tableWrapperRef.current, 'traslados-inconvenientes-table-state-v2')
+    autoFitTableColumns(tableWrapperRef.current, 'traslados-inconvenientes-table-state-v3')
   }, [])
 
   const handleResetTable = () => {
-    tableLayoutStore.removeItem('traslados-inconvenientes-table-columns')
-    tableLayoutStore.removeItem('traslados-inconvenientes-table-state-v2')
+    tableLayoutStore.removeItem('traslados-inconvenientes-table-columns-v2')
+    tableLayoutStore.removeItem('traslados-inconvenientes-table-state-v3')
     setSelectedColumns(columnsData)
     clearFilter()
     setTableResetKey((k) => k + 1)
@@ -1362,7 +1455,7 @@ function TrasladosInconvenientesTable({
           map.set(key, column)
           next = columnsData.filter((item) => map.has(item.nombrevar))
         }
-        tableLayoutStore.setItemNow('traslados-inconvenientes-table-columns', JSON.stringify(next))
+        tableLayoutStore.setItemNow('traslados-inconvenientes-table-columns-v2', JSON.stringify(next))
         return next
       })
     },
@@ -1433,8 +1526,8 @@ function TrasladosInconvenientesTable({
   const getRowsToExport = useCallback(() => {
     if (selectedRows.length) return selectedRows
     if (Array.isArray(processedRows)) return processedRows
-    return rows
-  }, [processedRows, rows, selectedRows])
+    return groupedRows
+  }, [groupedRows, processedRows, selectedRows])
 
   const exportColumns = useMemo(
     () =>
@@ -1568,9 +1661,22 @@ function TrasladosInconvenientesTable({
         throw new Error(String(payload?.detail || '').trim() || 'No se pudo resolver el inconveniente.')
       }
 
-      showSuccessToast('Inconveniente resuelto correctamente.')
-      setShowDetailsModal(false)
-      await fetchRows({ withOverlay: false })
+      showSuccessToast('Producto resuelto correctamente.')
+      const resolvedKey = selectedIssue?.row_key
+      const refreshed = await fetchRows({ withOverlay: false })
+      const sameGroup = (Array.isArray(refreshed) ? refreshed : []).filter(
+        (row) => getIssueGroupKey(row) === selectedGroupKey
+      )
+      const next =
+        sameGroup.find((row) => isActiveIssue(row) && row.row_key !== resolvedKey) ||
+        sameGroup.find((row) => row.row_key === resolvedKey) ||
+        null
+      if (next && sameGroup.some(isActiveIssue)) {
+        setSelectedIssue(next)
+        resetResolverState()
+      } else {
+        setShowDetailsModal(false)
+      }
       void fetchRemindersFromBackend(token).catch(() => {})
     } catch (requestError) {
       setResolverError(requestError?.message || 'No se pudo resolver el inconveniente.')
@@ -1585,6 +1691,8 @@ function TrasladosInconvenientesTable({
     resolverMotivo,
     resolverProvSubdivisionId,
     resolverSubdivisionId,
+    resetResolverState,
+    selectedGroupKey,
     selectedIssue,
     showSuccessToast,
     token,
@@ -1832,7 +1940,7 @@ function TrasladosInconvenientesTable({
       </div>
 
       <div className="users-header__right">
-        <span className="users-header__count">Reg. {rows.length}</span>
+        <span className="users-header__count">Reg. {groupedRows.length}</span>
         <button className="users-circle users-circle--excel" type="button" title="Excel" onClick={handleExportExcel}>
           <i className="pi pi-file-excel" />
         </button>
@@ -1852,23 +1960,25 @@ function TrasladosInconvenientesTable({
     []
   )
 
-  const productoBodyTemplate = useCallback(
-    (row) => {
-      const reason = String(row?.motivo || '').trim()
-      return (
-        <div className="transfer-issues-product-cell">
-          <strong>{String(row?.producto_codigo || '-').trim() || '-'}</strong>
-          <span>{String(row?.producto_nombre || '-').trim() || '-'}</span>
-          {reason ? (
-            <small className="cell-tooltip" data-pr-tooltip={reason}>
-              Novedad: {reason}
-            </small>
-          ) : null}
-        </div>
-      )
-    },
-    []
-  )
+  const productosBodyTemplate = useCallback((group) => {
+    const items = Array.isArray(group?.items) ? group.items : []
+    const shown = items.slice(0, 3)
+    return (
+      <div className="transfer-issues-group-cell">
+        <strong>{items.length === 1 ? '1 producto' : `${items.length} productos`}</strong>
+        {shown.map((item) => (
+          <span
+            key={item.row_key}
+            className="cell-tooltip"
+            data-pr-tooltip={String(item?.motivo || '').trim() ? `Novedad: ${String(item.motivo).trim()}` : undefined}
+          >
+            {getIssueProductLabel(item)}
+          </span>
+        ))}
+        {items.length > shown.length ? <small>{`y ${items.length - shown.length} más...`}</small> : null}
+      </div>
+    )
+  }, [])
 
   if (!canRead) {
     return (
@@ -1898,7 +2008,11 @@ function TrasladosInconvenientesTable({
   ]
     .filter(Boolean)
     .join(' ')
-  const modalTitle = `Inconveniente: ${String(selectedIssue?.solicitud_no_documento || '-').trim() || '-'}`
+  const modalTitle = `Inconveniente: ${String(selectedGroup?.solicitud_no_documento || selectedIssue?.solicitud_no_documento || '-').trim() || '-'}`
+  const groupItems = Array.isArray(selectedGroup?.items) && selectedGroup.items.length
+    ? selectedGroup.items
+    : selectedIssue ? [selectedIssue] : []
+  const groupActiveCount = groupItems.filter(isActiveIssue).length
 
   return (
     <div className="users-page transfer-issues-page">
@@ -1954,7 +2068,7 @@ function TrasladosInconvenientesTable({
 
         <DataTable
           key={tableResetKey}
-          value={rows}
+          value={groupedRows}
           dataKey="row_key"
           header={header}
           className={`users-datatable${loading || isRefreshing ? ' users-datatable--loading-content' : ''}`}
@@ -1971,10 +2085,10 @@ function TrasladosInconvenientesTable({
           filters={filters}
           onValueChange={(value) => setProcessedRows(Array.isArray(value) ? value : [])}
           globalFilterFields={[
+            'origen_label',
             'solicitud_no_documento',
-            'producto_nombre',
-            'producto_codigo',
-            'producto_busqueda',
+            'productos_resumen',
+            'productos_busqueda',
             'cantidad_faltante',
             'sucursal_proveedora',
             'sucursal_solicitante',
@@ -2022,8 +2136,8 @@ function TrasladosInconvenientesTable({
           {selectedColumns.map((column) => {
             const field = column.nombrevar
             let bodyTemplate = null
-            if (field === 'producto_nombre') {
-              bodyTemplate = productoBodyTemplate
+            if (field === 'productos_resumen') {
+              bodyTemplate = productosBodyTemplate
             } else if (field === 'estado_label') {
               bodyTemplate = estadoBodyTemplate
             } else {
@@ -2158,6 +2272,62 @@ function TrasladosInconvenientesTable({
                         }
                       />
                     </div>
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Productos</p>
+                      <h4>
+                        {groupItems.length === 1 ? '1 producto' : `${groupItems.length} productos`}
+                        {groupActiveCount ? ` · ${groupActiveCount} por resolver` : ''}
+                      </h4>
+                    </div>
+                  </div>
+                  <div className="transfer-issues-group__list" role="list">
+                    {groupItems.map((item) => {
+                      const active = item.row_key === selectedIssue?.row_key
+                      const qty = Number.parseInt(String(item?.cantidad_faltante || 0), 10) || 0
+                      return (
+                        <button
+                          key={item.row_key}
+                          type="button"
+                          role="listitem"
+                          className={`transfer-issues-group__item${active ? ' is-active' : ''}`}
+                          onClick={() => selectIssueInGroup(item)}
+                          disabled={resolverSubmitting && !active}
+                          aria-pressed={active}
+                        >
+                          <span className="transfer-issues-group__item-main">
+                            <strong>{item?.tipo === 'otro' ? 'Otro inconveniente' : String(item?.producto_codigo || '-').trim()}</strong>
+                            <small>{item?.tipo === 'otro' ? String(item?.motivo || '').trim() || '-' : String(item?.producto_nombre || '-').trim()}</small>
+                          </span>
+                          {item?.tipo !== 'otro' ? (
+                            <span className={`transfer-issues-group__item-qty transfer-issues-cantidad--${item?.tipo === 'sobrante' ? 'sobrante' : 'faltante'}`}>
+                              {item?.tipo === 'sobrante' ? '+' : '−'}{qty}
+                            </span>
+                          ) : null}
+                          <span className={`transfer-issues-state transfer-issues-state--${item?.estado_key || 'pendiente'}`}>
+                            {item?.estado_label || '-'}
+                          </span>
+                          <span className="transfer-issues-group__item-action">
+                            {active ? 'Viendo' : isActiveIssue(item) ? 'Resolver' : 'Ver'}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="create-user__section-header">
+                    <div>
+                      <p className="create-user__eyebrow">Producto seleccionado</p>
+                      <h4>{getIssueProductLabel(selectedIssue)}</h4>
+                    </div>
+                  </div>
+                  <div className="create-salida__field-group--defined">
                     {selectedIssue?.tipo !== 'otro' && (
                       <div className="create-user__grid create-user__grid--two">
                         <StaticFieldDisplay
@@ -3037,7 +3207,9 @@ function TrasladosInconvenientesTable({
                       ? 'Guardando...'
                       : selectedIssue?.tipo === 'otro'
                         ? 'Solucionado'
-                        : 'Confirmar decisión'}
+                        : groupItems.length > 1
+                          ? `Confirmar ${String(selectedIssue?.producto_codigo || 'producto').trim()}`
+                          : 'Confirmar decisión'}
                   </button>
                 ) : null}
               </footer>
