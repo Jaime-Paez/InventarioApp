@@ -858,9 +858,14 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.transfer-issues-summary--five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 @media (max-width: 640px) {
   .transfer-issues-dialog .create-entrada__location-picker-grid,
-  .transfer-issues-summary--four {
+  .transfer-issues-summary--four,
+  .transfer-issues-summary--five {
     grid-template-columns: 1fr;
   }
 }

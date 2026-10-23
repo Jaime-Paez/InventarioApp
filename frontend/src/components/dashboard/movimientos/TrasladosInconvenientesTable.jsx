@@ -2624,14 +2624,14 @@ function TrasladosInconvenientesTable({
                     ) : null}
                   </div>
                   <div className="create-salida__field-group--defined">
-                    <div className={`create-user__grid ${isImportacionGroup ? 'create-user__grid--three' : 'transfer-issues-summary--four'}`}>
-                      <StaticFieldDisplay
-                        label={isImportacionGroup ? 'Casa comercial' : 'Sucursal proveedora'}
-                        value={String(groupFirst?.sucursal_proveedora || '-').trim() || '-'}
-                      />
+                    <div className={`create-user__grid ${isImportacionGroup ? 'transfer-issues-summary--four' : 'transfer-issues-summary--five'}`}>
                       <StaticFieldDisplay
                         label={isImportacionGroup ? 'Importación' : 'Traslado'}
                         value={String(selectedGroup?.solicitud_no_documento || '-').trim() || '-'}
+                      />
+                      <StaticFieldDisplay
+                        label={isImportacionGroup ? 'Casa comercial' : 'Sucursal proveedora'}
+                        value={String(groupFirst?.sucursal_proveedora || '-').trim() || '-'}
                       />
                       {!isImportacionGroup ? (
                         <StaticFieldDisplay
@@ -2640,8 +2640,12 @@ function TrasladosInconvenientesTable({
                         />
                       ) : null}
                       <StaticFieldDisplay
-                        label="Productos"
-                        value={`${groupItems.length} · ${groupItems.length - groupActiveCount + groupDraftCount} con solución · ${groupActiveCount - groupDraftCount} pendientes`}
+                        label="Solucionados"
+                        value={String(groupItems.length - groupActiveCount + groupDraftCount)}
+                      />
+                      <StaticFieldDisplay
+                        label="Pendientes"
+                        value={String(groupActiveCount - groupDraftCount)}
                       />
                     </div>
                   </div>
