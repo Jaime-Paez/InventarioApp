@@ -281,6 +281,13 @@ class ImportacionInconveniente(models.Model):
     motivo = models.TextField(blank=True, default="")
     cantidad_prometida = models.PositiveIntegerField(null=True, blank=True)
     fecha_entrega_prometida = models.DateField(null=True, blank=True)
+    # Solucion elegida en el detalle y aun no aplicada (ver
+    # movimientos/inconveniente_borrador.py). Se limpia al resolver.
+    borrador = models.JSONField(
+        default=dict,
+        blank=True,
+        db_default=models.Value({}, output_field=models.JSONField()),
+    )
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

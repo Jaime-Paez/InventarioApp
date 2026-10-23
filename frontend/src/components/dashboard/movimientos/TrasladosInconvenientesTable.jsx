@@ -44,6 +44,9 @@ const formatDivisionLocationLabel = (division) => {
   return [bodega, divisionName].filter(Boolean).join(' / ')
 }
 const formatBodegaLocationLabel = (bodega) => String(bodega?.nombre || '').trim()
+const PRODUCTS_HOVER_CARD_WIDTH = 560
+const PRODUCTS_HOVER_CARD_MARGIN = 12
+const PRODUCTS_HOVER_CARD_MAX_HEIGHT = 520
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
@@ -92,22 +95,6 @@ const formatResolucion = (value) => {
   return '-'
 }
 
-const formatHistorialAccion = (value) => {
-  const normalized = String(value || '').trim().toLowerCase()
-  if (normalized === 'detectado') return 'Detectado'
-  if (normalized === 'sumado_a_sucursal') return 'Sumado a sucursal'
-  if (normalized === 'marcado_como_perdido') return 'Marcado como desaparecido'
-  if (normalized === 'restado_de_proveedora') return 'Restado de proveedora'
-  if (normalized === 'sin_cambios') return 'Sin cambios'
-  if (normalized === 'reportado_a_proveedor') return 'Reportado a proveedor'
-  if (normalized === 'aceptado_sin_cambios') return 'Aceptado sin cambios'
-  if (normalized === 'devuelto_a_proveedor') return 'Devuelto a proveedor'
-  if (normalized === 'reclamado_a_proveedor') return 'Reclamado a proveedor'
-  if (normalized === 'olvidado') return 'Proceso olvidado'
-  if (normalized === 'solucion_acordada') return 'Solución acordada'
-  return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : '-'
-}
-
 const ACTIVE_ISSUE_STATES = new Set(['pendiente', 'reclamado'])
 const isActiveIssue = (issue) => ACTIVE_ISSUE_STATES.has(String(issue?.estado_key || issue?.estado || '').trim().toLowerCase())
 
@@ -115,7 +102,7 @@ const isActiveIssue = (issue) => ACTIVE_ISSUE_STATES.has(String(issue?.estado_ke
 // muestra el documento y dentro se resuelve cada producto.
 const getIssueGroupKey = (row) => {
   if (row?.origen === 'importacion') {
-    return `importacion-${normalizeId(row?.importacion_id) || normalizeId(row?.solicitud_no_documento)}-${normalizeId(row?.envio_id) || 'casa'}`
+    return `importacion-${normalizeId(row?.importacion_id) || normalizeId(row?.solicitud_no_documento)}`
   }
   return `traslado-${normalizeId(row?.solicitud_id) || normalizeId(row?.solicitud_no_documento)}`
 }
@@ -132,6 +119,94 @@ const getIssueProductLabel = (item) =>
   item?.tipo === 'otro'
     ? 'Otro inconveniente'
     : `${String(item?.producto_codigo || '-').trim()} - ${String(item?.producto_nombre || '-').trim()}`
+
+const DECISION_LABELS = {
+  sumar_solicitante: 'Sumar a sucursal destino',
+  sumar_proveedora: 'Sumar a sucursal proveedora',
+  sumar_origen: 'Sumar a Matriz (origen)',
+  perdido: 'Marcar como desaparecido',
+  devolver_proveedora: 'Devolver a la sucursal proveedora',
+  sin_cambios: 'Mantener en la sucursal destino',
+  aceptado: 'No hacer nada',
+  reportado_proveedor: 'Generar un reclamo al proveedor',
+  devolver_proveedor: 'Devolver a proveedor',
+  olvidar: 'Olvidar proceso',
+  solucion: 'Solución acordada con el proveedor',
+  solucionado: 'Solucionado',
+}
+
+const DECISION_HINTS = {
+  sumar_solicitante: 'Las unidades sí llegaron: se suman al inventario de la sucursal destino en esta ubicación.',
+  sumar_proveedora: 'Las unidades nunca salieron: se suman de vuelta en la sucursal proveedora en esta ubicación.',
+  sumar_origen: 'Las unidades nunca salieron de la sucursal desde la que se envió la importación: se suman ahí en esta ubicación.',
+  perdido: 'Las unidades se dan de baja como pérdida. No se ajusta inventario en ninguna sucursal.',
+  devolver_proveedora: 'Se restan las unidades sobrantes de la sucursal destino y se suman de vuelta en la sucursal proveedora.',
+  sin_cambios: 'Las unidades sobrantes se quedan en la sucursal destino. No se mueve inventario.',
+  aceptado: 'Se acepta tal cual. No se ajusta inventario ni se reclama al proveedor.',
+  reportado_proveedor: "El inconveniente pasa a 'Reclamado' y sigue activo hasta acordar una solución con el proveedor.",
+  devolver_proveedor: 'El excedente queda marcado como devuelto al proveedor. No se ajusta inventario.',
+  olvidar: 'El reclamo se cierra como perdido / no recuperable.',
+  solucion: 'Registra la cantidad que enviará el proveedor y la fecha de entrega acordada.',
+  solucionado: 'Escribe cómo se solucionó este inconveniente.',
+}
+
+// Sin nota no se acepta: queda constancia de que paso.
+const NOTE_REQUIRED_DECISIONS = new Set(['perdido', 'solucionado'])
+
+const LOCATION_DECISIONS = new Set(['sumar_solicitante', 'sumar_proveedora', 'sumar_origen', 'devolver_proveedora'])
+
+const option = (key, label, variant) => ({ key, label, variant, tooltip: DECISION_HINTS[key] })
+
+// Opciones de cada producto segun de donde viene el inconveniente.
+const getDecisionOptions = (issue) => {
+  if (!issue || !isActiveIssue(issue)) return []
+  if (issue.tipo === 'otro') return [option('solucionado', 'Solucionar', 'success')]
+  if (issue.origen === 'importacion' && !issue.envio_id) {
+    if (String(issue.estado || '').toLowerCase() === 'reclamado') {
+      return [option('olvidar', 'Olvidar proceso', 'neutral'), option('solucion', 'Solución acordada', 'warning')]
+    }
+    return issue.tipo === 'sobrante'
+      ? [option('devolver_proveedor', 'Devolver a proveedor', 'warning'), option('aceptado', 'No hacer nada', 'neutral')]
+      : [option('aceptado', 'No hacer nada', 'neutral'), option('reportado_proveedor', 'Reclamar al proveedor', 'warning')]
+  }
+  if (issue.tipo === 'sobrante') {
+    return [option('devolver_proveedora', 'Devolver', 'warning'), option('sin_cambios', 'Mantener', 'neutral')]
+  }
+  const options = []
+  if (issue.envio_id) {
+    if (issue.sucursal_origen_id) options.push(option('sumar_origen', 'Sumar a Matriz', 'primary'))
+  } else {
+    options.push(option('sumar_proveedora', 'Sumar a proveedora', 'primary'))
+  }
+  options.push(option('sumar_solicitante', 'Sumar a destino', 'success'))
+  options.push(option('perdido', 'Desaparecido', 'danger'))
+  return options
+}
+
+const hasDraftDecision = (draft) => Boolean(draft?.decision)
+
+const describeDraft = (draft) => {
+  if (!draft?.decision) return ''
+  const parts = [DECISION_LABELS[draft.decision] || draft.decision]
+  if (draft.decision === 'devolver_proveedora') {
+    if (draft.subdivision_label) parts.push(`restar de ${draft.subdivision_label}`)
+    if (draft.subdivision_proveedora_label) parts.push(`devolver a ${draft.subdivision_proveedora_label}`)
+  } else if (draft.subdivision_label) {
+    parts.push(draft.subdivision_label)
+  }
+  if (draft.decision === 'solucion' && draft.cantidad_prometida) {
+    parts.push(`${draft.cantidad_prometida} u. para el ${draft.fecha_entrega_prometida || '-'}`)
+  }
+  return parts.join(' · ')
+}
+
+const getIssueBranchLabel = (issue) => {
+  if (issue?.origen === 'importacion' && !issue?.envio_id) return 'Llegada desde la casa comercial'
+  return String(issue?.sucursal_solicitante || '').trim() || 'Sin sucursal'
+}
+
+const formatIssueQty = (issue) =>
+  `${issue?.tipo === 'sobrante' ? '+' : '−'}${Number.parseInt(String(issue?.cantidad_faltante || 0), 10) || 0}`
 
 const buildIssueGroups = (list) => {
   const groups = new Map()
@@ -160,7 +235,9 @@ const buildIssueGroups = (list) => {
       movimiento_entrada_id: first?.movimiento_entrada_id,
       sucursal_solicitante_id: first?.sucursal_solicitante_id,
       sucursal_proveedora: first?.sucursal_proveedora,
-      sucursal_solicitante: first?.sucursal_solicitante,
+      // Una importacion puede haber ido a varias sucursales.
+      sucursal_solicitante:
+        [...new Set(items.map((item) => String(item?.sucursal_solicitante || '').trim()).filter((name) => name && name !== '-'))].join(', ') || '-',
       productos_count: items.length,
       productos_resumen: items.map(getIssueProductLabel).join(' | '),
       productos_busqueda: items
@@ -216,6 +293,9 @@ function TrasladosInconvenientesTable({
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
+  const productHoverCardRef = useRef(null)
+  const productHoverHideTimeoutRef = useRef(null)
+  const [productHoverCard, setProductHoverCard] = useState(null)
 
   // Ajusta automaticamente el ancho de las columnas para llenar el espacio
   // disponible en pantallas grandes, sin comprimir en pantallas chicas.
@@ -256,8 +336,21 @@ function TrasladosInconvenientesTable({
   const [processedRows, setProcessedRows] = useState(null)
   const [selectedRows, setSelectedRows] = useState([])
 
+  // `selectedIssue` = el producto cuya solucion se esta eligiendo.
   const [selectedIssue, setSelectedIssue] = useState(null)
-  const [selectedGroupKey, setSelectedGroupKey] = useState('')
+  const [openedGroup, setOpenedGroup] = useState(null)
+  const [groupIssues, setGroupIssues] = useState([])
+  const [groupLoading, setGroupLoading] = useState(false)
+  const [drafts, setDrafts] = useState({})
+  const [collapsedBranches, setCollapsedBranches] = useState({})
+  const [decisionDialogOpen, setDecisionDialogOpen] = useState(false)
+  const [applyConfirm, setApplyConfirm] = useState(null)
+  const [savingDrafts, setSavingDrafts] = useState(false)
+  const draftsRef = useRef({})
+  const dirtyDraftKeysRef = useRef(new Set())
+  const groupIssuesRef = useRef([])
+  // Ubicacion ya elegida en el borrador: se precarga al volver a abrirlo.
+  const resolverPresetRef = useRef({ main: '', prov: '' })
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
@@ -500,10 +593,7 @@ function TrasladosInconvenientesTable({
   }, [columnsData])
 
   const groupedRows = useMemo(() => buildIssueGroups(rows), [rows])
-  const selectedGroup = useMemo(
-    () => groupedRows.find((group) => group.row_key === selectedGroupKey) || null,
-    [groupedRows, selectedGroupKey]
-  )
+  const selectedGroup = openedGroup
 
   const selectedRowIds = useMemo(
     () => new Set((selectedRows || []).map((row) => row?.row_key).filter(Boolean)),
@@ -836,6 +926,10 @@ function TrasladosInconvenientesTable({
           }
         }
 
+        const presetSubdivisionId = normalizeId(resolverPresetRef.current.main)
+        if (presetSubdivisionId && availableSubdivisionIds.has(presetSubdivisionId)) {
+          preferredSubdivisionId = presetSubdivisionId
+        }
         const preferredValid = preferredSubdivisionId && availableSubdivisionIds.has(preferredSubdivisionId)
         const nextSubdivisionId = preferredValid ? preferredSubdivisionId : ''
         const nextPath = subdivisionPathById.get(nextSubdivisionId) || null
@@ -947,6 +1041,10 @@ function TrasladosInconvenientesTable({
           }
         }
 
+        const presetProvSubdivisionId = normalizeId(resolverPresetRef.current.prov)
+        if (presetProvSubdivisionId && availableSubdivisionIds.has(presetProvSubdivisionId)) {
+          preferredSubdivisionId = presetProvSubdivisionId
+        }
         const preferredValid = preferredSubdivisionId && availableSubdivisionIds.has(preferredSubdivisionId)
         const nextSubdivisionId = preferredValid ? preferredSubdivisionId : ''
         const nextPath = subdivisionPathById.get(nextSubdivisionId) || null
@@ -1006,11 +1104,71 @@ function TrasladosInconvenientesTable({
     setResolverProvLocationDebouncedQuery('')
   }, [])
 
+  const replaceDrafts = useCallback((next) => {
+    draftsRef.current = next
+    setDrafts(next)
+  }, [])
+
+  const setDraftValue = useCallback((key, value) => {
+    const next = { ...draftsRef.current }
+    if (value && Object.keys(value).length) next[key] = value
+    else delete next[key]
+    dirtyDraftKeysRef.current.add(key)
+    replaceDrafts(next)
+  }, [replaceDrafts])
+
+  const applyGroupIssues = useCallback((list) => {
+    const sorted = [...list].sort((a, b) => {
+      const branch = getIssueBranchLabel(a).localeCompare(getIssueBranchLabel(b), 'es', { sensitivity: 'base' })
+      if (branch) return branch
+      return String(a?.producto_codigo || '').localeCompare(String(b?.producto_codigo || ''), 'es', { sensitivity: 'base' })
+    })
+    groupIssuesRef.current = sorted
+    setGroupIssues(sorted)
+    const next = {}
+    sorted.forEach((issue) => {
+      if (!isActiveIssue(issue)) return
+      const saved = issue?.borrador && typeof issue.borrador === 'object' ? issue.borrador : {}
+      if (Object.keys(saved).length) next[issue.row_key] = saved
+    })
+    dirtyDraftKeysRef.current = new Set()
+    replaceDrafts(next)
+    return sorted
+  }, [replaceDrafts])
+
+  // Todos los productos del documento (tambien los ya resueltos).
+  const loadGroupIssues = useCallback(
+    async (group) => {
+      const first = group?.items?.[0]
+      if (!token || !first) return []
+      setGroupLoading(true)
+      try {
+        const url =
+          group.origen === 'importacion'
+            ? `${API_URL}/importaciones/importaciones/inconvenientes/?importacion_id=${encodeURIComponent(normalizeId(first?.importacion_id))}`
+            : `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/?solicitud_id=${encodeURIComponent(normalizeId(first?.solicitud_id))}`
+        const response = await authFetch(url, {}, token)
+        if (!response.ok) throw new Error('No se pudieron cargar los productos de este inconveniente.')
+        const list = parseApiList(await response.json().catch(() => []))
+        return applyGroupIssues(group.origen === 'importacion' ? normalizeImportacionRows(list) : normalizeRows(list))
+      } catch (requestError) {
+        showErrorToast(requestError?.message || 'No se pudieron cargar los productos de este inconveniente.')
+        return groupIssuesRef.current
+      } finally {
+        setGroupLoading(false)
+      }
+    },
+    [applyGroupIssues, normalizeImportacionRows, normalizeRows, showErrorToast, token]
+  )
+
   const openDetails = useCallback(
     (group) => {
-      const items = Array.isArray(group?.items) ? group.items : []
-      setSelectedGroupKey(group?.row_key || '')
-      setSelectedIssue(items.find(isActiveIssue) || items[0] || null)
+      setOpenedGroup(group || null)
+      setSelectedIssue(null)
+      setDecisionDialogOpen(false)
+      setApplyConfirm(null)
+      setCollapsedBranches({})
+      applyGroupIssues(Array.isArray(group?.items) ? group.items : [])
       setShowDetailsModal(true)
       setIsMaximized(false)
       setIsResizingModal(false)
@@ -1018,8 +1176,9 @@ function TrasladosInconvenientesTable({
       modalDrag.current.active = false
       modalResize.current.active = false
       resetResolverState()
+      void loadGroupIssues(group)
     },
-    [resetResolverState]
+    [applyGroupIssues, loadGroupIssues, resetResolverState]
   )
 
   useEffect(() => {
@@ -1032,15 +1191,83 @@ function TrasladosInconvenientesTable({
     onPendingOpenHandled?.()
   }, [pendingOpenSolicitudId, groupedRows, openDetails, onPendingOpenHandled])
 
-  const selectIssueInGroup = useCallback(
-    (issue) => {
-      if (!issue || resolverSubmitting) return
-      if (issue.row_key === selectedIssue?.row_key) return
-      setSelectedIssue(issue)
-      resetResolverState()
+  // Guarda en la base los borradores cambiados (o los de `keys`). Nada se
+  // queda solo en el navegador.
+  const saveDrafts = useCallback(
+    async (keys) => {
+      const targetKeys = Array.isArray(keys) ? keys : Array.from(dirtyDraftKeysRef.current)
+      const issuesByKey = new Map(groupIssuesRef.current.map((issue) => [issue.row_key, issue]))
+      const items = targetKeys
+        .map((key) => {
+          const issue = issuesByKey.get(key)
+          if (!issue || !isActiveIssue(issue)) return null
+          return { id: Number(issue.id), borrador: draftsRef.current[key] || {} }
+        })
+        .filter(Boolean)
+      targetKeys.forEach((key) => dirtyDraftKeysRef.current.delete(key))
+      if (!token || !items.length) return true
+      const origen = issuesByKey.get(targetKeys.find((key) => issuesByKey.has(key)))?.origen
+      const url =
+        origen === 'importacion'
+          ? `${API_URL}/importaciones/importaciones/inconvenientes/borradores/`
+          : `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/borradores/`
+      try {
+        const response = await authFetch(url, { method: 'POST', body: JSON.stringify({ items }) }, token)
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(String(payload?.detail || '').trim() || 'No se pudieron guardar los cambios.')
+        }
+        return true
+      } catch (requestError) {
+        targetKeys.forEach((key) => dirtyDraftKeysRef.current.add(key))
+        showErrorToast(requestError?.message || 'No se pudieron guardar los cambios.')
+        return false
+      }
     },
-    [resetResolverState, resolverSubmitting, selectedIssue?.row_key]
+    [showErrorToast, token]
   )
+
+  const openDecision = useCallback(
+    (issue, decision) => {
+      if (!issue || !decision) return
+      const draft = draftsRef.current[issue.row_key]
+      const same = draft?.decision === decision
+      resetResolverState()
+      resolverPresetRef.current = {
+        main: same ? normalizeId(draft?.subdivision_id) : '',
+        prov: same ? normalizeId(draft?.subdivision_proveedora_id) : '',
+      }
+      setSelectedIssue(issue)
+      setResolverDecision(decision)
+      setResolverMotivo(String(draft?.motivo || ''))
+      if (same && decision === 'solucion') {
+        setResolverCantidadPrometida(String(draft?.cantidad_prometida || ''))
+        setResolverFechaPrometida(String(draft?.fecha_entrega_prometida || ''))
+      }
+      setDecisionDialogOpen(true)
+    },
+    [resetResolverState]
+  )
+
+  const closeDecisionDialog = useCallback(() => {
+    setDecisionDialogOpen(false)
+    resolverPresetRef.current = { main: '', prov: '' }
+    resetResolverState()
+    setSelectedIssue(null)
+  }, [resetResolverState])
+
+  const removeDraft = useCallback(
+    (issue) => {
+      if (!issue) return
+      setDraftValue(issue.row_key, null)
+      void saveDrafts([issue.row_key])
+    },
+    [saveDrafts, setDraftValue]
+  )
+
+  const toggleBranch = useCallback((key) => {
+    setCollapsedBranches((prev) => ({ ...prev, [key]: !prev[key] }))
+  }, [])
 
   const ensureRowSelected = useCallback((rowData) => {
     if (!rowData) return
@@ -1066,6 +1293,9 @@ function TrasladosInconvenientesTable({
 
   const closeDetails = useCallback(() => {
     if (resolverSubmitting) return
+    if (dirtyDraftKeysRef.current.size) void saveDrafts()
+    setDecisionDialogOpen(false)
+    setApplyConfirm(null)
     modalDrag.current.active = false
     modalResize.current.active = false
     setIsResizingModal(false)
@@ -1080,7 +1310,7 @@ function TrasladosInconvenientesTable({
     setResolverProvLocationQuery('')
     setResolverProvLocationDebouncedQuery('')
     setShowDetailsModal(false)
-  }, [resolverSubmitting])
+  }, [resolverSubmitting, saveDrafts])
 
   const closeResolverLocationDropdown = useCallback(() => {
     setResolverLocationDropdownField('')
@@ -1577,136 +1807,146 @@ function TrasladosInconvenientesTable({
     })
   }, [exportColumns, getExportValue, getRowsToExport, showWarningToast])
 
-  const submitResolver = useCallback(async (decisionOverride) => {
-    if (!token || !selectedIssue) return
-    const resolvedDecision = decisionOverride || resolverDecision
-    if (!resolvedDecision) {
-      setResolverError('Debes elegir una decisión para este producto.')
-      return
-    }
-
-    const isImportacion = selectedIssue?.origen === 'importacion'
-    // Faltante del envio de una importacion a una sucursal: se resuelve como
-    // un traslado (sumar en la sucursal destino o desaparecido).
-    const isEnvioIssue = isImportacion && Boolean(normalizeId(selectedIssue?.envio_id))
-
-    if (!isImportacion || isEnvioIssue) {
-      if (
-        (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora' || resolvedDecision === 'sumar_origen') &&
-        !normalizeId(resolverSubdivisionId)
-      ) {
-        setResolverError('Debes seleccionar bodega, división y subdivisión para sumar inventario.')
+  const acceptDecision = useCallback(() => {
+    const issue = selectedIssue
+    const decision = resolverDecision
+    if (!issue || !decision) return
+    const motivo = String(resolverMotivo || '').trim()
+    const draft = { decision }
+    if (motivo) draft.motivo = motivo
+    if (LOCATION_DECISIONS.has(decision)) {
+      if (!normalizeId(resolverSubdivisionId)) {
+        setResolverError(
+          decision === 'devolver_proveedora'
+            ? 'Selecciona la ubicación de la sucursal destino de donde restar el sobrante.'
+            : 'Selecciona bodega, división y subdivisión.'
+        )
         return
       }
-      if (resolvedDecision === 'devolver_proveedora') {
-        if (!normalizeId(resolverSubdivisionId)) {
-          setResolverError('Debes seleccionar la ubicación en sucursal destino de donde restar el sobrante.')
-          return
-        }
+      draft.subdivision_id = Number.parseInt(String(resolverSubdivisionId), 10)
+      draft.subdivision_label = formatSubdivisionLocationLabel(selectedResolverSubdivision)
+      if (decision === 'devolver_proveedora') {
         if (!normalizeId(resolverProvSubdivisionId)) {
-          setResolverError('Debes seleccionar la ubicación en sucursal proveedora donde devolver el sobrante.')
+          setResolverError('Selecciona la ubicación de la sucursal proveedora donde devolver el sobrante.')
           return
         }
+        draft.subdivision_proveedora_id = Number.parseInt(String(resolverProvSubdivisionId), 10)
+        draft.subdivision_proveedora_label = formatSubdivisionLocationLabel(selectedResolverProvSubdivision)
       }
     }
-
-    let cantidadPrometidaValue = null
-    if (isImportacion && resolvedDecision === 'solucion') {
-      cantidadPrometidaValue = Number.parseInt(String(resolverCantidadPrometida || ''), 10)
-      if (!Number.isFinite(cantidadPrometidaValue) || cantidadPrometidaValue <= 0) {
-        setResolverError('Debes indicar la cantidad que enviará el proveedor.')
+    if (decision === 'solucion') {
+      const cantidad = Number.parseInt(String(resolverCantidadPrometida || ''), 10)
+      if (!Number.isFinite(cantidad) || cantidad <= 0) {
+        setResolverError('Indica la cantidad que enviará el proveedor.')
         return
       }
       if (!resolverFechaPrometida) {
-        setResolverError('Debes indicar la fecha de entrega acordada.')
+        setResolverError('Indica la fecha de entrega acordada.')
         return
       }
+      draft.cantidad_prometida = cantidad
+      draft.fecha_entrega_prometida = resolverFechaPrometida
     }
-
-    setResolverError('')
-    setResolverSubmitting(true)
-    try {
-      const body = {
-        decision: resolvedDecision,
-        motivo: String(resolverMotivo || '').trim(),
-      }
-      if (!isImportacion || isEnvioIssue) {
-        if (resolvedDecision === 'sumar_solicitante' || resolvedDecision === 'sumar_proveedora' || resolvedDecision === 'sumar_origen') {
-          body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
-        }
-        if (resolvedDecision === 'devolver_proveedora') {
-          body.subdivision_id = Number.parseInt(String(resolverSubdivisionId || ''), 10)
-          body.subdivision_proveedora_id = Number.parseInt(String(resolverProvSubdivisionId || ''), 10)
-        }
-      }
-      if (isImportacion && resolvedDecision === 'solucion') {
-        body.cantidad_prometida = cantidadPrometidaValue
-        body.fecha_entrega_prometida = resolverFechaPrometida
-      }
-
-      const endpoint = isImportacion
-        ? `${API_URL}/importaciones/importaciones/inconvenientes/${encodeURIComponent(normalizeId(selectedIssue?.id))}/resolver/`
-        : `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/${encodeURIComponent(normalizeId(selectedIssue?.id))}/resolver/`
-
-      const response = await authFetch(
-        endpoint,
-        {
-          method: 'POST',
-          body: JSON.stringify(body),
-        },
-        token
+    if (NOTE_REQUIRED_DECISIONS.has(decision) && !motivo) {
+      setResolverError(
+        decision === 'perdido'
+          ? 'Escribe qué pasó con las unidades desaparecidas.'
+          : 'Escribe cómo se solucionó este inconveniente.'
       )
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(String(payload?.detail || '').trim() || 'No se pudo resolver el inconveniente.')
-      }
-
-      showSuccessToast('Producto resuelto correctamente.')
-      const resolvedKey = selectedIssue?.row_key
-      const refreshed = await fetchRows({ withOverlay: false })
-      const sameGroup = (Array.isArray(refreshed) ? refreshed : []).filter(
-        (row) => getIssueGroupKey(row) === selectedGroupKey
-      )
-      const next =
-        sameGroup.find((row) => isActiveIssue(row) && row.row_key !== resolvedKey) ||
-        sameGroup.find((row) => row.row_key === resolvedKey) ||
-        null
-      if (next && sameGroup.some(isActiveIssue)) {
-        setSelectedIssue(next)
-        resetResolverState()
-      } else {
-        setShowDetailsModal(false)
-      }
-      void fetchRemindersFromBackend(token).catch(() => {})
-    } catch (requestError) {
-      setResolverError(requestError?.message || 'No se pudo resolver el inconveniente.')
-    } finally {
-      setResolverSubmitting(false)
+      return
     }
+    setDraftValue(issue.row_key, draft)
+    void saveDrafts([issue.row_key])
+    closeDecisionDialog()
   }, [
-    fetchRows,
+    closeDecisionDialog,
     resolverCantidadPrometida,
     resolverDecision,
     resolverFechaPrometida,
     resolverMotivo,
     resolverProvSubdivisionId,
     resolverSubdivisionId,
-    resetResolverState,
-    selectedGroupKey,
+    saveDrafts,
     selectedIssue,
-    showSuccessToast,
-    token,
+    selectedResolverProvSubdivision,
+    selectedResolverSubdivision,
+    setDraftValue,
   ])
 
-  const canResolveSelectedIssue = useMemo(() => {
-    const selectedState = String(selectedIssue?.estado || '').trim().toLowerCase()
-    return Boolean(canUpdate && (selectedState === 'pendiente' || selectedState === 'reclamado'))
-  }, [canUpdate, selectedIssue])
+  const resolveIssueWithDraft = useCallback(
+    async (issue, draft) => {
+      const isImportacion = issue?.origen === 'importacion'
+      const body = { decision: draft.decision, motivo: String(draft.motivo || '').trim() }
+      if (draft.subdivision_id) body.subdivision_id = draft.subdivision_id
+      if (draft.subdivision_proveedora_id) body.subdivision_proveedora_id = draft.subdivision_proveedora_id
+      if (draft.decision === 'solucion') {
+        body.cantidad_prometida = draft.cantidad_prometida
+        body.fecha_entrega_prometida = draft.fecha_entrega_prometida
+      }
+      const endpoint = isImportacion
+        ? `${API_URL}/importaciones/importaciones/inconvenientes/${encodeURIComponent(normalizeId(issue?.id))}/resolver/`
+        : `${API_URL}/movimientos/movimiento_inventario/traslados-inconvenientes/${encodeURIComponent(normalizeId(issue?.id))}/resolver/`
+      const response = await authFetch(endpoint, { method: 'POST', body: JSON.stringify(body) }, token)
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(String(payload?.detail || '').trim() || 'No se pudo resolver.')
+      }
+    },
+    [token]
+  )
 
-  const selectedHistoryRows = useMemo(() => {
-    if (!Array.isArray(selectedIssue?.historial)) return []
-    return selectedIssue.historial
-  }, [selectedIssue])
+  const runApply = useCallback(
+    async (toApply) => {
+      setApplyConfirm(null)
+      if (!toApply.length) return
+      setResolverSubmitting(true)
+      await saveDrafts()
+      const failures = []
+      let applied = 0
+      for (const issue of toApply) {
+        try {
+          await resolveIssueWithDraft(issue, draftsRef.current[issue.row_key] || {})
+          applied += 1
+        } catch (requestError) {
+          failures.push(`${String(issue?.producto_codigo || 'Producto').trim()}: ${requestError?.message || 'No se pudo resolver.'}`)
+        }
+      }
+      setResolverSubmitting(false)
+      if (applied) showSuccessToast(applied === 1 ? 'Se aplicó 1 solución.' : `Se aplicaron ${applied} soluciones.`)
+      if (failures.length) showErrorToast(failures.join(' | '), 'No se pudieron aplicar')
+      void fetchRows({ withOverlay: false })
+      void fetchRemindersFromBackend(token).catch(() => {})
+      const refreshed = await loadGroupIssues(openedGroup)
+      if (!failures.length && !refreshed.some(isActiveIssue)) setShowDetailsModal(false)
+    },
+    [fetchRows, loadGroupIssues, openedGroup, resolveIssueWithDraft, saveDrafts, showErrorToast, showSuccessToast, token]
+  )
+
+  // Aplica solo los productos con solucion; si quedan otros sin solucion,
+  // primero se muestra cuales se aplican y cuales quedan para despues.
+  const requestApply = useCallback(() => {
+    const active = groupIssuesRef.current.filter(isActiveIssue)
+    const toApply = active.filter((issue) => hasDraftDecision(draftsRef.current[issue.row_key]))
+    const sinSolucion = active.filter((issue) => !hasDraftDecision(draftsRef.current[issue.row_key]))
+    if (!toApply.length) {
+      showWarningToast('Todavía no elegiste la solución de ningún producto.')
+      return
+    }
+    if (sinSolucion.length) {
+      setApplyConfirm({ toApply, sinSolucion })
+      return
+    }
+    void runApply(toApply)
+  }, [runApply, showWarningToast])
+
+  const handleSaveDrafts = useCallback(async () => {
+    setSavingDrafts(true)
+    const ok = await saveDrafts(groupIssuesRef.current.filter(isActiveIssue).map((issue) => issue.row_key))
+    setSavingDrafts(false)
+    if (!ok) return
+    showSuccessToast('Cambios guardados. Puedes aplicarlos más tarde.')
+    setShowDetailsModal(false)
+  }, [saveDrafts, showSuccessToast])
 
   useEffect(() => {
     modalSizeRef.current = modalSize
@@ -1719,8 +1959,8 @@ function TrasladosInconvenientesTable({
   useLayoutEffect(() => {
     if (!showDetailsModal || isMaximized) return
     const { availableWidth, availableHeight, minWidth, minHeight } = getViewportMetrics()
-    const width = Math.min(Math.max(MIN_WIDTH, minWidth), availableWidth)
-    const height = Math.min(Math.max(MIN_HEIGHT, minHeight), availableHeight)
+    const width = Math.min(Math.max(940, minWidth), availableWidth)
+    const height = Math.min(Math.max(640, minHeight), availableHeight)
     setModalSize({ width, height })
     setModalPosition({
       x: Math.max((window.innerWidth - width) / 2, VIEWPORT_PADDING),
@@ -1960,25 +2200,96 @@ function TrasladosInconvenientesTable({
     []
   )
 
+  const clearProductHoverHideTimer = useCallback(() => {
+    if (!productHoverHideTimeoutRef.current) return
+    clearTimeout(productHoverHideTimeoutRef.current)
+    productHoverHideTimeoutRef.current = null
+  }, [])
+
+  const hideProductHoverCard = useCallback(() => {
+    clearProductHoverHideTimer()
+    setProductHoverCard(null)
+  }, [clearProductHoverHideTimer])
+
+  const scheduleHideProductHoverCard = useCallback(() => {
+    clearProductHoverHideTimer()
+    productHoverHideTimeoutRef.current = setTimeout(() => {
+      productHoverHideTimeoutRef.current = null
+      setProductHoverCard(null)
+    }, 120)
+  }, [clearProductHoverHideTimer])
+
+  const showProductHoverCard = useCallback(
+    (event, items) => {
+      const list = Array.isArray(items) ? items : []
+      if (!list.length) {
+        hideProductHoverCard()
+        return
+      }
+      clearProductHoverHideTimer()
+      const rect = event?.currentTarget?.getBoundingClientRect?.()
+      if (!rect) return
+      let left = rect.right + 10
+      if (left + PRODUCTS_HOVER_CARD_WIDTH > window.innerWidth - PRODUCTS_HOVER_CARD_MARGIN) {
+        left = Math.max(PRODUCTS_HOVER_CARD_MARGIN, rect.left - PRODUCTS_HOVER_CARD_WIDTH - 10)
+      }
+      const estimatedCardHeight = 32 + 24 + list.length * 27 + 12
+      const cardHeight = Math.min(estimatedCardHeight, PRODUCTS_HOVER_CARD_MAX_HEIGHT, window.innerHeight * 0.7)
+      const maxTop = Math.max(window.innerHeight - cardHeight - PRODUCTS_HOVER_CARD_MARGIN, PRODUCTS_HOVER_CARD_MARGIN)
+      const top = Math.min(Math.max(rect.top - 8, PRODUCTS_HOVER_CARD_MARGIN), maxTop)
+      setProductHoverCard({ left, top, items: list })
+    },
+    [clearProductHoverHideTimer, hideProductHoverCard]
+  )
+
+  useEffect(() => () => clearProductHoverHideTimer(), [clearProductHoverHideTimer])
+
+  useEffect(() => {
+    const handleScroll = (event) => {
+      if (productHoverCardRef.current && event.target && productHoverCardRef.current.contains(event.target)) return
+      hideProductHoverCard()
+    }
+    window.addEventListener('scroll', handleScroll, true)
+    return () => window.removeEventListener('scroll', handleScroll, true)
+  }, [hideProductHoverCard])
+
   const productosBodyTemplate = useCallback((group) => {
     const items = Array.isArray(group?.items) ? group.items : []
-    const shown = items.slice(0, 3)
+    if (!items.length) return <span style={{ color: '#9ca3af' }}>-</span>
+    const codes = items.map((item) => (item?.tipo === 'otro' ? 'Otro' : String(item?.producto_codigo || '').trim())).filter(Boolean)
+    const label = codes.length > 2 ? `${codes.slice(0, 2).join(', ')}...` : codes.join(', ')
+    const tooltip =
+      items.length === 1
+        ? [getIssueProductLabel(items[0]), String(items[0]?.motivo || '').trim()].filter(Boolean).join(' | ')
+        : `${items.length} productos`
     return (
-      <div className="transfer-issues-group-cell">
-        <strong>{items.length === 1 ? '1 producto' : `${items.length} productos`}</strong>
-        {shown.map((item) => (
-          <span
-            key={item.row_key}
-            className="cell-tooltip"
-            data-pr-tooltip={String(item?.motivo || '').trim() ? `Novedad: ${String(item.motivo).trim()}` : undefined}
-          >
-            {getIssueProductLabel(item)}
+      <div className="movimientos-table__product-cell">
+        <div className="movimientos-table__product-lines">
+          <span className="cell-tooltip movimientos-table__product-main" data-pr-tooltip={tooltip}>
+            {label || '-'}
           </span>
-        ))}
-        {items.length > shown.length ? <small>{`y ${items.length - shown.length} más...`}</small> : null}
+        </div>
+        {items.length > 1 ? (
+          <button
+            type="button"
+            className="movimientos-table__product-eye"
+            aria-label="Ver todos los productos"
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+            onMouseEnter={(event) => showProductHoverCard(event, items)}
+            onMouseLeave={scheduleHideProductHoverCard}
+            onFocus={(event) => showProductHoverCard(event, items)}
+            onBlur={scheduleHideProductHoverCard}
+          >
+            <i className="pi pi-eye" />
+          </button>
+        ) : null}
       </div>
     )
-  }, [])
+  }, [scheduleHideProductHoverCard, showProductHoverCard])
 
   if (!canRead) {
     return (
@@ -2009,10 +2320,23 @@ function TrasladosInconvenientesTable({
     .filter(Boolean)
     .join(' ')
   const modalTitle = `Inconveniente: ${String(selectedGroup?.solicitud_no_documento || selectedIssue?.solicitud_no_documento || '-').trim() || '-'}`
-  const groupItems = Array.isArray(selectedGroup?.items) && selectedGroup.items.length
-    ? selectedGroup.items
-    : selectedIssue ? [selectedIssue] : []
+  const groupItems = groupIssues.length ? groupIssues : Array.isArray(selectedGroup?.items) ? selectedGroup.items : []
   const groupActiveCount = groupItems.filter(isActiveIssue).length
+  const groupDraftCount = groupItems.filter((item) => isActiveIssue(item) && hasDraftDecision(drafts[item.row_key])).length
+  const groupFirst = groupItems[0] || null
+  const isImportacionGroup = selectedGroup?.origen === 'importacion'
+  const branchSections = []
+  groupItems.forEach((item) => {
+    const label = getIssueBranchLabel(item)
+    let section = branchSections.find((entry) => entry.key === label)
+    if (!section) {
+      section = { key: label, label, items: [], done: 0, pending: 0 }
+      branchSections.push(section)
+    }
+    section.items.push(item)
+    if (!isActiveIssue(item) || hasDraftDecision(drafts[item.row_key])) section.done += 1
+    else section.pending += 1
+  })
 
   return (
     <div className="users-page transfer-issues-page">
@@ -2165,6 +2489,43 @@ function TrasladosInconvenientesTable({
 
         </DataTable>
 
+        {Array.isArray(productHoverCard?.items) && productHoverCard.items.length > 0 && (
+          <div
+            ref={productHoverCardRef}
+            className="movimientos-table__product-hover-card transfer-issues-hover-card"
+            role="tooltip"
+            style={{ top: productHoverCard.top, left: productHoverCard.left }}
+            onMouseEnter={clearProductHoverHideTimer}
+            onMouseLeave={scheduleHideProductHoverCard}
+          >
+            <div className="movimientos-table__product-hover-title">{`Productos con inconveniente (${productHoverCard.items.length})`}</div>
+            <table className="movimientos-table__product-hover-table">
+              <thead>
+                <tr>
+                  <th>Codigo</th>
+                  <th>Producto</th>
+                  <th>Sucursal</th>
+                  <th className="movimientos-table__product-hover-qty">Cant.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productHoverCard.items.map((item) => (
+                  <tr key={`issue-hover-${item.row_key}`}>
+                    <td title={String(item?.producto_codigo || '-').trim()}>
+                      {item?.tipo === 'otro' ? 'Otro' : String(item?.producto_codigo || '-').trim()}
+                    </td>
+                    <td title={String(item?.motivo || item?.producto_nombre || '-').trim()}>
+                      {item?.tipo === 'otro' ? String(item?.motivo || '-').trim() : String(item?.producto_nombre || '-').trim()}
+                    </td>
+                    <td title={getIssueBranchLabel(item)}>{getIssueBranchLabel(item)}</td>
+                    <td className="movimientos-table__product-hover-qty">{item?.tipo === 'otro' ? '-' : formatIssueQty(item)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         <OverlayPanel ref={opColumns} className="table-options-list">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <strong>Campos</strong>
@@ -2192,7 +2553,7 @@ function TrasladosInconvenientesTable({
         </OverlayPanel>
       </div>
 
-      {shouldRenderDetailsModal && selectedIssue && (
+      {shouldRenderDetailsModal && selectedGroup && (
         <div
           className={`create-user__overlay${isClosingDetailsModal ? ' create-user__overlay--closing' : ''}`}
           role="dialog"
@@ -2232,22 +2593,22 @@ function TrasladosInconvenientesTable({
               onSubmitCapture={(event) => event.currentTarget.classList.add('create-user__form--submitted')}
               onSubmit={(event) => event.preventDefault()}
             >
-              <div className="create-user__body">
+              <div className="create-user__body transfer-issues-detail__body">
                 <section className="create-user__section">
                   <div className="create-user__section-header">
                     <div>
                       <p className="create-user__eyebrow">Resumen</p>
                       <h4>Detalle general</h4>
                     </div>
-                    {selectedIssue?.movimiento_entrada_id && typeof onOpenTransferRequestInEntradas === 'function' ? (
+                    {groupFirst?.movimiento_entrada_id && typeof onOpenTransferRequestInEntradas === 'function' ? (
                       <button
                         type="button"
                         className="create-user__ghost"
                         onClick={() => {
                           onOpenTransferRequestInEntradas({
-                            solicitudId: selectedIssue.solicitud_id,
-                            movimientoEntradaId: selectedIssue.movimiento_entrada_id,
-                            sucursalSolicitanteId: selectedIssue.sucursal_solicitante_id,
+                            solicitudId: groupFirst.solicitud_id,
+                            movimientoEntradaId: groupFirst.movimiento_entrada_id,
+                            sucursalSolicitanteId: groupFirst.sucursal_solicitante_id,
                             mode: 'view',
                           })
                           closeDetails()
@@ -2258,933 +2619,111 @@ function TrasladosInconvenientesTable({
                     ) : null}
                   </div>
                   <div className="create-salida__field-group--defined">
-                    <div className="create-user__grid create-user__grid--two">
+                    <div className="create-user__grid create-user__grid--three">
                       <StaticFieldDisplay
-                        label={selectedIssue?.origen === 'importacion' ? 'Casa comercial' : 'Sucursal proveedora'}
-                        value={String(selectedIssue?.sucursal_proveedora || '-').trim() || '-'}
+                        label={isImportacionGroup ? 'Casa comercial' : 'Sucursal proveedora'}
+                        value={String(groupFirst?.sucursal_proveedora || '-').trim() || '-'}
                       />
                       <StaticFieldDisplay
-                        label={selectedIssue?.origen === 'importacion' ? 'Importación' : 'Sucursal destino'}
-                        value={
-                          selectedIssue?.origen === 'importacion'
-                            ? String(selectedIssue?.solicitud_no_documento || '-').trim() || '-'
-                            : String(selectedIssue?.sucursal_solicitante || '-').trim() || '-'
-                        }
+                        label={isImportacionGroup ? 'Importación' : 'Traslado'}
+                        value={String(selectedGroup?.solicitud_no_documento || '-').trim() || '-'}
+                      />
+                      <StaticFieldDisplay
+                        label="Productos"
+                        value={`${groupItems.length} · ${groupItems.length - groupActiveCount + groupDraftCount} con solución · ${groupActiveCount - groupDraftCount} pendientes`}
                       />
                     </div>
                   </div>
                 </section>
 
-                <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <p className="create-user__eyebrow">Productos</p>
-                      <h4>
-                        {groupItems.length === 1 ? '1 producto' : `${groupItems.length} productos`}
-                        {groupActiveCount ? ` · ${groupActiveCount} por resolver` : ''}
-                      </h4>
-                    </div>
-                  </div>
-                  <div className="transfer-issues-group__list" role="list">
-                    {groupItems.map((item) => {
-                      const active = item.row_key === selectedIssue?.row_key
-                      const qty = Number.parseInt(String(item?.cantidad_faltante || 0), 10) || 0
-                      return (
-                        <button
-                          key={item.row_key}
-                          type="button"
-                          role="listitem"
-                          className={`transfer-issues-group__item${active ? ' is-active' : ''}`}
-                          onClick={() => selectIssueInGroup(item)}
-                          disabled={resolverSubmitting && !active}
-                          aria-pressed={active}
-                        >
-                          <span className="transfer-issues-group__item-main">
-                            <strong>{item?.tipo === 'otro' ? 'Otro inconveniente' : String(item?.producto_codigo || '-').trim()}</strong>
-                            <small>{item?.tipo === 'otro' ? String(item?.motivo || '').trim() || '-' : String(item?.producto_nombre || '-').trim()}</small>
-                          </span>
-                          {item?.tipo !== 'otro' ? (
-                            <span className={`transfer-issues-group__item-qty transfer-issues-cantidad--${item?.tipo === 'sobrante' ? 'sobrante' : 'faltante'}`}>
-                              {item?.tipo === 'sobrante' ? '+' : '−'}{qty}
-                            </span>
-                          ) : null}
-                          <span className={`transfer-issues-state transfer-issues-state--${item?.estado_key || 'pendiente'}`}>
-                            {item?.estado_label || '-'}
-                          </span>
-                          <span className="transfer-issues-group__item-action">
-                            {active ? 'Viendo' : isActiveIssue(item) ? 'Resolver' : 'Ver'}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </section>
+                {groupLoading && !groupIssues.length ? (
+                  <p className="muted transfer-issues-details__hint">Cargando productos...</p>
+                ) : null}
 
-                <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <p className="create-user__eyebrow">Producto seleccionado</p>
-                      <h4>{getIssueProductLabel(selectedIssue)}</h4>
-                    </div>
-                  </div>
-                  <div className="create-salida__field-group--defined">
-                    {selectedIssue?.tipo !== 'otro' && (
-                      <div className="create-user__grid create-user__grid--two">
-                        <StaticFieldDisplay
-                          label="Producto"
-                          value={`${String(selectedIssue?.producto_codigo || '-').trim()} - ${String(selectedIssue?.producto_nombre || '-').trim()}`}
-                        />
-                        <div className="create-user__field create-salida__static-field">
-                          <span>{selectedIssue?.tipo === 'sobrante' ? 'Sobrante' : 'Faltante'}</span>
-                          <div className={`create-salida__static-value transfer-issues-cantidad--${selectedIssue?.tipo === 'sobrante' ? 'sobrante' : 'faltante'}`}>
-                            {selectedIssue?.tipo === 'sobrante' ? '+' : '−'}{String(Number.parseInt(String(selectedIssue?.cantidad_faltante || 0), 10) || 0)}
-                          </div>
+                {branchSections.map((section) => {
+                  const collapsed = Boolean(collapsedBranches[section.key])
+                  return (
+                    <section key={section.key} className="transfer-issues-branch">
+                      <button
+                        type="button"
+                        className="transfer-issues-branch__header"
+                        onClick={() => toggleBranch(section.key)}
+                        aria-expanded={!collapsed}
+                      >
+                        <i className={`pi pi-chevron-${collapsed ? 'right' : 'down'}`} aria-hidden="true" />
+                        <strong>{section.label}</strong>
+                        <small>{section.items.length === 1 ? '1 producto' : `${section.items.length} productos`}</small>
+                        <span className="transfer-issues-branch__counts">
+                          {section.done ? <span className="transfer-issues-branch__count transfer-issues-branch__count--done">{`${section.done} con solución`}</span> : null}
+                          {section.pending ? <span className="transfer-issues-branch__count transfer-issues-branch__count--pending">{`${section.pending} pendientes`}</span> : null}
+                        </span>
+                      </button>
+                      {!collapsed && (
+                        <div className="transfer-issues-branch__list">
+                          {section.items.map((issue) => {
+                            const draft = drafts[issue.row_key]
+                            const active = isActiveIssue(issue)
+                            const solved = !active || hasDraftDecision(draft)
+                            const novedad = String(issue?.motivo || '').trim()
+                            return (
+                              <div
+                                key={issue.row_key}
+                                className={`transfer-issues-item ${solved ? 'transfer-issues-item--solved' : 'transfer-issues-item--pending'}`}
+                              >
+                                <div className="transfer-issues-item__info">
+                                  <strong>{issue?.tipo === 'otro' ? 'Otro inconveniente' : String(issue?.producto_codigo || '-').trim()}</strong>
+                                  {issue?.tipo !== 'otro' ? <span>{String(issue?.producto_nombre || '-').trim()}</span> : null}
+                                  {novedad ? <small className="cell-tooltip" data-pr-tooltip={novedad}>{novedad}</small> : null}
+                                </div>
+                                {issue?.tipo !== 'otro' ? (
+                                  <span className={`transfer-issues-item__qty transfer-issues-cantidad--${issue?.tipo === 'sobrante' ? 'sobrante' : 'faltante'}`}>
+                                    {formatIssueQty(issue)}
+                                  </span>
+                                ) : <span />}
+                                <div className="transfer-issues-item__actions">
+                                  {active && canUpdate
+                                    ? getDecisionOptions(issue).map((opt) => (
+                                        <DecisionButton
+                                          key={opt.key}
+                                          variant={opt.variant}
+                                          label={opt.label}
+                                          tooltip={opt.tooltip}
+                                          active={draft?.decision === opt.key}
+                                          onClick={() => openDecision(issue, opt.key)}
+                                          disabled={resolverSubmitting}
+                                        />
+                                      ))
+                                    : null}
+                                </div>
+                                {solved ? (
+                                  <div className="transfer-issues-item__solution">
+                                    <i className="pi pi-check-circle" aria-hidden="true" />
+                                    <span>
+                                      {active
+                                        ? `Solución: ${describeDraft(draft)}`
+                                        : `${formatEstado(issue?.estado)}: ${formatResolucion(issue?.resolucion)}`}
+                                      {active && draft?.motivo ? <em>{` · ${draft.motivo}`}</em> : null}
+                                    </span>
+                                    {active && canUpdate ? (
+                                      <button
+                                        type="button"
+                                        className="transfer-issues-item__remove"
+                                        onClick={() => removeDraft(issue)}
+                                        disabled={resolverSubmitting}
+                                      >
+                                        Quitar
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            )
+                          })}
                         </div>
-                      </div>
-                    )}
-                    <div className="create-user__grid create-user__grid--two">
-                      <StaticFieldDisplay
-                        label="Estado"
-                        value={formatEstado(selectedIssue?.estado)}
-                      />
-                      <StaticFieldDisplay
-                        label="Resolucion"
-                        value={formatResolucion(selectedIssue?.resolucion)}
-                      />
-                    </div>
-                    {String(selectedIssue?.motivo || '').trim() ? (
-                      <div className="create-salida__inconveniente-note">
-                        <span>Novedad</span>
-                        <p>{String(selectedIssue?.motivo || '').trim()}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                </section>
-                <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <p className="create-user__eyebrow">Resolucion</p>
-                      <h4>{selectedIssue?.tipo === 'otro' ? 'Resolucion' : 'Accion por producto'}</h4>
-                    </div>
-                  </div>
-                  {canResolveSelectedIssue ? (
-                    selectedIssue?.tipo === 'otro' ? (
-                      <>
-                        <label className="create-user__field create-user__field--full transfer-issues-details__field">
-                          <span>¿Cómo se solucionó este inconveniente?</span>
-                          <textarea
-                            rows={3}
-                            value={resolverMotivo}
-                            onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
-                            disabled={resolverSubmitting}
-                          />
-                        </label>
-                        {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
-                      </>
-                    ) : (
-                    <>
-                      {selectedIssue?.origen === 'importacion' && !selectedIssue?.envio_id && selectedIssue?.estado === 'reclamado' && (
-                        <>
-                          <p className="muted transfer-issues-details__hint">
-                            Ya se generó un reclamo al proveedor. Decide si se olvida el proceso o si ya se acordó una solución.
-                          </p>
-                          <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
-                            <div className="transfer-issues-details__decision-wrap">
-                              <DecisionButton
-                                variant="neutral"
-                                label="Olvidar proceso"
-                                tooltip="El inconveniente se marca como perdido/no recuperable y se cierra. Úsalo cuando decidas no seguir gestionando el reclamo con el proveedor."
-                                active={resolverDecision === 'olvidar'}
-                                onClick={() => setResolverDecision('olvidar')}
-                                disabled={resolverSubmitting}
-                              />
-                            </div>
-                            <div className="transfer-issues-details__decision-wrap">
-                              <DecisionButton
-                                variant="warning"
-                                label="Solución de inconveniente"
-                                tooltip="Registra la cantidad que enviará el proveedor y la fecha de entrega acordada. El inconveniente queda resuelto con esa información documentada."
-                                active={resolverDecision === 'solucion'}
-                                onClick={() => setResolverDecision('solucion')}
-                                disabled={resolverSubmitting}
-                              />
-                            </div>
-                          </div>
-                          {resolverDecision === 'solucion' && (
-                            <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
-                              <label className="create-user__field transfer-issues-details__field">
-                                <span>Cantidad que enviará el proveedor</span>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={resolverCantidadPrometida}
-                                  onChange={(event) => setResolverCantidadPrometida(event.target.value)}
-                                  disabled={resolverSubmitting}
-                                />
-                              </label>
-                              <label className="create-user__field transfer-issues-details__field">
-                                <span>Fecha de entrega</span>
-                                <input
-                                  type="date"
-                                  value={resolverFechaPrometida}
-                                  onChange={(event) => setResolverFechaPrometida(event.target.value)}
-                                  disabled={resolverSubmitting}
-                                />
-                              </label>
-                            </div>
-                          )}
-                          <label className="create-user__field create-user__field--full transfer-issues-details__field">
-                            <span>Motivo o nota (opcional)</span>
-                            <textarea
-                              rows={3}
-                              value={resolverMotivo}
-                              onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
-                              disabled={resolverSubmitting}
-                            />
-                          </label>
-                          {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
-                        </>
                       )}
-                      {selectedIssue?.origen === 'importacion' && !selectedIssue?.envio_id && selectedIssue?.estado !== 'reclamado' && (
-                        <>
-                          <p className="muted transfer-issues-details__hint">
-                            {selectedIssue?.tipo === 'sobrante'
-                              ? 'Decide si el excedente se devuelve al proveedor o no se hace ningún cambio.'
-                              : 'Decide si no se hace ningún cambio o se genera un reclamo al proveedor por el faltante.'}
-                          </p>
-                          <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
-                            {selectedIssue?.tipo === 'sobrante' ? (
-                              <>
-                                <div className="transfer-issues-details__decision-wrap">
-                                  <DecisionButton
-                                    variant="warning"
-                                    label="Devolver a proveedor"
-                                    tooltip="El excedente queda marcado como devuelto al proveedor. No se ajusta el inventario del sistema, solo se documenta el motivo del sobrante."
-                                    active={resolverDecision === 'devolver_proveedor'}
-                                    onClick={() => setResolverDecision('devolver_proveedor')}
-                                    disabled={resolverSubmitting}
-                                  />
-                                </div>
-                                <div className="transfer-issues-details__decision-wrap">
-                                  <DecisionButton
-                                    variant="neutral"
-                                    label="No hacer nada"
-                                    tooltip="El sobrante queda aceptado tal cual. No se genera ningún ajuste de inventario ni reclamo al proveedor."
-                                    active={resolverDecision === 'aceptado'}
-                                    onClick={() => setResolverDecision('aceptado')}
-                                    disabled={resolverSubmitting}
-                                  />
-                                </div>
-                              </>
-                            ) : (
-                              <>
-                                <div className="transfer-issues-details__decision-wrap">
-                                  <DecisionButton
-                                    variant="neutral"
-                                    label="No hacer nada"
-                                    tooltip="El faltante queda aceptado tal cual. No se genera ningún ajuste de inventario ni reclamo al proveedor."
-                                    active={resolverDecision === 'aceptado'}
-                                    onClick={() => setResolverDecision('aceptado')}
-                                    disabled={resolverSubmitting}
-                                  />
-                                </div>
-                                <div className="transfer-issues-details__decision-wrap">
-                                  <DecisionButton
-                                    variant="warning"
-                                    label="Generar un reclamo al proveedor"
-                                    tooltip="El inconveniente pasa a estado 'Reclamado' y se mantiene activo para que lo sigas gestionando hasta acordar una solución con el proveedor."
-                                    active={resolverDecision === 'reportado_proveedor'}
-                                    onClick={() => setResolverDecision('reportado_proveedor')}
-                                    disabled={resolverSubmitting}
-                                  />
-                                </div>
-                              </>
-                            )}
-                          </div>
-                          <label className="create-user__field create-user__field--full transfer-issues-details__field">
-                            <span>Motivo o nota (opcional)</span>
-                            <textarea
-                              rows={3}
-                              value={resolverMotivo}
-                              onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
-                              disabled={resolverSubmitting}
-                            />
-                          </label>
-                          {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
-                        </>
-                      )}
-                      {(selectedIssue?.origen !== 'importacion' || Boolean(selectedIssue?.envio_id)) && (
-                      <>
-                      {selectedIssue?.tipo === 'sobrante' ? (
-                        <>
-                          <p className="muted transfer-issues-details__hint">
-                            Decide si los productos sobrantes deben devolverse a la sucursal proveedora (se restan del destino y se suman al origen) o mantenerse en la sucursal destino.
-                          </p>
-                          <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
-                            <div className="transfer-issues-details__decision-wrap">
-                              <DecisionButton
-                                variant="warning"
-                                label="Devolver"
-                                tooltip="Resta las unidades sobrantes del inventario de la sucursal destino y las suma de vuelta a la sucursal proveedora."
-                                active={resolverDecision === 'devolver_proveedora'}
-                                onClick={() => {
-                                  setResolverDecision('devolver_proveedora')
-                                  setResolverBodegaId('')
-                                  setResolverDivisionId('')
-                                  setResolverSubdivisionId('')
-                                  setResolverNeedsManualLocation(false)
-                                  closeResolverLocationDropdown()
-                                  setResolverProvBodegaId('')
-                                  setResolverProvDivisionId('')
-                                  setResolverProvSubdivisionId('')
-                                  setResolverProvNeedsManualLocation(false)
-                                  closeResolverProvLocationDropdown()
-                                }}
-                                disabled={resolverSubmitting}
-                              />
-                            </div>
-                            <div className="transfer-issues-details__decision-wrap">
-                              <DecisionButton
-                                variant="neutral"
-                                label="Mantener"
-                                tooltip="Las unidades sobrantes se quedan en la sucursal destino. No se mueve inventario entre sucursales."
-                                active={resolverDecision === 'sin_cambios'}
-                                onClick={() => {
-                                  setResolverDecision('sin_cambios')
-                                  setResolverBodegaId('')
-                                  setResolverDivisionId('')
-                                  setResolverSubdivisionId('')
-                                  setResolverNeedsManualLocation(false)
-                                  closeResolverLocationDropdown()
-                                  setResolverProvBodegaId('')
-                                  setResolverProvDivisionId('')
-                                  setResolverProvSubdivisionId('')
-                                  setResolverProvNeedsManualLocation(false)
-                                  closeResolverProvLocationDropdown()
-                                }}
-                                disabled={resolverSubmitting}
-                              />
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <p className="muted transfer-issues-details__hint">
-                            {selectedIssue?.envio_id
-                              ? `Faltante del envío de la importación a ${String(selectedIssue?.sucursal_solicitante || 'la sucursal').trim()}. Decide si las unidades aparecieron en la sucursal destino, si nunca salieron de ${String(selectedIssue?.sucursal_origen_nombre || 'la matriz').trim()} (de donde salió el envío) o si se marcan como desaparecidas.`
-                              : 'Decide si este faltante debe sumarse en la sucursal proveedora, en la sucursal destino, o marcarse como desaparecido.'}
-                          </p>
-                          <div className={`transfer-issues-details__decisions${selectedIssue?.envio_id && !selectedIssue?.sucursal_origen_id ? ' transfer-issues-details__decisions--two' : ''}`}>
-                            {selectedIssue?.envio_id && selectedIssue?.sucursal_origen_id && (
-                            <div className="transfer-issues-details__decision-wrap">
-                              <DecisionButton
-                                variant="primary"
-                                label="Sumar a Matriz (origen)"
-                                tooltip="Las unidades nunca salieron de la sucursal desde la que se envió la importación: se suman de vuelta en su inventario, en la ubicación que elijas."
-                                active={resolverDecision === 'sumar_origen'}
-                                onClick={() => {
-                                  setResolverDecision('sumar_origen')
-                                  setResolverBodegaId('')
-                                  setResolverDivisionId('')
-                                  setResolverSubdivisionId('')
-                                  setResolverNeedsManualLocation(false)
-                                  closeResolverLocationDropdown()
-                                }}
-                                disabled={resolverSubmitting}
-                              />
-                            </div>
-                            )}
-                            {!selectedIssue?.envio_id && (
-                            <div className="transfer-issues-details__decision-wrap">
-                              <DecisionButton
-                                variant="primary"
-                                label="Sumar a sucursal proveedora"
-                                tooltip="Suma las unidades faltantes de vuelta al inventario de la sucursal proveedora (asume que nunca salieron de ahí)."
-                                active={resolverDecision === 'sumar_proveedora'}
-                                onClick={() => {
-                                  setResolverDecision('sumar_proveedora')
-                                  setResolverBodegaId('')
-                                  setResolverDivisionId('')
-                                  setResolverSubdivisionId('')
-                                  setResolverNeedsManualLocation(false)
-                                  closeResolverLocationDropdown()
-                                }}
-                                disabled={resolverSubmitting}
-                              />
-                            </div>
-                            )}
-                            <div className="transfer-issues-details__decision-wrap">
-                              <DecisionButton
-                                variant="success"
-                                label="Sumar a sucursal destino"
-                                tooltip="Suma las unidades faltantes al inventario de la sucursal destino (asume que sí llegaron)."
-                                active={resolverDecision === 'sumar_solicitante'}
-                                onClick={() => {
-                                  setResolverDecision('sumar_solicitante')
-                                  setResolverBodegaId('')
-                                  setResolverDivisionId('')
-                                  setResolverSubdivisionId('')
-                                  setResolverNeedsManualLocation(false)
-                                  closeResolverLocationDropdown()
-                                }}
-                                disabled={resolverSubmitting}
-                              />
-                            </div>
-                            <div className="transfer-issues-details__decision-wrap">
-                              <DecisionButton
-                                variant="danger"
-                                label="Marcar como desaparecido"
-                                tooltip="Las unidades faltantes se dan de baja como pérdida. No se ajusta inventario en ninguna sucursal."
-                                active={resolverDecision === 'perdido'}
-                                onClick={() => {
-                                  setResolverDecision('perdido')
-                                  setResolverBodegaId('')
-                                  setResolverDivisionId('')
-                                  setResolverSubdivisionId('')
-                                  setResolverNeedsManualLocation(false)
-                                  closeResolverLocationDropdown()
-                                }}
-                                disabled={resolverSubmitting}
-                              />
-                            </div>
-                          </div>
-                        </>
-                      )}
-
-                      {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'sumar_origen' || resolverDecision === 'restar_proveedora' || resolverDecision === 'devolver_proveedora') && (
-                        <label className="create-user__field create-user__field--full transfer-issues-details__field">
-                          <span>{resolverDecision === 'devolver_proveedora' ? `Donde restar en destino (${resolverTargetBranchLabel})` : `Ubicacion (${resolverTargetBranchLabel})`}</span>
-                          <div className="create-entrada__location-picker-grid">
-                            <div className="create-entrada__location-picker-item">
-                              <small>Bodega</small>
-                              <div
-                                className="create-user__dropdown create-salida__product-dropdown"
-                                ref={resolverLocationDropdownField === 'bodega' ? resolverLocationDropdownRef : null}
-                              >
-                                <button
-                                  type="button"
-                                  className="create-user__dropdown-trigger"
-                                  onClick={() => toggleResolverLocationDropdown('bodega')}
-                                  disabled={resolverSubmitting || resolverSubdivisionsLoading}
-                                >
-                                  <span>
-                                    {selectedResolverBodega
-                                      ? formatBodegaLocationLabel(selectedResolverBodega)
-                                      : 'Selecciona una bodega'}
-                                  </span>
-                                  <i className={`pi pi-chevron-${resolverLocationDropdownField === 'bodega' ? 'up' : 'down'}`} />
-                                </button>
-
-                                {resolverLocationDropdownField === 'bodega' && createPortal(
-                                  <div
-                                    ref={resolverLocationDropdownPanelRef}
-                                    className="create-user__dropdown-panel"
-                                    style={resolverLocationDropdownStyle}
-                                  >
-                                    <div className="create-user__dropdown-search">
-                                      <i className="pi pi-search" />
-                                      <input
-                                        type="text"
-                                        placeholder="Buscar bodega"
-                                        value={resolverLocationQuery}
-                                        onChange={(event) => setResolverLocationQuery(event.target.value)}
-                                        disabled={resolverSubmitting}
-                                      />
-                                    </div>
-                                    <div
-                                      className="create-user__dropdown-results"
-                                      style={
-                                        resolverLocationDropdownMaxHeight
-                                          ? {
-                                              maxHeight: `${Math.max(resolverLocationDropdownMaxHeight - 72, 84)}px`,
-                                            }
-                                          : undefined
-                                      }
-                                    >
-                                      {!filterResolverLocationOptions(
-                                        resolverBodegas,
-                                        (bodega) =>
-                                          `${formatBodegaLocationLabel(bodega)} ${String(
-                                            bodega?.sucursal?.nombre || ''
-                                          ).trim()}`
-                                      ).length && <small className="muted">Sin resultados.</small>}
-                                      {filterResolverLocationOptions(
-                                        resolverBodegas,
-                                        (bodega) =>
-                                          `${formatBodegaLocationLabel(bodega)} ${String(
-                                            bodega?.sucursal?.nombre || ''
-                                          ).trim()}`
-                                      ).map((bodega) => (
-                                        <button
-                                          key={`resolver-bodega-option-${bodega.id}`}
-                                          type="button"
-                                          className="create-user__result-option"
-                                          onMouseDown={(event) => event.preventDefault()}
-                                          onClick={(event) => {
-                                            event.preventDefault()
-                                            event.stopPropagation()
-                                            handleResolverLocationPick('bodega', bodega.id)
-                                          }}
-                                          disabled={resolverSubmitting}
-                                        >
-                                          <div className="create-user__result-info">
-                                            <strong>{String(bodega?.nombre || `Bodega ${bodega.id}`).trim()}</strong>
-                                          </div>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>,
-                                  getAppPortalRoot()
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="create-entrada__location-picker-item">
-                              <small>Division</small>
-                              <div
-                                className="create-user__dropdown create-salida__product-dropdown"
-                                ref={resolverLocationDropdownField === 'division' ? resolverLocationDropdownRef : null}
-                              >
-                                <button
-                                  type="button"
-                                  className="create-user__dropdown-trigger"
-                                  onClick={() => toggleResolverLocationDropdown('division')}
-                                  disabled={resolverSubmitting || resolverSubdivisionsLoading || !resolverBodegaId}
-                                >
-                                  <span>
-                                    {selectedResolverDivision
-                                      ? String(selectedResolverDivision?.nombre || '').trim()
-                                      : 'Selecciona una division'}
-                                  </span>
-                                  <i className={`pi pi-chevron-${resolverLocationDropdownField === 'division' ? 'up' : 'down'}`} />
-                                </button>
-
-                                {resolverLocationDropdownField === 'division' && createPortal(
-                                  <div
-                                    ref={resolverLocationDropdownPanelRef}
-                                    className="create-user__dropdown-panel"
-                                    style={resolverLocationDropdownStyle}
-                                  >
-                                    <div className="create-user__dropdown-search">
-                                      <i className="pi pi-search" />
-                                      <input
-                                        type="text"
-                                        placeholder="Buscar division"
-                                        value={resolverLocationQuery}
-                                        onChange={(event) => setResolverLocationQuery(event.target.value)}
-                                        disabled={resolverSubmitting}
-                                      />
-                                    </div>
-                                    <div
-                                      className="create-user__dropdown-results"
-                                      style={
-                                        resolverLocationDropdownMaxHeight
-                                          ? {
-                                              maxHeight: `${Math.max(resolverLocationDropdownMaxHeight - 72, 84)}px`,
-                                            }
-                                          : undefined
-                                      }
-                                    >
-                                      {!filterResolverLocationOptions(
-                                        resolverDivisionOptions,
-                                        (division) =>
-                                          `${formatDivisionLocationLabel(division)} ${String(
-                                            division?.bodega?.sucursal?.nombre || ''
-                                          ).trim()}`
-                                      ).length && <small className="muted">Sin resultados.</small>}
-                                      {filterResolverLocationOptions(
-                                        resolverDivisionOptions,
-                                        (division) =>
-                                          `${formatDivisionLocationLabel(division)} ${String(
-                                            division?.bodega?.sucursal?.nombre || ''
-                                          ).trim()}`
-                                      ).map((division) => (
-                                        <button
-                                          key={`resolver-division-option-${division.id}`}
-                                          type="button"
-                                          className="create-user__result-option"
-                                          onMouseDown={(event) => event.preventDefault()}
-                                          onClick={(event) => {
-                                            event.preventDefault()
-                                            event.stopPropagation()
-                                            handleResolverLocationPick('division', division.id)
-                                          }}
-                                          disabled={resolverSubmitting}
-                                        >
-                                          <div className="create-user__result-info">
-                                            <strong>{String(division?.nombre || `Division ${division.id}`).trim()}</strong>
-                                            <small>{formatDivisionLocationLabel(division)}</small>
-                                          </div>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>,
-                                  getAppPortalRoot()
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="create-entrada__location-picker-item">
-                              <small>Subdivision</small>
-                              <div
-                                className="create-user__dropdown create-salida__product-dropdown"
-                                ref={resolverLocationDropdownField === 'subdivision' ? resolverLocationDropdownRef : null}
-                              >
-                                <button
-                                  type="button"
-                                  className="create-user__dropdown-trigger"
-                                  onClick={() => toggleResolverLocationDropdown('subdivision')}
-                                  disabled={resolverSubmitting || resolverSubdivisionsLoading || !resolverDivisionId}
-                                >
-                                  <span>
-                                    {selectedResolverSubdivision
-                                      ? String(selectedResolverSubdivision?.nombre || '').trim()
-                                      : 'Selecciona una subdivision'}
-                                  </span>
-                                  <i className={`pi pi-chevron-${resolverLocationDropdownField === 'subdivision' ? 'up' : 'down'}`} />
-                                </button>
-
-                                {resolverLocationDropdownField === 'subdivision' && createPortal(
-                                  <div
-                                    ref={resolverLocationDropdownPanelRef}
-                                    className="create-user__dropdown-panel"
-                                    style={resolverLocationDropdownStyle}
-                                  >
-                                    <div className="create-user__dropdown-search">
-                                      <i className="pi pi-search" />
-                                      <input
-                                        type="text"
-                                        placeholder="Buscar subdivision"
-                                        value={resolverLocationQuery}
-                                        onChange={(event) => setResolverLocationQuery(event.target.value)}
-                                        disabled={resolverSubmitting}
-                                      />
-                                    </div>
-                                    <div
-                                      className="create-user__dropdown-results"
-                                      style={
-                                        resolverLocationDropdownMaxHeight
-                                          ? {
-                                              maxHeight: `${Math.max(resolverLocationDropdownMaxHeight - 72, 84)}px`,
-                                            }
-                                          : undefined
-                                      }
-                                    >
-                                      {!filterResolverLocationOptions(
-                                        resolverSubdivisionOptions,
-                                        (subdivision) =>
-                                          `${formatSubdivisionLocationLabel(subdivision)} ${String(
-                                            subdivision?.division?.bodega?.sucursal?.nombre || ''
-                                          ).trim()}`
-                                      ).length && <small className="muted">Sin resultados.</small>}
-                                      {filterResolverLocationOptions(
-                                        resolverSubdivisionOptions,
-                                        (subdivision) =>
-                                          `${formatSubdivisionLocationLabel(subdivision)} ${String(
-                                            subdivision?.division?.bodega?.sucursal?.nombre || ''
-                                          ).trim()}`
-                                      ).map((subdivision) => (
-                                        <button
-                                          key={`resolver-subdivision-option-${subdivision.id}`}
-                                          type="button"
-                                          className="create-user__result-option"
-                                          onMouseDown={(event) => event.preventDefault()}
-                                          onClick={(event) => {
-                                            event.preventDefault()
-                                            event.stopPropagation()
-                                            handleResolverLocationPick('subdivision', subdivision.id)
-                                          }}
-                                          disabled={resolverSubmitting}
-                                        >
-                                          <div className="create-user__result-info">
-                                            <strong>
-                                              {String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}
-                                            </strong>
-                                            <small>{formatSubdivisionLocationLabel(subdivision)}</small>
-                                          </div>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>,
-                                  getAppPortalRoot()
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          {resolverSubdivisionsLoading ? (
-                            <small className="transfer-issues-details__loading">
-                              <Loader2 size={12} />
-                              Cargando subdivisiones...
-                            </small>
-                          ) : null}
-                          {!resolverSubdivisionsLoading && resolverNeedsManualLocation && !resolverSubdivisionId ? (
-                            <small className="transfer-issues-details__manual-location-hint">
-                              Este producto no tiene ubicación previa en esta sucursal. Selecciona bodega, división y subdivisión.
-                            </small>
-                          ) : null}
-                        </label>
-                      )}
-
-                      {resolverDecision === 'devolver_proveedora' && (
-                        <label className="create-user__field create-user__field--full transfer-issues-details__field">
-                          <span>Donde sumar en proveedora ({String(selectedIssue?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'})</span>
-                          <div className="create-entrada__location-picker-grid">
-                            <div className="create-entrada__location-picker-item">
-                              <small>Bodega</small>
-                              <div
-                                className="create-user__dropdown create-salida__product-dropdown"
-                                ref={resolverProvLocationDropdownField === 'bodega' ? resolverProvLocationDropdownRef : null}
-                              >
-                                <button
-                                  type="button"
-                                  className="create-user__dropdown-trigger"
-                                  onClick={() => toggleResolverProvLocationDropdown('bodega')}
-                                  disabled={resolverSubmitting || resolverProvSubdivisionsLoading}
-                                >
-                                  <span>
-                                    {selectedResolverProvBodega
-                                      ? formatBodegaLocationLabel(selectedResolverProvBodega)
-                                      : 'Selecciona una bodega'}
-                                  </span>
-                                  <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'bodega' ? 'up' : 'down'}`} />
-                                </button>
-                                {resolverProvLocationDropdownField === 'bodega' && createPortal(
-                                  <div
-                                    ref={resolverProvLocationDropdownPanelRef}
-                                    className="create-user__dropdown-panel"
-                                    style={resolverProvLocationDropdownStyle}
-                                  >
-                                    <div className="create-user__dropdown-search">
-                                      <i className="pi pi-search" />
-                                      <input
-                                        type="text"
-                                        placeholder="Buscar bodega"
-                                        value={resolverProvLocationQuery}
-                                        onChange={(event) => setResolverProvLocationQuery(event.target.value)}
-                                        disabled={resolverSubmitting}
-                                      />
-                                    </div>
-                                    <div
-                                      className="create-user__dropdown-results"
-                                      style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${Math.max(resolverProvLocationDropdownMaxHeight - 72, 84)}px` } : undefined}
-                                    >
-                                      {!filterResolverProvLocationOptions(resolverProvBodegas, (bodega) => `${formatBodegaLocationLabel(bodega)} ${String(bodega?.sucursal?.nombre || '').trim()}`).length && (
-                                        <small className="muted">Sin resultados.</small>
-                                      )}
-                                      {filterResolverProvLocationOptions(resolverProvBodegas, (bodega) => `${formatBodegaLocationLabel(bodega)} ${String(bodega?.sucursal?.nombre || '').trim()}`).map((bodega) => (
-                                        <button
-                                          key={`resolver-prov-bodega-option-${bodega.id}`}
-                                          type="button"
-                                          className="create-user__result-option"
-                                          onMouseDown={(event) => event.preventDefault()}
-                                          onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleResolverProvLocationPick('bodega', bodega.id) }}
-                                          disabled={resolverSubmitting}
-                                        >
-                                          <div className="create-user__result-info">
-                                            <strong>{String(bodega?.nombre || `Bodega ${bodega.id}`).trim()}</strong>
-                                          </div>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>,
-                                  getAppPortalRoot()
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="create-entrada__location-picker-item">
-                              <small>Division</small>
-                              <div
-                                className="create-user__dropdown create-salida__product-dropdown"
-                                ref={resolverProvLocationDropdownField === 'division' ? resolverProvLocationDropdownRef : null}
-                              >
-                                <button
-                                  type="button"
-                                  className="create-user__dropdown-trigger"
-                                  onClick={() => toggleResolverProvLocationDropdown('division')}
-                                  disabled={resolverSubmitting || resolverProvSubdivisionsLoading || !resolverProvBodegaId}
-                                >
-                                  <span>
-                                    {selectedResolverProvDivision
-                                      ? String(selectedResolverProvDivision?.nombre || '').trim()
-                                      : 'Selecciona una division'}
-                                  </span>
-                                  <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'division' ? 'up' : 'down'}`} />
-                                </button>
-                                {resolverProvLocationDropdownField === 'division' && createPortal(
-                                  <div
-                                    ref={resolverProvLocationDropdownPanelRef}
-                                    className="create-user__dropdown-panel"
-                                    style={resolverProvLocationDropdownStyle}
-                                  >
-                                    <div className="create-user__dropdown-search">
-                                      <i className="pi pi-search" />
-                                      <input
-                                        type="text"
-                                        placeholder="Buscar division"
-                                        value={resolverProvLocationQuery}
-                                        onChange={(event) => setResolverProvLocationQuery(event.target.value)}
-                                        disabled={resolverSubmitting}
-                                      />
-                                    </div>
-                                    <div
-                                      className="create-user__dropdown-results"
-                                      style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${Math.max(resolverProvLocationDropdownMaxHeight - 72, 84)}px` } : undefined}
-                                    >
-                                      {!filterResolverProvLocationOptions(resolverProvDivisionOptions, (division) => `${formatDivisionLocationLabel(division)} ${String(division?.bodega?.sucursal?.nombre || '').trim()}`).length && (
-                                        <small className="muted">Sin resultados.</small>
-                                      )}
-                                      {filterResolverProvLocationOptions(resolverProvDivisionOptions, (division) => `${formatDivisionLocationLabel(division)} ${String(division?.bodega?.sucursal?.nombre || '').trim()}`).map((division) => (
-                                        <button
-                                          key={`resolver-prov-division-option-${division.id}`}
-                                          type="button"
-                                          className="create-user__result-option"
-                                          onMouseDown={(event) => event.preventDefault()}
-                                          onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleResolverProvLocationPick('division', division.id) }}
-                                          disabled={resolverSubmitting}
-                                        >
-                                          <div className="create-user__result-info">
-                                            <strong>{String(division?.nombre || `Division ${division.id}`).trim()}</strong>
-                                            <small>{formatDivisionLocationLabel(division)}</small>
-                                          </div>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>,
-                                  getAppPortalRoot()
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="create-entrada__location-picker-item">
-                              <small>Subdivision</small>
-                              <div
-                                className="create-user__dropdown create-salida__product-dropdown"
-                                ref={resolverProvLocationDropdownField === 'subdivision' ? resolverProvLocationDropdownRef : null}
-                              >
-                                <button
-                                  type="button"
-                                  className="create-user__dropdown-trigger"
-                                  onClick={() => toggleResolverProvLocationDropdown('subdivision')}
-                                  disabled={resolverSubmitting || resolverProvSubdivisionsLoading || !resolverProvDivisionId}
-                                >
-                                  <span>
-                                    {selectedResolverProvSubdivision
-                                      ? String(selectedResolverProvSubdivision?.nombre || '').trim()
-                                      : 'Selecciona una subdivision'}
-                                  </span>
-                                  <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'subdivision' ? 'up' : 'down'}`} />
-                                </button>
-                                {resolverProvLocationDropdownField === 'subdivision' && createPortal(
-                                  <div
-                                    ref={resolverProvLocationDropdownPanelRef}
-                                    className="create-user__dropdown-panel"
-                                    style={resolverProvLocationDropdownStyle}
-                                  >
-                                    <div className="create-user__dropdown-search">
-                                      <i className="pi pi-search" />
-                                      <input
-                                        type="text"
-                                        placeholder="Buscar subdivision"
-                                        value={resolverProvLocationQuery}
-                                        onChange={(event) => setResolverProvLocationQuery(event.target.value)}
-                                        disabled={resolverSubmitting}
-                                      />
-                                    </div>
-                                    <div
-                                      className="create-user__dropdown-results"
-                                      style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${Math.max(resolverProvLocationDropdownMaxHeight - 72, 84)}px` } : undefined}
-                                    >
-                                      {!filterResolverProvLocationOptions(resolverProvSubdivisionOptions, (subdivision) => `${formatSubdivisionLocationLabel(subdivision)} ${String(subdivision?.division?.bodega?.sucursal?.nombre || '').trim()}`).length && (
-                                        <small className="muted">Sin resultados.</small>
-                                      )}
-                                      {filterResolverProvLocationOptions(resolverProvSubdivisionOptions, (subdivision) => `${formatSubdivisionLocationLabel(subdivision)} ${String(subdivision?.division?.bodega?.sucursal?.nombre || '').trim()}`).map((subdivision) => (
-                                        <button
-                                          key={`resolver-prov-subdivision-option-${subdivision.id}`}
-                                          type="button"
-                                          className="create-user__result-option"
-                                          onMouseDown={(event) => event.preventDefault()}
-                                          onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleResolverProvLocationPick('subdivision', subdivision.id) }}
-                                          disabled={resolverSubmitting}
-                                        >
-                                          <div className="create-user__result-info">
-                                            <strong>{String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}</strong>
-                                            <small>{formatSubdivisionLocationLabel(subdivision)}</small>
-                                          </div>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>,
-                                  getAppPortalRoot()
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          {resolverProvSubdivisionsLoading ? (
-                            <small className="transfer-issues-details__loading">
-                              <Loader2 size={12} />
-                              Cargando subdivisiones...
-                            </small>
-                          ) : null}
-                          {!resolverProvSubdivisionsLoading && resolverProvNeedsManualLocation && !resolverProvSubdivisionId ? (
-                            <small className="transfer-issues-details__manual-location-hint">
-                              Este producto no tiene ubicación previa en la sucursal proveedora. Selecciona bodega, división y subdivisión.
-                            </small>
-                          ) : null}
-                        </label>
-                      )}
-
-                      <label className="create-user__field create-user__field--full transfer-issues-details__field">
-                        <span>Motivo o nota (opcional)</span>
-                        <textarea
-                          rows={3}
-                          value={resolverMotivo}
-                          onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
-                          disabled={resolverSubmitting}
-                        />
-                      </label>
-                      {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
-                      </>
-                      )}
-                    </>
-                    )
-                  ) : selectedIssue?.tipo === 'otro' && String(selectedIssue?.motivo_resolucion || '').trim() ? (
-                    <div className="create-salida__inconveniente-resolucion-note">
-                      <span>Resolución</span>
-                      <p>{String(selectedIssue.motivo_resolucion).trim()}</p>
-                    </div>
-                  ) : (
-                    <p className="muted transfer-issues-details__hint">
-                      Este registro ya fue procesado o no tienes permisos para resolverlo.
-                    </p>
-                  )}
-                </section>
-
-                {selectedIssue?.tipo !== 'otro' && (
-                  <section className="create-user__section">
-                    <div className="create-user__section-header">
-                      <div>
-                        <p className="create-user__eyebrow">Seguimiento</p>
-                        <h4>Historial</h4>
-                      </div>
-                    </div>
-                    {!selectedHistoryRows.length ? (
-                      <p className="muted transfer-issues-details__hint">Sin historial.</p>
-                    ) : (
-                      <div className="transfer-issues-details__history">
-                        {selectedHistoryRows.map((item) => (
-                          <article key={`issue-history-${selectedIssue?.row_key}-${item?.id}`} className="transfer-issues-details__history-item">
-                            <strong>{formatHistorialAccion(item?.accion)}</strong>
-                            <p>{String(item?.detalle || '-').trim() || '-'}</p>
-                            <small>
-                              {String(item?.actor_nombre || 'Sistema').trim()} - {formatDateTime(item?.created_at)}
-                            </small>
-                          </article>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                )}
+                    </section>
+                  )
+                })}
               </div>
 
               <footer className="create-user__footer">
@@ -3196,23 +2735,625 @@ function TrasladosInconvenientesTable({
                 >
                   Cerrar
                 </button>
-                {canResolveSelectedIssue ? (
-                  <button
-                    type="button"
-                    className="create-user__action create-user__action--primary"
-                    onClick={() => void submitResolver(selectedIssue?.tipo === 'otro' ? 'solucionado' : undefined)}
-                    disabled={resolverSubmitting}
-                  >
-                    {resolverSubmitting
-                      ? 'Guardando...'
-                      : selectedIssue?.tipo === 'otro'
-                        ? 'Solucionado'
-                        : groupItems.length > 1
-                          ? `Confirmar ${String(selectedIssue?.producto_codigo || 'producto').trim()}`
-                          : 'Confirmar decisión'}
-                  </button>
+                {canUpdate && groupActiveCount ? (
+                  <div className="transfer-issues-footer__actions">
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--secondary"
+                      onClick={() => void handleSaveDrafts()}
+                      disabled={resolverSubmitting || savingDrafts}
+                    >
+                      {savingDrafts ? 'Guardando...' : 'Guardar cambios'}
+                    </button>
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--primary"
+                      onClick={requestApply}
+                      disabled={resolverSubmitting || !groupDraftCount}
+                    >
+                      {resolverSubmitting ? 'Aplicando...' : `Aplicar cambios${groupDraftCount ? ` (${groupDraftCount})` : ''}`}
+                    </button>
+                  </div>
                 ) : null}
               </footer>
+                            {decisionDialogOpen && selectedIssue ? createPortal(
+                <div className="transfer-issues-dialog-backdrop" onMouseDown={(event) => event.stopPropagation()}>
+                  <div className="transfer-issues-dialog" role="dialog" aria-modal="true" aria-label={DECISION_LABELS[resolverDecision] || 'Solución'}>
+                    <header className="transfer-issues-dialog__header">
+                      <p className="create-user__eyebrow">{getIssueBranchLabel(selectedIssue)}</p>
+                      <h4>{DECISION_LABELS[resolverDecision] || 'Solución'}</h4>
+                      <small>
+                        {getIssueProductLabel(selectedIssue)}
+                        {selectedIssue?.tipo !== 'otro' ? ` · ${formatIssueQty(selectedIssue)}` : ''}
+                      </small>
+                    </header>
+                    <div className="transfer-issues-dialog__body">
+                      <p className="muted transfer-issues-details__hint">{DECISION_HINTS[resolverDecision] || ''}</p>
+  {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'sumar_origen' || resolverDecision === 'restar_proveedora' || resolverDecision === 'devolver_proveedora') && (
+                          <label className="create-user__field create-user__field--full transfer-issues-details__field">
+                            <span>{resolverDecision === 'devolver_proveedora' ? `Donde restar en destino (${resolverTargetBranchLabel})` : `Ubicacion (${resolverTargetBranchLabel})`}</span>
+                            <div className="create-entrada__location-picker-grid">
+                              <div className="create-entrada__location-picker-item">
+                                <small>Bodega</small>
+                                <div
+                                  className="create-user__dropdown create-salida__product-dropdown"
+                                  ref={resolverLocationDropdownField === 'bodega' ? resolverLocationDropdownRef : null}
+                                >
+                                  <button
+                                    type="button"
+                                    className="create-user__dropdown-trigger"
+                                    onClick={() => toggleResolverLocationDropdown('bodega')}
+                                    disabled={resolverSubmitting || resolverSubdivisionsLoading}
+                                  >
+                                    <span>
+                                      {selectedResolverBodega
+                                        ? formatBodegaLocationLabel(selectedResolverBodega)
+                                        : 'Selecciona una bodega'}
+                                    </span>
+                                    <i className={`pi pi-chevron-${resolverLocationDropdownField === 'bodega' ? 'up' : 'down'}`} />
+                                  </button>
+
+                                  {resolverLocationDropdownField === 'bodega' && createPortal(
+                                    <div
+                                      ref={resolverLocationDropdownPanelRef}
+                                      className="create-user__dropdown-panel"
+                                      style={resolverLocationDropdownStyle}
+                                    >
+                                      <div className="create-user__dropdown-search">
+                                        <i className="pi pi-search" />
+                                        <input
+                                          type="text"
+                                          placeholder="Buscar bodega"
+                                          value={resolverLocationQuery}
+                                          onChange={(event) => setResolverLocationQuery(event.target.value)}
+                                          disabled={resolverSubmitting}
+                                        />
+                                      </div>
+                                      <div
+                                        className="create-user__dropdown-results"
+                                        style={
+                                          resolverLocationDropdownMaxHeight
+                                            ? {
+                                                maxHeight: `${Math.max(resolverLocationDropdownMaxHeight - 72, 84)}px`,
+                                              }
+                                            : undefined
+                                        }
+                                      >
+                                        {!filterResolverLocationOptions(
+                                          resolverBodegas,
+                                          (bodega) =>
+                                            `${formatBodegaLocationLabel(bodega)} ${String(
+                                              bodega?.sucursal?.nombre || ''
+                                            ).trim()}`
+                                        ).length && <small className="muted">Sin resultados.</small>}
+                                        {filterResolverLocationOptions(
+                                          resolverBodegas,
+                                          (bodega) =>
+                                            `${formatBodegaLocationLabel(bodega)} ${String(
+                                              bodega?.sucursal?.nombre || ''
+                                            ).trim()}`
+                                        ).map((bodega) => (
+                                          <button
+                                            key={`resolver-bodega-option-${bodega.id}`}
+                                            type="button"
+                                            className="create-user__result-option"
+                                            onMouseDown={(event) => event.preventDefault()}
+                                            onClick={(event) => {
+                                              event.preventDefault()
+                                              event.stopPropagation()
+                                              handleResolverLocationPick('bodega', bodega.id)
+                                            }}
+                                            disabled={resolverSubmitting}
+                                          >
+                                            <div className="create-user__result-info">
+                                              <strong>{String(bodega?.nombre || `Bodega ${bodega.id}`).trim()}</strong>
+                                            </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>,
+                                    getAppPortalRoot()
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="create-entrada__location-picker-item">
+                                <small>Division</small>
+                                <div
+                                  className="create-user__dropdown create-salida__product-dropdown"
+                                  ref={resolverLocationDropdownField === 'division' ? resolverLocationDropdownRef : null}
+                                >
+                                  <button
+                                    type="button"
+                                    className="create-user__dropdown-trigger"
+                                    onClick={() => toggleResolverLocationDropdown('division')}
+                                    disabled={resolverSubmitting || resolverSubdivisionsLoading || !resolverBodegaId}
+                                  >
+                                    <span>
+                                      {selectedResolverDivision
+                                        ? String(selectedResolverDivision?.nombre || '').trim()
+                                        : 'Selecciona una division'}
+                                    </span>
+                                    <i className={`pi pi-chevron-${resolverLocationDropdownField === 'division' ? 'up' : 'down'}`} />
+                                  </button>
+
+                                  {resolverLocationDropdownField === 'division' && createPortal(
+                                    <div
+                                      ref={resolverLocationDropdownPanelRef}
+                                      className="create-user__dropdown-panel"
+                                      style={resolverLocationDropdownStyle}
+                                    >
+                                      <div className="create-user__dropdown-search">
+                                        <i className="pi pi-search" />
+                                        <input
+                                          type="text"
+                                          placeholder="Buscar division"
+                                          value={resolverLocationQuery}
+                                          onChange={(event) => setResolverLocationQuery(event.target.value)}
+                                          disabled={resolverSubmitting}
+                                        />
+                                      </div>
+                                      <div
+                                        className="create-user__dropdown-results"
+                                        style={
+                                          resolverLocationDropdownMaxHeight
+                                            ? {
+                                                maxHeight: `${Math.max(resolverLocationDropdownMaxHeight - 72, 84)}px`,
+                                              }
+                                            : undefined
+                                        }
+                                      >
+                                        {!filterResolverLocationOptions(
+                                          resolverDivisionOptions,
+                                          (division) =>
+                                            `${formatDivisionLocationLabel(division)} ${String(
+                                              division?.bodega?.sucursal?.nombre || ''
+                                            ).trim()}`
+                                        ).length && <small className="muted">Sin resultados.</small>}
+                                        {filterResolverLocationOptions(
+                                          resolverDivisionOptions,
+                                          (division) =>
+                                            `${formatDivisionLocationLabel(division)} ${String(
+                                              division?.bodega?.sucursal?.nombre || ''
+                                            ).trim()}`
+                                        ).map((division) => (
+                                          <button
+                                            key={`resolver-division-option-${division.id}`}
+                                            type="button"
+                                            className="create-user__result-option"
+                                            onMouseDown={(event) => event.preventDefault()}
+                                            onClick={(event) => {
+                                              event.preventDefault()
+                                              event.stopPropagation()
+                                              handleResolverLocationPick('division', division.id)
+                                            }}
+                                            disabled={resolverSubmitting}
+                                          >
+                                            <div className="create-user__result-info">
+                                              <strong>{String(division?.nombre || `Division ${division.id}`).trim()}</strong>
+                                              <small>{formatDivisionLocationLabel(division)}</small>
+                                            </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>,
+                                    getAppPortalRoot()
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="create-entrada__location-picker-item">
+                                <small>Subdivision</small>
+                                <div
+                                  className="create-user__dropdown create-salida__product-dropdown"
+                                  ref={resolverLocationDropdownField === 'subdivision' ? resolverLocationDropdownRef : null}
+                                >
+                                  <button
+                                    type="button"
+                                    className="create-user__dropdown-trigger"
+                                    onClick={() => toggleResolverLocationDropdown('subdivision')}
+                                    disabled={resolverSubmitting || resolverSubdivisionsLoading || !resolverDivisionId}
+                                  >
+                                    <span>
+                                      {selectedResolverSubdivision
+                                        ? String(selectedResolverSubdivision?.nombre || '').trim()
+                                        : 'Selecciona una subdivision'}
+                                    </span>
+                                    <i className={`pi pi-chevron-${resolverLocationDropdownField === 'subdivision' ? 'up' : 'down'}`} />
+                                  </button>
+
+                                  {resolverLocationDropdownField === 'subdivision' && createPortal(
+                                    <div
+                                      ref={resolverLocationDropdownPanelRef}
+                                      className="create-user__dropdown-panel"
+                                      style={resolverLocationDropdownStyle}
+                                    >
+                                      <div className="create-user__dropdown-search">
+                                        <i className="pi pi-search" />
+                                        <input
+                                          type="text"
+                                          placeholder="Buscar subdivision"
+                                          value={resolverLocationQuery}
+                                          onChange={(event) => setResolverLocationQuery(event.target.value)}
+                                          disabled={resolverSubmitting}
+                                        />
+                                      </div>
+                                      <div
+                                        className="create-user__dropdown-results"
+                                        style={
+                                          resolverLocationDropdownMaxHeight
+                                            ? {
+                                                maxHeight: `${Math.max(resolverLocationDropdownMaxHeight - 72, 84)}px`,
+                                              }
+                                            : undefined
+                                        }
+                                      >
+                                        {!filterResolverLocationOptions(
+                                          resolverSubdivisionOptions,
+                                          (subdivision) =>
+                                            `${formatSubdivisionLocationLabel(subdivision)} ${String(
+                                              subdivision?.division?.bodega?.sucursal?.nombre || ''
+                                            ).trim()}`
+                                        ).length && <small className="muted">Sin resultados.</small>}
+                                        {filterResolverLocationOptions(
+                                          resolverSubdivisionOptions,
+                                          (subdivision) =>
+                                            `${formatSubdivisionLocationLabel(subdivision)} ${String(
+                                              subdivision?.division?.bodega?.sucursal?.nombre || ''
+                                            ).trim()}`
+                                        ).map((subdivision) => (
+                                          <button
+                                            key={`resolver-subdivision-option-${subdivision.id}`}
+                                            type="button"
+                                            className="create-user__result-option"
+                                            onMouseDown={(event) => event.preventDefault()}
+                                            onClick={(event) => {
+                                              event.preventDefault()
+                                              event.stopPropagation()
+                                              handleResolverLocationPick('subdivision', subdivision.id)
+                                            }}
+                                            disabled={resolverSubmitting}
+                                          >
+                                            <div className="create-user__result-info">
+                                              <strong>
+                                                {String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}
+                                              </strong>
+                                              <small>{formatSubdivisionLocationLabel(subdivision)}</small>
+                                            </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>,
+                                    getAppPortalRoot()
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {resolverSubdivisionsLoading ? (
+                              <small className="transfer-issues-details__loading">
+                                <Loader2 size={12} />
+                                Cargando subdivisiones...
+                              </small>
+                            ) : null}
+                            {!resolverSubdivisionsLoading && resolverNeedsManualLocation && !resolverSubdivisionId ? (
+                              <small className="transfer-issues-details__manual-location-hint">
+                                Este producto no tiene ubicación previa en esta sucursal. Selecciona bodega, división y subdivisión.
+                              </small>
+                            ) : null}
+                          </label>
+                        )}
+
+                        {resolverDecision === 'devolver_proveedora' && (
+                          <label className="create-user__field create-user__field--full transfer-issues-details__field">
+                            <span>Donde sumar en proveedora ({String(selectedIssue?.sucursal_proveedora || '').trim() || 'Sucursal proveedora'})</span>
+                            <div className="create-entrada__location-picker-grid">
+                              <div className="create-entrada__location-picker-item">
+                                <small>Bodega</small>
+                                <div
+                                  className="create-user__dropdown create-salida__product-dropdown"
+                                  ref={resolverProvLocationDropdownField === 'bodega' ? resolverProvLocationDropdownRef : null}
+                                >
+                                  <button
+                                    type="button"
+                                    className="create-user__dropdown-trigger"
+                                    onClick={() => toggleResolverProvLocationDropdown('bodega')}
+                                    disabled={resolverSubmitting || resolverProvSubdivisionsLoading}
+                                  >
+                                    <span>
+                                      {selectedResolverProvBodega
+                                        ? formatBodegaLocationLabel(selectedResolverProvBodega)
+                                        : 'Selecciona una bodega'}
+                                    </span>
+                                    <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'bodega' ? 'up' : 'down'}`} />
+                                  </button>
+                                  {resolverProvLocationDropdownField === 'bodega' && createPortal(
+                                    <div
+                                      ref={resolverProvLocationDropdownPanelRef}
+                                      className="create-user__dropdown-panel"
+                                      style={resolverProvLocationDropdownStyle}
+                                    >
+                                      <div className="create-user__dropdown-search">
+                                        <i className="pi pi-search" />
+                                        <input
+                                          type="text"
+                                          placeholder="Buscar bodega"
+                                          value={resolverProvLocationQuery}
+                                          onChange={(event) => setResolverProvLocationQuery(event.target.value)}
+                                          disabled={resolverSubmitting}
+                                        />
+                                      </div>
+                                      <div
+                                        className="create-user__dropdown-results"
+                                        style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${Math.max(resolverProvLocationDropdownMaxHeight - 72, 84)}px` } : undefined}
+                                      >
+                                        {!filterResolverProvLocationOptions(resolverProvBodegas, (bodega) => `${formatBodegaLocationLabel(bodega)} ${String(bodega?.sucursal?.nombre || '').trim()}`).length && (
+                                          <small className="muted">Sin resultados.</small>
+                                        )}
+                                        {filterResolverProvLocationOptions(resolverProvBodegas, (bodega) => `${formatBodegaLocationLabel(bodega)} ${String(bodega?.sucursal?.nombre || '').trim()}`).map((bodega) => (
+                                          <button
+                                            key={`resolver-prov-bodega-option-${bodega.id}`}
+                                            type="button"
+                                            className="create-user__result-option"
+                                            onMouseDown={(event) => event.preventDefault()}
+                                            onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleResolverProvLocationPick('bodega', bodega.id) }}
+                                            disabled={resolverSubmitting}
+                                          >
+                                            <div className="create-user__result-info">
+                                              <strong>{String(bodega?.nombre || `Bodega ${bodega.id}`).trim()}</strong>
+                                            </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>,
+                                    getAppPortalRoot()
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="create-entrada__location-picker-item">
+                                <small>Division</small>
+                                <div
+                                  className="create-user__dropdown create-salida__product-dropdown"
+                                  ref={resolverProvLocationDropdownField === 'division' ? resolverProvLocationDropdownRef : null}
+                                >
+                                  <button
+                                    type="button"
+                                    className="create-user__dropdown-trigger"
+                                    onClick={() => toggleResolverProvLocationDropdown('division')}
+                                    disabled={resolverSubmitting || resolverProvSubdivisionsLoading || !resolverProvBodegaId}
+                                  >
+                                    <span>
+                                      {selectedResolverProvDivision
+                                        ? String(selectedResolverProvDivision?.nombre || '').trim()
+                                        : 'Selecciona una division'}
+                                    </span>
+                                    <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'division' ? 'up' : 'down'}`} />
+                                  </button>
+                                  {resolverProvLocationDropdownField === 'division' && createPortal(
+                                    <div
+                                      ref={resolverProvLocationDropdownPanelRef}
+                                      className="create-user__dropdown-panel"
+                                      style={resolverProvLocationDropdownStyle}
+                                    >
+                                      <div className="create-user__dropdown-search">
+                                        <i className="pi pi-search" />
+                                        <input
+                                          type="text"
+                                          placeholder="Buscar division"
+                                          value={resolverProvLocationQuery}
+                                          onChange={(event) => setResolverProvLocationQuery(event.target.value)}
+                                          disabled={resolverSubmitting}
+                                        />
+                                      </div>
+                                      <div
+                                        className="create-user__dropdown-results"
+                                        style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${Math.max(resolverProvLocationDropdownMaxHeight - 72, 84)}px` } : undefined}
+                                      >
+                                        {!filterResolverProvLocationOptions(resolverProvDivisionOptions, (division) => `${formatDivisionLocationLabel(division)} ${String(division?.bodega?.sucursal?.nombre || '').trim()}`).length && (
+                                          <small className="muted">Sin resultados.</small>
+                                        )}
+                                        {filterResolverProvLocationOptions(resolverProvDivisionOptions, (division) => `${formatDivisionLocationLabel(division)} ${String(division?.bodega?.sucursal?.nombre || '').trim()}`).map((division) => (
+                                          <button
+                                            key={`resolver-prov-division-option-${division.id}`}
+                                            type="button"
+                                            className="create-user__result-option"
+                                            onMouseDown={(event) => event.preventDefault()}
+                                            onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleResolverProvLocationPick('division', division.id) }}
+                                            disabled={resolverSubmitting}
+                                          >
+                                            <div className="create-user__result-info">
+                                              <strong>{String(division?.nombre || `Division ${division.id}`).trim()}</strong>
+                                              <small>{formatDivisionLocationLabel(division)}</small>
+                                            </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>,
+                                    getAppPortalRoot()
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="create-entrada__location-picker-item">
+                                <small>Subdivision</small>
+                                <div
+                                  className="create-user__dropdown create-salida__product-dropdown"
+                                  ref={resolverProvLocationDropdownField === 'subdivision' ? resolverProvLocationDropdownRef : null}
+                                >
+                                  <button
+                                    type="button"
+                                    className="create-user__dropdown-trigger"
+                                    onClick={() => toggleResolverProvLocationDropdown('subdivision')}
+                                    disabled={resolverSubmitting || resolverProvSubdivisionsLoading || !resolverProvDivisionId}
+                                  >
+                                    <span>
+                                      {selectedResolverProvSubdivision
+                                        ? String(selectedResolverProvSubdivision?.nombre || '').trim()
+                                        : 'Selecciona una subdivision'}
+                                    </span>
+                                    <i className={`pi pi-chevron-${resolverProvLocationDropdownField === 'subdivision' ? 'up' : 'down'}`} />
+                                  </button>
+                                  {resolverProvLocationDropdownField === 'subdivision' && createPortal(
+                                    <div
+                                      ref={resolverProvLocationDropdownPanelRef}
+                                      className="create-user__dropdown-panel"
+                                      style={resolverProvLocationDropdownStyle}
+                                    >
+                                      <div className="create-user__dropdown-search">
+                                        <i className="pi pi-search" />
+                                        <input
+                                          type="text"
+                                          placeholder="Buscar subdivision"
+                                          value={resolverProvLocationQuery}
+                                          onChange={(event) => setResolverProvLocationQuery(event.target.value)}
+                                          disabled={resolverSubmitting}
+                                        />
+                                      </div>
+                                      <div
+                                        className="create-user__dropdown-results"
+                                        style={resolverProvLocationDropdownMaxHeight ? { maxHeight: `${Math.max(resolverProvLocationDropdownMaxHeight - 72, 84)}px` } : undefined}
+                                      >
+                                        {!filterResolverProvLocationOptions(resolverProvSubdivisionOptions, (subdivision) => `${formatSubdivisionLocationLabel(subdivision)} ${String(subdivision?.division?.bodega?.sucursal?.nombre || '').trim()}`).length && (
+                                          <small className="muted">Sin resultados.</small>
+                                        )}
+                                        {filterResolverProvLocationOptions(resolverProvSubdivisionOptions, (subdivision) => `${formatSubdivisionLocationLabel(subdivision)} ${String(subdivision?.division?.bodega?.sucursal?.nombre || '').trim()}`).map((subdivision) => (
+                                          <button
+                                            key={`resolver-prov-subdivision-option-${subdivision.id}`}
+                                            type="button"
+                                            className="create-user__result-option"
+                                            onMouseDown={(event) => event.preventDefault()}
+                                            onClick={(event) => { event.preventDefault(); event.stopPropagation(); handleResolverProvLocationPick('subdivision', subdivision.id) }}
+                                            disabled={resolverSubmitting}
+                                          >
+                                            <div className="create-user__result-info">
+                                              <strong>{String(subdivision?.nombre || `Subdivision ${subdivision.id}`).trim()}</strong>
+                                              <small>{formatSubdivisionLocationLabel(subdivision)}</small>
+                                            </div>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>,
+                                    getAppPortalRoot()
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {resolverProvSubdivisionsLoading ? (
+                              <small className="transfer-issues-details__loading">
+                                <Loader2 size={12} />
+                                Cargando subdivisiones...
+                              </small>
+                            ) : null}
+                            {!resolverProvSubdivisionsLoading && resolverProvNeedsManualLocation && !resolverProvSubdivisionId ? (
+                              <small className="transfer-issues-details__manual-location-hint">
+                                Este producto no tiene ubicación previa en la sucursal proveedora. Selecciona bodega, división y subdivisión.
+                              </small>
+                            ) : null}
+                          </label>
+                        )}
+
+                      {resolverDecision === 'solucion' ? (
+                        <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
+                          <label className="create-user__field transfer-issues-details__field">
+                            <span>Cantidad que enviará el proveedor</span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={resolverCantidadPrometida}
+                              onChange={(event) => setResolverCantidadPrometida(event.target.value)}
+                            />
+                          </label>
+                          <label className="create-user__field transfer-issues-details__field">
+                            <span>Fecha de entrega</span>
+                            <input
+                              type="date"
+                              value={resolverFechaPrometida}
+                              onChange={(event) => setResolverFechaPrometida(event.target.value)}
+                            />
+                          </label>
+                        </div>
+                      ) : null}
+                      <label className="create-user__field create-user__field--full transfer-issues-details__field">
+                        <span>
+                          {resolverDecision === 'solucionado'
+                            ? '¿Cómo se solucionó? (obligatorio)'
+                            : resolverDecision === 'perdido'
+                              ? '¿Qué pasó? (obligatorio)'
+                              : 'Nota (opcional)'}
+                        </span>
+                        <textarea
+                          rows={2}
+                          value={resolverMotivo}
+                          onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
+                        />
+                      </label>
+                      {resolverError ? <p className="transfer-issues-details__error">{resolverError}</p> : null}
+                    </div>
+                    <footer className="transfer-issues-dialog__footer">
+                      <button type="button" className="create-user__action create-user__action--secondary" onClick={closeDecisionDialog}>
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        className="create-user__action create-user__action--primary"
+                        onClick={acceptDecision}
+                        disabled={resolverSubdivisionsLoading || resolverProvSubdivisionsLoading}
+                      >
+                        Aceptar
+                      </button>
+                    </footer>
+                  </div>
+                </div>,
+                getAppPortalRoot()
+              ) : null}
+
+              {applyConfirm ? createPortal(
+                <div className="transfer-issues-dialog-backdrop" onMouseDown={(event) => event.stopPropagation()}>
+                  <div className="transfer-issues-dialog" role="dialog" aria-modal="true" aria-label="Aplicar cambios">
+                    <header className="transfer-issues-dialog__header">
+                      <h4>Aplicar cambios</h4>
+                    </header>
+                    <div className="transfer-issues-dialog__body">
+                      <p className="transfer-issues-apply__title transfer-issues-apply__title--done">
+                        {`Se van a marcar como solucionados (${applyConfirm.toApply.length}):`}
+                      </p>
+                      <ul className="transfer-issues-apply__list">
+                        {applyConfirm.toApply.map((issue) => (
+                          <li key={issue.row_key}>
+                            <strong>{String(issue?.producto_codigo || 'Otro').trim()}</strong>
+                            {` (${getIssueBranchLabel(issue)}) · ${describeDraft(drafts[issue.row_key])}`}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="transfer-issues-apply__title transfer-issues-apply__title--pending">
+                        {`Quedan pendientes, sin solución todavía (${applyConfirm.sinSolucion.length}):`}
+                      </p>
+                      <ul className="transfer-issues-apply__list">
+                        {applyConfirm.sinSolucion.map((issue) => (
+                          <li key={issue.row_key}>
+                            <strong>{String(issue?.producto_codigo || 'Otro').trim()}</strong>
+                            {` (${getIssueBranchLabel(issue)})`}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="muted transfer-issues-details__hint">Los pendientes los puedes resolver y aplicar más tarde.</p>
+                    </div>
+                    <footer className="transfer-issues-dialog__footer">
+                      <button type="button" className="create-user__action create-user__action--secondary" onClick={() => setApplyConfirm(null)}>
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        className="create-user__action create-user__action--primary"
+                        onClick={() => void runApply(applyConfirm.toApply)}
+                      >
+                        {`Aplicar ${applyConfirm.toApply.length}`}
+                      </button>
+                    </footer>
+                  </div>
+                </div>,
+                getAppPortalRoot()
+              ) : null}
             </form>
             <button
               type="button"

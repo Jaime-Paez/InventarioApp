@@ -35,6 +35,7 @@ from inventario.por_ubicar import (
     serialize_progress_many,
     store_items,
 )
+from movimientos.inconveniente_borrador import parse_borrador_items
 from productos.models import OEMProducto, Producto, add_producto_referencia
 
 from .models import (
@@ -432,13 +433,9 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                 # ya exista en el catálogo.
                 if not referencia and not oem:
                     faltan_datos.append("Referencia u OEM")
-                # La cantidad solo es obligatoria si el producto ya existe en el
-                # catálogo: ahí sí se está registrando una entrada real de stock.
-                # Un producto pendiente (sin vincular a uno existente) se puede
-                # crear con cantidad 0 y pedir unidades después, así que no
-                # bloquea este paso (ver ImportacionDetalleSerializer.validate).
-                if matched and cantidad <= 0:
-                    faltan_datos.append("Cantidad")
+                # La cantidad no es obligatoria: basta con lo que identifica el
+                # producto. Las unidades se completan después dentro de la
+                # importación (ver ImportacionDetalleSerializer.validate).
                 # La descripción de un producto pendiente ya no bloquea este
                 # paso: se completa directamente en la revisión (paso 3), igual
                 # que el precio de un producto nuevo con código sugerido.
@@ -488,7 +485,7 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                 set_progress(20 + (i / total_data_rows) * 75)
 
         if not parsed:
-            raise ValueError("No se encontraron filas con datos válidos (cantidad > 0).")
+            raise ValueError("No se encontraron filas con datos válidos.")
 
         ImportacionExcelJob.objects.filter(pk=job_id).update(
             estado=ImportacionExcelJob.ESTADO_LISTO,
@@ -595,6 +592,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 int(inconveniente.cantidad_prometida) if inconveniente.cantidad_prometida is not None else None
             ),
             "fecha_entrega_prometida": inconveniente.fecha_entrega_prometida,
+            "borrador": inconveniente.borrador if isinstance(inconveniente.borrador, dict) else {},
             "creado_por_id": int(inconveniente.creado_por_id) if inconveniente.creado_por_id else None,
             "creado_por_nombre": self._resolve_user_display(getattr(inconveniente, "creado_por", None)),
             "resuelto_por_id": int(inconveniente.resuelto_por_id) if inconveniente.resuelto_por_id else None,
@@ -1193,6 +1191,12 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         }:
             queryset = queryset.filter(estado=estado)
 
+        # El detalle de un inconveniente muestra todos sus productos (tambien
+        # los ya resueltos).
+        importacion_id = str(request.query_params.get("importacion_id") or "").strip()
+        if importacion_id.isdigit():
+            queryset = queryset.filter(importacion_id=int(importacion_id))
+
         # La barra lateral solo necesita saber si hay pendientes.
         if str(request.query_params.get("solo_conteo") or "").strip() in {"1", "true"}:
             return Response({"count": queryset.count()}, status=status.HTTP_200_OK)
@@ -1200,6 +1204,32 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         payload = [self._serialize_importacion_inconveniente(row) for row in queryset]
         attach_product_search(payload)
         return Response(payload, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path="inconvenientes/borradores")
+    def guardar_borradores_importacion_inconvenientes(self, request):
+        """Guarda la solucion elegida de cada producto sin aplicarla.
+        `{"items": [{"id": 1, "borrador": {...}}]}`; `{}` borra el borrador."""
+        if not is_app_admin(request.user):
+            return Response(
+                {"detail": "Solo los administradores pueden resolver inconvenientes de importaciones."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        items, error = parse_borrador_items(request.data)
+        if error:
+            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+        guardados = []
+        with transaction.atomic():
+            for inconveniente in ImportacionInconveniente.objects.select_for_update().filter(
+                pk__in=sorted(items),
+                estado__in=[
+                    ImportacionInconveniente.Estados.PENDIENTE,
+                    ImportacionInconveniente.Estados.RECLAMADO,
+                ],
+            ):
+                inconveniente.borrador = items[inconveniente.id]
+                inconveniente.save(update_fields=["borrador", "updated_at"])
+                guardados.append(int(inconveniente.id))
+        return Response({"guardados": sorted(guardados)}, status=status.HTTP_200_OK)
 
     @action(
         detail=False,
@@ -1373,7 +1403,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             if not inconveniente_locked.envio_id or not inconveniente_locked.motivo:
                 inconveniente_locked.motivo = motivo
             inconveniente_locked.resuelto_por = request.user
-            update_fields = ["estado", "resolucion", "motivo", "resuelto_por", "updated_at"]
+            inconveniente_locked.borrador = {}
+            update_fields = ["estado", "resolucion", "motivo", "resuelto_por", "borrador", "updated_at"]
             if decision == "solucion":
                 inconveniente_locked.cantidad_prometida = cantidad_prometida
                 inconveniente_locked.fecha_entrega_prometida = fecha_entrega_prometida
