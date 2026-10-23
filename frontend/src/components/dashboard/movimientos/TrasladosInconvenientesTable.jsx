@@ -1959,8 +1959,8 @@ function TrasladosInconvenientesTable({
   useLayoutEffect(() => {
     if (!showDetailsModal || isMaximized) return
     const { availableWidth, availableHeight, minWidth, minHeight } = getViewportMetrics()
-    const width = Math.min(Math.max(940, minWidth), availableWidth)
-    const height = Math.min(Math.max(640, minHeight), availableHeight)
+    const width = Math.min(Math.max(MIN_WIDTH, minWidth), availableWidth)
+    const height = Math.min(Math.max(MIN_HEIGHT, minHeight), availableHeight)
     setModalSize({ width, height })
     setModalPosition({
       x: Math.max((window.innerWidth - width) / 2, VIEWPORT_PADDING),
@@ -2619,7 +2619,7 @@ function TrasladosInconvenientesTable({
                     ) : null}
                   </div>
                   <div className="create-salida__field-group--defined">
-                    <div className="create-user__grid create-user__grid--three">
+                    <div className={`create-user__grid ${isImportacionGroup ? 'create-user__grid--three' : 'transfer-issues-summary--four'}`}>
                       <StaticFieldDisplay
                         label={isImportacionGroup ? 'Casa comercial' : 'Sucursal proveedora'}
                         value={String(groupFirst?.sucursal_proveedora || '-').trim() || '-'}
@@ -2628,6 +2628,12 @@ function TrasladosInconvenientesTable({
                         label={isImportacionGroup ? 'Importación' : 'Traslado'}
                         value={String(selectedGroup?.solicitud_no_documento || '-').trim() || '-'}
                       />
+                      {!isImportacionGroup ? (
+                        <StaticFieldDisplay
+                          label="Sucursal destino"
+                          value={String(groupFirst?.sucursal_solicitante || '-').trim() || '-'}
+                        />
+                      ) : null}
                       <StaticFieldDisplay
                         label="Productos"
                         value={`${groupItems.length} · ${groupItems.length - groupActiveCount + groupDraftCount} con solución · ${groupActiveCount - groupDraftCount} pendientes`}
@@ -2641,9 +2647,10 @@ function TrasladosInconvenientesTable({
                 ) : null}
 
                 {branchSections.map((section) => {
-                  const collapsed = Boolean(collapsedBranches[section.key])
+                  const collapsed = isImportacionGroup && Boolean(collapsedBranches[section.key])
                   return (
                     <section key={section.key} className="transfer-issues-branch">
+                      {isImportacionGroup ? (
                       <button
                         type="button"
                         className="transfer-issues-branch__header"
@@ -2658,6 +2665,7 @@ function TrasladosInconvenientesTable({
                           {section.pending ? <span className="transfer-issues-branch__count transfer-issues-branch__count--pending">{`${section.pending} pendientes`}</span> : null}
                         </span>
                       </button>
+                      ) : null}
                       {!collapsed && (
                         <div className="transfer-issues-branch__list">
                           {section.items.map((issue) => {
@@ -3283,6 +3291,7 @@ function TrasladosInconvenientesTable({
                         </span>
                         <textarea
                           rows={2}
+                          className="transfer-issues-dialog__note"
                           value={resolverMotivo}
                           onChange={(event) => setResolverMotivo(String(event.target.value || ''))}
                         />
