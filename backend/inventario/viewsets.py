@@ -1608,6 +1608,44 @@ class InventarioViewSet(viewsets.ModelViewSet):
             readable = (readable or set()) | {int(branch_id) for branch_id in ids}
         return readable or set()
 
+    def _close_finished_shipments(self, shipments, *, actor=None):
+        """Un envio que ya llego y no tiene nada por contar (todo se vendio o
+        se guardo) se cierra solo: si no, sin pendientes no aparece en "Por
+        ubicar" y nadie podria terminar su conteo. Devuelve los que siguen."""
+        from importaciones.models import ImportacionEnvio
+        from importaciones.viewsets import finish_envio_count
+
+        from .por_ubicar import serialize_progress
+
+        remaining = []
+        for shipment in shipments:
+            if not shipment["items"] or any(int(item["pendiente"]) > 0 for item in shipment["items"]):
+                remaining.append(shipment)
+                continue
+            with transaction.atomic():
+                envio = (
+                    ImportacionEnvio.objects.select_for_update()
+                    .filter(
+                        pk=shipment["id"],
+                        estado=ImportacionEnvio.ESTADO_PENDIENTE,
+                        llegada_confirmada_en__isnull=False,
+                    )
+                    .first()
+                )
+                if envio is None:
+                    continue
+                # Se vuelve a mirar con el envio bloqueado (una venta o un
+                # guardado pudo cambiarlo mientras tanto).
+                pendiente = sum(
+                    int(entry.get("pendiente_guardar") or 0)
+                    for entry in serialize_progress(envio.recepcion_progreso, envio.sucursal_id).values()
+                )
+                if pendiente > 0:
+                    remaining.append(shipment)
+                    continue
+                finish_envio_count(envio, actor=actor)
+        return remaining
+
     def _arrived_shipments(self, allowed, sucursal_id=None):
         """Envios de importacion que ya llegaron (paso 1: todo entro a POR
         UBICAR y se puede vender) y faltan contar y guardar. Por producto:
@@ -1696,7 +1734,9 @@ class InventarioViewSet(viewsets.ModelViewSet):
         if allowed is not None:
             rows_qs = rows_qs.filter(subdivision__division__bodega__sucursal_id__in=sorted(allowed))
 
-        shipments = self._arrived_shipments(allowed, sucursal_id)
+        shipments = self._close_finished_shipments(
+            self._arrived_shipments(allowed, sucursal_id), actor=request.user
+        )
 
         # Lo que esta en POR UBICAR por un envio de importacion se cuenta en su
         # envio; en "productos" va solo el resto (si no, saldria dos veces).

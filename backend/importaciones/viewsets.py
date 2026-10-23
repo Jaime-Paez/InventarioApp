@@ -166,6 +166,49 @@ def create_envio_shortage_issues(envio, recibido_por_producto, *, actor=None, no
         creados.append(inconveniente)
     return creados
 
+
+def sent_by_product(envio):
+    sent = {}
+    for row in envio.detalles.values("producto_id", "cantidad"):
+        pid = int(row["producto_id"])
+        sent[pid] = sent.get(pid, 0) + int(row["cantidad"] or 0)
+    return sent
+
+
+def finish_envio_count(envio, *, actor=None):
+    """Cierra el conteo de un envio que ya llego (llamar dentro de una
+    transaccion, con el envio bloqueado): lo que sigue en POR UBICAR por este
+    envio (no se vendio ni se encontro al contar) es faltante. Se quita del
+    stock y queda en Inconvenientes con el detalle (enviados, vendidos antes
+    de contar, contados). Devuelve los inconvenientes creados."""
+    progreso = normalize_progress(envio.recepcion_progreso)
+    pendientes = serialize_progress(progreso, envio.sucursal_id)
+    por_ubicar_sub = get_por_ubicar_subdivision(envio.sucursal_id, create=False)
+    recibido_final = {}
+    novedades = {}
+    for pid, enviado in sent_by_product(envio).items():
+        entry = progreso.setdefault(str(pid), {"recibido": 0, "por_ubicar": 0})
+        no_encontrado = int((pendientes.get(str(pid)) or {}).get("pendiente_guardar") or 0)
+        vendidos = max(0, entry["por_ubicar"] - no_encontrado)
+        guardados = max(0, entry["recibido"] - entry["por_ubicar"])
+        if no_encontrado and por_ubicar_sub is not None:
+            no_encontrado = take_stock(por_ubicar_sub.id, pid, no_encontrado)
+        entry["recibido"] = max(0, entry["recibido"] - no_encontrado)
+        entry["por_ubicar"] = 0
+        recibido_final[pid] = entry["recibido"]
+        if no_encontrado:
+            novedades[pid] = (
+                f"Al contar no se encontraron {no_encontrado}: enviados {enviado}, "
+                f"vendidos antes de contar {vendidos}, contados y guardados {guardados}."
+            )
+    envio.recepcion_progreso = progreso
+    envio.estado = ImportacionEnvio.ESTADO_RECIBIDO
+    envio.fecha_recepcion = timezone.localdate()
+    envio.recibido_por = actor
+    envio.save(update_fields=["recepcion_progreso", "estado", "fecha_recepcion", "recibido_por"])
+    return create_envio_shortage_issues(envio, recibido_final, actor=actor, novedades=novedades)
+
+
 class _StripLeadingZerosSQL(Func):
     """Quita ceros a la izquierda de una referencia en la base (deja al menos
     un caracter) para poder comparar '0042' con '42' como la misma referencia.
@@ -1777,11 +1820,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _sent_by_product(envio):
-        sent = {}
-        for row in envio.detalles.values("producto_id", "cantidad"):
-            pid = int(row["producto_id"])
-            sent[pid] = sent.get(pid, 0) + int(row["cantidad"] or 0)
-        return sent
+        return sent_by_product(envio)
 
     @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/confirmar-llegada")
     def confirmar_llegada_envio(self, request, envio_id=None):
@@ -1834,34 +1873,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     {"detail": "Primero confirma la llegada del envio."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            progreso = normalize_progress(envio.recepcion_progreso)
-            pendientes = serialize_progress(progreso, envio.sucursal_id)
-            por_ubicar_sub = get_por_ubicar_subdivision(envio.sucursal_id, create=False)
-            recibido_final = {}
-            novedades = {}
-            for pid, enviado in self._sent_by_product(envio).items():
-                entry = progreso.setdefault(str(pid), {"recibido": 0, "por_ubicar": 0})
-                no_encontrado = int((pendientes.get(str(pid)) or {}).get("pendiente_guardar") or 0)
-                vendidos = max(0, entry["por_ubicar"] - no_encontrado)
-                guardados = max(0, entry["recibido"] - entry["por_ubicar"])
-                if no_encontrado and por_ubicar_sub is not None:
-                    no_encontrado = take_stock(por_ubicar_sub.id, pid, no_encontrado)
-                entry["recibido"] = max(0, entry["recibido"] - no_encontrado)
-                entry["por_ubicar"] = 0
-                recibido_final[pid] = entry["recibido"]
-                if no_encontrado:
-                    novedades[pid] = (
-                        f"Al contar no se encontraron {no_encontrado}: enviados {enviado}, "
-                        f"vendidos antes de contar {vendidos}, contados y guardados {guardados}."
-                    )
-            envio.recepcion_progreso = progreso
-            envio.estado = ImportacionEnvio.ESTADO_RECIBIDO
-            envio.fecha_recepcion = timezone.localdate()
-            envio.recibido_por = request.user
-            envio.save(update_fields=["recepcion_progreso", "estado", "fecha_recepcion", "recibido_por"])
-            faltantes = create_envio_shortage_issues(
-                envio, recibido_final, actor=request.user, novedades=novedades
-            )
+            faltantes = finish_envio_count(envio, actor=request.user)
 
         User = get_user_model()
         admin_ids = [u.pk for u in User.objects.filter(is_active=True) if is_app_admin(u)]

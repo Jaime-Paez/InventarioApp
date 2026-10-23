@@ -619,6 +619,75 @@ class LlegadaYConteoImportacionTests(RecepcionParcialImportacionTests):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_si_se_vende_todo_el_envio_se_cierra_solo(self):
+        from importaciones.models import ImportacionInconveniente
+
+        self.client.post(f"{self.url}/confirmar-llegada/")
+        self._vender(4)
+        # Ya no queda nada por contar: al abrir "Por ubicar" el envio se
+        # cierra solo (sin pendientes nadie podria terminar su conteo).
+        lista = self.client.get("/inventario/inventario/por-guardar/").data
+        self.assertNotIn(self.envio.id, [row["id"] for row in lista["envios"]])
+        self.assertEqual(self.client.get("/inventario/inventario/por-guardar/?solo_conteo=1").data["count"], 0)
+        self.envio.refresh_from_db()
+        self.assertEqual(self.envio.estado, ImportacionEnvio.ESTADO_RECIBIDO)
+        self.assertFalse(ImportacionInconveniente.objects.filter(envio=self.envio).exists())
+        self.assertEqual(self._stock(), 0)
+
+    def test_si_queda_algo_por_contar_el_envio_sigue_abierto(self):
+        self.client.post(f"{self.url}/confirmar-llegada/")
+        self._vender(3)
+        envio, _ = self._envio_por_ubicar()
+        self.assertEqual(envio["items"][0]["pendiente"], 1)
+        self.envio.refresh_from_db()
+        self.assertEqual(self.envio.estado, ImportacionEnvio.ESTADO_PENDIENTE)
+
+    def test_lo_suelto_en_por_ubicar_vendido_desaparece(self):
+        from django.db import transaction
+
+        from inventario.por_ubicar import add_stock, get_por_ubicar_subdivision
+
+        with transaction.atomic():
+            add_stock(get_por_ubicar_subdivision(self.sucursal.id).id, self.producto.id, 1)
+        lista = self.client.get("/inventario/inventario/por-guardar/").data
+        self.assertEqual([row["producto_id"] for row in lista["productos"]], [self.producto.id])
+        self.assertEqual(self.client.get("/inventario/inventario/por-guardar/?solo_conteo=1").data["count"], 1)
+
+        self._vender(1)
+        lista = self.client.get("/inventario/inventario/por-guardar/").data
+        self.assertEqual(lista["productos"], [])
+        self.assertEqual(self.client.get("/inventario/inventario/por-guardar/?solo_conteo=1").data["count"], 0)
+
+    def test_cada_sucursal_ve_solo_su_por_ubicar(self):
+        from unittest import mock
+
+        from django.db import transaction
+
+        from inventario.por_ubicar import add_stock, get_por_ubicar_subdivision
+
+        sur = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
+        Bodega.objects.create(sucursal=sur, nombre="Almacén Sur")
+        with transaction.atomic():
+            add_stock(get_por_ubicar_subdivision(self.sucursal.id).id, self.producto.id, 2)
+            add_stock(get_por_ubicar_subdivision(sur.id).id, self.producto.id, 5)
+
+        def sucursales_de(ids):
+            return mock.patch("inventario.viewsets.get_readable_sucursal_ids", return_value=ids)
+
+        with sucursales_de([sur.id]):
+            lista = self.client.get("/inventario/inventario/por-guardar/").data
+        self.assertEqual(
+            [(row["sucursal_id"], row["cantidad"]) for row in lista["productos"]], [(sur.id, 5)]
+        )
+        with sucursales_de([self.sucursal.id]):
+            lista = self.client.get("/inventario/inventario/por-guardar/").data
+        self.assertEqual(
+            [(row["sucursal_id"], row["cantidad"]) for row in lista["productos"]], [(self.sucursal.id, 2)]
+        )
+        # Quien ve todas (None) ve las dos.
+        lista = self.client.get("/inventario/inventario/por-guardar/").data
+        self.assertEqual(sorted(row["sucursal_id"] for row in lista["productos"]), sorted([self.sucursal.id, sur.id]))
+
     def test_faltante_del_envio_se_reclama_al_proveedor(self):
         from importaciones.models import ImportacionInconveniente
 
