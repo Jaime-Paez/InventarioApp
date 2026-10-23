@@ -3689,7 +3689,7 @@ function QuickActions({
       const isVerifyReminder = reminderKind === RANDOM_INSPECTION_VERIFY_KIND
       const isAdminSummaryReminder = reminderKind === RANDOM_INSPECTION_ADMIN_SUMMARY_KIND
       if ((isVerifyReminder || isAdminSummaryReminder) && typeof onOpenInventoryReviewSection === 'function') {
-        const opened = onOpenInventoryReviewSection()
+        const opened = onOpenInventoryReviewSection(isVerifyReminder ? inspectionId : undefined)
         return opened !== false
       }
 

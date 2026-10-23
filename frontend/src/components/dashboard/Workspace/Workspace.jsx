@@ -114,6 +114,7 @@ function Workspace({
   const [pendingTransferSalidaRequest, setPendingTransferSalidaRequest] = useState(null)
   const [pendingTransferEntradaRequest, setPendingTransferEntradaRequest] = useState(null)
   const [pendingOpenIssueId, setPendingOpenIssueId] = useState(null)
+  const [pendingReviewInspectionId, setPendingReviewInspectionId] = useState(null)
   const [pendingOpenClienteSolicitudId, setPendingOpenClienteSolicitudId] = useState(null)
   const [pendingOpenSolicitudWebId, setPendingOpenSolicitudWebId] = useState(null)
   const [pendingOpenBorradorData, setPendingOpenBorradorData] = useState(null)
@@ -355,7 +356,11 @@ function Workspace({
     })
   }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
 
-  const handleOpenInventoryReviewSection = useCallback(() => {
+  // `inspectionId`: la revision se abre en la sucursal de esa inspeccion; si no,
+  // quedaba en la primera sucursal y no se veian las diferencias reportadas.
+  const handleOpenInventoryReviewSection = useCallback((inspectionId) => {
+    const normalizedInspectionId = String(inspectionId || '').trim()
+    if (normalizedInspectionId) setPendingReviewInspectionId(normalizedInspectionId)
     if (!labelHasAccess(INVENTORY_REVIEW_TAB, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) {
       if (!labelHasAccess(INVENTORY_REVIEW_TAB_LEGACY, permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return false
       onSelectTab?.(INVENTORY_REVIEW_TAB_LEGACY)
@@ -379,6 +384,10 @@ function Workspace({
 
   const handlePendingOpenIssueHandled = useCallback(() => {
     setPendingOpenIssueId(null)
+  }, [])
+
+  const handlePendingReviewInspectionHandled = useCallback(() => {
+    setPendingReviewInspectionId(null)
   }, [])
 
   const handleOpenSolicitudCliente = useCallback((solicitudId) => {
@@ -568,6 +577,16 @@ function Workspace({
         onPendingOpenHandled={
           (tab === INCONVENIENTES_TAB || tab === INCONVENIENTES_TAB_LEGACY)
             ? handlePendingOpenIssueHandled
+            : undefined
+        }
+        pendingReviewInspectionId={
+          (tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY)
+            ? pendingReviewInspectionId
+            : undefined
+        }
+        onPendingReviewInspectionHandled={
+          (tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY)
+            ? handlePendingReviewInspectionHandled
             : undefined
         }
         pendingOpenClienteSolicitudId={
