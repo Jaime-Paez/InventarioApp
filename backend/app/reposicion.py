@@ -63,6 +63,11 @@ def _central_branch_id(config):
     return int(first.id) if first else None
 
 
+def central_branch_id():
+    """Sucursal matriz: la que compra a proveedores y abastece a las demas."""
+    return _central_branch_id(ReposicionConfiguracion.get_global())
+
+
 def _supplier_leadtimes(config):
     """Dias de entrega por casa comercial: promedio real de sus importaciones,
     o el estimado, o el valor por defecto segun el tipo de proveedor."""

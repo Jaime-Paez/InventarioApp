@@ -2762,6 +2762,14 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 {"detail": "Solo una compra local ya recibida se puede enviar a otras sucursales."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        from app.reposicion import central_branch_id
+
+        central_id = central_branch_id()
+        if not central_id or int(instance.sucursal_id) != int(central_id):
+            return Response(
+                {"detail": "Solo la matriz puede enviar sus compras locales a otras sucursales."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if request.method == "GET":
             return Response(self._compra_local_distribucion_payload(instance), status=status.HTTP_200_OK)
         if request.method == "PATCH":

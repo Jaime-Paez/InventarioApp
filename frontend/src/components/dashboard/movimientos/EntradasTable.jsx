@@ -1065,9 +1065,10 @@ function EntradasTable({
     setShowCreateModal(false)
     setSelectedRows([])
     refreshData({ page: 1 })
-    // Compra local recien creada: como en una importacion, se reparte de una
-    // vez a las demas sucursales (o se deja todo donde se compro).
-    if (isCompraLocal && createdPayload?.id) setDistribucionCompraId(createdPayload.id)
+    // Compra local recien creada en la matriz: como en una importacion, se
+    // reparte de una vez a las demas sucursales (o se deja todo en la matriz).
+    // En otra sucursal la compra entra directo a su stock, sin reparto.
+    if (isCompraLocal && createdPayload?.id && createdPayload?.es_sucursal_matriz) setDistribucionCompraId(createdPayload.id)
     const isSolicitudTraslado = Boolean(createdPayload?.sucursal_solicitante_id && createdPayload?.sucursal_proveedora_id)
     const isGuardado = String(createdPayload?.estado || '').trim().toLowerCase() === 'guardado'
     toast.current?.show({

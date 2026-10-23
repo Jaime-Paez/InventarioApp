@@ -201,3 +201,17 @@ class DistribucionCompraLocalTests(APITestCase):
         self.assertEqual(data["sucursal_id"], self.matriz.id)
         self.assertEqual((data["productos"][0]["cantidad"], data["productos"][0]["enviado"]), (10, 4))
         self.assertEqual(data["envios"][0]["sucursal_id"], self.norte.id)
+
+    def test_solo_la_matriz_reparte_sus_compras(self):
+        from app.models import ReposicionConfiguracion
+
+        self.assertTrue(MovimientoInventarioSerializer(self.compra).data["es_sucursal_matriz"])
+        config = ReposicionConfiguracion.get_global()
+        config.sucursal_central = self.norte
+        config.save()
+
+        self.assertFalse(MovimientoInventarioSerializer(self.compra).data["es_sucursal_matriz"])
+        self.assertEqual(self.client.get(self.url).status_code, 400)
+        response = self._repartir((self.sur, 2))
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(self._stock(self.matriz), 10)

@@ -1427,6 +1427,7 @@ function EntradaDetails({
         notaInconveniente: String(salida?.nota_inconveniente || '').trim(),
         notaInconvenienteResolucion: String(salida?.nota_inconveniente_resolucion || '').trim(),
         esLegado: Boolean(salida?.es_legado),
+        esSucursalMatriz: Boolean(salida?.es_sucursal_matriz),
       },
       clienteForm,
       detalles,
@@ -4049,7 +4050,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                   )}
                 </>
               )}
-              {!isEditing && !hasPreviewData && selectedSubTipoName.includes('compra') && typeof onDistribuirCompra === 'function' && (
+              {!isEditing && !hasPreviewData && selectedSubTipoName.includes('compra') && formData.esSucursalMatriz && typeof onDistribuirCompra === 'function' && (
                 <button
                   type="button"
                   className="create-user__action create-user__action--primary"

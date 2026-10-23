@@ -739,6 +739,17 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
     )
     nota_inconveniente = serializers.SerializerMethodField(read_only=True)
     nota_inconveniente_resolucion = serializers.SerializerMethodField(read_only=True)
+    # Solo la matriz reparte sus compras locales a las demas sucursales.
+    es_sucursal_matriz = serializers.SerializerMethodField(read_only=True)
+
+    def get_es_sucursal_matriz(self, obj):
+        from app.reposicion import central_branch_id
+
+        # Se calcula una vez por respuesta (el contexto lo comparte la lista).
+        if "_central_branch_id" not in self.context:
+            self.context["_central_branch_id"] = central_branch_id()
+        central_id = self.context["_central_branch_id"]
+        return bool(central_id) and int(obj.sucursal_id or 0) == int(central_id)
 
     def _resolve_otro_inconveniente(self, obj):
         # La nota general de "algo no salio como lo esperado" al recibir un
@@ -804,6 +815,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "casa_comercial_id",
             "nota_inconveniente",
             "nota_inconveniente_resolucion",
+            "es_sucursal_matriz",
             "es_legado",
             "creado_por",
             "creado_por_nombre",
