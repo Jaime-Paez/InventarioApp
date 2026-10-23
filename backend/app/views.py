@@ -5459,12 +5459,24 @@ class RandomInspectionSendDivisionAPIView(APIView):
 
             new_items = [c for c in candidates if c["producto_id"] not in existing_producto_ids]
             if not new_items:
+                # Reenvio de la misma division (doble click, otro dispositivo o
+                # reintento): no se duplica y se responde como exito, igual que
+                # enviar-lista. Antes era un 400 que el admin leia como falla.
                 return Response(
                     {
-                        "detail": f"Todos los productos de esta {scope_word} ya estaban en la "
-                        "inspeccion de hoy de este usuario.",
+                        "usuario_id": int(user.id),
+                        "nombre": _format_user_display_name(user),
+                        "sucursal_id": sucursal_id,
+                        "sucursal_nombre": sucursal_nombre,
+                        "division_id": int(division.id),
+                        "division_nombre": division.nombre,
+                        "subdivision_id": int(subdivision.id) if subdivision else None,
+                        "subdivision_nombre": subdivision.nombre if subdivision else "",
+                        "inspeccion_id": int(inspection.id),
+                        "productos": len(existing_producto_ids),
+                        "ya_enviada": True,
                     },
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_200_OK,
                 )
 
             if inspection is None:

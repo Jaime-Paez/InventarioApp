@@ -6,13 +6,13 @@ import { formatDate } from '../../../utils/dateFormat'
 import BlockerNotice from '../common/BlockerNotice'
 import './LlegadaDialog.css'
 
-// Paso 1 de la recepcion: solo se confirma que el envio llego, viendo lo que
-// debia llegar. No suma stock: en "Por guardar" se verifica cuanto llego de
-// cada producto y se suma al guardarlo en su ubicacion.
+// Paso 1 de la recepcion de un envio de importacion: solo se confirma que
+// llego, viendo lo que debia llegar. Todo entra al inventario entre parentesis
+// (POR UBICAR) y ya se puede vender; despues, en "Por ubicar", se cuenta lo
+// que queda de cada producto y se guarda en su ubicacion.
 function LlegadaDialog({ shipment, token, darkMode, onClose, onConfirmed }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const isImportacion = shipment?._source === 'importacion'
   const items = useMemo(
     () => (Array.isArray(shipment?.detalles) ? shipment.detalles : []).map((row) => ({
       id: String(row?.producto_id ?? row?.detalle_id ?? ''),
@@ -35,11 +35,12 @@ function LlegadaDialog({ shipment, token, darkMode, onClose, onConfirmed }) {
     setSaving(true)
     setError('')
     try {
-      const id = encodeURIComponent(String(isImportacion ? (shipment?.envio_id || shipment?.id) : shipment?.id))
-      const url = isImportacion
-        ? `${API_URL}/importaciones/importaciones/envios/${id}/confirmar-llegada/`
-        : `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${id}/confirmar-llegada/`
-      const response = await authFetch(url, { method: 'POST' }, token)
+      const id = encodeURIComponent(String(shipment?.envio_id || shipment?.id))
+      const response = await authFetch(
+        `${API_URL}/importaciones/importaciones/envios/${id}/confirmar-llegada/`,
+        { method: 'POST' },
+        token
+      )
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo confirmar la llegada.')
       onConfirmed?.(shipment)
@@ -51,7 +52,6 @@ function LlegadaDialog({ shipment, token, darkMode, onClose, onConfirmed }) {
   }
 
   const doc = String(shipment?.no_documento || shipment?.id || '').trim()
-  const desde = isImportacion ? 'Importacion' : String(shipment?.sucursal_proveedora || '').trim()
   const hacia = String(shipment?.sucursal_solicitante || '').trim()
 
   return createPortal(
@@ -65,9 +65,9 @@ function LlegadaDialog({ shipment, token, darkMode, onClose, onConfirmed }) {
       <div className="llegada-dialog__card">
         <header className="llegada-dialog__header">
           <div>
-            <h3>{`${isImportacion ? 'Importación' : 'Traslado'}: #${doc}`}</h3>
+            <h3>{`Importación: #${doc}`}</h3>
             <p>
-              {[desde && `Desde ${desde}`, hacia && `hacia ${hacia}`, shipment?.fecha && `enviado el ${formatDate(shipment.fecha)}`]
+              {[hacia && `Para ${hacia}`, shipment?.fecha && `enviado el ${formatDate(shipment.fecha)}`]
                 .filter(Boolean)
                 .join(' · ')}
             </p>
@@ -78,9 +78,9 @@ function LlegadaDialog({ shipment, token, darkMode, onClose, onConfirmed }) {
         </header>
 
         <p className="llegada-dialog__intro">
-          Esto es lo que debía llegar. Confirma que el envío llegó: <strong>todavía no se suma al inventario</strong>.
-          Después, en <strong>Por guardar</strong>, verificas cuánto llegó de cada producto y lo guardas en su
-          ubicación (ahí se suma). Mientras tanto se ve entre paréntesis en el inventario.
+          Esto es lo que debía llegar. Al confirmar, todo entra al inventario <strong>entre paréntesis</strong> y{' '}
+          <strong>ya se puede vender</strong>, sin esperar a contarlo. Después, en <strong>Por ubicar</strong>, cuentas
+          lo que queda de cada producto y lo guardas en su ubicación. Lo vendido mientras tanto se descuenta solo.
         </p>
 
         {String(shipment?.nota_envio || '').trim() && (

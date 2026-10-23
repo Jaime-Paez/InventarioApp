@@ -438,9 +438,10 @@ function RandomInspectionAdminTable({
       )
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo enviar la division.')
-      notifySuccess(
-        `${payload.subdivision_id ? 'Subdivision' : 'Division'} enviada: ${payload.productos} producto(s) para ${payload.nombre}.`
-      )
+      const scopeLabel = payload.subdivision_id ? 'Subdivision' : 'Division'
+      notifySuccess(payload?.ya_enviada
+        ? `Esa ${scopeLabel.toLowerCase()} ya estaba enviada a ${payload.nombre} y sigue pendiente: no se duplico.`
+        : `${scopeLabel} enviada: ${payload.productos} producto(s) para ${payload.nombre}.`)
       setShowSendNowDialog(false)
     } catch (error) {
       notifyError(error?.message || 'No se pudo enviar la division.')

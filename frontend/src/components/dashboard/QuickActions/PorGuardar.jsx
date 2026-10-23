@@ -9,10 +9,11 @@ import LocationPicker from './LocationPicker'
 import { POR_GUARDAR_REFRESH_EVENT } from './porGuardarEvents'
 import './PorGuardar.css'
 
-// Paso 2 de la recepcion (traslados e importaciones). Los envios que ya
-// llegaron (paso 1) se verifican aqui: cuanto llego de cada producto y donde
-// se guarda; recien al guardar se suma al inventario (mientras tanto se ve
-// entre parentesis). Tambien lo que haya quedado en POR UBICAR.
+// "Por ubicar": paso 2 de la recepcion de importaciones. Al confirmar la
+// llegada todo entro al inventario en POR UBICAR (entre parentesis) y ya se
+// puede vender; aqui se cuenta lo que queda de cada producto (lo vendido ya se
+// desconto) y se guarda en su ubicacion. Al terminar, lo que no aparecio queda
+// como faltante en Inconvenientes. Tambien lo demas que haya en POR UBICAR.
 const POLL_MS = 15000
 
 const normalize = (value) =>
@@ -26,9 +27,7 @@ const shipmentKey = (shipment) => `${shipment.tipo}-${shipment.id}`
 const itemKey = (shipment, item) => `${shipmentKey(shipment)}-${item.producto_id}`
 const porUbicarKey = (row) => `pu-${row.sucursal_id}-${row.producto_id}`
 
-const shipmentBase = (shipment) => (shipment.tipo === 'importacion'
-  ? `${API_URL}/importaciones/importaciones/envios/${encodeURIComponent(shipment.id)}`
-  : `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(shipment.id)}`)
+const shipmentBase = (shipment) => `${API_URL}/importaciones/importaciones/envios/${encodeURIComponent(shipment.id)}`
 
 function PorGuardar({ token, darkMode, onSaved }) {
   const [count, setCount] = useState(0)
@@ -62,7 +61,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
     try {
       const response = await authFetch(`${API_URL}/inventario/inventario/por-guardar/`, {}, token)
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo cargar lo que falta guardar.')
+      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo cargar lo que falta ubicar.')
       const nextShipments = Array.isArray(payload?.envios) ? payload.envios : []
       const nextPorUbicar = Array.isArray(payload?.productos) ? payload.productos : []
       setShipments(nextShipments)
@@ -97,7 +96,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
       })
       return { shipments: nextShipments, porUbicar: nextPorUbicar }
     } catch (requestError) {
-      setError(requestError?.message || 'No se pudo cargar lo que falta guardar.')
+      setError(requestError?.message || 'No se pudo cargar lo que falta ubicar.')
       return null
     } finally {
       setLoading(false)
@@ -131,33 +130,19 @@ function PorGuardar({ token, darkMode, onSaved }) {
   const problemFor = (key, max) => {
     const draft = drafts[key] || {}
     const qty = Number.parseInt(String(draft.cantidad || ''), 10)
-    if (!Number.isFinite(qty) || qty <= 0) return 'Indica cuantas llegaron'
+    if (!Number.isFinite(qty) || qty <= 0) return 'Indica cuantas contaste'
     if (qty > max) return `Maximo ${max}`
     if (!draft.subdivisionId) return 'Elige la ubicacion'
     return ''
   }
 
-  // Cierra el envio con lo guardado: lo que no se guardo queda como faltante.
+  // Cierra el conteo del envio: lo que falta contar (no se vendio ni se
+  // encontro) sale del inventario y queda como faltante en Inconvenientes.
   const finishShipment = useCallback(async (shipment) => {
-    const faltan = shipment.items.filter((item) => item.pendiente > 0)
-    const response = await authFetch(
-      `${shipmentBase(shipment)}/confirmar-recepcion/`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          resultado: faltan.length ? 'incompleto' : 'completo',
-          items: shipment.items.map((item) => ({
-            producto_id: item.producto_id,
-            cantidad_recibida: item.guardado,
-            ubicaciones: [],
-            ...(item.pendiente > 0 ? { novedad: 'No llego al verificar y guardar el envio.' } : {}),
-          })),
-        }),
-      },
-      token
-    )
+    const response = await authFetch(`${shipmentBase(shipment)}/terminar-conteo/`, { method: 'POST' }, token)
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo terminar el envio.')
+    return payload
   }, [token])
 
   const saveShipmentItems = async (shipment, items) => {
@@ -170,8 +155,10 @@ function PorGuardar({ token, darkMode, onSaved }) {
     setSaving(true)
     setError('')
     try {
+      // Mueve lo contado desde POR UBICAR a su ubicacion (ya estaba en el
+      // stock: no se suma de nuevo).
       const response = await authFetch(
-        `${shipmentBase(shipment)}/recibir-parcial/`,
+        `${shipmentBase(shipment)}/guardar-ubicaciones/`,
         {
           method: 'POST',
           body: JSON.stringify({
@@ -181,8 +168,6 @@ function PorGuardar({ token, darkMode, onSaved }) {
                 producto_id: item.producto_id,
                 cantidad: Number.parseInt(String(draft.cantidad), 10),
                 subdivision_id: Number(draft.subdivisionId),
-                // Lo que esta pantalla cree que ya se guardo: evita sumar dos veces.
-                ya_recibido: item.guardado,
               }
             }),
           }),
@@ -190,16 +175,14 @@ function PorGuardar({ token, darkMode, onSaved }) {
         token
       )
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok && !(response.status === 409 && payload?.desactualizada)) {
-        throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar.')
-      }
+      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar.')
       const fresh = await loadData()
       const updated = fresh?.shipments?.find((row) => shipmentKey(row) === shipmentKey(shipment))
       if (updated && updated.items.every((item) => item.pendiente === 0)) {
-        // Todo lo enviado ya esta guardado: el envio se cierra solo.
+        // Ya no queda nada por contar: el envio se cierra solo.
         await finishShipment(updated)
         await loadData()
-        onSaved?.(`${shipment.codigo}: todo guardado, envio recibido completo.`)
+        onSaved?.(`${shipment.codigo}: todo contado, envío completo.`)
       } else {
         onSaved?.(`${items.length} producto(s) guardados en su ubicacion.`)
       }
@@ -281,10 +264,10 @@ function PorGuardar({ token, darkMode, onSaved }) {
         type="button"
         className={`quick-actions__pending-shipments-trigger por-guardar__trigger${count > 0 ? ' has-items' : ''}`}
         onClick={() => setOpen(true)}
-        aria-label={`Por guardar: ${count} producto(s)`}
-        title="Envios que ya llegaron: verifica cuanto llego y guardalo en su ubicacion"
+        aria-label={`Por ubicar: ${count} producto(s)`}
+        title="Importaciones que ya llegaron: cuenta lo que queda y guardalo en su ubicacion"
       >
-        <span>Por guardar</span>
+        <span>Por ubicar</span>
         <span className="quick-actions__pending-shipments-count">{count}</span>
       </button>
 
@@ -293,16 +276,17 @@ function PorGuardar({ token, darkMode, onSaved }) {
           className={`por-guardar${darkMode ? ' por-guardar--dark' : ''}`}
           role="dialog"
           aria-modal="true"
-          aria-label="Por guardar"
+          aria-label="Por ubicar"
           onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setOpen(false) }}
         >
           <div className="por-guardar__dialog">
             <header className="por-guardar__header">
               <div>
-                <h3>Por guardar</h3>
+                <h3>Por ubicar</h3>
                 <p>
-                  Envíos que ya llegaron. Verifica <strong>cuánto llegó</strong> de cada producto y guárdalo en su
-                  ubicación: recién ahí se suma al inventario (mientras tanto se ve entre paréntesis).
+                  Importaciones que ya llegaron: están en el inventario entre paréntesis y ya se pueden vender.
+                  Cuenta <strong>lo que queda</strong> de cada producto (lo vendido ya se descontó) y guárdalo en su
+                  ubicación. Al terminar, lo que no aparezca queda como faltante en Inconvenientes.
                 </p>
               </div>
               <button type="button" className="por-guardar__close" onClick={() => setOpen(false)} disabled={saving} aria-label="Cerrar">
@@ -328,7 +312,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
               {loading && isEmpty ? (
                 <p className="por-guardar__empty">Cargando...</p>
               ) : isEmpty ? (
-                <p className="por-guardar__empty">No hay nada por guardar. Cuando confirmes la llegada de un envío, aparece aquí.</p>
+                <p className="por-guardar__empty">No hay nada por ubicar. Cuando confirmes la llegada de una importación, aparece aquí.</p>
               ) : (
                 <>
                   {visibleShipments.map((shipment) => {
@@ -337,11 +321,10 @@ function PorGuardar({ token, darkMode, onSaved }) {
                       <section key={shipmentKey(shipment)} className="por-guardar__shipment">
                         <header className="por-guardar__shipment-head">
                           <div>
-                            <strong>{`${shipment.tipo === 'importacion' ? 'Importación' : 'Traslado'} #${shipment.codigo}`}</strong>
+                            <strong>{`Importación #${shipment.codigo}`}</strong>
                             <span>
                               {[
-                                shipment.origen && `Desde ${shipment.origen}`,
-                                `a ${shipment.sucursal_nombre}`,
+                                `Para ${shipment.sucursal_nombre}`,
                                 shipment.llegada_confirmada_en && `llegó ${formatDateTime(shipment.llegada_confirmada_en)}`,
                               ].filter(Boolean).join(' · ')}
                             </span>
@@ -352,7 +335,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                               className="por-guardar__btn"
                               onClick={() => void saveShipmentItems(shipment, pendientes)}
                               disabled={saving || !pendientes.length || pendientes.some((item) => problemFor(itemKey(shipment, item), item.pendiente))}
-                              title="Guardar todos los productos con la cantidad y ubicacion indicadas"
+                              title="Guardar todos los productos con la cantidad contada y la ubicacion indicada"
                             >
                               Guardar todo
                             </button>
@@ -361,9 +344,9 @@ function PorGuardar({ token, darkMode, onSaved }) {
                               className="por-guardar__btn por-guardar__btn--warn"
                               onClick={() => setFinishTarget(shipment)}
                               disabled={saving}
-                              title="Cerrar el envio: lo que no se guardo queda como faltante en Inconvenientes"
+                              title="Terminar el conteo: lo que falta contar queda como faltante en Inconvenientes"
                             >
-                              Terminar envío
+                              Terminar conteo
                             </button>
                           </div>
                         </header>
@@ -371,9 +354,10 @@ function PorGuardar({ token, darkMode, onSaved }) {
                           <thead>
                             <tr>
                               <th>Producto</th>
-                              <th className="por-guardar__col-num">Debía llegar</th>
+                              <th className="por-guardar__col-num">Enviado</th>
+                              <th className="por-guardar__col-num" title="Vendido desde el paréntesis antes de contarlo">Vendido</th>
                               <th className="por-guardar__col-num">Guardado</th>
-                              <th className="por-guardar__col-qty">Llegó</th>
+                              <th className="por-guardar__col-qty">Contados</th>
                               <th>Guardar en</th>
                               <th className="por-guardar__col-action" />
                             </tr>
@@ -390,10 +374,11 @@ function PorGuardar({ token, darkMode, onSaved }) {
                                     <span className="por-guardar__name">{item.producto_nombre}</span>
                                   </td>
                                   <td className="por-guardar__col-num">{item.enviado}</td>
+                                  <td className="por-guardar__col-num">{item.vendido || 0}</td>
                                   <td className="por-guardar__col-num">{item.guardado}</td>
                                   {done ? (
                                     <td colSpan={3} className="por-guardar__done">
-                                      <CheckCircle2 size={15} aria-hidden="true" /> Guardado completo
+                                      <CheckCircle2 size={15} aria-hidden="true" /> Contado completo
                                     </td>
                                   ) : (
                                     <>
@@ -403,9 +388,9 @@ function PorGuardar({ token, darkMode, onSaved }) {
                                           inputMode="numeric"
                                           value={drafts[key]?.cantidad ?? ''}
                                           onChange={(event) => updateDraft(key, { cantidad: event.target.value.replace(/[^\d]/g, '') })}
-                                          aria-label={`Cuantas llegaron de ${item.producto_codigo}`}
+                                          aria-label={`Cuantas contaste de ${item.producto_codigo}`}
                                         />
-                                        <small>de {item.pendiente}</small>
+                                        <small>{`quedan ${item.pendiente}`}</small>
                                       </td>
                                       <td>{renderLocation(key, shipment.sucursal_id, item.sugerida_subdivision_id)}</td>
                                       <td className="por-guardar__col-action">
@@ -414,7 +399,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                                           className="por-guardar__btn por-guardar__btn--primary"
                                           onClick={() => void saveShipmentItems(shipment, [item])}
                                           disabled={saving || Boolean(problem)}
-                                          title={problem || 'Guardar y sumar al inventario en esta ubicacion'}
+                                          title={problem || 'Guardar lo contado en esta ubicacion'}
                                         >
                                           Guardar
                                         </button>
@@ -498,22 +483,25 @@ function PorGuardar({ token, darkMode, onSaved }) {
 
       <ConfirmDialog
         open={Boolean(finishTarget)}
-        title="Terminar envío"
+        title="Terminar conteo"
         message={(() => {
           if (!finishTarget) return ''
           const faltan = finishTarget.items.filter((item) => item.pendiente > 0)
           return faltan.length
-            ? `Se cierra ${finishTarget.codigo} con lo guardado. Lo que no se guardó queda como faltante en Inconvenientes.`
-            : `Se cierra ${finishTarget.codigo}: todo está guardado.`
+            ? `Se cierra ${finishTarget.codigo}. Lo que falta contar (no se vendió ni se encontró) sale del inventario y queda como faltante en Inconvenientes.`
+            : `Se cierra ${finishTarget.codigo}: todo está contado.`
         })()}
         details={finishTarget && finishTarget.items.some((item) => item.pendiente > 0) ? (
           <ul className="por-guardar__finish-list">
             {finishTarget.items.filter((item) => item.pendiente > 0).map((item) => (
-              <li key={item.producto_id}><strong>{item.producto_codigo}</strong>{` · faltan ${item.pendiente} de ${item.enviado}`}</li>
+              <li key={item.producto_id}>
+                <strong>{item.producto_codigo}</strong>
+                {` · faltan ${item.pendiente} (enviados ${item.enviado}, vendidos ${item.vendido || 0}, guardados ${item.guardado})`}
+              </li>
             ))}
           </ul>
         ) : null}
-        confirmLabel="Terminar envío"
+        confirmLabel="Terminar conteo"
         busy={saving}
         onCancel={() => setFinishTarget(null)}
         onConfirm={async () => {
@@ -521,9 +509,9 @@ function PorGuardar({ token, darkMode, onSaved }) {
           setSaving(true)
           setError('')
           try {
-            await finishShipment(target)
+            const result = await finishShipment(target)
             setFinishTarget(null)
-            onSaved?.(`${target.codigo} terminado.`)
+            onSaved?.(String(result?.detail || '').trim() || `${target.codigo} terminado.`)
             await loadData()
           } catch (requestError) {
             setFinishTarget(null)

@@ -134,11 +134,10 @@ class RecepcionParcialTrasladoTests(APITestCase):
         self.assertFalse(Inventario.objects.filter(producto=self.p1, subdivision=por_ubicar).exists())
         self.assertEqual(response.data["recepcion_progreso"][str(self.p1.id)]["pendiente_guardar"], 0)
 
-    def test_llego_y_despues_guardar_sin_duplicar(self):
-        # Paso 1 "llego": se cierra la recepcion aunque todo siga en POR UBICAR.
+    def test_cerrar_no_duplica_stock_y_exige_guardar_antes(self):
         self.client.post(
             f"{BASE}/{self.solicitud.id}/recibir-parcial/",
-            {"items": [{"producto_id": self.p1.id, "cantidad": 5}]},
+            {"items": [{"producto_id": self.p1.id, "cantidad": 5}, {"producto_id": self.p2.id, "cantidad": 2}]},
             format="json",
         )
         body = {
@@ -148,39 +147,22 @@ class RecepcionParcialTrasladoTests(APITestCase):
                 {"producto_id": self.p2.id, "cantidad_recibida": 2, "ubicaciones": [], "novedad": "Falto uno"},
             ],
         }
-        response = self.client.post(f"{BASE}/{self.solicitud.id}/confirmar-recepcion/", body, format="json")
-        self.assertEqual(response.status_code, 200, response.data)
-        por_ubicar = self._por_ubicar()
-        self.assertEqual(self._stock(self.p1, por_ubicar), 5)
-        self.assertEqual(self._stock(self.p2, por_ubicar), 2)
-        self.assertEqual(self._en_camino(self.p2), 0)
+        bloqueado = self.client.post(f"{BASE}/{self.solicitud.id}/confirmar-recepcion/", body, format="json")
+        self.assertEqual(bloqueado.status_code, 400)
 
-        # Paso 2 "Por guardar": aparece en la lista y se guarda en su ubicacion.
-        lista = self.client.get("/inventario/inventario/por-guardar/")
-        self.assertEqual(lista.status_code, 200, lista.data)
-        codigos = {row["producto_codigo"]: row["cantidad"] for row in lista.data["productos"]}
-        self.assertEqual(codigos, {"RP-1": 5, "RP-2": 2})
-        self.assertIn(str(self.destino.id), lista.data["ubicaciones"])
-        self.assertEqual(self.client.get("/inventario/inventario/por-guardar/", {"solo_conteo": 1}).data["count"], 2)
-
-        guardar = self.client.post(
-            "/inventario/inventario/guardar-por-ubicar/",
+        self.client.post(
+            f"{BASE}/{self.solicitud.id}/guardar-ubicaciones/",
             {"items": [
-                {"producto_id": self.p1.id, "sucursal_id": self.destino.id, "subdivision_id": self.nivel.id, "cantidad": 3},
-                {"producto_id": self.p2.id, "sucursal_id": self.destino.id, "subdivision_id": self.nivel.id},
+                {"producto_id": self.p1.id, "subdivision_id": self.nivel.id},
+                {"producto_id": self.p2.id, "subdivision_id": self.nivel.id},
             ]},
             format="json",
         )
-        self.assertEqual(guardar.status_code, 200, guardar.data)
-        self.assertEqual(self._stock(self.p1, self.nivel), 3)
-        self.assertEqual(self._stock(self.p1, por_ubicar), 2)
-        self.assertEqual(self._stock(self.p2, self.nivel), 2)
-        # Total sin duplicar.
+        response = self.client.post(f"{BASE}/{self.solicitud.id}/confirmar-recepcion/", body, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self._stock(self.p1), 5)
         self.assertEqual(self._stock(self.p2), 2)
-        # La sugerida pasa a ser la ubicacion donde ya esta.
-        lista = self.client.get("/inventario/inventario/por-guardar/").data["productos"]
-        self.assertEqual([(row["producto_codigo"], row["sugerida_subdivision_id"]) for row in lista], [("RP-1", self.nivel.id)])
+        self.assertEqual(self._en_camino(self.p2), 0)
 
     def test_guardar_no_acepta_mas_de_lo_que_hay_ni_por_ubicar_como_destino(self):
         self.client.post(
@@ -381,7 +363,6 @@ class FaltanteEnvioImportacionTests(RecepcionParcialImportacionTests):
         issue = self._faltante_de_envio()
         self.assertEqual(issue.envio_id, self.envio.id)
         # El reclamo al proveedor no aplica a lo que falto entre la importacion y la sucursal.
-        self.assertEqual(self._resolver(issue, decision="reportado_proveedor").status_code, 400)
 
         response = self._resolver(issue, decision="sumar_solicitante", subdivision_id=self.nivel.id, motivo="Estaba en otra caja")
         self.assertEqual(response.status_code, 200, response.data)
@@ -450,76 +431,6 @@ class FaltanteEnvioPorUbicarTests(FaltanteEnvioImportacionTests):
         self.assertEqual(Inventario.objects.get(producto=self.producto, subdivision=destino).cantidad, 1)
         lista = self.client.get("/inventario/inventario/por-guardar/").data["productos"]
         self.assertEqual([(row["producto_codigo"], row["cantidad"]) for row in lista], [("RI-1", 1)])
-
-
-class LlegadaYGuardarTrasladoTests(RecepcionParcialTrasladoTests):
-    """Paso 1: confirmar que llego (no suma stock). Paso 2: en "Por guardar" se
-    verifica cuanto llego de cada producto y se suma en su ubicacion."""
-
-    def test_llego_no_suma_stock_y_queda_por_guardar_entre_parentesis(self):
-        response = self.client.post(f"{BASE}/{self.solicitud.id}/confirmar-llegada/")
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(self._stock(self.p1), 0)
-        # Sale de "envios en camino" pero sigue entre parentesis (marcado "llego").
-        en_camino = self.client.get(f"{BASE.rsplit('/', 1)[0]}/envios-en-camino/").data
-        self.assertNotIn(self.solicitud.id, [row["id"] for row in en_camino])
-        transit = in_transit_by_product_branch([self.p1.id])[(self.p1.id, self.destino.id)]
-        self.assertEqual(transit["total"], 5)
-        self.assertTrue(transit["documentos"][0]["llego"])
-
-        lista = self.client.get("/inventario/inventario/por-guardar/").data
-        envio = next(row for row in lista["envios"] if row["id"] == self.solicitud.id)
-        self.assertEqual(
-            {(item["producto_codigo"], item["pendiente"]) for item in envio["items"]},
-            {("RP-1", 5), ("RP-2", 3)},
-        )
-        self.assertEqual(self.client.get("/inventario/inventario/por-guardar/", {"solo_conteo": 1}).data["count"], 2)
-
-    def test_guardar_con_ubicacion_y_terminar_con_faltante(self):
-        from .models import TrasladoInconveniente
-
-        self.client.post(f"{BASE}/{self.solicitud.id}/confirmar-llegada/")
-        # Llegaron 5 de RP-1 y 2 de RP-2: se guardan directo en su ubicacion.
-        guardar = self.client.post(
-            f"{BASE}/{self.solicitud.id}/recibir-parcial/",
-            {"items": [
-                {"producto_id": self.p1.id, "cantidad": 5, "subdivision_id": self.nivel.id, "ya_recibido": 0},
-                {"producto_id": self.p2.id, "cantidad": 2, "subdivision_id": self.nivel.id, "ya_recibido": 0},
-            ]},
-            format="json",
-        )
-        self.assertEqual(guardar.status_code, 200, guardar.data)
-        self.assertEqual(self._stock(self.p1, self.nivel), 5)
-        self.assertEqual(self._en_camino(self.p2), 1)
-
-        # Terminar: el que falta queda como inconveniente.
-        terminar = self.client.post(
-            f"{BASE}/{self.solicitud.id}/confirmar-recepcion/",
-            {"resultado": "incompleto", "items": [
-                {"producto_id": self.p1.id, "cantidad_recibida": 5, "ubicaciones": []},
-                {"producto_id": self.p2.id, "cantidad_recibida": 2, "ubicaciones": [], "novedad": "Falto uno"},
-            ]},
-            format="json",
-        )
-        self.assertEqual(terminar.status_code, 200, terminar.data)
-        self.assertEqual(self._stock(self.p2), 2)
-        self.assertEqual(self._en_camino(self.p2), 0)
-        self.assertEqual(TrasladoInconveniente.objects.get(producto=self.p2).cantidad_faltante, 1)
-        lista = self.client.get("/inventario/inventario/por-guardar/").data
-        self.assertFalse([row for row in lista["envios"] if row["id"] == self.solicitud.id])
-
-
-class LlegadaEnvioImportacionTests(RecepcionParcialImportacionTests):
-    def test_llego_sale_de_pendientes_y_queda_por_guardar(self):
-        url = f"/importaciones/importaciones/envios/{self.envio.id}"
-        response = self.client.post(f"{url}/confirmar-llegada/")
-        self.assertEqual(response.status_code, 200, response.data)
-        pendientes = self.client.get("/importaciones/importaciones/envios-pendientes/").data
-        self.assertNotIn(self.envio.id, [row["id"] for row in pendientes])
-        lista = self.client.get("/inventario/inventario/por-guardar/").data
-        envio = next(row for row in lista["envios"] if row["tipo"] == "importacion")
-        self.assertEqual(envio["items"][0]["pendiente"], 4)
-        self.assertEqual(Inventario.objects.filter(producto=self.producto).count(), 0)
 
 
 class BorradorInconvenienteTests(FaltanteEnvioImportacionTests):
@@ -592,3 +503,143 @@ class BorradorInconvenienteTests(FaltanteEnvioImportacionTests):
         self.client.post(url, {"items": [{"id": issue.id, "borrador": {}}]}, format="json")
         issue.refresh_from_db()
         self.assertEqual(issue.borrador, {})
+
+
+class LlegadaYConteoImportacionTests(RecepcionParcialImportacionTests):
+    """Envio de importacion: 1) confirmar llegada: todo entra al stock en POR
+    UBICAR (entre parentesis) y ya se puede vender; 2) "Por ubicar": se cuenta
+    lo que queda y se guarda; al terminar, lo que no aparecio es faltante."""
+
+    def setUp(self):
+        super().setUp()
+        self.url = f"/importaciones/importaciones/envios/{self.envio.id}"
+        self.nivel = SubDivision.objects.create(
+            division=Division.objects.create(
+                bodega=Bodega.objects.get(sucursal=self.sucursal),
+                tipo_division=TipoDivision.objects.get_or_create(nombre="General")[0],
+                nombre="Conteo",
+            ),
+            nombre="01",
+        )
+
+    def _stock(self, subdivision=None):
+        qs = Inventario.objects.filter(producto=self.producto, subdivision__division__bodega__sucursal=self.sucursal)
+        if subdivision is not None:
+            qs = qs.filter(subdivision=subdivision)
+        return qs.aggregate(t=Sum("cantidad"))["t"] or 0
+
+    def _vender(self, cantidad):
+        from django.db import transaction
+
+        from .serializers import MovimientoInventarioSerializer
+
+        with transaction.atomic():
+            MovimientoInventarioSerializer()._adjust_stock(self.sucursal, self.producto.id, -cantidad)
+
+    def _envio_por_ubicar(self):
+        lista = self.client.get("/inventario/inventario/por-guardar/").data
+        return next(row for row in lista["envios"] if row["id"] == self.envio.id), lista
+
+    def test_llegada_suma_en_por_ubicar_y_va_entre_parentesis(self):
+        response = self.client.post(f"{self.url}/confirmar-llegada/")
+        self.assertEqual(response.status_code, 200, response.data)
+        # Repetir no suma dos veces.
+        self.client.post(f"{self.url}/confirmar-llegada/")
+        self.assertEqual(self._stock(), 4)
+        self.assertEqual(self._stock(SubDivision.objects.get(nombre=POR_UBICAR_NOMBRE)), 4)
+
+        transit = in_transit_by_product_branch([self.producto.id])[(self.producto.id, self.sucursal.id)]
+        self.assertEqual((transit["total"], transit["por_contar"]), (0, 4))
+        self.assertTrue(transit["documentos"][0]["llego"])
+
+        pendientes = self.client.get("/importaciones/importaciones/envios-pendientes/").data
+        self.assertNotIn(self.envio.id, [row["id"] for row in pendientes])
+        envio, lista = self._envio_por_ubicar()
+        self.assertEqual(envio["items"][0]["pendiente"], 4)
+        # No sale repetido en lo suelto de POR UBICAR.
+        self.assertEqual(lista["productos"], [])
+
+    def test_lo_vendido_resta_del_parentesis(self):
+        add = Inventario.objects.create(producto=self.producto, subdivision=self.nivel, cantidad=2)
+        self.client.post(f"{self.url}/confirmar-llegada/")
+        self._vender(3)
+        add.refresh_from_db()
+        self.assertEqual(add.cantidad, 2)  # se vende primero lo de POR UBICAR
+        envio, _ = self._envio_por_ubicar()
+        self.assertEqual((envio["items"][0]["vendido"], envio["items"][0]["pendiente"]), (3, 1))
+        transit = in_transit_by_product_branch([self.producto.id])[(self.producto.id, self.sucursal.id)]
+        self.assertEqual(transit["por_contar"], 1)
+
+    def test_contar_guardar_y_terminar_con_faltante(self):
+        from importaciones.models import ImportacionInconveniente
+
+        self.client.post(f"{self.url}/confirmar-llegada/")
+        self._vender(1)
+        response = self.client.post(
+            f"{self.url}/guardar-ubicaciones/",
+            {"items": [{"producto_id": self.producto.id, "subdivision_id": self.nivel.id, "cantidad": 2}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        envio, _ = self._envio_por_ubicar()
+        self.assertEqual(
+            (envio["items"][0]["vendido"], envio["items"][0]["guardado"], envio["items"][0]["pendiente"]), (1, 2, 1)
+        )
+
+        response = self.client.post(f"{self.url}/terminar-conteo/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["faltantes"], 1)
+        self.assertEqual(self._stock(), 2)
+        self.assertEqual(self._stock(self.nivel), 2)
+        self.envio.refresh_from_db()
+        self.assertEqual(self.envio.estado, ImportacionEnvio.ESTADO_RECIBIDO)
+        issue = ImportacionInconveniente.objects.get(producto=self.producto, envio=self.envio)
+        self.assertEqual((issue.cantidad_esperada, issue.cantidad_recibida, issue.cantidad_diferencia), (4, 3, 1))
+        self.assertIn("vendidos antes de contar 1", issue.motivo)
+        self.assertEqual(in_transit_by_product_branch([self.producto.id]), {})
+
+    def test_todo_contado_termina_sin_faltantes(self):
+        self.client.post(f"{self.url}/confirmar-llegada/")
+        self._vender(4)
+        response = self.client.post(f"{self.url}/terminar-conteo/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["faltantes"], 0)
+        self.assertEqual(self._stock(), 0)
+
+    def test_terminar_exige_llegada(self):
+        self.assertEqual(self.client.post(f"{self.url}/terminar-conteo/").status_code, 400)
+
+    def test_lo_del_envio_no_se_guarda_desde_por_ubicar_suelto(self):
+        self.client.post(f"{self.url}/confirmar-llegada/")
+        response = self.client.post(
+            "/inventario/inventario/guardar-por-ubicar/",
+            {"items": [{"producto_id": self.producto.id, "sucursal_id": self.sucursal.id,
+                        "subdivision_id": self.nivel.id, "cantidad": 1}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_faltante_del_envio_se_reclama_al_proveedor(self):
+        from importaciones.models import ImportacionInconveniente
+
+        self.client.post(f"{self.url}/confirmar-llegada/")
+        self.client.post(f"{self.url}/terminar-conteo/")
+        issue = ImportacionInconveniente.objects.get(producto=self.producto, envio=self.envio)
+        self.assertEqual(issue.cantidad_diferencia, 4)
+        fila = next(
+            row for row in self.client.get("/importaciones/importaciones/inconvenientes/").data if row["id"] == issue.id
+        )
+        self.assertIn("llegada_facturado", fila)
+
+        url = f"/importaciones/importaciones/inconvenientes/{issue.id}/resolver/"
+        response = self.client.post(url, {"decision": "reportado_proveedor"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        issue.refresh_from_db()
+        self.assertEqual((issue.estado, issue.resolucion), ("reclamado", "reportado_proveedor"))
+        self.assertEqual(self._stock(), 0)
+        # Sigue como un reclamo normal al proveedor.
+        response = self.client.post(
+            url, {"decision": "solucion", "cantidad_prometida": 4, "fecha_entrega_prometida": "2026-11-15"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
