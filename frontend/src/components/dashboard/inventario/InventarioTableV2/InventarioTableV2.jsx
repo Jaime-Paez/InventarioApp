@@ -1052,41 +1052,56 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         ? permittedBranchIds.has(String(branchId))
         : true
     )
-    // Unidades en camino hacia esta sucursal (traslado o importacion aun sin
-    // recibir): "(5)" en azul; al pasar el mouse, de que documentos vienen.
+    // Dos parentesis por sucursal:
+    // - Traslados en camino (azul): aun no estan en el stock.
+    // - Importacion (naranja): lo que llego y falta contar/ubicar (ya esta en
+    //   el stock y se puede vender, por eso sale del numero principal) mas lo
+    //   que viene en camino de una importacion.
+    // Al pasar el mouse, de que documentos vienen.
     const transit = branchId != null ? rowData?.[`en_camino_sucursal_${branchId}`] : null
-    const transitTotal = Number(transit?.total || 0)
-    // Lo que ya llego y falta guardar ("Por guardar") tambien va entre
-    // parentesis hasta que se guarde en su ubicacion.
     const transitDocs = Array.isArray(transit?.documentos) ? transit.documentos : []
-    const porGuardarTotal = transitDocs.filter((doc) => doc?.llego).reduce((sum, doc) => sum + Number(doc?.cantidad || 0), 0)
-    const enCaminoTotal = transitTotal - porGuardarTotal
-    const transitTooltip = transitTotal > 0
+    const sumDocs = (docs) => docs.reduce((sum, doc) => sum + Number(doc?.cantidad || 0), 0)
+    const docLabel = (doc) => String(doc?.codigo || `#${doc?.id}`).trim()
+    const trasladoDocs = transitDocs.filter((doc) => doc?.tipo !== 'importacion')
+    const importDocs = transitDocs.filter((doc) => doc?.tipo === 'importacion')
+    const trasladoTotal = sumDocs(trasladoDocs)
+    const porContarTotal = sumDocs(importDocs.filter((doc) => doc?.llego))
+    const importEnCaminoTotal = sumDocs(importDocs.filter((doc) => !doc?.llego))
+    const importTotal = porContarTotal + importEnCaminoTotal
+    const trasladoTooltip = trasladoTotal > 0
+      ? [`Traslados en camino: ${trasladoTotal}`, ...trasladoDocs.map((doc) => `Traslado ${docLabel(doc)}: ${Number(doc?.cantidad || 0)}`)].join(' · ')
+      : ''
+    const importTooltip = importTotal > 0
       ? [
-        [enCaminoTotal > 0 && `En camino: ${enCaminoTotal}`, porGuardarTotal > 0 && `Llegó, por guardar: ${porGuardarTotal}`]
-          .filter(Boolean)
-          .join(' · '),
-        ...transitDocs.map((doc) => (
-          `${doc?.tipo === 'importacion' ? 'Importación' : 'Traslado'} ${String(doc?.codigo || `#${doc?.id}`).trim()}: ${Number(doc?.cantidad || 0)}${doc?.llego ? ' (por guardar)' : ''}`
-        )),
+        [
+          porContarTotal > 0 && `Importación por ubicar: ${porContarTotal} (ya se pueden vender, falta contarlas)`,
+          importEnCaminoTotal > 0 && `Importación en camino: ${importEnCaminoTotal}`,
+        ].filter(Boolean).join(' · '),
+        ...importDocs.map((doc) => `Importación ${docLabel(doc)}: ${Number(doc?.cantidad || 0)}${doc?.llego ? ' por ubicar' : ' en camino'}`),
       ].join(' · ')
       : ''
+    const shown = Number.isFinite(n) ? Math.max(0, n - porContarTotal) : 0
     return (
       <span className="inventario-v2__quantity-wrap">
         <span
           className={`inventario-v2__quantity${
-            isEmpty ? ' inventario-v2__quantity--empty' : ' inventario-v2__quantity--has-value'
+            isEmpty || shown === 0 ? ' inventario-v2__quantity--empty' : ' inventario-v2__quantity--has-value'
           }${isScoped ? ' inventario-v2__quantity--scoped' : ''}`}
         >
-          {Number.isFinite(n) ? n : 0}
+          {shown}
         </span>
-        {transitTotal > 0 && (
+        {trasladoTotal > 0 && (
+          <span className="inventario-v2__in-transit" data-pr-tooltip={trasladoTooltip} aria-label={trasladoTooltip}>
+            {`(${trasladoTotal})`}
+          </span>
+        )}
+        {importTotal > 0 && (
           <span
-            className={`inventario-v2__in-transit${porGuardarTotal > 0 && enCaminoTotal <= 0 ? ' inventario-v2__in-transit--por-guardar' : ''}`}
-            data-pr-tooltip={transitTooltip}
-            aria-label={transitTooltip}
+            className="inventario-v2__in-transit inventario-v2__in-transit--importacion"
+            data-pr-tooltip={importTooltip}
+            aria-label={importTooltip}
           >
-            {`(${transitTotal})`}
+            {`(${importTotal})`}
           </span>
         )}
       </span>

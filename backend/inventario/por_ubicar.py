@@ -342,10 +342,16 @@ def pending_to_store(progress, sucursal_id):
 def in_transit_by_product_branch(product_ids, branch_ids=None):
     """Unidades en camino hacia cada sucursal, por producto, con sus documentos.
 
-    {(producto_id, sucursal_id): {"total": int, "documentos": [{"tipo", "id", "codigo", "cantidad"}]}}
+    {(producto_id, sucursal_id): {"total": int, "por_contar": int, "documentos": [...]}}
+    documentos: [{"tipo", "id", "codigo", "cantidad", "llego"}]
     - Traslados aprobados ya despachados cuya entrada aun no se recibio.
     - Envios de importacion pendientes.
     Lo que ya se recibio por partes no cuenta como en camino.
+    - total: lo que aun no esta en el stock de la sucursal (en camino).
+    - por_contar: envios de importacion que ya llegaron (confirmar llegada):
+      estan en el stock, en POR UBICAR, y se pueden vender; falta contarlos y
+      guardarlos. Lo vendido desde ahi ya no cuenta. Va aparte de `total`
+      para no sumarlo dos veces con el stock (reposicion).
     """
     from importaciones.models import ImportacionEnvio, ImportacionEnvioDetalle
     from movimientos.models import DetalleMovimiento, SolicitudTraslado
@@ -358,9 +364,8 @@ def in_transit_by_product_branch(product_ids, branch_ids=None):
     def add(key, tipo, doc_id, codigo, cantidad, llego=False):
         if cantidad <= 0:
             return
-        bucket = result.setdefault(key, {"total": 0, "documentos": []})
-        bucket["total"] += cantidad
-        # llego: ya se confirmo la llegada y falta guardarlo ("Por guardar").
+        bucket = result.setdefault(key, {"total": 0, "por_contar": 0, "documentos": []})
+        bucket["por_contar" if llego else "total"] += cantidad
         bucket["documentos"].append(
             {"tipo": tipo, "id": doc_id, "codigo": codigo, "cantidad": cantidad, "llego": bool(llego)}
         )
@@ -393,7 +398,6 @@ def in_transit_by_product_branch(product_ids, branch_ids=None):
                 int(traslado.id),
                 str(traslado.no_documento or "").strip(),
                 int(detalle["cantidad"] or 0) - recibido,
-                llego=bool(traslado.llegada_confirmada_en),
             )
 
     envios = ImportacionEnvio.objects.filter(estado=ImportacionEnvio.ESTADO_PENDIENTE).select_related("importacion")
@@ -401,18 +405,30 @@ def in_transit_by_product_branch(product_ids, branch_ids=None):
         envios = envios.filter(sucursal_id__in=sorted({int(b) for b in branch_ids}))
     envios_by_id = {int(envio.id): envio for envio in envios}
     if envios_by_id:
+        llegados = [envio for envio in envios_by_id.values() if envio.llegada_confirmada_en]
+        por_contar = dict(
+            zip(
+                [int(envio.id) for envio in llegados],
+                serialize_progress_many([(envio.recepcion_progreso, envio.sucursal_id) for envio in llegados]),
+            )
+        )
         for detalle in ImportacionEnvioDetalle.objects.filter(
             envio_id__in=sorted(envios_by_id), producto_id__in=product_ids
         ).values("envio_id", "producto_id", "cantidad"):
             envio = envios_by_id[int(detalle["envio_id"])]
             pid = int(detalle["producto_id"])
+            codigo = str(getattr(envio.importacion, "codigo", "") or "").strip()
+            if envio.llegada_confirmada_en:
+                entry = por_contar.get(int(envio.id), {}).get(str(pid)) or {}
+                add((pid, int(envio.sucursal_id)), "importacion", int(envio.id), codigo,
+                    int(entry.get("pendiente_guardar") or 0), llego=True)
+                continue
             recibido = received_by_product(envio.recepcion_progreso).get(pid, 0)
             add(
                 (pid, int(envio.sucursal_id)),
                 "importacion",
                 int(envio.id),
-                str(getattr(envio.importacion, "codigo", "") or "").strip(),
+                codigo,
                 int(detalle["cantidad"] or 0) - recibido,
-                llego=bool(envio.llegada_confirmada_en),
             )
     return result

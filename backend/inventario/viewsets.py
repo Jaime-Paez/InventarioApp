@@ -1609,58 +1609,52 @@ class InventarioViewSet(viewsets.ModelViewSet):
         return readable or set()
 
     def _arrived_shipments(self, allowed, sucursal_id=None):
-        """Traslados y envios de importacion que ya llegaron (paso 1) y tienen
-        productos sin guardar. Lo guardado ya esta en `recepcion_progreso`."""
+        """Envios de importacion que ya llegaron (paso 1: todo entro a POR
+        UBICAR y se puede vender) y faltan contar y guardar. Por producto:
+        - vendido: lo que salio de POR UBICAR antes de contarlo.
+        - guardado: lo ya contado y guardado en su ubicacion.
+        - pendiente: lo que queda por contar (sigue en POR UBICAR)."""
         from importaciones.models import ImportacionEnvio
-        from movimientos.models import DetalleMovimiento, SolicitudTraslado
 
-        from .por_ubicar import received_by_product
+        from .por_ubicar import normalize_progress, serialize_progress_many
 
-        traslados = (
-            SolicitudTraslado.objects.filter(
-                estado=SolicitudTraslado.Estados.APROBADA,
-                llegada_confirmada_en__isnull=False,
-                movimiento_entrada__isnull=False,
-            )
-            .exclude(movimiento_entrada__estado_movimiento__nombre__icontains="recib")
-            .exclude(movimiento_entrada__estado_movimiento__nombre__icontains="parcial")
-            .select_related("sucursal_solicitante", "sucursal_proveedora")
-        )
         envios = ImportacionEnvio.objects.filter(
             estado=ImportacionEnvio.ESTADO_PENDIENTE,
             llegada_confirmada_en__isnull=False,
         ).select_related("importacion", "sucursal")
         if sucursal_id:
-            traslados = traslados.filter(sucursal_solicitante_id=sucursal_id)
             envios = envios.filter(sucursal_id=sucursal_id)
         if allowed is not None:
-            traslados = traslados.filter(sucursal_solicitante_id__in=sorted(allowed))
             envios = envios.filter(sucursal_id__in=sorted(allowed))
+        envios = list(envios.prefetch_related("detalles__producto"))
+        avances = serialize_progress_many([(envio.recepcion_progreso, envio.sucursal_id) for envio in envios])
 
         shipments = []
-        traslados = list(traslados)
-        detalles_by_entrada = defaultdict(list)
-        for detalle in DetalleMovimiento.objects.filter(
-            movimiento_inventario_id__in=[t.movimiento_entrada_id for t in traslados]
-        ).select_related("producto"):
-            detalles_by_entrada[int(detalle.movimiento_inventario_id)].append(
-                (detalle.producto, int(detalle.cantidad or 0))
-            )
-        for traslado in traslados:
-            shipments.append(
-                {
-                    "tipo": "traslado",
-                    "id": int(traslado.id),
-                    "codigo": str(traslado.no_documento or "").strip(),
-                    "origen": str(getattr(traslado.sucursal_proveedora, "nombre", "") or "").strip(),
-                    "sucursal_id": int(traslado.sucursal_solicitante_id),
-                    "sucursal_nombre": str(getattr(traslado.sucursal_solicitante, "nombre", "") or "").strip(),
-                    "llegada_confirmada_en": traslado.llegada_confirmada_en,
-                    "_progreso": traslado.recepcion_progreso,
-                    "_detalles": detalles_by_entrada.get(int(traslado.movimiento_entrada_id), []),
-                }
-            )
-        for envio in envios.prefetch_related("detalles__producto"):
+        for envio, avance in zip(envios, avances):
+            progreso = normalize_progress(envio.recepcion_progreso)
+            enviados = {}
+            productos = {}
+            for detalle in envio.detalles.all():
+                pid = int(detalle.producto_id)
+                enviados[pid] = enviados.get(pid, 0) + int(detalle.cantidad or 0)
+                productos[pid] = detalle.producto
+            items = []
+            for pid, enviado in enviados.items():
+                entry = progreso.get(str(pid)) or {"recibido": 0, "por_ubicar": 0}
+                pendiente = int((avance.get(str(pid)) or {}).get("pendiente_guardar") or 0)
+                producto = productos[pid]
+                items.append(
+                    {
+                        "producto_id": pid,
+                        "producto_codigo": producto.codigo or "",
+                        "producto_nombre": producto.nombre or "",
+                        "enviado": enviado,
+                        "vendido": max(0, entry["por_ubicar"] - pendiente),
+                        "guardado": max(0, entry["recibido"] - entry["por_ubicar"]),
+                        "pendiente": pendiente,
+                    }
+                )
+            items.sort(key=lambda item: (item["pendiente"] == 0, item["producto_codigo"].lower()))
             shipments.append(
                 {
                     "tipo": "importacion",
@@ -1670,38 +1664,20 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     "sucursal_id": int(envio.sucursal_id),
                     "sucursal_nombre": str(getattr(envio.sucursal, "nombre", "") or "").strip(),
                     "llegada_confirmada_en": envio.llegada_confirmada_en,
-                    "_progreso": envio.recepcion_progreso,
-                    "_detalles": [(d.producto, int(d.cantidad or 0)) for d in envio.detalles.all()],
+                    "items": items,
                 }
             )
-
-        for shipment in shipments:
-            guardado = received_by_product(shipment.pop("_progreso"))
-            items = []
-            for producto, enviado in shipment.pop("_detalles"):
-                ya = int(guardado.get(int(producto.id), 0))
-                items.append(
-                    {
-                        "producto_id": int(producto.id),
-                        "producto_codigo": producto.codigo or "",
-                        "producto_nombre": producto.nombre or "",
-                        "enviado": enviado,
-                        "guardado": ya,
-                        "pendiente": max(0, enviado - ya),
-                    }
-                )
-            items.sort(key=lambda item: (item["pendiente"] == 0, item["producto_codigo"].lower()))
-            shipment["items"] = items
         shipments.sort(key=lambda item: (item["sucursal_nombre"].lower(), str(item["llegada_confirmada_en"])))
         return shipments
 
     @action(detail=False, methods=["get"], url_path="por-guardar")
     def por_guardar(self, request):
-        """Paso 2 de la recepcion ("Por guardar"):
-        - envios: traslados y envios de importacion que ya llegaron; cada
-          producto se verifica (cuanto llego) y se suma al guardarlo en su
-          ubicacion. Mientras tanto se ve entre parentesis en el inventario.
-        - productos: lo que haya en POR UBICAR (ya en stock) por guardar.
+        """"Por ubicar" (paso 2 de la recepcion de importaciones):
+        - envios: envios de importacion que ya llegaron. Lo enviado ya esta en
+          el stock (POR UBICAR, entre parentesis en el inventario) y se puede
+          vender; aqui se cuenta lo que queda de cada producto y se guarda en
+          su ubicacion. Al terminar, lo que no aparecio es faltante.
+        - productos: lo demas que haya en POR UBICAR (ya en stock) por guardar.
         Con cada producto va la ubicacion sugerida (su principal en esa
         sucursal) y, por sucursal, las ubicaciones donde se puede guardar.
         `?solo_conteo=1` = contador del boton."""
@@ -1722,21 +1698,32 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         shipments = self._arrived_shipments(allowed, sucursal_id)
 
+        # Lo que esta en POR UBICAR por un envio de importacion se cuenta en su
+        # envio; en "productos" va solo el resto (si no, saldria dos veces).
+        de_envios = defaultdict(int)
+        for shipment in shipments:
+            for item in shipment["items"]:
+                de_envios[(int(item["producto_id"]), int(shipment["sucursal_id"]))] += int(item["pendiente"])
+        rows = []
+        for row in rows_qs.values(
+            "producto_id",
+            "producto__codigo",
+            "producto__nombre",
+            "subdivision_id",
+            "subdivision__division__bodega__sucursal_id",
+            "subdivision__division__bodega__sucursal__nombre",
+        ).annotate(total=Sum("cantidad")).order_by("producto_id", "subdivision_id"):
+            key = (int(row["producto_id"]), int(row["subdivision__division__bodega__sucursal_id"]))
+            descontar = min(int(row["total"] or 0), de_envios[key])
+            de_envios[key] -= descontar
+            row["total"] = int(row["total"] or 0) - descontar
+            if row["total"] > 0:
+                rows.append(row)
+
         if str(request.query_params.get("solo_conteo") or "").strip() in {"1", "true"}:
             pending_lines = sum(1 for s in shipments for item in s["items"] if item["pendiente"] > 0)
-            por_ubicar_lines = rows_qs.values("producto_id", "subdivision_id").distinct().count()
-            return Response({"count": pending_lines + por_ubicar_lines})
+            return Response({"count": pending_lines + len(rows)})
 
-        rows = list(
-            rows_qs.values(
-                "producto_id",
-                "producto__codigo",
-                "producto__nombre",
-                "subdivision_id",
-                "subdivision__division__bodega__sucursal_id",
-                "subdivision__division__bodega__sucursal__nombre",
-            ).annotate(total=Sum("cantidad"))
-        )
         product_ids = sorted(
             {int(row["producto_id"]) for row in rows}
             | {int(item["producto_id"]) for s in shipments for item in s["items"]}
@@ -1894,6 +1881,15 @@ class InventarioViewSet(viewsets.ModelViewSet):
                         "cantidad", flat=True
                     )
                 )
+                # Lo de un envio de importacion que falta contar se guarda
+                # desde su envio, no desde aqui.
+                disponible -= sum(
+                    int(item["pendiente"])
+                    for shipment in self._arrived_shipments(None, branch_id)
+                    for item in shipment["items"]
+                    if int(item["producto_id"]) == pid
+                )
+                disponible = max(0, disponible)
                 cantidad = disponible
                 if raw.get("cantidad") not in (None, ""):
                     try:

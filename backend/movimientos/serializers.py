@@ -1752,13 +1752,28 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 {"sucursal_id": "No se pudo resolver la sucursal para actualizar inventario."}
             )
 
-        branch_stock = Inventario.objects.select_for_update().filter(
+        branch_stock = Inventario.objects.select_for_update(of=("self",)).filter(
             producto_id=producto_id,
             subdivision__division__bodega__sucursal_id=sucursal.id,
-        ).order_by("id")
+        ).select_related("subdivision__division").order_by("id")
 
         if delta < 0:
             required = -int(delta)
+            # Lo que llego y sigue en POR UBICAR (entre parentesis en el
+            # inventario) se descuenta primero: asi al contar el envio solo
+            # quedan por guardar las que no se vendieron.
+            from inventario.por_ubicar import POR_UBICAR_NOMBRE
+
+            branch_stock = sorted(
+                branch_stock,
+                key=lambda item: (
+                    not (
+                        str(item.subdivision.nombre or "").strip().upper() == POR_UBICAR_NOMBRE
+                        and str(item.subdivision.division.nombre or "").strip().upper() == POR_UBICAR_NOMBRE
+                    ),
+                    item.id,
+                ),
+            )
             available = sum(item.cantidad for item in branch_stock)
             if available < required:
                 raise serializers.ValidationError(

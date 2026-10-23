@@ -503,11 +503,11 @@
   vertical-align: middle;
 }
 
-/* Ya llego y falta guardarlo ("Por guardar"): naranja en vez de azul. */
-.inventario-v2__in-transit--por-guardar {
+/* Importacion (por ubicar o en camino): naranja; los traslados van en azul. */
+.inventario-v2__in-transit--importacion {
   color: #d97706;
 }
 
-.dashboard-shell.dark .inventario-v2__in-transit--por-guardar {
+.dashboard-shell.dark .inventario-v2__in-transit--importacion {
   color: #fbbf24;
 }

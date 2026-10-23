@@ -161,10 +161,11 @@ const option = (key, label, variant) => ({ key, label, variant, tooltip: DECISIO
 const getDecisionOptions = (issue) => {
   if (!issue || !isActiveIssue(issue)) return []
   if (issue.tipo === 'otro') return [option('solucionado', 'Solucionar', 'success')]
+  // Reclamado al proveedor (de la llegada o de un envio): se sigue igual.
+  if (issue.origen === 'importacion' && String(issue.estado || '').toLowerCase() === 'reclamado') {
+    return [option('olvidar', 'Olvidar proceso', 'neutral'), option('solucion', 'Solución acordada', 'warning')]
+  }
   if (issue.origen === 'importacion' && !issue.envio_id) {
-    if (String(issue.estado || '').toLowerCase() === 'reclamado') {
-      return [option('olvidar', 'Olvidar proceso', 'neutral'), option('solucion', 'Solución acordada', 'warning')]
-    }
     return issue.tipo === 'sobrante'
       ? [option('devolver_proveedor', 'Devolver a proveedor', 'warning'), option('aceptado', 'No hacer nada', 'neutral')]
       : [option('aceptado', 'No hacer nada', 'neutral'), option('reportado_proveedor', 'Reclamar al proveedor', 'warning')]
@@ -180,6 +181,14 @@ const getDecisionOptions = (issue) => {
   }
   options.push(option('sumar_solicitante', 'Sumar a destino', 'success'))
   options.push(option('perdido', 'Desaparecido', 'danger'))
+  if (issue.envio_id) {
+    // Faltante del envio de una importacion que en realidad vino de menos del
+    // proveedor (no se perdio en el envio): se reclama como en la llegada.
+    options.push({
+      ...option('reportado_proveedor', 'Reclamar al proveedor', 'warning'),
+      tooltip: "Vino de menos en la importación (culpa del proveedor, no del envío): pasa a 'Reclamado' hasta acordar una solución con el proveedor. No se ajusta inventario.",
+    })
+  }
   return options
 }
 
@@ -483,8 +492,17 @@ function TrasladosInconvenientesTable({
         const state = String(row?.estado || '').trim().toLowerCase()
         const productCode = String(row?.producto_codigo || '').trim()
         const productName = String(row?.producto_nombre || '').trim() || 'Producto sin descripción'
-        const reason = String(row?.motivo || '').trim()
         const diffQty = Number.parseInt(String(row?.cantidad_diferencia || 0), 10) || 0
+        // Faltante de un envio: como llego ese producto a la matriz desde el
+        // proveedor, para ver si ya vino de menos (reclamo) o se perdio en el envio.
+        const facturado = row?.llegada_facturado
+        const contado = row?.llegada_recibido
+        const llegadaNote = normalizeId(row?.envio_id) && facturado != null && contado != null
+          ? `Llegada a matriz: facturadas ${facturado}, contadas ${contado}${
+            Number(contado) < Number(facturado) ? ' (ya vino de menos del proveedor)' : ''
+          }`
+          : ''
+        const reason = [String(row?.motivo || '').trim(), llegadaNote].filter(Boolean).join(' · ')
         const keyFallback = `importacion-${normalizeId(row?.importacion_id)}-${normalizeId(row?.producto_id)}-${index}`
         return {
           ...row,

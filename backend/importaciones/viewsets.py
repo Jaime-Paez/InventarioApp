@@ -30,12 +30,13 @@ from inventario.por_ubicar import (
     RecepcionError,
     add_stock,
     get_por_ubicar_subdivision,
-    pending_to_store,
+    normalize_progress,
     received_by_product,
     receive_items,
     serialize_progress,
     serialize_progress_many,
     store_items,
+    take_stock,
 )
 from movimientos.inconveniente_borrador import parse_borrador_items
 from productos.models import OEMProducto, Producto, add_producto_referencia
@@ -516,6 +517,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             "recibir_parcial_envio",
             "guardar_ubicaciones_envio",
             "confirmar_recepcion_envio",
+            "confirmar_llegada_envio",
+            "terminar_conteo_envio",
             "importacion_inconvenientes",
             "resolver_importacion_inconveniente",
         ):
@@ -581,6 +584,17 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             # De donde salio el envio (la matriz): si las unidades nunca
             # salieron, se suman ahi.
             **self._envio_origin_payload(inconveniente),
+            # Conteo de la llegada a la matriz de ese producto (facturado vs
+            # recibido): si ya ahi vino de menos, el faltante del envio es del
+            # proveedor (reclamo), no del envio.
+            "llegada_facturado": (
+                int(inconveniente.detalle.cantidad or 0) if inconveniente.detalle_id else None
+            ),
+            "llegada_recibido": (
+                int(inconveniente.detalle.cantidad_recibida)
+                if inconveniente.detalle_id and inconveniente.detalle.cantidad_recibida is not None
+                else None
+            ),
             "producto_codigo": str(getattr(getattr(inconveniente, "producto", None), "codigo", "") or "").strip(),
             "producto_nombre": str(getattr(getattr(inconveniente, "producto", None), "nombre", "") or "").strip(),
             "tipo": str(inconveniente.tipo or "faltante").strip(),
@@ -1179,6 +1193,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 "creado_por",
                 "resuelto_por",
                 "envio__sucursal",
+                "detalle",
             )
             .prefetch_related("historial__actor")
             .order_by("-created_at", "-id")
@@ -1270,8 +1285,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
         envio_subdivision = None
         if inconveniente.envio_id and inconveniente.estado == ImportacionInconveniente.Estados.PENDIENTE:
-            # Faltante del envio a una sucursal: como un faltante de traslado.
-            valid_decisions = {"sumar_solicitante", "sumar_origen", "perdido"}
+            # Faltante del envio a una sucursal: como un faltante de traslado,
+            # o, si vino de menos del proveedor (no se perdio en el envio),
+            # se reclama al proveedor como un faltante de la llegada.
+            valid_decisions = {"sumar_solicitante", "sumar_origen", "perdido", "reportado_proveedor"}
             usar_por_ubicar = bool(request.data.get("por_ubicar"))
             if decision == "sumar_origen":
                 # Nunca salieron de la matriz: se suman en su ubicacion de ahi.
@@ -1444,6 +1461,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 detail_text = (
                     f"Las {inconveniente_locked.cantidad_diferencia} unidades faltantes del envio se marcaron "
                     "como desaparecidas."
+                )
+            elif decision == "reportado_proveedor" and inconveniente_locked.envio_id:
+                detail_text = (
+                    f"Las {inconveniente_locked.cantidad_diferencia} unidades faltantes del envio vinieron de menos "
+                    "en la importacion (culpa del proveedor, no del envio): se genero un reclamo al proveedor."
                 )
             elif decision == "reportado_proveedor":
                 detail_text = (
@@ -1674,19 +1696,110 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 )
         return envio, None
 
+    @staticmethod
+    def _sent_by_product(envio):
+        sent = {}
+        for row in envio.detalles.values("producto_id", "cantidad"):
+            pid = int(row["producto_id"])
+            sent[pid] = sent.get(pid, 0) + int(row["cantidad"] or 0)
+        return sent
+
     @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/confirmar-llegada")
     def confirmar_llegada_envio(self, request, envio_id=None):
-        """Paso 1 de la recepcion: el envio llego. No suma stock: cada
-        producto se verifica y se suma al guardarlo en su ubicacion."""
+        """Paso 1 de la recepcion: el envio llego. Todo lo enviado entra al
+        stock de la sucursal en POR UBICAR (entre parentesis en el inventario)
+        y ya se puede vender sin esperar a contarlo. Despues, en "Por ubicar",
+        se cuenta lo que queda y se guarda en su ubicacion."""
         with transaction.atomic():
             envio, error = self._get_pending_envio_for_user(request, envio_id, lock=True)
             if error is not None:
                 return error
             if not envio.llegada_confirmada_en:
+                sent = self._sent_by_product(envio)
+                recibido = received_by_product(envio.recepcion_progreso)
+                items = [
+                    {"producto_id": pid, "cantidad": qty - int(recibido.get(pid, 0))}
+                    for pid, qty in sent.items()
+                    if qty - int(recibido.get(pid, 0)) > 0
+                ]
+                if items:
+                    try:
+                        envio.recepcion_progreso = receive_items(
+                            progress=envio.recepcion_progreso,
+                            sucursal_id=envio.sucursal_id,
+                            items=items,
+                            sent_by_product=sent,
+                        )
+                    except RecepcionError as exc:
+                        transaction.set_rollback(True)
+                        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
                 envio.llegada_confirmada_en = timezone.now()
                 envio.llegada_confirmada_por = request.user
-                envio.save(update_fields=["llegada_confirmada_en", "llegada_confirmada_por"])
+                envio.save(update_fields=["llegada_confirmada_en", "llegada_confirmada_por", "recepcion_progreso"])
         return Response({"llegada_confirmada_en": envio.llegada_confirmada_en}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/terminar-conteo")
+    def terminar_conteo_envio(self, request, envio_id=None):
+        """Cierra un envio que ya llego: lo que sigue en POR UBICAR por este
+        envio (no se vendio ni se encontro al contar) es faltante. Se quita del
+        stock y queda en Inconvenientes con el detalle (enviados, vendidos antes
+        de contar, contados) para decidir si se perdio en el envio o si vino
+        de menos del proveedor (reclamo)."""
+        with transaction.atomic():
+            envio, error = self._get_pending_envio_for_user(request, envio_id, lock=True)
+            if error is not None:
+                return error
+            if not envio.llegada_confirmada_en:
+                transaction.set_rollback(True)
+                return Response(
+                    {"detail": "Primero confirma la llegada del envio."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            progreso = normalize_progress(envio.recepcion_progreso)
+            pendientes = serialize_progress(progreso, envio.sucursal_id)
+            por_ubicar_sub = get_por_ubicar_subdivision(envio.sucursal_id, create=False)
+            recibido_final = {}
+            novedades = {}
+            for pid, enviado in self._sent_by_product(envio).items():
+                entry = progreso.setdefault(str(pid), {"recibido": 0, "por_ubicar": 0})
+                no_encontrado = int((pendientes.get(str(pid)) or {}).get("pendiente_guardar") or 0)
+                vendidos = max(0, entry["por_ubicar"] - no_encontrado)
+                guardados = max(0, entry["recibido"] - entry["por_ubicar"])
+                if no_encontrado and por_ubicar_sub is not None:
+                    no_encontrado = take_stock(por_ubicar_sub.id, pid, no_encontrado)
+                entry["recibido"] = max(0, entry["recibido"] - no_encontrado)
+                entry["por_ubicar"] = 0
+                recibido_final[pid] = entry["recibido"]
+                if no_encontrado:
+                    novedades[pid] = (
+                        f"Al contar no se encontraron {no_encontrado}: enviados {enviado}, "
+                        f"vendidos antes de contar {vendidos}, contados y guardados {guardados}."
+                    )
+            envio.recepcion_progreso = progreso
+            envio.estado = ImportacionEnvio.ESTADO_RECIBIDO
+            envio.fecha_recepcion = timezone.localdate()
+            envio.recibido_por = request.user
+            envio.save(update_fields=["recepcion_progreso", "estado", "fecha_recepcion", "recibido_por"])
+            faltantes = create_envio_shortage_issues(
+                envio, recibido_final, actor=request.user, novedades=novedades
+            )
+
+        User = get_user_model()
+        admin_ids = [u.pk for u in User.objects.filter(is_active=True) if is_app_admin(u)]
+        if admin_ids:
+            self._create_importacion_reminder(envio.importacion, None, admin_ids, request.user)
+
+        return Response(
+            {
+                "detail": (
+                    f"Envio terminado con {len(faltantes)} producto(s) faltante(s): quedaron en Inconvenientes."
+                    if faltantes
+                    else "Envio terminado: todo contado."
+                ),
+                "faltantes": len(faltantes),
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/recibir-parcial")
     def recibir_parcial_envio(self, request, envio_id=None):
