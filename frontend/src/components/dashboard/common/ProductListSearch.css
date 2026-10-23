@@ -1,0 +1,40 @@
+/* Buscador de productos dentro de un movimiento (igual al de importaciones). */
+.product-list-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+
+.product-list-search .search-input-container {
+  flex: 0 1 auto;
+  min-width: 220px;
+  max-width: 220px;
+  height: 24px;
+  padding: 4px 8px;
+}
+
+.product-list-search .search-input {
+  width: 100%;
+}
+
+.product-list-search__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.product-list-search__clear {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}

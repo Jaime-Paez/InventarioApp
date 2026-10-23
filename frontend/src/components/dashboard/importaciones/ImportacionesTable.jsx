@@ -4168,11 +4168,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         if (existing) {
           // El OEM ya está vinculado a un producto de esta misma casa: es el
           // mismo producto, el backend solo no lo detectó porque el Excel no
-          // traía código ni una referencia que calzara. Al quedar vinculado a
-          // un producto ya existente sí necesita una cantidad real — el
-          // backend no la pidió porque, desde su punto de vista, no había match.
-          const faltan = [...(row.faltan_datos || [])]
-          if (Number(row.cantidad) <= 0 && !faltan.includes('Cantidad')) faltan.push('Cantidad')
+          // traía código ni una referencia que calzara.
           return withFirstMatchDescripcion({
             ...row,
             codigo: existing.codigo,
@@ -4182,7 +4178,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
             matched_producto_codigo: existing.codigo,
             matched_producto_nombre: existing.nombre,
             matched_producto_referencia: existing.referencia,
-            faltan_datos: faltan,
           })
         }
         const suggested = deriveSuggestedCodigo(row, selectedCasa?.codigo)

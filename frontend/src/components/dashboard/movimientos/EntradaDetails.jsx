@@ -11,6 +11,8 @@ import useTableCellHover from '../common/useTableCellHover.jsx'
 import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
+import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
+import { productDetailMatches } from '../common/productDetailMatches'
 import EntradaAjustePreview from './EntradaAjustePreview'
 import {
   emitRemindersSync,
@@ -451,6 +453,12 @@ function EntradaDetails({
   const [estadosProducto, setEstadosProducto] = useState([])
 
   const [details, setDetails] = useState([])
+  // Buscador rapido de productos dentro de este movimiento.
+  const [productSearch, setProductSearch] = useState('')
+  const filteredDetails = useMemo(
+    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)) : details),
+    [details, productSearch]
+  )
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
@@ -3256,6 +3264,15 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                     </div>
                   </div>
 
+                  {details.length > 0 && (
+                    <ProductListSearch
+                      value={productSearch}
+                      onChange={setProductSearch}
+                      shown={filteredDetails.length}
+                      total={details.length}
+                    />
+                  )}
+
                   <div className={productosTableClassName}>
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Codigo</span>
@@ -3466,7 +3483,9 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       </div>
                     )}
 
-                    {details.map((detail) => {
+                    {details.length > 0 && !filteredDetails.length && <ProductSearchEmptyRow query={productSearch} />}
+
+                    {filteredDetails.map((detail) => {
                         const productId = String(detail.productoId || detail.producto_id || '').trim()
                         const currentQty = parseIntValue(detail.cantidad) ?? 0
                         const reservedQty = getProductReservedQuantity(productId)

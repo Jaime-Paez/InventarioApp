@@ -68,12 +68,8 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
         # poder identificarlo y vincularlo después al confirmar la llegada.
         if not producto and not codigo and not nombre and not referencia and not oem:
             raise serializers.ValidationError("Se requiere producto, código/nombre, o referencia/OEM.")
-        # Un producto ya existente en el catálogo sí necesita una cantidad
-        # real a importar. Un producto pendiente (sin producto_id) puede
-        # crearse con cantidad 0 — solo registra el catálogo, sin pedir
-        # unidades en este envío todavía.
-        if producto and int(data.get("cantidad") or 0) <= 0:
-            raise serializers.ValidationError("La cantidad debe ser mayor a cero.")
+        # La cantidad puede quedar en 0 (p. ej. un Excel que solo trae los
+        # productos buscados): las unidades se completan después.
         return data
 
     def validate_cantidad(self, value):

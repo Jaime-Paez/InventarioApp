@@ -13,6 +13,8 @@ import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
 import BlockerNotice from '../common/BlockerNotice'
+import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
+import { productDetailMatches } from '../common/productDetailMatches'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import {
   buildTransferHistoryEntry,
@@ -392,6 +394,12 @@ function CreateSalida({
   const [estadosProducto, setEstadosProducto] = useState([])
 
   const [details, setDetails] = useState([])
+  // Buscador rapido de productos dentro de este movimiento.
+  const [productSearch, setProductSearch] = useState('')
+  const filteredDetails = useMemo(
+    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)) : details),
+    [details, productSearch]
+  )
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
   const [duplicateProductConfirm, setDuplicateProductConfirm] = useState(null)
@@ -4121,6 +4129,15 @@ function CreateSalida({
                     />
                   )}
 
+                  {details.length > 0 && (
+                    <ProductListSearch
+                      value={productSearch}
+                      onChange={setProductSearch}
+                      shown={filteredDetails.length}
+                      total={details.length}
+                    />
+                  )}
+
                   <div className={`create-user__locations-table create-salida__products-table${!isPrefilledTransfer ? ' create-salida__products-table--with-actions' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span>
@@ -4385,7 +4402,9 @@ function CreateSalida({
                       </div>
                     )}
 
-                    {details.map((detail) => (
+                    {details.length > 0 && !filteredDetails.length && <ProductSearchEmptyRow query={productSearch} />}
+
+                    {filteredDetails.map((detail) => (
                       <div key={detail.uid} className="create-user__locations-row">
                         <span>{detail.productoCodigo || '-'}</span>
                         <span
