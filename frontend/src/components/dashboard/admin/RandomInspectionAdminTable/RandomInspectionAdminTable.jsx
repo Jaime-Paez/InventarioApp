@@ -80,7 +80,13 @@ const detectDarkTheme = () => {
   )
 }
 
-function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
+function RandomInspectionAdminTable({
+  token,
+  moduleActions,
+  isTabActive,
+  pendingReviewInspectionId,
+  onPendingReviewInspectionHandled,
+}) {
   const toast = useRef(null)
   const canRead = moduleActions?.puede_leer ?? true
   const canUpdate = moduleActions?.puede_actualizar ?? true
@@ -773,6 +779,44 @@ function RandomInspectionAdminTable({ token, moduleActions, isTabActive }) {
       setAssignmentsLoading(false)
     }
   }, [canUpdate, notifyError, token])
+
+  // "Ir a revision" desde un recordatorio: se selecciona la sucursal de los
+  // productos con diferencias de esa inspeccion (si no, quedaba la primera
+  // sucursal y la tabla de diferencias salia vacia).
+  useEffect(() => {
+    const inspectionId = normalizeId(pendingReviewInspectionId)
+    if (!inspectionId || !token) return undefined
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await authFetch(
+          `${API_URL}/recordatorios/inspeccion-aleatoria/${encodeURIComponent(inspectionId)}/`,
+          {},
+          token
+        )
+        const payload = await response.json().catch(() => ({}))
+        if (cancelled) return
+        if (!response.ok) {
+          throw new Error(String(payload?.detail || '').trim() || 'No se pudo cargar la inspección.')
+        }
+        const items = Array.isArray(payload?.inspection?.items) ? payload.inspection.items : []
+        const withDifference = items.find((item) => (
+          String(item?.estado_revision || '').trim().toLowerCase() === 'no_coincide'
+          || item?.no_encontrado
+          || item?.cambio_ubicacion
+        ))
+        const branchId = normalizeId(
+          (withDifference || items[0])?.sucursal_id || payload?.inspection?.sucursal_id
+        )
+        if (branchId) setSelectedBranchId(branchId)
+      } catch (error) {
+        if (!cancelled) notifyError(error?.message || 'No se pudo abrir la inspección.')
+      } finally {
+        if (!cancelled) onPendingReviewInspectionHandled?.()
+      }
+    })()
+    return () => { cancelled = true }
+  }, [notifyError, onPendingReviewInspectionHandled, pendingReviewInspectionId, token])
 
   // `silent`: refresco automatico de fondo. No muestra el loader (la tabla
   // saltaba cada 5 s) ni borra lo que ya se ve si una consulta falla.

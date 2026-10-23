@@ -1800,7 +1800,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                       )
                     })()}
                     <span className="inventario-editor__branch-name">
-                      {canInlineEdit
+                      {/* Una ubicacion ya guardada no puede cambiar de sucursal; solo las nuevas la eligen. */}
+                      {canInlineEdit && !isSavedLocation(location)
                         ? makeDropdown('sucursal', location.sucursalNombre || 'Sucursal', branches, (b) => b.nombre || `Sucursal ${b.id}`, (b) => b.id, false)
                         : location.sucursalNombre}
                     </span>
@@ -1809,7 +1810,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                     {canInlineEdit
                       ? makeDropdown('bodega', location.bodegaNombre || 'Bodega', rowBodegas, (b) => b.nombre || `Bodega ${b.id}`, (b) => b.id, !location.sucursalId, isBodegaFullyUsed)
                       : <span>{location.bodegaNombre}</span>}
-                    {(positionByUid.get(location.uid) ?? 0) === 0 && (
+                    {!canInlineEdit && (positionByUid.get(location.uid) ?? 0) === 0 && (
                       <span className="inventario-editor__principal-tag">Principal</span>
                     )}
                   </span>

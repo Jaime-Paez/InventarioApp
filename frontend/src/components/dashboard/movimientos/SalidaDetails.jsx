@@ -12,6 +12,8 @@ import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
 import { normalizeId } from '../common/reminders/remindersStorage'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
+import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
+import { productDetailMatches } from '../common/productDetailMatches'
 import { tipoEnvioLabel } from './tipoEnvio'
 import useUnsavedChangesGuard from '../common/unsavedChanges/useUnsavedChangesGuard'
 
@@ -304,6 +306,12 @@ function SalidaDetails({
   const [estadosProductoLoaded, setEstadosProductoLoaded] = useState(false)
 
   const [details, setDetails] = useState([])
+  // Buscador rapido de productos dentro de este movimiento.
+  const [productSearch, setProductSearch] = useState('')
+  const filteredDetails = useMemo(
+    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)) : details),
+    [details, productSearch]
+  )
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   const [detailError, setDetailError] = useState('')
@@ -2054,6 +2062,15 @@ function SalidaDetails({
                     />
                   )}
 
+                  {details.length > 0 && (
+                    <ProductListSearch
+                      value={productSearch}
+                      onChange={setProductSearch}
+                      shown={filteredDetails.length}
+                      total={details.length}
+                    />
+                  )}
+
                   <div className={`create-user__locations-table create-salida__products-table${showDetailActions ? ' create-salida__products-table--with-actions' : ''}`}>
                     <div className="create-user__locations-row create-user__locations-row--head">
                       <span>Codigo</span>
@@ -2212,7 +2229,9 @@ function SalidaDetails({
                       </div>
                     )}
 
-                    {details.map((detail) => (
+                    {details.length > 0 && !filteredDetails.length && <ProductSearchEmptyRow query={productSearch} />}
+
+                    {filteredDetails.map((detail) => (
                       <div key={detail.uid} className="create-user__locations-row">
                         <span>{detail.productoCodigo || '-'}</span>
                         <span

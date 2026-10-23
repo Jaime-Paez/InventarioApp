@@ -13,6 +13,8 @@ import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
 import BlockerNotice from '../common/BlockerNotice'
+import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
+import { productDetailMatches } from '../common/productDetailMatches'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import {
   buildTransferHistoryEntry,
@@ -392,6 +394,12 @@ function CreateSalida({
   const [estadosProducto, setEstadosProducto] = useState([])
 
   const [details, setDetails] = useState([])
+  // Buscador rapido de productos dentro de este movimiento.
+  const [productSearch, setProductSearch] = useState('')
+  const filteredDetails = useMemo(
+    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)) : details),
+    [details, productSearch]
+  )
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
   const [duplicateProductConfirm, setDuplicateProductConfirm] = useState(null)
@@ -874,8 +882,12 @@ function CreateSalida({
   )
 
   const resolvedEstadoMovimientoId = useMemo(() => {
+    // El estado elegido solo vale si pertenece al tipo de salida actual: al pasar de
+    // Venta a Traslado quedaba "Vendido" y el backend rechazaba el traslado.
     const selectedId = String(formData.estadoId || '').trim()
-    if (selectedId) return selectedId
+    if (selectedId && estadoReadOnlyOptions.some((estado) => String(estado.id) === selectedId)) {
+      return selectedId
+    }
     if (defaultEstadoMovimientoId) return defaultEstadoMovimientoId
     if (!isTraslado) return ''
     const fallback = findEstadoByPreference(estados, [
@@ -884,7 +896,7 @@ function CreateSalida({
       'parcialmente recibido',
     ])
     return fallback?.id ? String(fallback.id) : ''
-  }, [defaultEstadoMovimientoId, estados, formData.estadoId, isTraslado])
+  }, [defaultEstadoMovimientoId, estadoReadOnlyOptions, estados, formData.estadoId, isTraslado])
   // Solo se avisa cuando los catalogos cargaron bien: si fallaron, el problema es otro.
   const missingEstadoMovimiento = Boolean(
     formData.subTipoId && catalogsLoaded && !catalogsLoading && !resolvedEstadoMovimientoId
@@ -3288,7 +3300,7 @@ function CreateSalida({
       }
     }
 
-    const estadoMovimientoId = String(formData.estadoId || resolvedEstadoMovimientoId || '').trim()
+    const estadoMovimientoId = String(resolvedEstadoMovimientoId || '').trim()
 
     if (!salidaTipoId) {
       notifyError('No se encontró el tipo de movimiento de salida.')
@@ -4121,6 +4133,15 @@ function CreateSalida({
                     />
                   )}
 
+                  {details.length > 0 && (
+                    <ProductListSearch
+                      value={productSearch}
+                      onChange={setProductSearch}
+                      shown={filteredDetails.length}
+                      total={details.length}
+                    />
+                  )}
+
                   <div className={`create-user__locations-table create-salida__products-table${!isPrefilledTransfer ? ' create-salida__products-table--with-actions' : ''}`}>
                       <div className="create-user__locations-row create-user__locations-row--head">
                         <span>Código</span>
@@ -4385,7 +4406,9 @@ function CreateSalida({
                       </div>
                     )}
 
-                    {details.map((detail) => (
+                    {details.length > 0 && !filteredDetails.length && <ProductSearchEmptyRow query={productSearch} />}
+
+                    {filteredDetails.map((detail) => (
                       <div key={detail.uid} className="create-user__locations-row">
                         <span>{detail.productoCodigo || '-'}</span>
                         <span

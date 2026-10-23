@@ -607,22 +607,298 @@
   color: #86efac;
 }
 
-/* Sumar dejando el producto en POR UBICAR (se guarda despues en "Por guardar"). */
-.transfer-issues-details__por-ubicar {
+/* Vista previa (ojo) de los productos del inconveniente. */
+.transfer-issues-hover-card {
+  width: min(560px, calc(100vw - 24px));
+}
+
+/* Detalle: productos agrupados por sucursal; cada uno con sus opciones. */
+.transfer-issues-branch {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.transfer-issues-branch__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: color-mix(in srgb, var(--color-border) 30%, transparent);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.transfer-issues-branch__header strong {
+  font-size: 0.95rem;
+}
+
+.transfer-issues-branch__header small {
+  color: var(--color-text-secondary);
+}
+
+.transfer-issues-branch__counts {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.transfer-issues-branch__count {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.transfer-issues-branch__count--done {
+  background: #e3f4e8;
+  color: #23733d;
+}
+
+.transfer-issues-branch__count--pending {
+  background: #fdf3d2;
+  color: #8a6500;
+}
+
+.transfer-issues-branch__list {
+  display: grid;
+}
+
+.transfer-issues-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px 14px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.transfer-issues-item--pending {
+  background: #fffbea;
+}
+
+.transfer-issues-item--solved {
+  background: #f1faf3;
+}
+
+.transfer-issues-item__info {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.transfer-issues-item__info strong {
+  font-weight: 800;
+  font-size: 0.86rem;
+}
+
+.transfer-issues-item__info span,
+.transfer-issues-item__info small {
+  font-size: 0.76rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transfer-issues-item__info small {
+  color: var(--color-text-secondary);
+}
+
+.transfer-issues-item__qty {
+  font-weight: 800;
+  font-size: 0.9rem;
+  min-width: 32px;
+  text-align: right;
+}
+
+.transfer-issues-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.transfer-issues-item__actions .transfer-issues-details__decision-btn {
+  width: auto;
+  flex: 0 0 auto;
+  min-height: 0;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.transfer-issues-item__solution {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 4px 0 8px;
-  font-size: 0.9rem;
-  font-weight: 500;
+  font-size: 0.8rem;
+  color: #23733d;
 }
 
-.transfer-issues-details__por-ubicar input {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
+.transfer-issues-item__solution em {
+  color: var(--color-text-secondary);
 }
 
-.transfer-issues-details__por-ubicar label {
+.transfer-issues-item__remove {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.74rem;
   cursor: pointer;
+}
+
+.dashboard-shell.dark .transfer-issues-item--pending {
+  background: color-mix(in srgb, #f5c542 9%, transparent);
+}
+
+.dashboard-shell.dark .transfer-issues-item--solved {
+  background: color-mix(in srgb, #3fbf6a 9%, transparent);
+}
+
+.dashboard-shell.dark .transfer-issues-item__solution {
+  color: #7fd59a;
+}
+
+.transfer-issues-footer__actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Dialogo de la solucion de un producto y confirmacion de aplicar. */
+.transfer-issues-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+/* Las secciones quedan arriba (no se reparten el alto del modal). */
+.transfer-issues-detail__body {
+  align-content: start;
+  row-gap: 12px;
+}
+
+.transfer-issues-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(600px, 100%);
+  max-height: 100%;
+  border-radius: 14px;
+  background: var(--color-background, #fff);
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.25);
+}
+
+.dashboard-shell.dark .transfer-issues-dialog {
+  background: var(--color-background-dark, #1f2430);
+}
+
+.transfer-issues-dialog__header {
+  display: grid;
+  gap: 2px;
+  padding: 16px 18px 8px;
+}
+
+.transfer-issues-dialog__header h4 {
+  margin: 0;
+}
+
+.transfer-issues-dialog__header small {
+  color: var(--color-text-secondary);
+}
+
+.transfer-issues-dialog__body {
+  display: grid;
+  gap: 12px;
+  padding: 8px 18px;
+  overflow-y: auto;
+}
+
+.transfer-issues-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px 16px;
+}
+
+/* Ubicacion en una fila (bodega / division / subdivision) y nota del mismo
+   ancho, corta. */
+.transfer-issues-dialog .create-entrada__location-picker-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+
+.transfer-issues-dialog .transfer-issues-details__field {
+  gap: 6px;
+}
+
+.transfer-issues-dialog .transfer-issues-details__hint {
+  margin: 0;
+}
+
+.transfer-issues-dialog textarea.transfer-issues-dialog__note {
+  height: 60px;
+  min-height: 60px;
+  resize: vertical;
+}
+
+.transfer-issues-summary--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.transfer-issues-summary--five {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+  .transfer-issues-dialog .create-entrada__location-picker-grid,
+  .transfer-issues-summary--four,
+  .transfer-issues-summary--five {
+    grid-template-columns: 1fr;
+  }
+}
+
+.transfer-issues-apply__title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.transfer-issues-apply__title--done {
+  color: #23733d;
+}
+
+.transfer-issues-apply__title--pending {
+  color: #8a6500;
+}
+
+.transfer-issues-apply__list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 760px) {
+  .transfer-issues-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .transfer-issues-item__actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
 }

@@ -2276,3 +2276,44 @@ body.app-theme-dark .imp-listed-matches__title {
 body.app-theme-dark .imp-receive-footer-hint {
   color: #fbbf24;
 }
+
+/* Buscador de productos dentro de una importacion (todas las etapas). */
+.imp-product-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+}
+
+.imp-product-search .search-input-container {
+  flex: 0 1 auto;
+  min-width: 220px;
+  max-width: 220px;
+  height: 24px;
+  padding: 4px 8px;
+}
+
+.imp-product-search .search-input {
+  width: 100%;
+}
+
+.imp-product-search__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.imp-product-search__clear {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}

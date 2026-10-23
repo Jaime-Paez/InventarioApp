@@ -4375,23 +4375,16 @@ class RandomInspectionVerifyItemAPIView(APIView):
                     store.payload = normalized_payload
                     store.save(update_fields=["payload", "updated_at"])
 
-            inspection = (
-                _get_random_inspection_queryset()
-                .filter(pk=item.inspeccion_id)
-                .first()
-            )
-
-        if inspection is None:
-            return Response(
-                {"detail": "No se pudo cargar la inspeccion actualizada."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
+        # No se devuelve la inspeccion completa: serializarla (todos sus
+        # items con ubicaciones y stock) hacia que aprobar cada diferencia
+        # tardara varios segundos, y la pantalla de verificacion solo
+        # necesita saber que se guardo para pasar a la siguiente.
         return Response(
             {
-                "inspection": _serialize_random_inspection(inspection, viewer=request.user),
                 "item_id": int(item_id),
                 "accion": action,
+                "verificacion_estado": str(item.verificacion_estado or ""),
+                "cantidad_confirmada": int(item.cantidad_confirmada or 0),
             },
             status=status.HTTP_200_OK,
         )

@@ -1081,7 +1081,14 @@ function RecordatoriosPopup({
       normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado'
     const decisionStatus = getReminderDecisionStatus(reminder)
     const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
-    const solicitudId = normalizeId(reminder?.context?.id)
+    // Solo los recordatorios de traslados toman la etapa del traslado: antes
+    // una revision de inventario con el mismo numero que un traslado ya
+    // recibido salia como "Ya realizaste el conteo".
+    const solicitudId = (
+      isTransferContextReminder || isTransferIssue || isSpecialTransferDecisionReminder(reminder)
+    )
+      ? normalizeId(reminder?.context?.id)
+      : ''
     const transferLifecycle = transferLifecycleBySolicitudId?.[solicitudId] || null
     const latestTransferProgress = solicitudId
       ? (transferLatestProgressBySolicitudId?.[solicitudId] || null)
@@ -2784,7 +2791,10 @@ function RecordatoriosPopup({
                         const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
                         const isTransferContextReminder =
                           normalizeReminderContextType(reminder?.context?.type) === 'solicitud_traslado'
-                        const solicitudId = normalizeId(reminder?.context?.id)
+                        // Solo los de traslados toman la etapa del traslado (ver arriba).
+                        const solicitudId = (isTransferContextReminder || isTransferIssue || isSpecialReminder)
+                          ? normalizeId(reminder?.context?.id)
+                          : ''
                         const transferLifecycle = transferLifecycleBySolicitudId?.[solicitudId] || null
                         const transferLifecycleStage = String(transferLifecycle?.stage || '').trim()
                         const latestTransferProgress = solicitudId

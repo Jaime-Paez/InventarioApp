@@ -88,6 +88,7 @@ from .serializers import (
     resolve_subtipo_key,
     SALIDA_SUBTYPE_PREFIXES,
 )
+from .inconveniente_borrador import parse_borrador_items
 from .stock_availability import get_available_transfer_quantities_by_product
 from .transfer_helpers import (
     build_sale_stock_change_extra_reason,
@@ -3056,6 +3057,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             ).strip(),
             "motivo": str(inconveniente.motivo or "").strip(),
             "motivo_resolucion": str(inconveniente.motivo_resolucion or "").strip(),
+            "borrador": inconveniente.borrador if isinstance(inconveniente.borrador, dict) else {},
             "creado_por_id": int(inconveniente.creado_por_id) if inconveniente.creado_por_id else None,
             "creado_por_nombre": self._resolve_user_display(getattr(inconveniente, "creado_por", None)),
             "resuelto_por_id": int(inconveniente.resuelto_por_id) if inconveniente.resuelto_por_id else None,
@@ -5127,6 +5129,28 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         attach_product_search(payload)
         return Response(payload, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=["post"], url_path="traslados-inconvenientes/borradores")
+    def guardar_borradores_traslado_inconvenientes(self, request):
+        """Guarda la solucion elegida de cada producto sin aplicarla.
+        `{"items": [{"id": 1, "borrador": {...}}]}`; `{}` borra el borrador."""
+        if not is_app_admin(request.user):
+            return Response(
+                {"detail": "Solo los administradores pueden resolver traslados con inconvenientes."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        items, error = parse_borrador_items(request.data)
+        if error:
+            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+        guardados = []
+        with transaction.atomic():
+            for inconveniente in TrasladoInconveniente.objects.select_for_update().filter(
+                pk__in=sorted(items), estado=TrasladoInconveniente.Estados.PENDIENTE
+            ):
+                inconveniente.borrador = items[inconveniente.id]
+                inconveniente.save(update_fields=["borrador", "updated_at"])
+                guardados.append(int(inconveniente.id))
+        return Response({"guardados": sorted(guardados)}, status=status.HTTP_200_OK)
+
     @action(
         detail=False,
         methods=["post"],
@@ -5397,6 +5421,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             else:
                 inconveniente_locked.motivo = motivo
             inconveniente_locked.resuelto_por = request.user
+            inconveniente_locked.borrador = {}
             inconveniente_locked.save(
                 update_fields=[
                     "estado",
@@ -5406,6 +5431,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "motivo",
                     "motivo_resolucion",
                     "resuelto_por",
+                    "borrador",
                     "updated_at",
                 ]
             )

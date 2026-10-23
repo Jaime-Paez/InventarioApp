@@ -438,6 +438,13 @@ class TrasladoInconveniente(models.Model):
             "(la novedad original reportada al detectarlo)."
         ),
     )
+    # Solucion elegida en el detalle y aun no aplicada (ver
+    # movimientos/inconveniente_borrador.py). Se limpia al resolver.
+    borrador = models.JSONField(
+        default=dict,
+        blank=True,
+        db_default=models.Value({}, output_field=models.JSONField()),
+    )
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

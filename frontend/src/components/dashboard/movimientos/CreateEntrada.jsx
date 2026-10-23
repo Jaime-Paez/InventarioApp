@@ -14,6 +14,8 @@ import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
+import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
+import { productDetailMatches } from '../common/productDetailMatches'
 import {
   emitRemindersSync,
   extractUserId,
@@ -410,6 +412,12 @@ function CreateEntrada({
   const [estadosProducto, setEstadosProducto] = useState([])
 
   const [details, setDetails] = useState([])
+  // Buscador rapido de productos dentro de este movimiento.
+  const [productSearch, setProductSearch] = useState('')
+  const filteredDetails = useMemo(
+    () => (productSearch.trim() ? details.filter((detail) => productDetailMatches(detail, productSearch)) : details),
+    [details, productSearch]
+  )
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
@@ -4203,6 +4211,15 @@ function CreateEntrada({
                     />
                   )}
 
+                  {details.length > 0 && (
+                    <ProductListSearch
+                      value={productSearch}
+                      onChange={setProductSearch}
+                      shown={filteredDetails.length}
+                      total={details.length}
+                    />
+                  )}
+
                   <div
                     className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions${isCompraEntrada ? ' create-salida__products-table--compra-local' : ''}`}
                   >
@@ -4538,7 +4555,9 @@ function CreateEntrada({
                       </div>
                     )}
 
-                    {details.map((detail) => {
+                    {details.length > 0 && !filteredDetails.length && <ProductSearchEmptyRow query={productSearch} />}
+
+                    {filteredDetails.map((detail) => {
                       const stockAvailable = Number(
                         stockByProduct[String(detail.productoId || detail.producto_id || '')] ?? 0
                       )

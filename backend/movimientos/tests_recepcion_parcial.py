@@ -520,3 +520,75 @@ class LlegadaEnvioImportacionTests(RecepcionParcialImportacionTests):
         envio = next(row for row in lista["envios"] if row["tipo"] == "importacion")
         self.assertEqual(envio["items"][0]["pendiente"], 4)
         self.assertEqual(Inventario.objects.filter(producto=self.producto).count(), 0)
+
+
+class BorradorInconvenienteTests(FaltanteEnvioImportacionTests):
+    """La solucion de cada producto se guarda como borrador y se limpia al aplicarla."""
+
+    def test_borrador_de_importacion_se_guarda_y_se_limpia_al_resolver(self):
+        issue = self._faltante_de_envio()
+        url = "/importaciones/importaciones/inconvenientes/borradores/"
+        response = self.client.post(url, {"items": [{"id": issue.id, "borrador": {
+            "decision": "sumar_solicitante",
+            "subdivision_id": self.nivel.id,
+            "subdivision_label": "B2 / 01",
+            "motivo": " Estaba en otra caja ",
+            "desconocido": "x",
+        }}]}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["guardados"], [issue.id])
+        issue.refresh_from_db()
+        self.assertEqual(issue.borrador, {
+            "decision": "sumar_solicitante",
+            "subdivision_id": self.nivel.id,
+            "subdivision_label": "B2 / 01",
+            "motivo": "Estaba en otra caja",
+        })
+        # Guardar no toca el inventario.
+        total = Inventario.objects.filter(producto=self.producto).aggregate(t=Sum("cantidad"))["t"]
+        self.assertEqual(total, 3)
+        fila = next(
+            row for row in self.client.get("/importaciones/importaciones/inconvenientes/").data if row["id"] == issue.id
+        )
+        self.assertEqual(fila["borrador"]["decision"], "sumar_solicitante")
+
+        response = self._resolver(issue, decision="sumar_solicitante", subdivision_id=self.nivel.id)
+        self.assertEqual(response.status_code, 200, response.data)
+        issue.refresh_from_db()
+        self.assertEqual(issue.borrador, {})
+
+        # Ya resuelto: el borrador no se vuelve a guardar.
+        response = self.client.post(url, {"items": [{"id": issue.id, "borrador": {"decision": "perdido"}}]}, format="json")
+        self.assertEqual(response.data["guardados"], [])
+        issue.refresh_from_db()
+        self.assertEqual(issue.borrador, {})
+
+    def test_borrador_de_traslado_y_validaciones(self):
+        from .models import TrasladoInconveniente
+
+        solicitud = SolicitudTraslado.objects.create(
+            sucursal_solicitante=self.sucursal,
+            sucursal_proveedora=Sucursal.objects.create(nombre="Sur", direccion="Av 2"),
+            fecha="2026-10-06", no_documento="TR-BORR-1", estado=SolicitudTraslado.Estados.APROBADA,
+        )
+        tipo_entrada, _ = TipoMovimiento.objects.get_or_create(nombre="Entrada")
+        enviado, _ = EstadoMovimiento.objects.get_or_create(nombre="Enviado")
+        entrada = MovimientoInventario.objects.create(
+            sucursal=self.sucursal, tipo_movimiento=tipo_entrada, estado_movimiento=enviado,
+            fecha="2026-10-06", no_documento="TR-BORR-1",
+        )
+        issue = TrasladoInconveniente.objects.create(
+            solicitud=solicitud, movimiento_entrada=entrada, producto=self.producto, cantidad_faltante=2,
+        )
+        url = "/movimientos/movimiento_inventario/traslados-inconvenientes/borradores/"
+        self.assertEqual(self.client.post(url, {"items": []}, format="json").status_code, 400)
+        response = self.client.post(url, {"items": [{"id": issue.id, "borrador": {
+            "decision": "inventada", "fecha_entrega_prometida": "no-fecha", "motivo": "Nota",
+        }}]}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        issue.refresh_from_db()
+        self.assertEqual(issue.borrador, {"motivo": "Nota"})
+
+        self.client.post(url, {"items": [{"id": issue.id, "borrador": {}}]}, format="json")
+        issue.refresh_from_db()
+        self.assertEqual(issue.borrador, {})
