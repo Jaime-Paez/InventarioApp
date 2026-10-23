@@ -35,10 +35,8 @@
   cursor: pointer;
 }
 
-.quick-actions__pending-shipments.has-login-animation .quick-actions__pending-shipments-trigger {
-  transform-origin: center;
-  animation: quick-actions-urgent-shield-enter 320ms cubic-bezier(0.16, 1, 0.3, 1);
-}
+/* La entrada de las pildoras (bajan de una en una y las demas se deslizan)
+   la hace useDockEntrance.js. */
 
 .quick-actions__pending-shipments-trigger:hover {
   filter: brightness(0.98);
@@ -69,10 +67,6 @@
   z-index: 2;
 }
 
-.quick-actions__pending-shipments.has-login-animation .quick-actions__pending-shipments-count {
-  transform-origin: center;
-  animation: quick-actions-urgent-shield-enter 320ms cubic-bezier(0.16, 1, 0.3, 1) 60ms both;
-}
 
 .quick-actions__pending-shipments-panel {
   position: absolute;

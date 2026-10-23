@@ -267,16 +267,22 @@ function PorGuardar({ token, darkMode, onSaved }) {
 
   return (
     <>
-      <button
-        type="button"
-        className={`quick-actions__pending-shipments-trigger por-guardar__trigger${count > 0 ? ' has-items' : ''}`}
-        onClick={() => setOpen(true)}
-        aria-label={`Por ubicar: ${count} producto(s)`}
-        title="Envios que ya llegaron (importaciones y compras locales): cuenta lo que queda y guardalo en su ubicacion"
-      >
-        <span>Por ubicar</span>
-        <span className="quick-actions__pending-shipments-count">{count}</span>
-      </button>
+      {/* Como "Envios en camino" y "Envios pendientes": solo aparece si hay
+          algo por ubicar (el dialogo abierto se mantiene aunque llegue a 0). */}
+      {count > 0 && (
+        <div className="quick-actions__pending-shipments por-guardar__dock">
+          <button
+            type="button"
+            className="quick-actions__pending-shipments-trigger por-guardar__trigger has-items"
+            onClick={() => setOpen(true)}
+            aria-label={`Por ubicar: ${count} producto(s)`}
+            title="Envios que ya llegaron (importaciones y compras locales): cuenta lo que queda y guardalo en su ubicacion"
+          >
+            <span>Por ubicar</span>
+            <span className="quick-actions__pending-shipments-count">{count}</span>
+          </button>
+        </div>
+      )}
 
       {open && createPortal(
         <div

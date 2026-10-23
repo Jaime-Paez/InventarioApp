@@ -8,6 +8,7 @@ import RecordatoriosPopup from './RecordatoriosPopup'
 import ReceiveCompleteDialog from './ReceiveCompleteDialog'
 import PorGuardar from './PorGuardar'
 import LlegadaDialog from './LlegadaDialog'
+import useDockEntrance from './useDockEntrance'
 import { requestPorGuardarRefresh } from './porGuardarEvents'
 import BlockerNotice from '../common/BlockerNotice'
 import { matchesFirst } from '../common/productDetailMatches'
@@ -529,6 +530,8 @@ function QuickActions({
   const btnRefs = useRef([])
   const reminderButtonRef = useRef(null)
   const pendingShipmentsRef = useRef(null)
+  const dockRef = useRef(null)
+  useDockEntrance(dockRef)
   const pendingShipmentsTriggerRef = useRef(null)
   const inTransitShipmentsRef = useRef(null)
   const inTransitShipmentsTriggerRef = useRef(null)
@@ -662,7 +665,6 @@ function QuickActions({
   const suppressAdminAlerts = isAdministrator
   const allowVisualUrgentShield = allowUrgentShield && !suppressAdminAlerts
   const hasPendingShipments = pendingShipments.length > 0
-  const shouldAnimatePendingShipments = !suppressAdminAlerts && hasPendingShipments
   const currentUserModuleScopes = useMemo(
     () => normalizeModuleScopes(user?.sucursales_por_modulo),
     [user?.sucursales_por_modulo]
@@ -5788,15 +5790,13 @@ function QuickActions({
           }}
         />
       )}
-      <div className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}>
+      <div ref={dockRef} className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}>
         {canViewInTransitShipments && (
-          <div className="quick-actions__pending-shipments por-guardar__dock">
-            <PorGuardar
-              token={token}
-              darkMode={darkMode}
-              onSaved={(message) => toast.current?.show({ severity: 'success', summary: 'Por ubicar', detail: message, life: 2600 })}
-            />
-          </div>
+          <PorGuardar
+            token={token}
+            darkMode={darkMode}
+            onSaved={(message) => toast.current?.show({ severity: 'success', summary: 'Por ubicar', detail: message, life: 2600 })}
+          />
         )}
         {canOpenInTransitShipments && hasInTransitShipments && (
           <div
@@ -5902,7 +5902,7 @@ function QuickActions({
         {canDecideTransferRequest && hasPendingShipments && (
           <div
             ref={pendingShipmentsRef}
-            className={`quick-actions__pending-shipments${isPendingShipmentsOpen ? ' is-open' : ''}${shouldAnimatePendingShipments ? ' has-login-animation' : ''}`}
+            className={`quick-actions__pending-shipments${isPendingShipmentsOpen ? ' is-open' : ''}`}
           >
             <button
               ref={handlePendingShipmentsTriggerRef}

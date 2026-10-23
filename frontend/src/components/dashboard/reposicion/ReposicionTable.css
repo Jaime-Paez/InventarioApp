@@ -1507,8 +1507,11 @@ body.app-theme-dark .reposicion-import__type.is-import {
 body.app-theme-dark .reposicion-import__warn { color: #fbbf24; }
 body.app-theme-dark .reposicion-import__done { color: #86efac; }
 
+/* El cuerpo es una columna flex con scroll: sin flex-shrink: 0 cada
+   proveedor se aplasta (overflow: hidden) para caber, en vez de desplazar. */
 .reposicion-import__group,
 .reposicion-import__intro {
+  flex: 0 0 auto;
   align-self: stretch;
   width: 100%;
 }
