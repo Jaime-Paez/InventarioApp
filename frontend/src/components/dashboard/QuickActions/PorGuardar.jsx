@@ -42,6 +42,8 @@ function PorGuardar({ token, darkMode, onSaved }) {
   const [drafts, setDrafts] = useState({}) // key -> { subdivisionId, cantidad }
   const [query, setQuery] = useState('')
   const [finishTarget, setFinishTarget] = useState(null)
+  // Filas recien marcadas: el check se ve puesto mientras se guardan.
+  const [checkingKeys, setCheckingKeys] = useState(() => new Set())
 
   const fetchCount = useCallback(async () => {
     if (!token || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return
@@ -125,6 +127,25 @@ function PorGuardar({ token, darkMode, onSaved }) {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [open, loadData, saving, finishTarget])
+
+  // Como al recibir un envio: marcar el check guarda de una vez lo contado
+  // en la ubicacion elegida. Si falta algo (cantidad o ubicacion) no se marca
+  // y se dice por que.
+  const checkRows = async (keys, save) => {
+    setCheckingKeys((prev) => new Set([...prev, ...keys]))
+    try {
+      await save()
+    } finally {
+      setCheckingKeys((prev) => {
+        const next = new Set(prev)
+        keys.forEach((key) => next.delete(key))
+        return next
+      })
+    }
+  }
+  const checkShipmentItems = (shipment, items) =>
+    checkRows(items.map((item) => itemKey(shipment, item)), () => saveShipmentItems(shipment, items))
+  const checkPorUbicar = (rows) => checkRows(rows.map(porUbicarKey), () => savePorUbicar(rows))
 
   const updateDraft = (key, patch) => setDrafts((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }))
 
@@ -343,15 +364,18 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             </span>
                           </div>
                           <div className="por-guardar__shipment-actions">
-                            <button
-                              type="button"
-                              className="por-guardar__btn"
-                              onClick={() => void saveShipmentItems(shipment, pendientes)}
-                              disabled={saving || !pendientes.length || pendientes.some((item) => problemFor(itemKey(shipment, item), item.pendiente))}
-                              title="Guardar todos los productos con la cantidad contada y la ubicacion indicada"
+                            <label
+                              className="por-guardar__check-all"
+                              title="Marca todos: se guarda cada producto con la cantidad contada y la ubicacion indicada"
                             >
-                              Guardar todo
-                            </button>
+                              <input
+                                type="checkbox"
+                                checked={!pendientes.length}
+                                onChange={(event) => { if (event.target.checked) void checkShipmentItems(shipment, pendientes) }}
+                                disabled={saving || !pendientes.length}
+                              />
+                              Marcar todo
+                            </label>
                             <button
                               type="button"
                               className="por-guardar__btn por-guardar__btn--warn"
@@ -372,7 +396,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                               <th className="por-guardar__col-num">Guardado</th>
                               <th className="por-guardar__col-qty">Contados</th>
                               <th>Guardar en</th>
-                              <th className="por-guardar__col-action" />
+                              <th className="por-guardar__col-action">Contado</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -390,9 +414,14 @@ function PorGuardar({ token, darkMode, onSaved }) {
                                   <td className="por-guardar__col-num">{item.vendido || 0}</td>
                                   <td className="por-guardar__col-num">{item.guardado}</td>
                                   {done ? (
-                                    <td colSpan={3} className="por-guardar__done">
-                                      <CheckCircle2 size={15} aria-hidden="true" /> Contado completo
-                                    </td>
+                                    <>
+                                      <td colSpan={2} className="por-guardar__done">
+                                        <CheckCircle2 size={15} aria-hidden="true" /> Contado completo
+                                      </td>
+                                      <td className="por-guardar__col-action">
+                                        <input type="checkbox" className="por-guardar__check" checked disabled aria-label={`${item.producto_codigo} contado`} />
+                                      </td>
+                                    </>
                                   ) : (
                                     <>
                                       <td className="por-guardar__col-qty">
@@ -407,15 +436,15 @@ function PorGuardar({ token, darkMode, onSaved }) {
                                       </td>
                                       <td>{renderLocation(key, shipment.sucursal_id, item.sugerida_subdivision_id)}</td>
                                       <td className="por-guardar__col-action">
-                                        <button
-                                          type="button"
-                                          className="por-guardar__btn por-guardar__btn--primary"
-                                          onClick={() => void saveShipmentItems(shipment, [item])}
-                                          disabled={saving || Boolean(problem)}
-                                          title={problem || 'Guardar lo contado en esta ubicacion'}
-                                        >
-                                          Guardar
-                                        </button>
+                                        <input
+                                          type="checkbox"
+                                          className="por-guardar__check"
+                                          checked={checkingKeys.has(key)}
+                                          onChange={(event) => { if (event.target.checked) void checkShipmentItems(shipment, [item]) }}
+                                          disabled={saving}
+                                          title={problem || 'Marcar como contado: se guarda en esta ubicacion'}
+                                          aria-label={`Marcar ${item.producto_codigo} como contado`}
+                                        />
                                       </td>
                                     </>
                                   )}
@@ -435,6 +464,17 @@ function PorGuardar({ token, darkMode, onSaved }) {
                           <strong>En POR UBICAR</strong>
                           <span>Ya están en el inventario (ej. de un inconveniente); falta guardarlos en su ubicación.</span>
                         </div>
+                        <div className="por-guardar__shipment-actions">
+                          <label className="por-guardar__check-all" title="Marca todos: cada producto se mueve a la ubicacion indicada">
+                            <input
+                              type="checkbox"
+                              checked={false}
+                              onChange={(event) => { if (event.target.checked) void checkPorUbicar(visiblePorUbicar) }}
+                              disabled={saving}
+                            />
+                            Marcar todo
+                          </label>
+                        </div>
                       </header>
                       <table className="por-guardar__table">
                         <thead>
@@ -443,7 +483,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             <th>Sucursal</th>
                             <th className="por-guardar__col-qty">Cantidad</th>
                             <th>Guardar en</th>
-                            <th className="por-guardar__col-action" />
+                            <th className="por-guardar__col-action">Guardado</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -469,15 +509,15 @@ function PorGuardar({ token, darkMode, onSaved }) {
                                 </td>
                                 <td>{renderLocation(key, row.sucursal_id, row.sugerida_subdivision_id)}</td>
                                 <td className="por-guardar__col-action">
-                                  <button
-                                    type="button"
-                                    className="por-guardar__btn por-guardar__btn--primary"
-                                    onClick={() => void savePorUbicar([row])}
-                                    disabled={saving || Boolean(problem)}
-                                    title={problem || 'Mover de POR UBICAR a esta ubicacion'}
-                                  >
-                                    Guardar
-                                  </button>
+                                  <input
+                                    type="checkbox"
+                                    className="por-guardar__check"
+                                    checked={checkingKeys.has(key)}
+                                    onChange={(event) => { if (event.target.checked) void checkPorUbicar([row]) }}
+                                    disabled={saving}
+                                    title={problem || 'Marcar: se mueve de POR UBICAR a esta ubicacion'}
+                                    aria-label={`Guardar ${row.producto_codigo} en su ubicacion`}
+                                  />
                                 </td>
                               </tr>
                             )

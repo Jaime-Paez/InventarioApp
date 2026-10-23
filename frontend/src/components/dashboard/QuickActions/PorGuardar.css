@@ -437,3 +437,40 @@ body.app-theme-dark .por-guardar__picker-panel {
 .por-guardar--dark .por-guardar__btn--primary {
   color: #fff;
 }
+
+/* Check por fila, como al recibir un envio: marcarlo guarda de una vez. */
+.por-guardar__check,
+.por-guardar__check-all input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.por-guardar__check:disabled,
+.por-guardar__check-all input:disabled {
+  cursor: default;
+}
+
+.por-guardar__check-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+
+.por-guardar__col-action .por-guardar__check {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.por-guardar--dark .por-guardar__check-all {
+  border-color: var(--color-border-dark);
+}
