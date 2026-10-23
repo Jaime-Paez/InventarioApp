@@ -151,7 +151,10 @@ class ImportacionSerializer(serializers.ModelSerializer):
         return obj.origen.codigo if obj.origen_id else None
 
     def get_envios(self, obj):
-        envios_qs = obj.envios.select_related("sucursal").prefetch_related("detalles__producto")
+        if "envios" in getattr(obj, "_prefetched_objects_cache", {}):
+            envios_qs = obj.envios.all()
+        else:
+            envios_qs = obj.envios.select_related("sucursal").prefetch_related("detalles__producto")
         return [
             {
                 "id": envio.id,

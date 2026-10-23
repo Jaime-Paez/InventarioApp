@@ -415,6 +415,21 @@ class InspeccionPorDivisionTests(InspeccionAleatoriaBaseTestCase):
         response = self._responder(inspection, {self.producto.id: 10, self.producto_2.id: 4})
         self.assertEqual(self._diferencias(inspection), 0)
 
+    def test_reenviar_la_misma_division_no_duplica_y_responde_ok(self):
+        body = {"division_id": self.division.id, "usuario_id": self.revisor.id, "hora_recordatorio": "23:59"}
+        primera = self.admin_client.post(f"{BASE_URL}/enviar-division/", body, format="json")
+        repetida = self.admin_client.post(f"{BASE_URL}/enviar-division/", body, format="json")
+
+        self.assertEqual(primera.status_code, 200, primera.data)
+        self.assertEqual(repetida.status_code, 200, repetida.data)
+        self.assertTrue(repetida.data["ya_enviada"])
+        self.assertNotIn("ya_enviada", primera.data)
+        self.assertEqual(repetida.data["inspeccion_id"], primera.data["inspeccion_id"])
+        inspection = InspeccionAleatoriaDiaria.objects.get(pk=primera.data["inspeccion_id"])
+        self.assertEqual(InspeccionAleatoriaDiaria.objects.filter(es_por_division=True).count(), 1)
+        self.assertEqual(inspection.items.count(), primera.data["productos"])
+        self.assertEqual(inspection.total_items, primera.data["productos"])
+
 
 class DisculparTests(InspeccionAleatoriaBaseTestCase):
     def test_disculpar_cubre_todas_las_inspecciones_del_dia(self):

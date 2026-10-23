@@ -20,9 +20,10 @@ from usuarios.permissions import ImportacionesModulePermission
 from usuarios.sucursal_scope import get_allowed_sucursal_ids, get_readable_sucursal_ids
 from usuarios.utils import is_app_admin
 
-from django.db.models import F, Func, Q
+from django.db.models import F, Func, Prefetch, Q
 
 from app.models import ReminderState
+from casa_comercial.models import CasaComercial
 from configuracion.models import ConfiguracionSistema
 from inventario.models import Inventario, SubDivision
 from inventario.por_ubicar import (
@@ -39,7 +40,7 @@ from inventario.por_ubicar import (
     take_stock,
 )
 from movimientos.inconveniente_borrador import parse_borrador_items
-from productos.models import OEMProducto, Producto, add_producto_referencia
+from productos.models import OEMProducto, Producto, ProductoAlterno, add_producto_referencia
 
 from .models import (
     Importacion,
@@ -667,14 +668,32 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         return response
 
     def get_queryset(self):
+        # Todo lo que serializa ProductoSerializer por cada detalle (pais de
+        # sus casas, referencias, alternativas) va precargado: sin esto el
+        # listado hacia 3-4 consultas por producto y una importacion con
+        # cientos de productos tardaba minutos en cargar.
         queryset = (
-            Importacion.objects.select_related("casa_comercial")
+            Importacion.objects.select_related("casa_comercial__pais", "origen")
             .prefetch_related(
                 "detalles",
                 "detalles__producto",
-                "detalles__producto__casas_comerciales",
+                Prefetch(
+                    "detalles__producto__casas_comerciales",
+                    queryset=CasaComercial.objects.select_related("pais"),
+                ),
                 "detalles__producto__oem_productos__oem",
+                "detalles__producto__referencias",
+                Prefetch(
+                    "detalles__producto__alternativas",
+                    queryset=ProductoAlterno.objects.select_related("alterno"),
+                ),
                 "en_camino_generadas",
+                Prefetch(
+                    "envios",
+                    queryset=ImportacionEnvio.objects.select_related("sucursal").prefetch_related(
+                        "detalles__producto"
+                    ),
+                ),
             )
             .all()
             .distinct()
