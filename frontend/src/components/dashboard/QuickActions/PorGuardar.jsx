@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { CheckCircle2, Search, X } from 'lucide-react'
+import { Checkbox } from 'primereact/checkbox'
+import { Search, X } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDateTime } from '../../../utils/dateFormat'
 import BlockerNotice from '../common/BlockerNotice'
 import { matchesFirst } from '../common/productDetailMatches'
 import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
-import LocationPicker from './LocationPicker'
 import { POR_GUARDAR_REFRESH_EVENT } from './porGuardarEvents'
 import './PorGuardar.css'
 
@@ -15,6 +15,7 @@ import './PorGuardar.css'
 // puede vender; aqui se cuenta lo que queda de cada producto (lo vendido ya se
 // desconto) y se guarda en su ubicacion. Al terminar, lo que no aparecio queda
 // como faltante en Inconvenientes. Tambien lo demas que haya en POR UBICAR.
+// Se ve igual que la recepcion de traslados: check por check y la barra suma.
 const POLL_MS = 15000
 
 const normalize = (value) =>
@@ -30,6 +31,104 @@ const porUbicarKey = (row) => `pu-${row.sucursal_id}-${row.producto_id}`
 
 const shipmentBase = (shipment) => `${API_URL}/importaciones/importaciones/envios/${encodeURIComponent(shipment.id)}`
 
+const uniqueNames = (list) => [...new Set(list.filter(Boolean))]
+
+// Desplegable de la recepcion de traslados (Bodega / Division / Subdivision).
+function ReceiveDropdown({ label, value, placeholder, options, onSelect, disabled, darkMode, emptyMessage, searchPlaceholder }) {
+  const [rect, setRect] = useState(null)
+  const [query, setQuery] = useState('')
+  const triggerRef = useRef(null)
+  const panelRef = useRef(null)
+
+  useEffect(() => {
+    if (!rect) return undefined
+    const close = (event) => {
+      if (triggerRef.current?.contains(event.target) || panelRef.current?.contains(event.target)) return
+      setRect(null)
+    }
+    const closeOnScroll = (event) => {
+      if (panelRef.current?.contains(event.target)) return
+      setRect(null)
+    }
+    document.addEventListener('mousedown', close)
+    window.addEventListener('scroll', closeOnScroll, true)
+    window.addEventListener('resize', closeOnScroll)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      window.removeEventListener('scroll', closeOnScroll, true)
+      window.removeEventListener('resize', closeOnScroll)
+    }
+  }, [rect])
+
+  const term = normalize(query)
+  const filtered = term ? options.filter((option) => normalize(option.label).includes(term)) : options
+  const selected = options.find((option) => option.value === value) || null
+
+  return (
+    <div className="quick-actions__receive-location-field">
+      <small>{label}</small>
+      <div className="quick-actions__receive-dropdown">
+        <button
+          ref={triggerRef}
+          type="button"
+          className="quick-actions__receive-dropdown-trigger quick-actions__receive-dropdown-trigger--review"
+          title={selected?.label || placeholder}
+          aria-label={selected ? `${label}: ${selected.label}` : `Seleccionar ${label.toLowerCase()}`}
+          onClick={() => {
+            if (rect) {
+              setRect(null)
+              return
+            }
+            const box = triggerRef.current?.getBoundingClientRect()
+            setQuery('')
+            if (box) setRect({ top: box.bottom + 6, left: box.left, width: box.width })
+          }}
+          disabled={disabled}
+        >
+          <span>{selected?.label || placeholder}</span>
+          <i className={`pi pi-chevron-${rect ? 'up' : 'down'}`} />
+        </button>
+      </div>
+      {rect && createPortal(
+        <div
+          ref={panelRef}
+          className={`quick-actions__receive-dropdown-panel quick-actions__receive-dropdown-panel--portal ${darkMode ? 'dark' : 'light'}`}
+          style={{ position: 'fixed', top: rect.top, left: rect.left, width: Math.max(rect.width, 200), zIndex: 9999 }}
+        >
+          <div className="quick-actions__receive-dropdown-search">
+            <Search size={13} />
+            <input
+              type="text"
+              placeholder={searchPlaceholder}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="quick-actions__receive-dropdown-results">
+            {!filtered.length && <small className="muted">{term ? 'Sin resultados.' : emptyMessage}</small>}
+            {filtered.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className="quick-actions__receive-dropdown-option"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onSelect(option.value)
+                  setRect(null)
+                }}
+              >
+                <strong>{option.label}</strong>
+              </button>
+            ))}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
 function PorGuardar({ token, darkMode, onSaved }) {
   const [count, setCount] = useState(0)
   const [open, setOpen] = useState(false)
@@ -39,11 +138,17 @@ function PorGuardar({ token, darkMode, onSaved }) {
   const [shipments, setShipments] = useState([])
   const [porUbicar, setPorUbicar] = useState([])
   const [locationsByBranch, setLocationsByBranch] = useState({})
-  const [drafts, setDrafts] = useState({}) // key -> { subdivisionId, cantidad }
+  // key -> { bodega, division, subdivisionId, cantidad }
+  const [drafts, setDrafts] = useState({})
   const [query, setQuery] = useState('')
   const [finishTarget, setFinishTarget] = useState(null)
   // Filas recien marcadas: el check se ve puesto mientras se guardan.
   const [checkingKeys, setCheckingKeys] = useState(() => new Set())
+  // Filas que no se pudieron marcar: muestran por que (como en traslados).
+  const [rowErrors, setRowErrors] = useState({})
+  // Lo guardado de POR UBICAR en esta sesion: sale de la lista del servidor,
+  // pero se sigue viendo con su check para que la barra vaya sumando.
+  const [savedPorUbicar, setSavedPorUbicar] = useState({})
 
   const fetchCount = useCallback(async () => {
     if (!token || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return
@@ -77,24 +182,16 @@ function PorGuardar({ token, darkMode, onSaved }) {
       // lo que ya se habia elegido se respeta.
       setDrafts((prev) => {
         const next = {}
-        nextShipments.forEach((shipment) => {
-          shipment.items.forEach((item) => {
-            const key = itemKey(shipment, item)
-            const previous = prev[key]
-            next[key] = {
-              subdivisionId: previous?.subdivisionId || (item.sugerida_subdivision_id ? String(item.sugerida_subdivision_id) : ''),
-              cantidad: previous && Number(previous.cantidad) <= item.pendiente ? previous.cantidad : String(item.pendiente),
-            }
-          })
-        })
-        nextPorUbicar.forEach((row) => {
-          const key = porUbicarKey(row)
+        const seed = (key, max, suggestedId) => {
           const previous = prev[key]
-          next[key] = {
-            subdivisionId: previous?.subdivisionId || (row.sugerida_subdivision_id ? String(row.sugerida_subdivision_id) : ''),
-            cantidad: previous && Number(previous.cantidad) <= row.cantidad ? previous.cantidad : String(row.cantidad),
-          }
+          next[key] = previous
+            ? { ...previous, cantidad: Number(previous.cantidad) <= max ? previous.cantidad : String(max) }
+            : { bodega: '', division: '', subdivisionId: suggestedId ? String(suggestedId) : '', cantidad: String(max) }
+        }
+        nextShipments.forEach((shipment) => {
+          shipment.items.forEach((item) => seed(itemKey(shipment, item), item.pendiente, item.sugerida_subdivision_id))
         })
+        nextPorUbicar.forEach((row) => seed(porUbicarKey(row), row.cantidad, row.sugerida_subdivision_id))
         return next
       })
       return { shipments: nextShipments, porUbicar: nextPorUbicar }
@@ -122,15 +219,22 @@ function PorGuardar({ token, darkMode, onSaved }) {
 
   useEffect(() => {
     if (!open) return undefined
+    setSavedPorUbicar({})
+    setRowErrors({})
     void loadData()
+    return undefined
+  }, [open, loadData])
+
+  useEffect(() => {
+    if (!open) return undefined
     const onKey = (event) => { if (event.key === 'Escape' && !saving && !finishTarget) setOpen(false) }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [open, loadData, saving, finishTarget])
+  }, [open, saving, finishTarget])
 
-  // Como al recibir un envio: marcar el check guarda de una vez lo contado
+  // Como al recibir un traslado: marcar el check guarda de una vez lo contado
   // en la ubicacion elegida. Si falta algo (cantidad o ubicacion) no se marca
-  // y se dice por que.
+  // y la fila dice por que.
   const checkRows = async (keys, save) => {
     setCheckingKeys((prev) => new Set([...prev, ...keys]))
     try {
@@ -147,15 +251,40 @@ function PorGuardar({ token, darkMode, onSaved }) {
     checkRows(items.map((item) => itemKey(shipment, item)), () => saveShipmentItems(shipment, items))
   const checkPorUbicar = (rows) => checkRows(rows.map(porUbicarKey), () => savePorUbicar(rows))
 
-  const updateDraft = (key, patch) => setDrafts((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }))
+  const updateDraft = (key, patch) => {
+    setDrafts((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }))
+    setRowErrors((prev) => {
+      if (!prev[key]) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
 
   const problemFor = (key, max) => {
     const draft = drafts[key] || {}
     const qty = Number.parseInt(String(draft.cantidad || ''), 10)
-    if (!Number.isFinite(qty) || qty <= 0) return 'Indica cuantas contaste'
-    if (qty > max) return `Maximo ${max}`
-    if (!draft.subdivisionId) return 'Elige la ubicacion'
+    if (!Number.isFinite(qty) || qty <= 0) return 'Indica cuantas contaste.'
+    if (qty > max) return `Maximo ${max}.`
+    if (!draft.subdivisionId) return 'Elige la bodega, division y subdivision donde lo guardas.'
     return ''
+  }
+
+  // Valida las filas antes de guardar; las que fallan muestran su motivo.
+  const rejectProblems = (entries) => {
+    const problems = entries.filter((entry) => entry.problem)
+    if (!problems.length) return false
+    setRowErrors((prev) => {
+      const next = { ...prev }
+      problems.forEach((entry) => { next[entry.key] = entry.problem })
+      return next
+    })
+    setError(
+      problems.length === 1
+        ? '1 producto requiere atención antes de guardarlo.'
+        : `${problems.length} productos requieren atención antes de guardarlos.`
+    )
+    return true
   }
 
   // Cierra el conteo del envio: lo que falta contar (no se vendio ni se
@@ -168,12 +297,11 @@ function PorGuardar({ token, darkMode, onSaved }) {
   }, [token])
 
   const saveShipmentItems = async (shipment, items) => {
-    const problems = items.map((item) => ({ item, problem: problemFor(itemKey(shipment, item), item.pendiente) }))
-      .filter((entry) => entry.problem)
-    if (problems.length) {
-      setError(`${problems[0].item.producto_codigo}: ${problems[0].problem}.`)
-      return
-    }
+    const entries = items.map((item) => {
+      const key = itemKey(shipment, item)
+      return { key, problem: problemFor(key, item.pendiente) }
+    })
+    if (rejectProblems(entries)) return
     setSaving(true)
     setError('')
     try {
@@ -216,35 +344,38 @@ function PorGuardar({ token, darkMode, onSaved }) {
   }
 
   const savePorUbicar = async (rows) => {
-    const problems = rows.map((row) => ({ row, problem: problemFor(porUbicarKey(row), row.cantidad) }))
-      .filter((entry) => entry.problem)
-    if (problems.length) {
-      setError(`${problems[0].row.producto_codigo}: ${problems[0].problem}.`)
-      return
-    }
+    const entries = rows.map((row) => {
+      const key = porUbicarKey(row)
+      return { key, problem: problemFor(key, row.cantidad) }
+    })
+    if (rejectProblems(entries)) return
     setSaving(true)
     setError('')
     try {
+      const items = rows.map((row) => {
+        const draft = drafts[porUbicarKey(row)]
+        return {
+          producto_id: row.producto_id,
+          sucursal_id: row.sucursal_id,
+          subdivision_id: Number(draft.subdivisionId),
+          cantidad: Number.parseInt(String(draft.cantidad), 10),
+        }
+      })
       const response = await authFetch(
         `${API_URL}/inventario/inventario/guardar-por-ubicar/`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            items: rows.map((row) => {
-              const draft = drafts[porUbicarKey(row)]
-              return {
-                producto_id: row.producto_id,
-                sucursal_id: row.sucursal_id,
-                subdivision_id: Number(draft.subdivisionId),
-                cantidad: Number.parseInt(String(draft.cantidad), 10),
-              }
-            }),
-          }),
-        },
+        { method: 'POST', body: JSON.stringify({ items }) },
         token
       )
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar.')
+      setSavedPorUbicar((prev) => {
+        const next = { ...prev }
+        rows.forEach((row, index) => {
+          const key = porUbicarKey(row)
+          next[key] = { row, guardado: (prev[key]?.guardado || 0) + items[index].cantidad }
+        })
+        return next
+      })
       onSaved?.(`${rows.length} producto(s) guardados en su ubicacion.`)
       await loadData()
     } catch (requestError) {
@@ -253,6 +384,21 @@ function PorGuardar({ token, darkMode, onSaved }) {
       setSaving(false)
     }
   }
+
+  // POR UBICAR: lo que queda en el servidor mas lo ya guardado en esta sesion.
+  const porUbicarRows = useMemo(() => {
+    const current = new Set(porUbicar.map(porUbicarKey))
+    const list = porUbicar.map((row) => ({
+      ...row,
+      key: porUbicarKey(row),
+      guardado: savedPorUbicar[porUbicarKey(row)]?.guardado || 0,
+      done: false,
+    }))
+    Object.entries(savedPorUbicar).forEach(([key, saved]) => {
+      if (!current.has(key)) list.push({ ...saved.row, key, cantidad: 0, guardado: saved.guardado, done: true })
+    })
+    return list
+  }, [porUbicar, savedPorUbicar])
 
   const term = normalize(query)
   const matches = (item) => !term || normalize(`${item.producto_codigo} ${item.producto_nombre}`).includes(term)
@@ -269,21 +415,199 @@ function PorGuardar({ token, darkMode, onSaved }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [shipments, term]
   )
-  const visiblePorUbicar = term ? matchesFirst(porUbicar, matches) : porUbicar
-  const isEmpty = !shipments.length && !porUbicar.length
+  const visiblePorUbicar = term ? matchesFirst(porUbicarRows, matches) : porUbicarRows
+  const isEmpty = !shipments.length && !porUbicarRows.length
+  const matchCount = term
+    ? shipments.reduce((sum, s) => sum + s.items.filter(matches).length, 0) + porUbicarRows.filter(matches).length
+    : 0
+  const totalCount = shipments.reduce((sum, s) => sum + s.items.length, 0) + porUbicarRows.length
 
-  const renderLocation = (key, branchId, suggestedId) => (
-    <>
-      <LocationPicker
-        options={locationsByBranch[String(branchId)] || []}
-        value={drafts[key]?.subdivisionId}
-        onChange={(id) => updateDraft(key, { subdivisionId: String(id) })}
-        disabled={saving}
-      />
-      {suggestedId && String(drafts[key]?.subdivisionId) === String(suggestedId) && (
-        <small className="por-guardar__hint">Su ubicacion principal</small>
-      )}
-    </>
+  const renderLocation = (key, branchId) => {
+    const options = locationsByBranch[String(branchId)] || []
+    const draft = drafts[key] || {}
+    const selected = options.find((option) => String(option.id) === String(draft.subdivisionId)) || null
+    const bodega = selected?.bodega || draft.bodega || ''
+    const division = selected?.division || (bodega ? draft.division : '') || ''
+    const bodegas = uniqueNames(options.map((option) => option.bodega))
+    const divisions = bodega ? uniqueNames(options.filter((option) => option.bodega === bodega).map((option) => option.division)) : []
+    const subdivisions = division
+      ? options.filter((option) => option.bodega === bodega && option.division === division)
+      : []
+    return (
+      <div className="quick-actions__receive-location-row quick-actions__receive-location-row--review">
+        <ReceiveDropdown
+          label="Bodega"
+          value={bodega}
+          placeholder="Selecciona"
+          options={bodegas.map((name) => ({ value: name, label: name }))}
+          onSelect={(name) => {
+            const onlyDivisions = uniqueNames(options.filter((option) => option.bodega === name).map((option) => option.division))
+            updateDraft(key, { bodega: name, division: onlyDivisions.length === 1 ? onlyDivisions[0] : '', subdivisionId: '' })
+          }}
+          disabled={saving}
+          darkMode={darkMode}
+          emptyMessage="Esta sucursal no tiene bodegas."
+          searchPlaceholder="Buscar bodega"
+        />
+        <ReceiveDropdown
+          label="Division"
+          value={division}
+          placeholder="Selecciona"
+          options={divisions.map((name) => ({ value: name, label: name }))}
+          onSelect={(name) => updateDraft(key, { bodega, division: name, subdivisionId: '' })}
+          disabled={saving || !divisions.length}
+          darkMode={darkMode}
+          emptyMessage="Esta bodega no tiene divisiones."
+          searchPlaceholder="Buscar division"
+        />
+        <ReceiveDropdown
+          label="Subdivision"
+          value={selected ? String(selected.id) : ''}
+          placeholder="Selecciona"
+          options={subdivisions.map((option) => ({ value: String(option.id), label: option.subdivision }))}
+          onSelect={(id) => updateDraft(key, { bodega, division, subdivisionId: id })}
+          disabled={saving || !subdivisions.length}
+          darkMode={darkMode}
+          emptyMessage="Esta división no tiene subdivisiones."
+          searchPlaceholder="Buscar subdivision"
+        />
+      </div>
+    )
+  }
+
+  // Barra de avance de cada grupo (igual a "Recibidos X de Y productos").
+  const renderProgress = ({ done, total, unitsDone, unitsTotal, toStore }) => {
+    const percent = total ? Math.round((done / total) * 100) : 0
+    return (
+      <div className="quick-actions__receive-progressbar" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
+        <div className="quick-actions__receive-progressbar-head">
+          <strong>{`Guardados ${done} de ${total} productos`}</strong>
+          <span>
+            {`${unitsDone} de ${unitsTotal} unidades · ${percent}%`}
+            {toStore > 0 ? ` · ${toStore} por guardar` : ''}
+          </span>
+        </div>
+        <div className="quick-actions__receive-progressbar-track">
+          <div className="quick-actions__receive-progressbar-fill" style={{ width: `${percent}%` }} />
+        </div>
+      </div>
+    )
+  }
+
+  // Una fila con el mismo formato que la recepcion de traslados.
+  const renderRow = ({ key, row, done, pending, quantityLabel, stateText, branchId, onCheck, checkLabel }) => {
+    const rowError = done ? '' : rowErrors[key] || ''
+    const checked = done || checkingKeys.has(key)
+    return (
+      <article
+        key={key}
+        className={`quick-actions__receive-item${checked ? ' is-reviewed' : ''}${done ? ' is-ready is-registered' : ' is-pending'}${rowError ? ' has-validation-error' : ''}`}
+      >
+        <div className="quick-actions__receive-item-head quick-actions__receive-item-head--check">
+          <label className="quick-actions__receive-check quick-actions__receive-check--row">
+            <Checkbox
+              binary
+              inputId={`por-ubicar-${key}`}
+              checked={checked}
+              onChange={(event) => { if (event.checked) void onCheck() }}
+              disabled={saving || done || checkingKeys.has(key)}
+              aria-label={checkLabel}
+            />
+          </label>
+
+          <div
+            className="quick-actions__receive-item-title"
+            title={[row.producto_codigo, String(row.producto_nombre || '').trim()].filter(Boolean).join(' – ')}
+          >
+            <small className="quick-actions__receive-col-label">Producto</small>
+            <strong>{row.producto_codigo}</strong>
+            {!!String(row.producto_nombre || '').trim() && (
+              <p className="quick-actions__receive-item-name">{String(row.producto_nombre).trim()}</p>
+            )}
+          </div>
+
+          <div className={`quick-actions__receive-item-badge${done ? ' is-received' : ' is-pending'}`}>
+            {done ? 'Guardado' : 'Por ubicar'}
+          </div>
+        </div>
+
+        <div className="quick-actions__receive-item-meta">
+          <span>
+            {quantityLabel}
+            <strong>{pending}</strong>
+          </span>
+        </div>
+
+        <div className="quick-actions__receive-grid quick-actions__receive-grid--receive">
+          <label className="quick-actions__receive-count-field quick-actions__receive-count-field--inline">
+            <span>Contados</span>
+            <small className="quick-actions__receive-col-label">Contados</small>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="0"
+              value={done ? String(row.guardado ?? '') : drafts[key]?.cantidad ?? ''}
+              onChange={(event) => updateDraft(key, { cantidad: event.target.value.replace(/[^\d]/g, '') })}
+              disabled={saving || done}
+              aria-label={`Cuantas contaste de ${row.producto_codigo}`}
+            />
+          </label>
+        </div>
+
+        {!done && renderLocation(key, branchId)}
+
+        {stateText && (
+          <div className={`quick-actions__receive-item-state${done ? ' is-received' : ' is-to-store'}`}>
+            <span>{stateText}</span>
+          </div>
+        )}
+
+        {rowError && (
+          <p className="quick-actions__receive-item-hint quick-actions__receive-item-hint--warning">{rowError}</p>
+        )}
+      </article>
+    )
+  }
+
+  const renderListHeader = (quantityLabel) => (
+    <div className="quick-actions__receive-list-header" aria-hidden="true">
+      <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--product">Producto</span>
+      <div className="quick-actions__receive-list-header-locations">
+        <span className="quick-actions__receive-list-header-cell">Bodega</span>
+        <span className="quick-actions__receive-list-header-cell">Division</span>
+        <span className="quick-actions__receive-list-header-cell">Subdivision</span>
+      </div>
+      <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--stat quick-actions__receive-list-header-cell--expected">
+        {quantityLabel}
+      </span>
+      <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--stat quick-actions__receive-list-header-cell--received">
+        Contados
+      </span>
+      <span className="quick-actions__receive-list-header-cell quick-actions__receive-list-header-cell--check" />
+    </div>
+  )
+
+  const renderGroupHead = ({ title, subtitle, allDone, someDone, onCheckAll, checkAllDisabled, extra }) => (
+    <div className="por-guardar__group-head">
+      <div className="por-guardar__group-copy">
+        <strong>{title}</strong>
+        {subtitle && <span>{subtitle}</span>}
+      </div>
+      <div className="por-guardar__group-actions">
+        <label className="quick-actions__receive-check quick-actions__receive-check--bulk">
+          <input
+            type="checkbox"
+            checked={allDone}
+            ref={(element) => { if (element) element.indeterminate = someDone && !allDone }}
+            onChange={(event) => { if (event.target.checked) void onCheckAll() }}
+            disabled={saving || checkAllDisabled}
+          />
+          <span>Marcar todo</span>
+        </label>
+        {extra}
+      </div>
+    </div>
   )
 
   return (
@@ -307,228 +631,186 @@ function PorGuardar({ token, darkMode, onSaved }) {
 
       {open && createPortal(
         <div
-          className={`por-guardar${darkMode ? ' por-guardar--dark' : ''}`}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Por ubicar"
+          className={`quick-actions__receive-overlay por-guardar__overlay ${darkMode ? 'dark' : 'light'}`}
           onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setOpen(false) }}
         >
-          <div className="por-guardar__dialog">
-            <header className="por-guardar__header">
-              <div>
-                <h3>Por ubicar</h3>
-                <p>
-                  Envíos que ya llegaron (importaciones y compras locales): están en el inventario entre paréntesis y ya se pueden vender.
-                  Cuenta <strong>lo que queda</strong> de cada producto (lo vendido ya se descontó) y guárdalo en su
-                  ubicación. Al terminar, lo que no aparezca queda como faltante en Inconvenientes.
-                </p>
+          <div
+            className={`quick-actions__receive-dialog por-guardar__dialog ${darkMode ? 'dark' : 'light'}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Por ubicar"
+          >
+            <header className="quick-actions__receive-head">
+              <div className="quick-actions__receive-head-columns">
+                <div className="quick-actions__receive-head-col por-guardar__head-copy">
+                  <h4>Por ubicar</h4>
+                  <p>
+                    Envíos que ya llegaron (importaciones y compras locales): ya se pueden vender. Cuenta{' '}
+                    <strong>lo que queda</strong> de cada producto, elige su ubicación y marca el check.
+                  </p>
+                </div>
               </div>
-              <button type="button" className="por-guardar__close" onClick={() => setOpen(false)} disabled={saving} aria-label="Cerrar">
-                <X size={18} />
+              <button
+                type="button"
+                className="quick-actions__receive-close"
+                onClick={() => setOpen(false)}
+                disabled={saving}
+                aria-label="Cerrar"
+              >
+                <X size={16} />
               </button>
             </header>
 
-            <div className="por-guardar__toolbar">
-              <div className="por-guardar__search">
-                <Search size={15} aria-hidden="true" />
-                <input
-                  type="text"
-                  placeholder="Buscar por codigo, nombre o documento"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-              </div>
-            </div>
+            <div className="quick-actions__receive-body">
+              {error && <BlockerNotice compact title={error} />}
 
-            {error && <BlockerNotice compact title={error} />}
-
-            <div className="por-guardar__body">
               {loading && isEmpty ? (
-                <p className="por-guardar__empty">Cargando...</p>
+                <p className="quick-actions__receive-loading">Cargando...</p>
               ) : isEmpty ? (
-                <p className="por-guardar__empty">No hay nada por ubicar. Cuando confirmes la llegada de un envío (importación o compra local), aparece aquí.</p>
+                <p className="quick-actions__receive-empty">
+                  No hay nada por ubicar. Cuando confirmes la llegada de un envío (importación o compra local), aparece aquí.
+                </p>
               ) : (
-                <>
+                <div className="quick-actions__receive-step quick-actions__receive-step--list">
+                  <div className="quick-actions__receive-search-bar">
+                    <div className="quick-actions__receive-search">
+                      <input
+                        type="text"
+                        placeholder="Buscar por código, descripción o documento..."
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                      />
+                      {query && (
+                        <button
+                          type="button"
+                          className="quick-actions__receive-search-clear"
+                          onClick={() => setQuery('')}
+                          aria-label="Limpiar búsqueda"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    {term && (
+                      <span className="quick-actions__receive-search-count">{matchCount} de {totalCount}</span>
+                    )}
+                  </div>
+
                   {visibleShipments.map((shipment) => {
                     const pendientes = shipment.items.filter((item) => item.pendiente > 0)
+                    const doneCount = shipment.items.length - pendientes.length
                     return (
-                      <section key={shipmentKey(shipment)} className="por-guardar__shipment">
-                        <header className="por-guardar__shipment-head">
-                          <div>
-                            <strong>{`${shipment.origen === 'Compra local' ? 'Compra local' : 'Importación'} #${shipment.codigo}`}</strong>
-                            <span>
-                              {[
-                                `Para ${shipment.sucursal_nombre}`,
-                                shipment.llegada_confirmada_en && `llegó ${formatDateTime(shipment.llegada_confirmada_en)}`,
-                              ].filter(Boolean).join(' · ')}
-                            </span>
-                          </div>
-                          <div className="por-guardar__shipment-actions">
-                            <label
-                              className="por-guardar__check-all"
-                              title="Marca todos: se guarda cada producto con la cantidad contada y la ubicacion indicada"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={!pendientes.length}
-                                onChange={(event) => { if (event.target.checked) void checkShipmentItems(shipment, pendientes) }}
-                                disabled={saving || !pendientes.length}
-                              />
-                              Marcar todo
-                            </label>
+                      <section key={shipmentKey(shipment)} className="por-guardar__group">
+                        {renderGroupHead({
+                          title: `${shipment.origen === 'Compra local' ? 'Compra local' : 'Importación'} #${shipment.codigo}`,
+                          subtitle: [
+                            `Para ${shipment.sucursal_nombre}`,
+                            shipment.llegada_confirmada_en && `llegó ${formatDateTime(shipment.llegada_confirmada_en)}`,
+                          ].filter(Boolean).join(' · '),
+                          allDone: !pendientes.length,
+                          someDone: doneCount > 0,
+                          onCheckAll: () => checkShipmentItems(shipment, pendientes),
+                          checkAllDisabled: !pendientes.length,
+                          extra: (
                             <button
                               type="button"
-                              className="por-guardar__btn por-guardar__btn--warn"
+                              className="quick-actions__receive-btn quick-actions__receive-btn--danger"
                               onClick={() => setFinishTarget(shipment)}
                               disabled={saving}
                               title="Terminar el conteo: lo que falta contar queda como faltante en Inconvenientes"
                             >
                               Terminar conteo
                             </button>
-                          </div>
-                        </header>
-                        <table className="por-guardar__table">
-                          <thead>
-                            <tr>
-                              <th>Producto</th>
-                              <th className="por-guardar__col-num">Enviado</th>
-                              <th className="por-guardar__col-num" title="Vendido desde el paréntesis antes de contarlo">Vendido</th>
-                              <th className="por-guardar__col-num">Guardado</th>
-                              <th className="por-guardar__col-qty">Contados</th>
-                              <th>Guardar en</th>
-                              <th className="por-guardar__col-action">Contado</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {shipment.visibleItems.map((item) => {
-                              const key = itemKey(shipment, item)
-                              const done = item.pendiente === 0
-                              const problem = done ? '' : problemFor(key, item.pendiente)
-                              return (
-                                <tr key={key} className={done ? 'is-done' : ''}>
-                                  <td>
-                                    <strong className="por-guardar__code">{item.producto_codigo}</strong>
-                                    <span className="por-guardar__name">{item.producto_nombre}</span>
-                                  </td>
-                                  <td className="por-guardar__col-num">{item.enviado}</td>
-                                  <td className="por-guardar__col-num">{item.vendido || 0}</td>
-                                  <td className="por-guardar__col-num">{item.guardado}</td>
-                                  {done ? (
-                                    <>
-                                      <td colSpan={2} className="por-guardar__done">
-                                        <CheckCircle2 size={15} aria-hidden="true" /> Contado completo
-                                      </td>
-                                      <td className="por-guardar__col-action">
-                                        <input type="checkbox" className="por-guardar__check" checked disabled aria-label={`${item.producto_codigo} contado`} />
-                                      </td>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <td className="por-guardar__col-qty">
-                                        <input
-                                          type="text"
-                                          inputMode="numeric"
-                                          value={drafts[key]?.cantidad ?? ''}
-                                          onChange={(event) => updateDraft(key, { cantidad: event.target.value.replace(/[^\d]/g, '') })}
-                                          aria-label={`Cuantas contaste de ${item.producto_codigo}`}
-                                        />
-                                        <small>{`quedan ${item.pendiente}`}</small>
-                                      </td>
-                                      <td>{renderLocation(key, shipment.sucursal_id, item.sugerida_subdivision_id)}</td>
-                                      <td className="por-guardar__col-action">
-                                        <input
-                                          type="checkbox"
-                                          className="por-guardar__check"
-                                          checked={checkingKeys.has(key)}
-                                          onChange={(event) => { if (event.target.checked) void checkShipmentItems(shipment, [item]) }}
-                                          disabled={saving}
-                                          title={problem || 'Marcar como contado: se guarda en esta ubicacion'}
-                                          aria-label={`Marcar ${item.producto_codigo} como contado`}
-                                        />
-                                      </td>
-                                    </>
-                                  )}
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
+                          ),
+                        })}
+                        {renderProgress({
+                          done: doneCount,
+                          total: shipment.items.length,
+                          unitsDone: shipment.items.reduce((sum, item) => sum + item.guardado + (item.vendido || 0), 0),
+                          unitsTotal: shipment.items.reduce((sum, item) => sum + item.enviado, 0),
+                          toStore: pendientes.length,
+                        })}
+                        <div className="quick-actions__receive-list">
+                          {renderListHeader('Quedan')}
+                          {shipment.visibleItems.map((item) => {
+                            const done = item.pendiente === 0
+                            const facts = [
+                              `Enviados ${item.enviado}`,
+                              item.vendido ? `vendidos ${item.vendido}` : '',
+                              item.guardado ? `guardados ${item.guardado}` : '',
+                            ].filter(Boolean).join(' · ')
+                            return renderRow({
+                              key: itemKey(shipment, item),
+                              row: item,
+                              done,
+                              pending: item.pendiente,
+                              quantityLabel: 'Quedan',
+                              stateText: done
+                                ? `Contado completo · ${facts}`
+                                : (item.vendido || item.guardado) ? `${facts} · quedan ${item.pendiente} por contar` : '',
+                              branchId: shipment.sucursal_id,
+                              onCheck: () => checkShipmentItems(shipment, [item]),
+                              checkLabel: `Marcar ${item.producto_codigo} como contado`,
+                            })
+                          })}
+                        </div>
                       </section>
                     )
                   })}
 
-                  {visiblePorUbicar.length > 0 && (
-                    <section className="por-guardar__shipment">
-                      <header className="por-guardar__shipment-head">
-                        <div>
-                          <strong>En POR UBICAR</strong>
-                          <span>Ya están en el inventario (ej. de un inconveniente); falta guardarlos en su ubicación.</span>
+                  {visiblePorUbicar.length > 0 && (() => {
+                    const pendientes = porUbicarRows.filter((row) => !row.done)
+                    const doneCount = porUbicarRows.length - pendientes.length
+                    return (
+                      <section className="por-guardar__group">
+                        {renderGroupHead({
+                          title: 'En POR UBICAR',
+                          subtitle: 'Ya están en el inventario (ej. de un inconveniente); falta guardarlos en su ubicación.',
+                          allDone: !pendientes.length,
+                          someDone: doneCount > 0,
+                          onCheckAll: () => checkPorUbicar(pendientes),
+                          checkAllDisabled: !pendientes.length,
+                        })}
+                        {renderProgress({
+                          done: doneCount,
+                          total: porUbicarRows.length,
+                          unitsDone: porUbicarRows.reduce((sum, row) => sum + row.guardado, 0),
+                          unitsTotal: porUbicarRows.reduce((sum, row) => sum + row.guardado + row.cantidad, 0),
+                          toStore: pendientes.length,
+                        })}
+                        <div className="quick-actions__receive-list">
+                          {renderListHeader('Por ubicar')}
+                          {visiblePorUbicar.map((row) => renderRow({
+                            key: row.key,
+                            row,
+                            done: row.done,
+                            pending: row.cantidad,
+                            quantityLabel: 'Por ubicar',
+                            stateText: row.done
+                              ? `Guardado · ${row.guardado} en su ubicación · ${row.sucursal_nombre}`
+                              : row.guardado ? `Guardados ${row.guardado} · quedan ${row.cantidad} en POR UBICAR · ${row.sucursal_nombre}` : '',
+                            branchId: row.sucursal_id,
+                            onCheck: () => checkPorUbicar([row]),
+                            checkLabel: `Guardar ${row.producto_codigo} en su ubicacion`,
+                          }))}
                         </div>
-                        <div className="por-guardar__shipment-actions">
-                          <label className="por-guardar__check-all" title="Marca todos: cada producto se mueve a la ubicacion indicada">
-                            <input
-                              type="checkbox"
-                              checked={false}
-                              onChange={(event) => { if (event.target.checked) void checkPorUbicar(visiblePorUbicar) }}
-                              disabled={saving}
-                            />
-                            Marcar todo
-                          </label>
-                        </div>
-                      </header>
-                      <table className="por-guardar__table">
-                        <thead>
-                          <tr>
-                            <th>Producto</th>
-                            <th>Sucursal</th>
-                            <th className="por-guardar__col-qty">Cantidad</th>
-                            <th>Guardar en</th>
-                            <th className="por-guardar__col-action">Guardado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {visiblePorUbicar.map((row) => {
-                            const key = porUbicarKey(row)
-                            const problem = problemFor(key, row.cantidad)
-                            return (
-                              <tr key={key}>
-                                <td>
-                                  <strong className="por-guardar__code">{row.producto_codigo}</strong>
-                                  <span className="por-guardar__name">{row.producto_nombre}</span>
-                                </td>
-                                <td>{row.sucursal_nombre}</td>
-                                <td className="por-guardar__col-qty">
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={drafts[key]?.cantidad ?? ''}
-                                    onChange={(event) => updateDraft(key, { cantidad: event.target.value.replace(/[^\d]/g, '') })}
-                                    aria-label={`Cantidad a guardar de ${row.producto_codigo}`}
-                                  />
-                                  <small>de {row.cantidad}</small>
-                                </td>
-                                <td>{renderLocation(key, row.sucursal_id, row.sugerida_subdivision_id)}</td>
-                                <td className="por-guardar__col-action">
-                                  <input
-                                    type="checkbox"
-                                    className="por-guardar__check"
-                                    checked={checkingKeys.has(key)}
-                                    onChange={(event) => { if (event.target.checked) void checkPorUbicar([row]) }}
-                                    disabled={saving}
-                                    title={problem || 'Marcar: se mueve de POR UBICAR a esta ubicacion'}
-                                    aria-label={`Guardar ${row.producto_codigo} en su ubicacion`}
-                                  />
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </section>
-                  )}
-                </>
+                      </section>
+                    )
+                  })()}
+                </div>
               )}
             </div>
+
+            <footer className="quick-actions__receive-actions">
+              <button
+                type="button"
+                className="quick-actions__receive-btn quick-actions__receive-btn--cancel"
+                onClick={() => setOpen(false)}
+                disabled={saving}
+              >
+                Cerrar
+              </button>
+            </footer>
           </div>
         </div>,
         document.body

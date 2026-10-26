@@ -1,356 +1,8 @@
-/* Paso 2 de la recepcion: guardar lo que esta en POR UBICAR. */
+/* Paso 2 de la recepcion: guardar lo que esta en POR UBICAR. El dialogo usa
+   los estilos de la recepcion de traslados (quick-actions__receive-*). */
 .por-guardar__trigger.has-items .quick-actions__pending-shipments-count {
   background: #d97706;
   color: #fff;
-}
-
-.por-guardar {
-  position: fixed;
-  inset: 0;
-  z-index: 2300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: rgba(15, 23, 42, 0.46);
-}
-
-.por-guardar__dialog {
-  width: min(1100px, 100%);
-  max-height: min(92vh, 900px);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 18px 20px;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: var(--modal-color, #fff);
-  color: var(--color-text-primary);
-  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.3);
-}
-
-.por-guardar__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.por-guardar__header h3 {
-  margin: 0 0 4px;
-  font-size: 1.15rem;
-}
-
-.por-guardar__header p {
-  margin: 0;
-  font-size: 0.88rem;
-  line-height: 1.45;
-  color: var(--color-text-secondary);
-}
-
-.por-guardar__close {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.por-guardar__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.por-guardar__search {
-  flex: 1 1 260px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-}
-
-.por-guardar__search input {
-  flex: 1;
-  min-width: 0;
-  height: 36px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-}
-
-.por-guardar__branch {
-  height: 38px;
-  padding: 0 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-}
-
-.por-guardar__body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.por-guardar__empty {
-  margin: 0;
-  padding: 28px 16px;
-  text-align: center;
-  color: var(--color-text-secondary);
-}
-
-.por-guardar__table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.88rem;
-}
-
-.por-guardar__table th,
-.por-guardar__table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--color-border);
-  text-align: left;
-  vertical-align: middle;
-}
-
-.por-guardar__table th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--modal-color, #fff);
-  font-size: 0.74rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-text-secondary);
-}
-
-.por-guardar__table tr:last-child td {
-  border-bottom: 0;
-}
-
-.por-guardar__table tr.is-selected td {
-  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
-}
-
-.por-guardar__col-check {
-  width: 34px;
-}
-
-.por-guardar__col-qty {
-  width: 110px;
-  white-space: nowrap;
-}
-
-.por-guardar__col-qty input {
-  width: 56px;
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: center;
-}
-
-.por-guardar__col-qty small {
-  margin-left: 6px;
-  color: var(--color-text-secondary);
-}
-
-.por-guardar__col-action {
-  width: 96px;
-  text-align: right !important;
-}
-
-.por-guardar__code {
-  display: block;
-}
-
-.por-guardar__name {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-}
-
-.por-guardar__hint {
-  display: block;
-  margin-top: 3px;
-  font-size: 0.74rem;
-  color: var(--color-text-secondary);
-}
-
-.por-guardar__picker {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  min-width: 220px;
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
-  text-align: left;
-  cursor: pointer;
-}
-
-.por-guardar__picker span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.por-guardar__picker.is-empty {
-  border-style: dashed;
-  color: var(--color-text-secondary);
-}
-
-.por-guardar__picker-panel {
-  position: fixed;
-  z-index: 2400;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: var(--modal-color, #fff);
-  color: var(--color-text-primary);
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.22);
-  overflow: hidden;
-}
-
-.por-guardar__picker-search {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.por-guardar__picker-search input {
-  flex: 1;
-  min-width: 0;
-  height: 30px;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
-}
-
-.por-guardar__picker-results {
-  overflow: auto;
-}
-
-.por-guardar__picker-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 12px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
-  text-align: left;
-  cursor: pointer;
-}
-
-.por-guardar__picker-option:hover,
-.por-guardar__picker-option.is-selected {
-  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-}
-
-.por-guardar__picker-empty {
-  margin: 0;
-  padding: 10px 12px;
-  font-size: 0.85rem;
-  color: var(--color-text-secondary);
-}
-
-.por-guardar__btn {
-  height: 34px;
-  padding: 0 14px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.por-guardar__btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.por-guardar__btn--primary {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-  color: #fff;
-}
-
-.por-guardar__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 0.85rem;
-  color: var(--color-text-secondary);
-}
-
-.por-guardar--dark {
-  background: rgba(2, 6, 23, 0.75);
-}
-
-.por-guardar--dark .por-guardar__dialog,
-.por-guardar--dark .por-guardar__table th {
-  background: var(--color-surface-darker);
-  color: var(--color-text-dark);
-}
-
-body.app-theme-dark .por-guardar__picker-panel {
-  background: var(--color-surface-darker);
-  color: var(--color-text-dark);
-}
-
-@media (max-width: 720px) {
-  .por-guardar {
-    padding: 8px;
-  }
-
-  .por-guardar__dialog {
-    max-height: 96vh;
-    padding: 14px;
-  }
-
-  .por-guardar__picker {
-    min-width: 160px;
-  }
 }
 
 .por-guardar__trigger:not(.has-items) .quick-actions__pending-shipments-count {
@@ -358,69 +10,60 @@ body.app-theme-dark .por-guardar__picker-panel {
   color: #fff;
 }
 
-/* Un bloque por envio que llego. */
-.por-guardar__body {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding: 12px;
+.quick-actions__receive-overlay.por-guardar__overlay {
+  z-index: 2300;
 }
 
-.por-guardar__shipment {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  overflow: hidden;
+.quick-actions__receive-dialog.por-guardar__dialog {
+  color: var(--color-text-primary);
 }
 
-.por-guardar__shipment-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 10px 12px;
-  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
-  border-bottom: 1px solid var(--color-border);
+.por-guardar__head-copy p {
+  white-space: normal;
 }
 
-.por-guardar__shipment-head strong {
-  display: block;
-  font-size: 0.95rem;
-}
-
-.por-guardar__shipment-head span {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
-}
-
-.por-guardar__shipment-actions {
-  display: flex;
+/* Un bloque por envio que llego (y otro para lo que ya estaba en POR UBICAR). */
+.por-guardar__group {
+  display: grid;
   gap: 8px;
 }
 
-.por-guardar__col-num {
-  width: 90px;
-  text-align: center !important;
+.por-guardar__group + .por-guardar__group {
+  margin-top: 14px;
 }
 
-.por-guardar__table tr.is-done td {
-  opacity: 0.7;
+.por-guardar__group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.por-guardar__done {
-  color: #15803d;
-  font-weight: 600;
+.por-guardar__group-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
-.por-guardar__done svg {
-  vertical-align: -3px;
-  margin-right: 4px;
+.por-guardar__group-copy strong {
+  font-size: 1rem;
+  font-weight: 800;
 }
 
-.por-guardar__btn--warn {
-  border-color: color-mix(in srgb, #d97706 55%, transparent);
-  color: #b45309;
+.por-guardar__group-copy span {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.por-guardar__group-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.quick-actions__receive-dialog.dark .por-guardar__group-copy strong {
+  color: var(--color-text-dark);
 }
 
 .por-guardar__finish-list {
@@ -428,49 +71,4 @@ body.app-theme-dark .por-guardar__picker-panel {
   padding-left: 18px;
   font-size: 0.88rem;
   line-height: 1.6;
-}
-
-.por-guardar--dark .por-guardar__btn {
-  color: var(--color-text-dark);
-}
-
-.por-guardar--dark .por-guardar__btn--primary {
-  color: #fff;
-}
-
-/* Check por fila, como al recibir un envio: marcarlo guarda de una vez. */
-.por-guardar__check,
-.por-guardar__check-all input {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  accent-color: var(--color-primary);
-  cursor: pointer;
-}
-
-.por-guardar__check:disabled,
-.por-guardar__check-all input:disabled {
-  cursor: default;
-}
-
-.por-guardar__check-all {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  font-size: 0.82rem;
-  font-weight: 700;
-  cursor: pointer;
-  user-select: none;
-}
-
-.por-guardar__col-action .por-guardar__check {
-  display: inline-block;
-  vertical-align: middle;
-}
-
-.por-guardar--dark .por-guardar__check-all {
-  border-color: var(--color-border-dark);
 }
