@@ -4822,49 +4822,60 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                   </div>
                 ) : (
                   <>
-                    {/* Izquierda: los que coinciden con algo del catálogo y su suma.
-                        Derecha: los que no coinciden con nada. */}
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                      {matchedCount > 0 && (
-                        <span {...reviewGroupChipProps('vinculados', 'los vinculados al catálogo')} title="Clic: ir a los vinculados al catálogo" style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                          {matchedCount} vinculado{matchedCount !== 1 ? 's' : ''} al catálogo
-                        </span>
-                      )}
-                      {suggestedCount > 0 && (
-                        <span
-                          {...reviewGroupChipProps('sugeridos', 'los productos con código sugerido')}
-                          style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde047', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
-                          title="Clic: ir a ellos."
-                        >
-                          {suggestedCount} coinciden solo por OEM
-                        </span>
-                      )}
-                      {conflictoRows.length > 0 && (
-                        <span
-                          {...reviewGroupChipProps('otraCasa', 'los que ya existen en otra casa')}
-                          style={{ background: '#ffedd5', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
-                          title="Clic: ir a ellos."
-                        >
-                          {conflictoRows.length} coinciden por referencia o código
-                        </span>
-                      )}
+                    {/* Dos grupos: los encontrados en el catálogo (con su total arriba)
+                        y los no encontrados. */}
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
                       {coincidenTotal > 0 && (
-                        <span
-                          style={{ background: 'var(--color-primary)', color: 'var(--color-button-primary, #fff)', borderRadius: 20, padding: '2px 12px', fontSize: 'var(--font-size-sm)', fontWeight: 700 }}
-                          title="Vinculados al catálogo + coinciden solo por OEM + coinciden por referencia o código"
-                        >
-                          = {coincidenTotal} con coincidencia
-                        </span>
-                      )}
-                      {referenciaConflictCount > 0 && (
-                        <span {...reviewGroupChipProps('referencia', 'los que tienen referencia diferente')} title="Clic: ir a los que tienen referencia diferente" style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                          {referenciaConflictCount} con referencia diferente
-                        </span>
+                        <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }}>
+                          <span
+                            style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }}
+                            title="Vinculados al catálogo + coinciden solo por OEM + coinciden por referencia o código"
+                          >
+                            {coincidenTotal} encontrado{coincidenTotal !== 1 ? 's' : ''}
+                          </span>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {matchedCount > 0 && (
+                              <span {...reviewGroupChipProps('vinculados', 'los vinculados al catálogo')} title="Clic: ir a los vinculados al catálogo" style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                                {matchedCount} vinculado{matchedCount !== 1 ? 's' : ''} al catálogo
+                              </span>
+                            )}
+                            {suggestedCount > 0 && (
+                              <span
+                                {...reviewGroupChipProps('sugeridos', 'los productos con código sugerido')}
+                                style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde047', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
+                                title="Clic: ir a ellos."
+                              >
+                                {suggestedCount} coinciden solo por OEM
+                              </span>
+                            )}
+                            {conflictoRows.length > 0 && (
+                              <span
+                                {...reviewGroupChipProps('otraCasa', 'los que ya existen en otra casa')}
+                                style={{ background: '#ffedd5', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
+                                title="Clic: ir a ellos."
+                              >
+                                {conflictoRows.length} coinciden por referencia o código
+                              </span>
+                            )}
+                            {referenciaConflictCount > 0 && (
+                              <span {...reviewGroupChipProps('referencia', 'los que tienen referencia diferente')} title="Clic: ir a los que tienen referencia diferente (son parte de los vinculados)" style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                                {referenciaConflictCount} con referencia diferente
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       )}
                       {sinCoincidenciaCount > 0 && (
-                        <span {...reviewGroupChipProps('sinCatalogo', 'los productos sin catálogo')} title="Clic: ir a los productos sin catálogo" style={{ marginLeft: 'auto', background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                          {sinCoincidenciaCount} sin catálogo
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }}>
+                          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                            {sinCoincidenciaCount} no encontrado{sinCoincidenciaCount !== 1 ? 's' : ''}
+                          </span>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <span {...reviewGroupChipProps('sinCatalogo', 'los productos sin catálogo')} title="Clic: ir a los productos sin catálogo" style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                              {sinCoincidenciaCount} sin catálogo
+                            </span>
+                          </div>
+                        </div>
                       )}
                     </div>
 
