@@ -94,12 +94,63 @@
 }
 
 .create-salida__cantidad-faltante {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
   color: var(--color-error-text);
   font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.create-salida__cantidad-faltante:hover {
+  text-decoration-style: solid;
 }
 
 .dashboard-shell.dark .create-salida__cantidad-faltante {
   color: var(--color-error-text-dark);
+}
+
+.table-cell-hover-card.create-salida__faltante-card {
+  pointer-events: auto;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+}
+
+.create-salida__faltante-card-item + .create-salida__faltante-card-item {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color, rgba(148, 163, 184, 0.2));
+}
+
+.create-salida__faltante-card-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.create-salida__faltante-card-solucion {
+  font-weight: 700;
+  color: #2e7d32;
+}
+
+.create-salida__faltante-card-solucion--pendiente {
+  color: var(--color-error-text);
+}
+
+.dashboard-shell.dark .create-salida__faltante-card-solucion {
+  color: #81c784;
+}
+
+.dashboard-shell.dark .create-salida__faltante-card-solucion--pendiente {
+  color: var(--color-error-text-dark);
+}
+
+.create-salida__faltante-card-meta {
+  font-size: 0.8rem;
+  opacity: 0.7;
 }
 
 .create-user__locations-row.create-salida__row--insufficient {

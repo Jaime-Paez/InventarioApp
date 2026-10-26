@@ -796,19 +796,62 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
 
     def get_faltantes_traslado(self, obj):
         # Unidades que no llegaron al recibir el traslado, por producto, para
-        # mostrar "recibido (faltante)" en el detalle de la entrada. Solo en
-        # el detalle: en el listado seria una consulta extra por fila.
+        # mostrar "recibido (faltante)" en el detalle de la entrada, junto con
+        # como se soluciono cada faltante. Solo en el detalle: en el listado
+        # seria una consulta extra por fila.
         view = self.context.get("view")
         if getattr(view, "action", None) != "retrieve":
             return {}
-        faltantes = {}
-        for producto_id, cantidad in obj.inconvenientes_traslado.filter(
+        resoluciones = {
+            TrasladoInconveniente.Resoluciones.SUMAR_SOLICITANTE: "Se sumó a la sucursal destino",
+            TrasladoInconveniente.Resoluciones.SUMAR_PROVEEDORA: "Se sumó a la sucursal proveedora",
+            TrasladoInconveniente.Resoluciones.PERDIDO: "Desaparecido",
+            TrasladoInconveniente.Resoluciones.RESTAR_PROVEEDORA: "Se restó de la sucursal proveedora",
+            TrasladoInconveniente.Resoluciones.SIN_CAMBIOS: "Sin cambios de inventario",
+            TrasladoInconveniente.Resoluciones.DEVOLVER_PROVEEDORA: "Se devolvió a la sucursal proveedora",
+        }
+        inconvenientes = obj.inconvenientes_traslado.filter(
             tipo=TrasladoInconveniente.Tipos.FALTANTE,
             producto_id__isnull=False,
-        ).values_list("producto_id", "cantidad_faltante"):
-            key = str(producto_id)
-            faltantes[key] = faltantes.get(key, 0) + int(cantidad or 0)
-        return {key: value for key, value in faltantes.items() if value > 0}
+            cantidad_faltante__gt=0,
+        ).select_related(
+            "sucursal_resolucion",
+            "subdivision_resolucion__division",
+            "resuelto_por",
+        ).order_by("id")
+        faltantes = {}
+        for inconveniente in inconvenientes:
+            entry = faltantes.setdefault(
+                str(inconveniente.producto_id), {"cantidad": 0, "detalles": []}
+            )
+            cantidad = int(inconveniente.cantidad_faltante or 0)
+            entry["cantidad"] += cantidad
+            pendiente = inconveniente.estado == TrasladoInconveniente.Estados.PENDIENTE
+            resuelto_por = inconveniente.resuelto_por
+            entry["detalles"].append(
+                {
+                    "cantidad": cantidad,
+                    "pendiente": pendiente,
+                    "solucion": (
+                        "Pendiente de solución"
+                        if pendiente
+                        else resoluciones.get(inconveniente.resolucion)
+                        or inconveniente.get_estado_display()
+                    ),
+                    "sucursal": str(inconveniente.sucursal_resolucion or "") if not pendiente else "",
+                    "ubicacion": str(inconveniente.subdivision_resolucion or "") if not pendiente else "",
+                    "nota": str(inconveniente.motivo or "").strip(),
+                    "resuelto_por": (
+                        (resuelto_por.get_full_name() or resuelto_por.get_username()).strip()
+                        if resuelto_por and not pendiente
+                        else ""
+                    ),
+                    "fecha": (
+                        inconveniente.updated_at.date().isoformat() if not pendiente else ""
+                    ),
+                }
+            )
+        return faltantes
 
     class Meta:
         model = MovimientoInventario

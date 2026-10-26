@@ -5,6 +5,7 @@ import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
+import { getAppPortalRoot } from '../../../utils/portalRoot'
 import { formatDate } from '../../../utils/dateFormat'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
@@ -466,6 +467,40 @@ function EntradaDetails({
     [details, productSearch]
   )
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
+  // Tarjeta con la solucion de los faltantes de un producto (clic en el "(n)" rojo).
+  const [faltantePopover, setFaltantePopover] = useState(null)
+  const openFaltantePopover = useCallback((event, detail) => {
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    setFaltantePopover((current) =>
+      current?.uid === detail.uid
+        ? null
+        : {
+            uid: detail.uid,
+            top: rect.bottom + 6,
+            left: Math.max(8, Math.min(rect.left - 120, window.innerWidth - 328)),
+            codigo: detail.productoCodigo,
+            detalles: detail.faltanteDetalles || [],
+          }
+    )
+  }, [])
+  useEffect(() => {
+    if (!faltantePopover) return undefined
+    const close = () => setFaltantePopover(null)
+    const handleKey = (event) => {
+      if (event.key === 'Escape') close()
+    }
+    document.addEventListener('mousedown', close)
+    document.addEventListener('keydown', handleKey)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('keydown', handleKey)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [faltantePopover])
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
   const [showProductDropdown, setShowProductDropdown] = useState(false)
@@ -1390,7 +1425,8 @@ function EntradaDetails({
       const descuentoPorcentaje = parseNumber(detalle?.descuento_porcentaje)
       const productoPrecioBD = parseNumber(detalle?.precio_anterior)
       const productoReferencia = product?.referencia ?? ''
-      const cantidadFaltante = parseIntValue(faltantesTraslado[apiProductId || String(product?.id ?? '')])
+      const faltante = faltantesTraslado[apiProductId || String(product?.id ?? '')]
+      const cantidadFaltante = parseIntValue(faltante?.cantidad)
 
       return {
         uid: `det-${Math.random().toString(36).slice(2, 8)}`,
@@ -1407,6 +1443,7 @@ function EntradaDetails({
         descuentoPorcentaje: Number.isFinite(descuentoPorcentaje) ? descuentoPorcentaje : null,
         productoPrecioBD: Number.isFinite(productoPrecioBD) ? productoPrecioBD : null,
         cantidadFaltante: Number.isFinite(cantidadFaltante) && cantidadFaltante > 0 ? cantidadFaltante : 0,
+        faltanteDetalles: Array.isArray(faltante?.detalles) ? faltante.detalles : [],
       }
     })
 
@@ -3583,12 +3620,18 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                               >
                                 {detail.cantidad}
                                 {detail.cantidadFaltante > 0 && (
-                                  <span
-                                    className="create-salida__cantidad-faltante"
-                                    title={`Faltaron ${detail.cantidadFaltante} al recibir el traslado`}
-                                  >
-                                    {' '}({detail.cantidadFaltante})
-                                  </span>
+                                  <>
+                                    {' '}
+                                    <button
+                                      type="button"
+                                      className="create-salida__cantidad-faltante"
+                                      title="Ver como se soluciono el faltante"
+                                      onMouseDown={(event) => event.stopPropagation()}
+                                      onClick={(event) => openFaltantePopover(event, detail)}
+                                    >
+                                      ({detail.cantidadFaltante})
+                                    </button>
+                                  </>
                                 )}
                               </span>
                             )}
@@ -4162,6 +4205,38 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
         />
       </div>
       {cellHoverPortal}
+      {faltantePopover && createPortal(
+        <div
+          className="table-cell-hover-card create-salida__faltante-card"
+          style={{ top: faltantePopover.top, left: faltantePopover.left }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <div className="table-cell-hover-card__title">
+            Faltante {faltantePopover.codigo ? `de ${faltantePopover.codigo}` : ''}
+          </div>
+          {faltantePopover.detalles.map((item, index) => (
+            <div key={index} className="table-cell-hover-card__row create-salida__faltante-card-item">
+              <div className="create-salida__faltante-card-head">
+                <strong>{item.cantidad} u.</strong>
+                <span
+                  className={`create-salida__faltante-card-solucion${item.pendiente ? ' create-salida__faltante-card-solucion--pendiente' : ''}`}
+                >
+                  {item.solucion}
+                </span>
+              </div>
+              {item.sucursal && <div>Sucursal: {item.sucursal}</div>}
+              {item.ubicacion && <div>Ubicación: {item.ubicacion}</div>}
+              {item.nota && <div>{item.pendiente ? 'Novedad' : 'Nota'}: {item.nota}</div>}
+              {(item.resuelto_por || item.fecha) && (
+                <div className="create-salida__faltante-card-meta">
+                  {[item.resuelto_por, item.fecha ? formatDate(item.fecha) : ''].filter(Boolean).join(' · ')}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>,
+        getAppPortalRoot()
+      )}
     </div>
   )
 }
