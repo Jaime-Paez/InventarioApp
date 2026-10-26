@@ -6909,6 +6909,22 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   )
 }
 
+// Notas automaticas en el comentario de un producto de la verificacion: se
+// agregan al quitarlo/agregarlo (a mano o al subir el Excel) sin borrar lo
+// que ya tuviera escrito, y se sacan al restaurarlo.
+const NOTA_QUITADO_VERIFICACION = 'Borrado de la verificación'
+const NOTA_AGREGADO_VERIFICACION = 'Agregado en la verificación'
+const withNotaVerificacion = (comentario, nota) => {
+  const actual = String(comentario || '').trim()
+  if (actual.startsWith(nota)) return actual
+  return actual ? `${nota} - ${actual}` : nota
+}
+const withoutNotaVerificacion = (comentario, nota) => {
+  const actual = String(comentario || '').trim()
+  if (!actual.startsWith(nota)) return actual
+  return actual.slice(nota.length).replace(/^\s*-\s*/, '').trim()
+}
+
 function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions }) {
   // Buscador de productos de esta importacion.
   const [productSearch, setProductSearch] = useState('')
@@ -7205,12 +7221,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '',
       }
       if (d.producto?.id) {
-        return { _key: String(d.producto.id), _detalleId: d.id ?? null, orden: d.orden, producto: d.producto, cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed }
+        return { _key: String(d.producto.id), _detalleId: d.id ?? null, orden: d.orden, producto: d.producto, cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, quitado: Boolean(d.quitado), precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed }
       }
       return {
         _key: 'sc_' + (d.id ?? i), _detalleId: d.id ?? null, orden: d.orden, producto: null,
         codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '', referencia: d.referencia || '',
-        cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed,
+        cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, quitado: Boolean(d.quitado), precio_pvp_snapshot: d.precio_pvp_snapshot, ...confirmed,
       }
     })
     setDetails(loaded)
@@ -7309,14 +7325,30 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     return () => clearTimeout(productTimerRef.current)
   }, [open, productQuery, searchProducts, showProductDropdown])
 
+  // Lo agregado a mano en la verificacion va al final del orden.
+  const nextOrden = (list) => list.reduce((max, d) => Math.max(max, Number(d.orden) || 0), 0) + 1
+
   const handleAddProduct = (product, cantidad = '', comentario = '') => {
     const n = Number(cantidad)
     if (!Number.isFinite(n) || n <= 0) return
-    if (details.some((d) => d.producto?.id && String(d.producto.id) === String(product.id))) {
+    const existing = details.find((d) => d.producto?.id && String(d.producto.id) === String(product.id))
+    if (existing) {
+      // Si estaba quitado de la verificacion, agregarlo de nuevo lo restaura.
+      if (isVerificar && existing.quitado) {
+        handleToggleQuitado(existing._key)
+        setDetailDraft({ producto: null, cantidad: '', comentario: '' })
+        jumpToDetailRow(existing._key)
+        return
+      }
       toastRef.current?.show({ severity: 'warn', summary: 'Advertencia', detail: 'Este producto ya fue agregado.', life: 3000 })
       return
     }
-    setDetails((prev) => [...prev, { _key: String(product.id), producto: product, cantidad: String(cantidad).trim(), comentario: String(comentario || '').trim() }])
+    const nota = String(comentario || '').trim()
+    setDetails((prev) => [...prev, {
+      _key: String(product.id), producto: product, cantidad: String(cantidad).trim(),
+      comentario: isVerificar ? withNotaVerificacion(nota, NOTA_AGREGADO_VERIFICACION) : nota,
+      ...(isVerificar ? { cantidad_aproximada: String(cantidad).trim(), orden: nextOrden(prev) } : {}),
+    }])
     setProductQuery('')
     setProductOptions([])
     setShowProductDropdown(false)
@@ -7329,6 +7361,17 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     if (invalidQtyKeys.has(_key)) {
       setInvalidQtyKeys((prev) => { const next = new Set(prev); next.delete(_key); return next })
     }
+  }
+
+  // Verificacion: quitar un producto no lo borra, lo deja en rojo con la nota
+  // en el comentario (se puede restaurar); al pedir confirmacion ya no va.
+  const handleToggleQuitado = (_key) => {
+    setDetails((prev) => prev.map((item) => {
+      if (item._key !== _key) return item
+      return item.quitado
+        ? { ...item, quitado: false, comentario: withoutNotaVerificacion(item.comentario, NOTA_QUITADO_VERIFICACION) }
+        : { ...item, quitado: true, comentario: withNotaVerificacion(item.comentario, NOTA_QUITADO_VERIFICACION) }
+    }))
   }
 
   const handleComentarioChange = (_key, value) => {
@@ -7435,7 +7478,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       referencia: nuevoProductoDraft.referencia.trim(),
       precio: nuevoProductoDraft.precio !== '' ? Number(nuevoProductoDraft.precio) : null,
       cantidad: String(nuevoProductoDraft.cantidad || '0'),
-      comentario: nuevoProductoDraft.comentario.trim(),
+      comentario: isVerificar ? withNotaVerificacion(nuevoProductoDraft.comentario, NOTA_AGREGADO_VERIFICACION) : nuevoProductoDraft.comentario.trim(),
+      ...(isVerificar ? {
+        cantidad_aproximada: String(nuevoProductoDraft.cantidad || ''),
+        precio_estimado: nuevoProductoDraft.precio !== '' ? String(Math.round(Number(nuevoProductoDraft.precio) * 100)) : '',
+        orden: nextOrden(prev),
+      } : {}),
     }])
     setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
     setNuevoProductoErrors({})
@@ -7454,7 +7502,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     const badKeys = new Set(
       imp?.estado === 'borrador'
         ? []
-        : itemsToSubmit.filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 }).map((item) => item._key)
+        : itemsToSubmit.filter((item) => { const n = Number(item.cantidad || 0); return !item.quitado && (!Number.isFinite(n) || n <= 0) }).map((item) => item._key)
     )
     if (badKeys.size > 0) {
       setInvalidQtyKeys(badKeys)
@@ -7473,6 +7521,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           : null,
         cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
         seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
+        quitado: Boolean(item.quitado),
       } : {
         // Sugerencia: se conserva el PVP aprox. (el backend borra y vuelve a
         // crear los detalles; sin reenviarlo se perdia al guardar).
@@ -7577,7 +7626,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       // original subido (item.orden), no por el orden en que quedaron
       // guardados los detalles -- asi el Excel siempre sale en el mismo
       // orden sin importar desde que paso de la importacion se descargue.
-      const sortedDetails = [...details].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
+      // Los quitados en la verificacion no salen: si se agregan de nuevo al
+      // Excel (con su código) se restauran al subirlo.
+      const sortedDetails = details
+        .filter((item) => !(isVerificar && item.quitado))
+        .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
       const rows = sortedDetails.map((item) => {
         const codigo = item.producto?.codigo || item.codigo || 'SIN CATÁLOGO'
         const nombre = item.producto?.nombre || item.nombre || ''
@@ -7729,48 +7782,80 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       }
       const fileHeaders = rawRows[0].map((h) => String(h || '').trim())
       const keyIdx = fileHeaders.indexOf('_key')
+      const codigoIdx = fileHeaders.indexOf('Código')
+      const nombreIdx = fileHeaders.indexOf('Descripción')
+      const oemIdx = fileHeaders.indexOf('OEM')
+      const refIdx = fileHeaders.indexOf('Referencia')
+      const cantSugIdx = fileHeaders.indexOf('Cantidad')
       const precioIdx = fileHeaders.indexOf(isVerificar ? 'Precio est.' : 'Precio conf.')
       const cantIdx = fileHeaders.indexOf(isVerificar ? 'Cant. aprox.' : 'Cant. conf.')
       const comentIdx = fileHeaders.indexOf('Comentario')
       const ordenIdx = fileHeaders.indexOf('Orden')
-      if (keyIdx === -1 || precioIdx === -1 || cantIdx === -1 || ordenIdx === -1) {
+      if (codigoIdx === -1 || precioIdx === -1 || cantIdx === -1) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no corresponde a esta importación. Descarga el Excel desde este modal.', life: 4500 })
         return
       }
-      const dataRows = rawRows.slice(1).filter((row) => row.some((c) => c !== ''))
-      const keyToRow = {}
-      dataRows.forEach((row) => {
-        const k = String(row[keyIdx] || '').trim()
-        if (k) keyToRow[k] = row
+      const cellText = (row, idx) => (idx === -1 ? '' : String(row[idx] ?? '').trim())
+      const dataRows = rawRows.slice(1).filter((row) => row.some((c) => String(c ?? '').trim() !== ''))
+
+      // Las filas del Excel se pueden reordenar (o filtrar/ordenar por
+      // cualquier columna) y se pueden agregar productos nuevos: cada fila se
+      // empareja con su producto por _key (si el código sigue coincidiendo)
+      // o, si no, por código. Las que no corresponden a ningún producto del
+      // listado se agregan como nuevas -- al guardar, el backend las vincula
+      // al producto del catálogo con ese código o lo crea.
+      const current = detailsRef.current
+      const codeOf = (item) => String(item.producto?.codigo || item.codigo || '').trim().toLowerCase()
+      const byKey = new Map(current.map((item) => [item._key, item]))
+      const used = new Set()
+      const matched = []
+      const nuevos = []
+      const repetidos = []
+      const sinCantidad = []
+      dataRows.forEach((row, rowIdx) => {
+        const fileCode = cellText(row, codigoIdx)
+        const fileCodeLc = fileCode.toLowerCase() === 'sin catálogo' ? '' : fileCode.toLowerCase()
+        const ordenRaw = cellText(row, ordenIdx)
+        const fileOrden = ordenRaw !== '' && Number.isFinite(Number(ordenRaw)) ? Number(ordenRaw) : null
+        let item = byKey.get(cellText(row, keyIdx))
+        if (item && (used.has(item._key) || (fileCodeLc && codeOf(item) !== fileCodeLc))) item = null
+        if (!item && fileCodeLc) item = current.find((d) => !used.has(d._key) && codeOf(d) === fileCodeLc) || null
+        if (item) {
+          used.add(item._key)
+          matched.push({ item, row, rowIdx, fileOrden })
+          return
+        }
+        if (fileCodeLc && current.some((d) => codeOf(d) === fileCodeLc)) { repetidos.push(fileCode); return }
+        if (fileCodeLc && nuevos.some((n) => n.codigo.toLowerCase() === fileCodeLc)) { repetidos.push(fileCode); return }
+        const nombre = cellText(row, nombreIdx)
+        const oem = cellText(row, oemIdx)
+        const referencia = cellText(row, refIdx)
+        if (!fileCodeLc && !nombre && !oem && !referencia) return
+        const cantSug = parseInt(cellText(row, cantSugIdx), 10)
+        const cantEdit = parseInt(cellText(row, cantIdx), 10)
+        const cantidad = cantSug > 0 ? cantSug : cantEdit > 0 ? cantEdit : 0
+        if (cantidad <= 0) { sinCantidad.push(fileCode || nombre || referencia || oem); return }
+        nuevos.push({
+          codigo: fileCodeLc ? fileCode : '', row, rowIdx, fileOrden,
+          item: {
+            _key: 'manual_' + Date.now() + '_' + rowIdx + '_' + Math.floor(Math.random() * 10000),
+            producto: null, codigo: fileCodeLc ? fileCode : '', nombre, oem, referencia,
+            cantidad: String(cantidad), comentario: '',
+            precio_estimado: '', cantidad_aproximada: '', precio_confirmado: '', cantidad_confirmada: '',
+          },
+        })
       })
-      const missing = detailsRef.current.filter((item) => !keyToRow[item._key])
-      if (missing.length > 0) {
-        toastRef.current?.show({ severity: 'error', summary: 'Error', detail: `El Excel no corresponde: faltan ${missing.length} producto(s). Descarga de nuevo desde este modal.`, life: 4500 })
+      if (sinCantidad.length > 0) {
+        toastRef.current?.show({ severity: 'error', summary: 'Falta la cantidad', detail: `Los productos nuevos necesitan una cantidad mayor a 0 en "Cantidad" o "${isVerificar ? 'Cant. aprox.' : 'Cant. conf.'}": ${sinCantidad.join(', ')}. No se cargó el Excel.`, life: 6000 })
         return
       }
-      // El orden de cada producto lo fija el Excel de sugerencia original y
-      // nunca debe cambiar en pasos posteriores -- si la columna "Orden" no
-      // coincide con la ya guardada, se rechaza todo el archivo en vez de
-      // aceptar un reordenamiento hecho a mano.
-      const ordenMismatch = detailsRef.current.some((item) => {
-        const row = keyToRow[item._key]
-        if (!row) return false
-        const fileOrden = Number(row[ordenIdx])
-        const storedOrden = Number(item.orden)
-        return !(Number.isFinite(fileOrden) && Number.isFinite(storedOrden) && fileOrden === storedOrden)
-      })
-      if (ordenMismatch) {
-        toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'La columna "Orden" no coincide con el orden original de esta importación. Descarga el Excel de nuevo desde este modal y no modifiques esa columna.', life: 5500 })
-        return
-      }
-      setDetails((prev) => prev.map((item) => {
-        const row = keyToRow[item._key]
-        if (!row) return item
+
+      const precioField = isVerificar ? 'precio_estimado' : 'precio_confirmado'
+      const cantField = isVerificar ? 'cantidad_aproximada' : 'cantidad_confirmada'
+      const applyRow = (item, row) => {
         const rawPrecio = row[precioIdx]
         const rawCant = row[cantIdx]
         const rawComent = comentIdx !== -1 ? row[comentIdx] : ''
-        const precioField = isVerificar ? 'precio_estimado' : 'precio_confirmado'
-        const cantField = isVerificar ? 'cantidad_aproximada' : 'cantidad_confirmada'
         let nuevoPrecio = item[precioField]
         if (rawPrecio !== '' && rawPrecio != null) {
           const num = parseFloat(String(rawPrecio).replace(',', '.'))
@@ -7782,8 +7867,46 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           if (!isNaN(num)) nuevaCant = num
         }
         return { ...item, [precioField]: nuevoPrecio, [cantField]: nuevaCant, comentario: rawComent !== '' ? String(rawComent) : item.comentario }
-      }))
-      toastRef.current?.show({ severity: 'success', summary: 'Datos cargados', detail: 'Tabla actualizada desde Excel. Recuerda guardar.', life: 4000 })
+      }
+      // Verificacion: un producto que vuelve a aparecer en el Excel se
+      // restaura; uno que ya no viene se marca como quitado (en rojo, con la
+      // nota en el comentario) en vez de borrarlo, para poder restaurarlo.
+      const restaurar = (item) => (isVerificar && item.quitado
+        ? { ...item, quitado: false, comentario: withoutNotaVerificacion(item.comentario, NOTA_QUITADO_VERIFICACION) }
+        : item)
+      const quitar = (item) => (isVerificar && !item.quitado
+        ? { ...item, quitado: true, comentario: withNotaVerificacion(item.comentario, NOTA_QUITADO_VERIFICACION) }
+        : item)
+      const marcarAgregado = (item) => (isVerificar
+        ? { ...item, comentario: withNotaVerificacion(item.comentario, NOTA_AGREGADO_VERIFICACION) }
+        : item)
+      const ausentes = current.filter((item) => !used.has(item._key))
+      const nuevosQuitados = isVerificar ? ausentes.filter((item) => !item.quitado).length : 0
+
+      // Orden final: manda la columna "Orden" del Excel (al ordenar las filas
+      // en Excel ese número viaja con cada fila, así que reordenar solo para
+      // revisar no cambia nada; para cambiar el orden se edita ese número).
+      // Si una fila no trae Orden, se usa el que ya tenía el producto o, si es
+      // nuevo, su posición en el archivo. Los productos que no vienen en el
+      // Excel conservan su lugar. Al final se renumera 1..N.
+      const entries = [
+        ...matched.map(({ item, row, rowIdx, fileOrden }) => ({ item: restaurar(applyRow(item, row)), sort: fileOrden ?? (Number.isFinite(Number(item.orden)) && item.orden != null ? Number(item.orden) : Infinity), tie: rowIdx })),
+        ...nuevos.map(({ item, row, rowIdx, fileOrden }) => ({ item: marcarAgregado(applyRow(item, row)), sort: fileOrden ?? Infinity, tie: rowIdx })),
+        ...ausentes.map((item, i) => ({ item: quitar(item), sort: item.orden != null && Number.isFinite(Number(item.orden)) ? Number(item.orden) : Infinity, tie: dataRows.length + i })),
+      ]
+      entries.sort((a, b) => (a.sort - b.sort) || (a.tie - b.tie))
+      setDetails(entries.map(({ item }, i) => ({ ...item, orden: i + 1 })))
+
+      const notes = []
+      if (nuevos.length > 0) notes.push(`${nuevos.length} producto(s) nuevo(s) agregado(s)`)
+      if (nuevosQuitados > 0) notes.push(`${nuevosQuitados} producto(s) que no venían en el Excel quedaron quitados (en rojo)`)
+      if (repetidos.length > 0) notes.push(`se ignoraron filas repetidas: ${[...new Set(repetidos)].join(', ')}`)
+      toastRef.current?.show({
+        severity: repetidos.length > 0 || nuevosQuitados > 0 ? 'warn' : 'success',
+        summary: 'Datos cargados',
+        detail: `Tabla actualizada desde Excel${notes.length ? ` (${notes.join('; ')})` : ''}. Recuerda guardar.`,
+        life: 5000,
+      })
     } catch (e) {
       console.error(e)
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo leer el Excel.', life: 3500 })
@@ -7836,7 +7959,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   }
 
   const handleConfirmar = async () => {
-    const missingData = details.filter((item) => {
+    // Los productos quitados en la verificacion ya no pasan a confirmacion.
+    const vigentes = details.filter((item) => !item.quitado)
+    if (!vigentes.length) {
+      toastRef.current?.show({ severity: 'error', summary: 'Sin productos', detail: 'Todos los productos están quitados: restaura al menos uno para pedir confirmación.', life: 5000 })
+      return
+    }
+    const missingData = vigentes.filter((item) => {
       const precio = parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
       return precio <= 0
     })
@@ -7851,7 +7980,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
     setImportarSubmitting(true)
     try {
-      const normalizedDetails = details.map((item) => {
+      const normalizedDetails = vigentes.map((item) => {
         const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
         const precioEstimadoVal = item.precio_estimado
           ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
@@ -8259,7 +8388,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         <p className="create-user__eyebrow">Productos</p>
                         <h4>Listado de productos</h4>
                       </div>
-                      {!isVerificarOrConfirmacion && (
+                      {(!isVerificarOrConfirmacion || (isVerificar && canEdit)) && (
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                           <button
                             type="button"
@@ -8269,17 +8398,19 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                           >
                             + Agregar nuevo producto
                           </button>
-                          <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
-                            <button
-                              type="button"
-                              className="create-user__ghost"
-                              onClick={() => setShowAceptadosView(true)}
-                              style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                              disabled={aceptadosCount === 0}
-                            >
-                              + Aceptados de solicitudes
-                            </button>
-                          </span>
+                          {!isVerificarOrConfirmacion && (
+                            <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
+                              <button
+                                type="button"
+                                className="create-user__ghost"
+                                onClick={() => setShowAceptadosView(true)}
+                                style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                                disabled={aceptadosCount === 0}
+                              >
+                                + Aceptados de solicitudes
+                              </button>
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -8303,6 +8434,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                             <span>Cant. Sug.</span>
                             <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, cantidad_aproximada: d.cantidad })))} title="Doble click: llenar todas con cantidad original" style={{ cursor: 'pointer' }}>Cant. aprox.</span>
                             <span>Comentario</span>
+                            <span>Acciones</span>
                           </>
                         ) : isConfirmacion ? (
                           <>
@@ -8336,7 +8468,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         )}
                       </div>
 
-                      {!isVerificarOrConfirmacion && <div className="create-user__locations-row create-user__locations-row--form imp-sticky-form" style={{ top: productsHeadHeight }}>
+                      {(!isVerificarOrConfirmacion || (isVerificar && canEdit)) && <div className="create-user__locations-row create-user__locations-row--form imp-sticky-form" style={{ top: productsHeadHeight }}>
                         <span className="create-salida__product-picker create-salida__product-code-cell">
                           <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
                             <button
@@ -8435,6 +8567,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         <span className="create-salida__table-static-value">
                           {detailDraft.producto?.precio != null ? `$${Number(detailDraft.producto.precio).toFixed(2)}` : '-'}
                         </span>
+                        {isVerificar && <><span className="create-salida__table-static-value">-</span><span className="create-salida__table-static-value">-</span></>}
                         <span>
                           <input
                             type="number"
@@ -8443,8 +8576,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                             value={detailDraft.cantidad}
                             onChange={(e) => setDetailDraft((prev) => ({ ...prev, cantidad: e.target.value }))}
                             disabled={!detailDraft.producto}
+                            placeholder={isVerificar ? 'Cant.' : undefined}
                           />
                         </span>
+                        {isVerificar && <span className="create-salida__table-static-value">-</span>}
                         <span>
                           <input
                             type="text"
@@ -8481,7 +8616,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
-                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`}>
+                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
                             <span
                               className="imp-table-cell-tip"
                               onMouseEnter={(e) => !sinCatalogo && showCellHover(e, codigo, 'Código')}
@@ -8608,6 +8743,19 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                           autoComplete="off"
                                         />
                                       </span>
+                                      {isVerificar && (
+                                        <span className="create-user__locations-cell create-user__locations-cell--action">
+                                          <button
+                                            type="button"
+                                            className={item.quitado ? 'create-user__ghost' : 'create-user__locations-remove'}
+                                            onClick={() => handleToggleQuitado(item._key)}
+                                            disabled={!canEdit}
+                                            title={item.quitado ? 'Restaurar: vuelve a la verificación' : 'Quitar de la verificación (queda en rojo, se puede restaurar)'}
+                                          >
+                                            {item.quitado ? 'Restaurar' : 'x'}
+                                          </button>
+                                        </span>
+                                      )}
                                       {isConfirmacion && (
                                         <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                           <button

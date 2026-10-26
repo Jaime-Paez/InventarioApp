@@ -115,6 +115,10 @@ class ImportacionDetalle(models.Model):
     precio_pvp_snapshot = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     cantidad_recibida = models.PositiveIntegerField(null=True, blank=True)
     seleccionado = models.BooleanField(null=True, blank=True)
+    # Producto que se quito durante la verificacion (p. ej. no vino en el
+    # Excel subido): se sigue mostrando en rojo para poder restaurarlo, pero
+    # ya no pasa a confirmacion.
+    quitado = models.BooleanField(default=False)
     comentario = models.TextField(blank=True, default="")
     solicitud = models.ForeignKey(
         "solicitudes.Solicitud",

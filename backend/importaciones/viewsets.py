@@ -971,6 +971,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "Solo se puede confirmar desde estado cotización."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Los productos quitados durante la verificacion ya no van.
+        if not instance.detalles.filter(quitado=False).exists():
+            return Response(
+                {"detail": "Todos los productos están quitados: deja al menos uno para pedir confirmación."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        instance.detalles.filter(quitado=True).delete()
         instance.estado = Importacion.ESTADO_CONFIRMACION
         instance.save(update_fields=["estado"])
         serializer = self.get_serializer(instance)
