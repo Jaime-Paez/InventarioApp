@@ -2794,7 +2794,7 @@ const handleResetTable = () => {
           <div
             className="create-user__modal"
             ref={basicModalRef}
-            style={{ top: basicModalPosition.y, left: basicModalPosition.x, width: 480, height: 'auto', maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100vh - 24px)', overflow: 'auto' }}
+            style={{ top: basicModalPosition.y, left: basicModalPosition.x, width: 480, height: 'auto', maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100dvh - 24px)', overflow: 'auto' }}
           >
             <header
               className="create-user__header"
@@ -2886,7 +2886,7 @@ const handleResetTable = () => {
               width: searchSize.width,
               height: searchSize.height,
               maxWidth: `calc(100vw - ${SEARCH_PADDING * 2}px)`,
-              maxHeight: `calc(100vh - ${SEARCH_PADDING * 2}px)`,
+              maxHeight: `calc(100dvh - ${SEARCH_PADDING * 2}px)`,
             }}
           >
             <header className="create-user__header" onMouseDown={handleSearchMouseDown}>

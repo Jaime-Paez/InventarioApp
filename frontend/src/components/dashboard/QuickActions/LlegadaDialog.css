@@ -13,6 +13,7 @@
 .llegada-dialog__card {
   width: min(820px, 100%);
   max-height: min(90vh, 860px);
+  max-height: min(90dvh, 860px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -166,6 +167,7 @@
 
   .llegada-dialog__card {
     max-height: 96vh;
+    max-height: 96dvh;
     padding: 14px;
   }
 }

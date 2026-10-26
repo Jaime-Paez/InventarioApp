@@ -521,7 +521,7 @@ function ClienteDetails({
     width: size.width,
     height: size.height,
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
-    maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+    maxHeight: `calc(100dvh - ${VIEWPORT_PADDING * 2}px)`,
   }
 
   const isViewMode = !isEditing

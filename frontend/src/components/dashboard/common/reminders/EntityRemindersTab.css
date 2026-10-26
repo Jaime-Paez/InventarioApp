@@ -204,6 +204,7 @@
 .entity-reminders__table-wrap {
   min-height: 280px;
   max-height: min(50vh, 420px);
+  max-height: min(50dvh, 420px);
   overflow-y: auto;
   overflow-x: auto;
 }
@@ -957,6 +958,7 @@
 
   .entity-reminders__table-wrap {
     max-height: min(46vh, 360px);
+    max-height: min(46dvh, 360px);
   }
 
   .entity-reminders__detail-overlay {

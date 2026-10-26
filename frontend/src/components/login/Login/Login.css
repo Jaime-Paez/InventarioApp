@@ -1,6 +1,7 @@
 .login-page {
   position: relative;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: stretch;
   justify-content: flex-start;
@@ -52,6 +53,7 @@
   max-width: 350px;
   width: min(350px, 100vw);
   min-height: 100vh;
+  min-height: 100dvh;
   flex: 0 0 auto;
 }
 
@@ -491,6 +493,7 @@ input:focus {
 
   .login-panel {
     min-height: 100vh;
+    min-height: 100dvh;
     width: 100%;
     max-width: none;
     border-radius: 0;

@@ -1,6 +1,8 @@
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   position: relative;
   background: var(--color-surface);
@@ -15,6 +17,7 @@
   display: grid;
   grid-template-columns: 200px 1fr;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   transition: background-color 0.4s ease, color 0.4s ease, grid-template-columns 0.3s ease;
   transform: translateX(0);

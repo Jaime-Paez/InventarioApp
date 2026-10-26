@@ -536,7 +536,7 @@ function AuditoriaTable({ token }) {
               width: modalSize.width,
               height: modalSize.height,
               maxWidth: `calc(100vw - ${MODAL_PAD * 2}px)`,
-              maxHeight: `calc(100vh - ${MODAL_PAD * 2}px)`,
+              maxHeight: `calc(100dvh - ${MODAL_PAD * 2}px)`,
             }}
           >
             <header className="create-user__header" onMouseDown={handleHeaderMouseDown}>

@@ -159,6 +159,7 @@
 .importaciones-modal {
   width: min(760px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
   overflow: visible;
 }
 
@@ -253,6 +254,7 @@
   flex-direction: column;
   gap: 14px;
   max-height: min(58vh, 560px);
+  max-height: min(58dvh, 560px);
   overflow: visible;
 }
 
@@ -956,7 +958,9 @@
 .imp-aceptados-popup__dialog {
   width: min(720px, calc(100vw - 32px));
   height: min(82vh, 620px);
+  height: min(82dvh, 620px);
   max-height: min(82vh, 620px);
+  max-height: min(82dvh, 620px);
   border-radius: 16px;
   border: 1px solid var(--border-color, rgba(148, 163, 184, 0.35));
   background: var(--surface-card, #fff);
@@ -1065,6 +1069,7 @@
   width: min(500px, calc(100vw - 32px));
   height: auto;
   max-height: min(82vh, 480px);
+  max-height: min(82dvh, 480px);
 }
 
 .imp-cell-hover-card {

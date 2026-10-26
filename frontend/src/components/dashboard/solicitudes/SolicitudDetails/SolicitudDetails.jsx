@@ -1665,7 +1665,7 @@ function SolicitudDetails({
     width: modalSize.width,
     height: modalSize.height,
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
-    maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+    maxHeight: `calc(100dvh - ${VIEWPORT_PADDING * 2}px)`,
   }
   const productModalStyle = {
     top: productModalPosition.y,
@@ -1673,7 +1673,7 @@ function SolicitudDetails({
     width: productModalSize.width,
     height: productModalSize.height,
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
-    maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+    maxHeight: `calc(100dvh - ${VIEWPORT_PADDING * 2}px)`,
   }
   const canUsePortal = typeof document !== 'undefined'
   const productModalOverlay = isProductModalOpen ? (
@@ -1955,7 +1955,7 @@ function SolicitudDetails({
           width: REVIEW_MODAL_WIDTH,
           height: REVIEW_MODAL_HEIGHT,
           maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
-          maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+          maxHeight: `calc(100dvh - ${VIEWPORT_PADDING * 2}px)`,
         }}
       >
         <header className="create-user__header" style={{ cursor: 'default' }}>

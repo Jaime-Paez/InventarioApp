@@ -101,7 +101,7 @@ export default function CascadeDropdown({ placeholder, searchPlaceholder, option
         <div
           ref={panelRef}
           className="create-user__dropdown-panel create-user__dropdown-panel--floating"
-          style={{ top: panelRect.top, bottom: panelRect.bottom, left: panelRect.left, width: panelRect.width, maxHeight: 'calc(100vh - 16px)' }}
+          style={{ top: panelRect.top, bottom: panelRect.bottom, left: panelRect.left, width: panelRect.width, maxHeight: 'calc(100dvh - 16px)' }}
         >
           <div className="create-user__dropdown-search">
             <i className="pi pi-search" />

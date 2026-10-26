@@ -1751,7 +1751,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           className={`quick-actions__receive-dialog ${mode}`}
           style={{
             width: isMaximized ? 'min(1600px, 95vw)' : step === 3 ? 'min(950px, 95vw)' : step === 4 ? 'min(860px, 95vw)' : step === 5 ? 'min(700px, 95vw)' : 'min(640px, 90vw)',
-            maxHeight: isMaximized ? '95vh' : undefined,
+            maxHeight: isMaximized ? '95dvh' : undefined,
             gridTemplateRows: 'auto 1fr auto',
             transition: 'width .25s, max-height .25s',
           }}
@@ -2323,7 +2323,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           >
             <div
               className={`quick-actions__receive-dialog ${mode}`}
-              style={{ width: isKit ? 'min(640px, 92vw)' : 'min(520px, 90vw)', height: 'auto', maxHeight: '90vh', gridTemplateRows: 'auto 1fr auto' }}
+              style={{ width: isKit ? 'min(640px, 92vw)' : 'min(520px, 90vw)', height: 'auto', maxHeight: '90dvh', gridTemplateRows: 'auto 1fr auto' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <header className="quick-actions__receive-head">
@@ -2989,7 +2989,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
           minWidth: MIN_WIDTH,
           minHeight: MIN_HEIGHT,
           maxWidth: `calc(100vw - ${DETAILS_VIEWPORT_PADDING * 2}px)`,
-          maxHeight: `calc(100vh - ${DETAILS_VIEWPORT_PADDING * 2}px)`,
+          maxHeight: `calc(100dvh - ${DETAILS_VIEWPORT_PADDING * 2}px)`,
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -4535,7 +4535,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
             minWidth: isCasaStep ? undefined : step === 3 ? EXCEL_STEP3_WIDTH : EXCEL_MODAL_MIN_WIDTH,
             minHeight: isCasaStep ? undefined : EXCEL_MODAL_MIN_HEIGHT,
             maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
-            maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+            maxHeight: `calc(100dvh - ${VIEWPORT_PADDING * 2}px)`,
           }}
         >
           <header className="create-user__header" onMouseDown={handleModalMouseDown}>
@@ -4903,7 +4903,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       total={validRows.length}
                     />
 
-                    <div ref={reviewTableWrapRef} onScroll={handleReviewTableScroll} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
+                    <div ref={reviewTableWrapRef} onScroll={handleReviewTableScroll} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45dvh)' : 'none' }}>
                       <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 880 }}>
                         <colgroup>
                           <col style={{ width: 100 }} />
@@ -6125,7 +6125,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
           minWidth: step === 'casa' ? undefined : MIN_WIDTH,
           minHeight: step === 'casa' ? undefined : MIN_HEIGHT,
           maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
-          maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+          maxHeight: `calc(100dvh - ${VIEWPORT_PADDING * 2}px)`,
         }}
       >
         <header className="create-user__header" onMouseDown={handleModalMouseDown}>
@@ -8125,7 +8125,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
             width: modalSize.width, height: modalSize.height,
             minWidth: MIN_WIDTH, minHeight: MIN_HEIGHT,
             maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
-            maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+            maxHeight: `calc(100dvh - ${VIEWPORT_PADDING * 2}px)`,
           }}
         >
           <header className="create-user__header" onMouseDown={handleModalMouseDown}>

@@ -1629,6 +1629,7 @@
      pantallas cortas (tablet en horizontal) dejando los botones "Volver" /
      "Confirmar" fuera de vista y sin forma de hacer scroll para llegar. */
   max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   border-radius: 12px;
   border: 1px solid var(--color-border);
   background: var(--modal-color);

@@ -951,7 +951,7 @@ function BodegasTable({ token, onSelect, moduleActions }) {
               width: searchSize.width,
               height: searchSize.height,
               maxWidth: `calc(100vw - ${SEARCH_PADDING * 2}px)`,
-              maxHeight: `calc(100vh - ${SEARCH_PADDING * 2}px)`,
+              maxHeight: `calc(100dvh - ${SEARCH_PADDING * 2}px)`,
             }}
           >
             <header className="create-user__header" onMouseDown={handleSearchMouseDown}>

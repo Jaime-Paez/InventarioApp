@@ -21,6 +21,7 @@
 .coverage-map__dialog {
   width: min(96vw, 1700px);
   height: min(95vh, 1100px);
+  height: min(95dvh, 1100px);
   display: flex;
   flex-direction: column;
   overflow: hidden;

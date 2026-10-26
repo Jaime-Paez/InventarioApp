@@ -40,6 +40,7 @@
 .inventario-map-popup__dialog {
   width: min(96vw, 1700px);
   height: min(95vh, 1100px);
+  height: min(95dvh, 1100px);
   border: 1px solid var(--color-border);
   border-radius: 12px;
   background: var(--color-surface);
@@ -276,6 +277,7 @@
   .inventario-map-popup__dialog {
     width: 98vw;
     height: 96vh;
+    height: 96dvh;
   }
 
   .inventario-map-popup__header {
@@ -288,5 +290,6 @@
 
   .inventario-map-preview__plan--popup {
     max-height: calc(96vh - 230px);
+    max-height: calc(96dvh - 230px);
   }
 }

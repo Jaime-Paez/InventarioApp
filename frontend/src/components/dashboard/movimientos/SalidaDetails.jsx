@@ -1893,7 +1893,7 @@ function SalidaDetails({
     width: modalSize.width,
     height: modalSize.height,
     maxWidth: `calc(100vw - ${VIEWPORT_PADDING * 2}px)`,
-    maxHeight: `calc(100vh - ${VIEWPORT_PADDING * 2}px)`,
+    maxHeight: `calc(100dvh - ${VIEWPORT_PADDING * 2}px)`,
   }
   const isSentTransferRibbon = isSentSolicitud
   const showRibbon = isSentTransferRibbon || formData.esLegado
