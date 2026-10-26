@@ -754,6 +754,9 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
     faltantes_traslado = serializers.SerializerMethodField(read_only=True)
     # Solo la matriz reparte sus compras locales a las demas sucursales.
     es_sucursal_matriz = serializers.SerializerMethodField(read_only=True)
+    # Unidades de una compra local de la matriz que aun se pueden enviar a
+    # otras sucursales; None si no aplica. Con 0 se oculta "Enviar a sucursales".
+    compra_por_repartir = serializers.SerializerMethodField(read_only=True)
 
     def get_es_sucursal_matriz(self, obj):
         from app.reposicion import central_branch_id
@@ -763,6 +766,39 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             self.context["_central_branch_id"] = central_branch_id()
         central_id = self.context["_central_branch_id"]
         return bool(central_id) and int(obj.sucursal_id or 0) == int(central_id)
+
+    def get_compra_por_repartir(self, obj):
+        # Por producto: lo comprado menos lo ya enviado, sin pasar del stock
+        # que queda en la sucursal (lo vendido o trasladado ya no se reparte).
+        # Solo en el detalle: en el listado serian consultas extra por fila.
+        view = self.context.get("view")
+        if getattr(view, "action", None) != "retrieve":
+            return None
+        if self._resolve_subtipo_key(obj.sub_tipo_movimiento) != "compra_local" or obj.es_legado:
+            return None
+        if not self.get_es_sucursal_matriz(obj):
+            return None
+        comprado = defaultdict(int)
+        for producto_id, cantidad in obj.detalles.filter(producto_id__isnull=False).values_list(
+            "producto_id", "cantidad"
+        ):
+            comprado[int(producto_id)] += int(cantidad or 0)
+        if not comprado:
+            return 0
+        enviado = defaultdict(int)
+        for envio in obj.envios_compra.prefetch_related("detalles"):
+            for detalle in envio.detalles.all():
+                enviado[int(detalle.producto_id)] += int(detalle.cantidad or 0)
+        en_sucursal = defaultdict(int)
+        for producto_id, cantidad in Inventario.objects.filter(
+            producto_id__in=list(comprado),
+            subdivision__division__bodega__sucursal_id=obj.sucursal_id,
+        ).values_list("producto_id", "cantidad"):
+            en_sucursal[int(producto_id)] += int(cantidad or 0)
+        return sum(
+            max(0, min(cantidad - enviado[pid], en_sucursal[pid]))
+            for pid, cantidad in comprado.items()
+        )
 
     def _resolve_otro_inconveniente(self, obj):
         # La nota general de "algo no salio como lo esperado" al recibir un
@@ -889,6 +925,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "nota_inconveniente_resolucion",
             "faltantes_traslado",
             "es_sucursal_matriz",
+            "compra_por_repartir",
             "es_legado",
             "creado_por",
             "creado_por_nombre",

@@ -1456,6 +1456,8 @@ function EntradaDetails({
         notaInconvenienteResolucion: String(salida?.nota_inconveniente_resolucion || '').trim(),
         esLegado: Boolean(salida?.es_legado),
         esSucursalMatriz: Boolean(salida?.es_sucursal_matriz),
+        // null si no aplica; 0 = ya no queda nada de la compra por enviar.
+        compraPorRepartir: Number.isFinite(salida?.compra_por_repartir) ? salida.compra_por_repartir : null,
       },
       clienteForm,
       detalles,
@@ -4090,7 +4092,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                   )}
                 </>
               )}
-              {!isEditing && !hasPreviewData && selectedSubTipoName.includes('compra') && formData.esSucursalMatriz && typeof onDistribuirCompra === 'function' && (
+              {!isEditing && !hasPreviewData && selectedSubTipoName.includes('compra') && formData.esSucursalMatriz && formData.compraPorRepartir !== 0 && typeof onDistribuirCompra === 'function' && (
                 <button
                   type="button"
                   className="create-user__action create-user__action--primary"
