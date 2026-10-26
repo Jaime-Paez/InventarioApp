@@ -154,6 +154,30 @@
   }
 }
 
+/* Movil: sin la coreografia de escritorio (barra lateral y avisos que entran
+   y salen de lado durante segundos). La pantalla entera aparece y se va con
+   un fundido corto, como en una app. */
+@media (max-width: 900px) {
+  .dashboard-shell.enter .sidebar:not(.sidebar--hidden),
+  .dashboard-shell.enter .quick-actions,
+  .dashboard-shell.enter .workspace__hero,
+  .dashboard-shell.leaving .sidebar:not(.sidebar--hidden),
+  .dashboard-shell.leaving .quick-actions,
+  .dashboard-shell.leaving .quick-actions__pending-shipments:not(.quick-actions__in-transit),
+  .dashboard-shell.leaving .quick-actions__in-transit,
+  .dashboard-shell.leaving .workspace__hero {
+    animation: none;
+  }
+
+  .dashboard-shell.enter {
+    animation: welcome-fade-in 240ms ease-out both;
+  }
+
+  .dashboard-shell.leaving {
+    animation: welcome-fade-out 200ms ease-in forwards;
+  }
+}
+
 .sidebar__reopen {
   position: fixed;
   left: 19px;

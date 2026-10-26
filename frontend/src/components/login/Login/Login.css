@@ -583,6 +583,41 @@ input:focus {
   }
 }
 
+/* Movil: el panel ocupa toda la pantalla, asi que en vez de deslizarlo se
+   desvanece rapido, como el paso entre pantallas de una app (los tiempos
+   cortos de App.jsx van de la mano con estos). */
+@media (max-width: 960px) {
+  .login-page.collapse .login-panel {
+    animation: login-mobile-fade-out 200ms ease-out forwards;
+  }
+
+  .login-page.expand .login-panel {
+    animation: login-mobile-fade-in 260ms ease-out both;
+  }
+}
+
+@keyframes login-mobile-fade-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes login-mobile-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* =========================
    DARK MODE – glass control
    ========================= */

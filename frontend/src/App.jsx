@@ -15,6 +15,13 @@ import { memoryStore } from './utils/memoryStore'
 const LOGIN_EXIT_ANIMATION_MS = 900
 const DASHBOARD_EXIT_ANIMATION_MS = 3500
 const LOGIN_ENTER_ANIMATION_MS = LOGIN_EXIT_ANIMATION_MS
+// En movil las transiciones son fundidos cortos (Login.css y
+// DashboardLayout.css), sin la coreografia larga de escritorio.
+const MOBILE_LOGIN_EXIT_ANIMATION_MS = 220
+const MOBILE_DASHBOARD_EXIT_ANIMATION_MS = 220
+const MOBILE_LOGIN_ENTER_ANIMATION_MS = 280
+const isMobileViewport = () =>
+  typeof window !== 'undefined' && Boolean(window.matchMedia?.('(max-width: 960px)').matches)
 
 
 const getSystemThemePreference = () =>
@@ -201,17 +208,25 @@ function App() {
     incomingPermissions = null,
     usuarioInternoId = null
   ) => {
-    setLoginTransitioning(true)
+    // En escritorio el deslizamiento del panel cubre la carga del dashboard;
+    // en movil el fundido es corto, asi que espera a que el dashboard este
+    // listo para no dejar la pantalla vacia en medio.
+    const mobile = isMobileViewport()
+    if (!mobile) setLoginTransitioning(true)
     setToken(incomingToken)
 
     try {
       // Init store before showing the dashboard so tables render with correct columns.
       await tableLayoutStore.init(incomingToken)
       setUser({ ...incomingUser, permisos: incomingPermissions, usuarioInternoId })
+      if (mobile) setLoginTransitioning(true)
       setShowApp(true)
       await fetchProfile(incomingToken)
     } finally {
-      window.setTimeout(() => setLoginTransitioning(false), LOGIN_EXIT_ANIMATION_MS)
+      window.setTimeout(
+        () => setLoginTransitioning(false),
+        isMobileViewport() ? MOBILE_LOGIN_EXIT_ANIMATION_MS : LOGIN_EXIT_ANIMATION_MS
+      )
     }
   }
 
@@ -225,17 +240,21 @@ function App() {
 
     setLogoutTransitioning(true)
 
+    const mobile = isMobileViewport()
+    const dashboardExitMs = mobile ? MOBILE_DASHBOARD_EXIT_ANIMATION_MS : DASHBOARD_EXIT_ANIMATION_MS
+    const loginEnterMs = mobile ? MOBILE_LOGIN_ENTER_ANIMATION_MS : LOGIN_ENTER_ANIMATION_MS
+
     loginReturnTimeoutRef.current = window.setTimeout(() => {
       setLoginReturning(true)
       setToken('')
       setUser(null)
       setShowApp(false)
-    }, DASHBOARD_EXIT_ANIMATION_MS)
+    }, dashboardExitMs)
 
     logoutTimeoutRef.current = window.setTimeout(() => {
       setLogoutTransitioning(false)
       setLoginReturning(false)
-    }, DASHBOARD_EXIT_ANIMATION_MS + LOGIN_ENTER_ANIMATION_MS)
+    }, dashboardExitMs + loginEnterMs)
   }
 
   const appClassName = useMemo(
