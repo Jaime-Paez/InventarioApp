@@ -4217,7 +4217,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         return firstMatchName ? { ...row, descripcion: firstMatchName } : row
       }
       const rowsWithSuggestions = (data.rows || []).map((row) => {
-        if (row.matched_producto_id || row.codigo) return withFirstMatchDescripcion(row)
+        // Naranja (ya existe en otra casa) recibe codigo sugerido igual que
+        // amarillo: si el Excel no trae codigo, o si el que trae es el del
+        // producto de la otra casa (crearlo asi repetiria su codigo).
+        const codigoDeOtraCasa = Boolean(row.conflicto_casa && row.codigo) && (row.oem_matches || []).some(
+          (match) => String(match.codigo || '').trim().toUpperCase() === String(row.codigo).trim().toUpperCase()
+        )
+        if (row.matched_producto_id || (row.codigo && !codigoDeOtraCasa)) return withFirstMatchDescripcion(row)
         const existing = findExistingMatchForCasa(row, selectedCasa?.codigo)
         if (existing) {
           // El OEM ya está vinculado a un producto de esta misma casa: es el
@@ -4837,18 +4843,18 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                         <span
                           {...reviewGroupChipProps('sugeridos', 'los productos con código sugerido')}
                           style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde047', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
-                          title="El mismo repuesto existe en otra casa comercial (por OEM o referencia): se propone su código con el sufijo de esta casa. Revísalo antes de crear. Clic: ir a ellos."
+                          title="Clic: ir a ellos."
                         >
-                          Amarillo: {suggestedCount} con código sugerido
+                          Amarillo: {suggestedCount} coinciden solo por OEM
                         </span>
                       )}
                       {conflictoRows.length > 0 && (
                         <span
                           {...reviewGroupChipProps('otraCasa', 'los que ya existen en otra casa')}
                           style={{ background: '#ffedd5', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
-                          title="Ese código o referencia ya pertenece a un producto de otra casa comercial. Clic: ir a ellos."
+                          title="Clic: ir a ellos."
                         >
-                          Naranja: {conflictoRows.length} ya existen en otra casa
+                          Naranja: {conflictoRows.length} coinciden por referencia o código
                         </span>
                       )}
                       {referenciaConflictCount > 0 && (
@@ -4857,6 +4863,30 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                         </span>
                       )}
                     </div>
+
+                    {(suggestedCount > 0 || conflictoRows.length > 0) && (
+                      <div className="imp-excel-review__legend">
+                        {conflictoRows.length > 0 && (
+                          <p>
+                            <span className="imp-excel-review__legend-dot imp-excel-review__legend-dot--naranja" />
+                            <span>
+                              <strong>Naranja:</strong> la <strong>referencia o el código</strong> del Excel es exactamente el de un producto de otra casa comercial (el mismo producto ya registrado allá).
+                            </span>
+                          </p>
+                        )}
+                        {suggestedCount > 0 && (
+                          <p>
+                            <span className="imp-excel-review__legend-dot imp-excel-review__legend-dot--amarillo" />
+                            <span>
+                              <strong>Amarillo:</strong> solo coincide el <strong>OEM</strong> con un producto de otra casa; su referencia es distinta (una pieza equivalente de otra marca).
+                            </span>
+                          </p>
+                        )}
+                        <p className="imp-excel-review__legend-note">
+                          En los dos casos se crea un producto nuevo para {selectedCasa?.nombre || 'esta casa'} con el código sugerido (el de la otra casa con el sufijo de esta) y su descripción. Pasa el mouse por el ícono ⓘ del OEM para ver los productos que coinciden.
+                        </p>
+                      </div>
+                    )}
 
                     {referenciaConflictCount > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
@@ -4962,7 +4992,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                         onChange={(e) => updateRowCodigo(row.fila_excel, e.target.value.toUpperCase())}
                                         placeholder="Sin catálogo"
                                         title={row.codigo_sugerido
-                                          ? 'Código sugerido a partir de un producto con el mismo OEM en otra casa comercial. Puedes corregirlo.'
+                                          ? `Código sugerido a partir de ${row.sugerido_desde || 'un producto de otra casa comercial'} (${isCasaConflict ? 'misma referencia' : 'mismo OEM'}), con el sufijo de ${selectedCasa?.nombre || 'esta casa'}. Puedes corregirlo.`
                                           : row.codigo
                                             ? 'Código nuevo tomado del Excel. Puedes corregirlo.'
                                             : 'Este producto no tiene código en el catálogo. Puedes asignarle uno.'}
@@ -4975,7 +5005,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                       <Info
                                         size={13}
                                         style={{ flexShrink: 0, color: '#c2410c' }}
-                                        onMouseEnter={(e) => showCellHover(e, `El código/referencia ya pertenece a ${row.conflicto_casa_nombre || 'otra casa comercial'}. Se creará un producto nuevo con esta misma referencia para ${selectedCasa?.nombre || 'esta casa'}.`, 'Ya existe en otra casa')}
+                                        onMouseEnter={(e) => showCellHover(e, `Coincide por referencia o código con un producto de ${row.conflicto_casa_nombre || 'otra casa comercial'}. Se creará un producto nuevo con esta misma referencia para ${selectedCasa?.nombre || 'esta casa'}${row.codigo_sugerido ? `, con el código sugerido ${row.codigo}` : ''}.`, 'Ya existe en otra casa')}
                                         onMouseLeave={hideCellHover}
                                       />
                                     )}

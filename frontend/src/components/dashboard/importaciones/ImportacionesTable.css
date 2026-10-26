@@ -1307,6 +1307,45 @@
   cursor: pointer;
 }
 
+/* Explicacion de los colores (naranja / amarillo) bajo los contadores. */
+.imp-excel-review__legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  color: var(--color-text-primary);
+}
+
+.imp-excel-review__legend p {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+}
+
+.imp-excel-review__legend-dot {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  margin-top: 0.2em;
+  border-radius: 50%;
+}
+
+.imp-excel-review__legend-dot--naranja {
+  background: #ffedd5;
+  border: 1px solid #fdba74;
+}
+
+.imp-excel-review__legend-dot--amarillo {
+  background: #fef08a;
+  border: 1px solid #fde047;
+}
+
+.imp-excel-review__legend-note {
+  color: var(--color-text-secondary);
+}
+
 /* Contadores del paso 3 (vinculados, sin catalogo, amarillo...): clic lleva
    a la siguiente fila de ese grupo, que se resalta un momento. */
 .imp-excel-review__group-chip {
