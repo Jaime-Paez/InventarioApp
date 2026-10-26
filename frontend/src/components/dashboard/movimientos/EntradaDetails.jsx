@@ -1362,6 +1362,7 @@ function EntradaDetails({
     const clienteFieldValue = normalizeClienteTextForField(clienteRawValue)
     const clienteForm = buildClienteFormFromText(clienteRawValue, clienteFieldValue)
 
+    const faltantesTraslado = salida?.faltantes_traslado || {}
     const detalles = (Array.isArray(salida?.detalles) ? salida.detalles : []).map((detalle) => {
       const productLabel = String(detalle?.producto ?? '').trim()
       const code = parseProductCode(productLabel)
@@ -1389,6 +1390,7 @@ function EntradaDetails({
       const descuentoPorcentaje = parseNumber(detalle?.descuento_porcentaje)
       const productoPrecioBD = parseNumber(detalle?.precio_anterior)
       const productoReferencia = product?.referencia ?? ''
+      const cantidadFaltante = parseIntValue(faltantesTraslado[apiProductId || String(product?.id ?? '')])
 
       return {
         uid: `det-${Math.random().toString(36).slice(2, 8)}`,
@@ -1404,6 +1406,7 @@ function EntradaDetails({
         costo: Number.isFinite(costo) ? costo : null,
         descuentoPorcentaje: Number.isFinite(descuentoPorcentaje) ? descuentoPorcentaje : null,
         productoPrecioBD: Number.isFinite(productoPrecioBD) ? productoPrecioBD : null,
+        cantidadFaltante: Number.isFinite(cantidadFaltante) && cantidadFaltante > 0 ? cantidadFaltante : 0,
       }
     })
 
@@ -3579,6 +3582,14 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                                 title={insufficientStock ? `Disponible: ${remaining}` : undefined}
                               >
                                 {detail.cantidad}
+                                {detail.cantidadFaltante > 0 && (
+                                  <span
+                                    className="create-salida__cantidad-faltante"
+                                    title={`Faltaron ${detail.cantidadFaltante} al recibir el traslado`}
+                                  >
+                                    {' '}({detail.cantidadFaltante})
+                                  </span>
+                                )}
                               </span>
                             )}
                           </span>

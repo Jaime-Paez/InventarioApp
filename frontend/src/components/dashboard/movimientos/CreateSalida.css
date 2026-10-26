@@ -93,6 +93,15 @@
   color: var(--color-error-text-dark);
 }
 
+.create-salida__cantidad-faltante {
+  color: var(--color-error-text);
+  font-weight: 700;
+}
+
+.dashboard-shell.dark .create-salida__cantidad-faltante {
+  color: var(--color-error-text-dark);
+}
+
 .create-user__locations-row.create-salida__row--insufficient {
   background: color-mix(in srgb, var(--color-error-border) 65%, transparent);
 }

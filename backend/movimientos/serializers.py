@@ -751,6 +751,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
     )
     nota_inconveniente = serializers.SerializerMethodField(read_only=True)
     nota_inconveniente_resolucion = serializers.SerializerMethodField(read_only=True)
+    faltantes_traslado = serializers.SerializerMethodField(read_only=True)
     # Solo la matriz reparte sus compras locales a las demas sucursales.
     es_sucursal_matriz = serializers.SerializerMethodField(read_only=True)
 
@@ -793,6 +794,22 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         inconveniente = self._resolve_otro_inconveniente(obj)
         return str(inconveniente.motivo_resolucion).strip() if inconveniente else ""
 
+    def get_faltantes_traslado(self, obj):
+        # Unidades que no llegaron al recibir el traslado, por producto, para
+        # mostrar "recibido (faltante)" en el detalle de la entrada. Solo en
+        # el detalle: en el listado seria una consulta extra por fila.
+        view = self.context.get("view")
+        if getattr(view, "action", None) != "retrieve":
+            return {}
+        faltantes = {}
+        for producto_id, cantidad in obj.inconvenientes_traslado.filter(
+            tipo=TrasladoInconveniente.Tipos.FALTANTE,
+            producto_id__isnull=False,
+        ).values_list("producto_id", "cantidad_faltante"):
+            key = str(producto_id)
+            faltantes[key] = faltantes.get(key, 0) + int(cantidad or 0)
+        return {key: value for key, value in faltantes.items() if value > 0}
+
     class Meta:
         model = MovimientoInventario
         fields = [
@@ -827,6 +844,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "casa_comercial_id",
             "nota_inconveniente",
             "nota_inconveniente_resolucion",
+            "faltantes_traslado",
             "es_sucursal_matriz",
             "es_legado",
             "creado_por",
