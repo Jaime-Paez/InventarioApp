@@ -369,3 +369,22 @@
     padding: 22px 20px;
   }
 }
+
+/* TELEFONO: cada seccion (Inventario, Salidas, ...) ocupa toda la pantalla;
+   no se muestra la barra de pestañas de escritorio. Se cambia de seccion
+   desde el menu lateral. */
+@media (max-width: 900px) {
+  .workspace__toolbar .workspace__tabs {
+    display: none;
+  }
+
+  .workspace__toolbar {
+    justify-content: flex-end;
+    padding: 8px 10px 0;
+  }
+
+  .workspace__panel {
+    padding: 4px 10px 12px;
+    border-radius: 0;
+  }
+}
