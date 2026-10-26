@@ -1338,7 +1338,7 @@
    línea en vez de desbordar la tarjeta blanca; código y referencia se
    truncan con elipsis. */
 .imp-alternos-hover-card--oem {
-  width: 760px;
+  width: 860px;
   max-width: calc(100vw - 24px);
   /* A diferencia del resto de tarjetas "hover" (solo informativas), esta
      permite pasar el mouse encima y seleccionar/copiar su texto. */
@@ -1372,12 +1372,26 @@
   width: 110px;
 }
 
+/* Casa comercial: con 78px su titulo se salia por encima de la linea de la
+   columna siguiente. PVP y PVP + IVA con ancho fijo para que el espacio
+   sobrante sea para el nombre y no para la ultima columna. */
 .imp-alternos-hover-card__table--oem th:nth-child(5),
-.imp-alternos-hover-card__table--oem td:nth-child(5),
-.imp-alternos-hover-card__table--oem th:nth-child(6),
-.imp-alternos-hover-card__table--oem td:nth-child(6) {
-  width: 78px;
+.imp-alternos-hover-card__table--oem td:nth-child(5) {
+  width: 120px;
   text-align: center;
+}
+
+.imp-alternos-hover-card__table--oem th:nth-child(6),
+.imp-alternos-hover-card__table--oem td:nth-child(6),
+.imp-alternos-hover-card__table--oem th:nth-child(7),
+.imp-alternos-hover-card__table--oem td:nth-child(7) {
+  width: 86px;
+  text-align: center;
+}
+
+.imp-alternos-hover-card__table--oem th {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .imp-alternos-hover-card__table--oem td:nth-child(1),
