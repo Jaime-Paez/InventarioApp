@@ -8,7 +8,7 @@ import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
-import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
+import MovementHistoryTab from '../common/history/MovementHistoryTab'
 import { normalizeId } from '../common/reminders/remindersStorage'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
@@ -277,7 +277,6 @@ function SalidaDetails({
   onUpdated,
   onDeleted,
   onError,
-  currentUser,
   allowEdit = true,
   allowDelete = true,
 }) {
@@ -335,7 +334,6 @@ function SalidaDetails({
   const [clienteLoading, setClienteLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState({})
   const [stockLoading, setStockLoading] = useState(false)
-  const [transferSolicitudId, setTransferSolicitudId] = useState('')
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: MIN_WIDTH, height: MIN_HEIGHT })
   const [isMaximized, setIsMaximized] = useState(false)
@@ -937,7 +935,6 @@ function SalidaDetails({
       setProductos(productosList)
       setEstadosProducto(estadosProductoList)
       setEstadosProductoLoaded(true)
-      setTransferSolicitudId(String(linkedSolicitud?.id || '').trim())
       setCreatorInfo({
         creadoPorNombre: String(salidaData?.creado_por_nombre || linkedSolicitud?.creado_por_nombre || '').trim(),
         enviadoPorNombre: String(linkedSolicitud?.enviado_por_nombre || '').trim(),
@@ -1032,7 +1029,6 @@ function SalidaDetails({
     setClienteOptions([])
     setClienteLoading(false)
     setStockByProduct({})
-    setTransferSolicitudId('')
     setOriginalData(null)
     setIsEditing(false)
     setFormSubmitted(false)
@@ -1985,10 +1981,10 @@ function SalidaDetails({
             )}
             <button
               type="button"
-              className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
-              onClick={() => setActiveTab('recordatorios')}
+              className={`create-user__tab ${activeTab === 'historial' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('historial')}
             >
-              Recordatorios
+              Historial
             </button>
           </div>
           <div className="create-user__content create-salida__content">
@@ -2469,15 +2465,12 @@ function SalidaDetails({
                   </section>
                 )}
 
-                {activeTab === 'recordatorios' && (
-                  <EntityRemindersTab
+                {activeTab === 'historial' && (
+                  <MovementHistoryTab
                     token={token}
-                    currentUser={currentUser}
-                    entityType="salida"
-                    entityId={salidaId}
+                    movimientoId={salidaId}
                     isOpen={open}
                     entityLabel={modalTitle}
-                    transferSolicitudId={transferSolicitudId}
                     onError={notifyError}
                   />
                 )}

@@ -9,7 +9,7 @@ import { getAppPortalRoot } from '../../../utils/portalRoot'
 import { formatDate } from '../../../utils/dateFormat'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
-import EntityRemindersTab from '../common/reminders/EntityRemindersTab'
+import MovementHistoryTab from '../common/history/MovementHistoryTab'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
 import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
@@ -846,7 +846,7 @@ function EntradaDetails({
     if ((!isTraslado || !isPreviewGuardadoSolicitud) && activeTab === 'recordatorio') {
       setActiveTab('general')
     }
-    if (isTraslado && isPreviewGuardadoSolicitud && activeTab === 'recordatorios') {
+    if (isTraslado && isPreviewGuardadoSolicitud && activeTab === 'historial') {
       setActiveTab('general')
     }
   }, [activeTab, isPreviewGuardadoSolicitud, isTraslado])
@@ -3205,10 +3205,10 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
             {!(isTraslado && isPreviewGuardadoSolicitud) && (
               <button
                 type="button"
-                className={`create-user__tab ${activeTab === 'recordatorios' ? 'create-user__tab--active' : ''}`}
-                onClick={() => setActiveTab('recordatorios')}
+                className={`create-user__tab ${activeTab === 'historial' ? 'create-user__tab--active' : ''}`}
+                onClick={() => setActiveTab('historial')}
               >
-                Recordatorios
+                Historial
               </button>
             )}
           </div>
@@ -3979,15 +3979,12 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                   </section>
                 )}
 
-                {activeTab === 'recordatorios' && (
-                  <EntityRemindersTab
+                {activeTab === 'historial' && (
+                  <MovementHistoryTab
                     token={token}
-                    currentUser={currentUser}
-                    entityType="entrada"
-                    entityId={entradaId}
+                    movimientoId={entradaId}
                     isOpen={open}
                     entityLabel={modalTitle}
-                    transferSolicitudId={transferSolicitudId}
                     onError={notifyError}
                   />
                 )}
