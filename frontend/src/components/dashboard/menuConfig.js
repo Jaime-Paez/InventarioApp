@@ -4,7 +4,6 @@ import {
   CircleArrowDown,
   CircleArrowUp,
   AlertTriangle,
-  Tag,
   Map as MapIcon,
   Compass,
   Box,
@@ -43,7 +42,6 @@ export const MENU_STRUCTURE = [
     icon: AlertTriangle,
     moduleKey: 'movimientos_inconvenientes',
   },
-  { label: 'Productos', icon: Tag, moduleKey: 'productos' },
   {
     label: 'Sucursales',
     icon: MapIcon,

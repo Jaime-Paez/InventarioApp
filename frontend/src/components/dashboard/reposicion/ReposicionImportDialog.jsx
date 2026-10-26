@@ -272,8 +272,8 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
                         compact
                         className="reposicion-import__blocker"
                         title="No se pueden pedir: sin proveedor"
-                        reason="Estos productos no tienen proveedor: asígnale una casa comercial en Productos para poder pedirlos."
-                        goTo="Productos"
+                        reason="Estos productos no tienen proveedor: asígnale una casa comercial en Inventario para poder pedirlos."
+                        goTo="Inventario"
                       />
                     )}
                   </footer>

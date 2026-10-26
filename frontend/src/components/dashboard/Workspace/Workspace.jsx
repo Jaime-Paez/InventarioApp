@@ -10,7 +10,6 @@ import SucursalesTable from '../sucursales/SucursalesTable/SucursalesTable'
 import BodegasTable from '../bodegas/BodegasTable/BodegasTable'
 import CasasComercialesTable from '../casasComerciales/CasasComercialesTable/CasasComercialesTable'
 import ClientesTable from '../clientes/ClientesTable/ClientesTable'
-import ProductosTable from '../productos/ProductosTable/ProductosTable'
 import SolicitudesTable from '../solicitudes/SolicitudesTable/SolicitudesTable'
 import ImportacionesTable from '../importaciones/ImportacionesTable'
 import Configuracion from '../configuracion/Configuracion/Configuracion'
@@ -59,7 +58,6 @@ const MODULE_KEY_BY_TAB = {
   Sucursales: 'sucursales_sucursales',
   Bodegas: 'sucursales_bodegas',
   'Proveedores': 'proveedores_casas',
-  Productos: 'productos',
   Importaciones: 'importaciones',
   'En proceso': 'importaciones',
   'En camino': 'importaciones',
@@ -171,7 +169,6 @@ function Workspace({
     Sucursales: SucursalesTable,
     Bodegas: BodegasTable,
     'Proveedores': CasasComercialesTable,
-    Productos: ProductosTable,
     Importaciones: ImportacionesTable,
     'En proceso': ImportacionesTable,
     'En camino': ImportacionesTable,
