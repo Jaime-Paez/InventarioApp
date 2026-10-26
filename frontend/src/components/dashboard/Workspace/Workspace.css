@@ -370,17 +370,22 @@
   }
 }
 
-/* TELEFONO: cada seccion (Inventario, Salidas, ...) ocupa toda la pantalla;
-   no se muestra la barra de pestañas de escritorio. Se cambia de seccion
-   desde el menu lateral. */
+/* TELEFONO: arriba los avisos (Por ubicar, envios, campana) y debajo, en su
+   propia fila a todo el ancho, las pestañas de las secciones abiertas
+   (se desplazan de lado si no caben). */
 @media (max-width: 900px) {
-  .workspace__toolbar .workspace__tabs {
-    display: none;
-  }
-
   .workspace__toolbar {
+    flex-wrap: wrap;
     justify-content: flex-end;
     padding: 8px 10px 0;
+    row-gap: 8px;
+  }
+
+  .workspace__toolbar .workspace__tabs {
+    order: 2;
+    flex: 1 0 100%;
+    width: 100%;
+    min-width: 0;
   }
 
   .workspace__panel {
