@@ -54,6 +54,8 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
   const [documentosBySucursal, setDocumentosBySucursal] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  // Los No. Documento vacios solo se marcan en rojo tras intentar enviar.
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
   const mode = isDark ? 'dark' : 'light'
 
@@ -61,6 +63,7 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
     if (!entradaId || !token) return
     setLoading(true)
     setLoadError('')
+    setSubmitAttempted(false)
     try {
       const base = `${API_URL}/movimientos/movimiento_inventario/${entradaId}/distribucion-compra/`
       const [compraRes, sucRes] = await Promise.all([
@@ -264,6 +267,7 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
   }
 
   const handleConfirm = async () => {
+    setSubmitAttempted(true)
     if (!canConfirm) return
     setSubmitting(true)
     setSubmitError('')
@@ -464,7 +468,7 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
                         </p>
                         {(() => {
                           const doc = documentoFor(suc.id)
-                          const invalid = !doc || documentosRepetidos.has(doc.toUpperCase())
+                          const invalid = (!doc && submitAttempted) || (doc && documentosRepetidos.has(doc.toUpperCase()))
                           return (
                             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: '0 0 12px', maxWidth: 320 }}>
                               <span style={{ fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
@@ -475,7 +479,7 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
                                 value={documentosBySucursal[suc.id] ?? ''}
                                 disabled={submitting}
                                 placeholder="Número del documento del envío"
-                                aria-invalid={invalid}
+                                aria-invalid={Boolean(invalid)}
                                 onChange={(e) => {
                                   setSubmitError('')
                                   setDocumentosBySucursal((prev) => ({ ...prev, [suc.id]: e.target.value }))
@@ -549,13 +553,13 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
             <>
               {confirmBlockReason && <span className="imp-receive-footer-hint">{confirmBlockReason}</span>}
               {/* Junto a "Enviar": el aviso ya empuja los botones a la derecha. */}
-              <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" style={{ marginRight: 0 }} onClick={() => setStep(1)} disabled={submitting}>Atrás</button>
+              <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" style={{ marginRight: 0 }} onClick={() => { setSubmitAttempted(false); setStep(1) }} disabled={submitting}>Atrás</button>
+              {/* Habilitado aunque falten datos: al pulsarlo se marca en rojo lo que falta. */}
               <button
                 type="button"
-                title={confirmBlockReason || undefined}
                 className={`quick-actions__receive-btn${canConfirm ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
                 onClick={handleConfirm}
-                disabled={submitting || !canConfirm}
+                disabled={submitting}
               >
                 {submitting ? 'Enviando...' : 'Enviar a sucursales'}
               </button>
