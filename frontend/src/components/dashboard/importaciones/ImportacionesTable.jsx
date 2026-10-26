@@ -3667,6 +3667,34 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     setCellHover(null)
   }
 
+  // Los `title` del modal se muestran con la misma tarjeta blanca en vez del
+  // tooltip oscuro del navegador: mientras el mouse está encima se le quita el
+  // atributo (y se devuelve al salir). Dentro de una tabla, el encabezado de la
+  // columna sirve de título de la tarjeta.
+  const titleHoverRef = useRef(null)
+  const restoreTitleHover = () => {
+    const current = titleHoverRef.current
+    if (current && !current.el.hasAttribute('title')) current.el.setAttribute('title', current.text)
+    titleHoverRef.current = null
+  }
+  const handleTitleMouseOver = (event) => {
+    const el = event.target.closest?.('[title]')
+    if (!el || titleHoverRef.current?.el === el) return
+    restoreTitleHover()
+    const text = el.getAttribute('title')
+    el.removeAttribute('title')
+    titleHoverRef.current = { el, text }
+    const cell = el.closest('td')
+    const header = cell?.closest('table')?.tHead?.rows[0]?.cells[cell.cellIndex]
+    showCellHover({ currentTarget: el }, text, header?.textContent.trim() || '')
+  }
+  const handleTitleMouseOut = (event) => {
+    const current = titleHoverRef.current
+    if (!current || current.el.contains(event.relatedTarget)) return
+    restoreTitleHover()
+    hideCellHover()
+  }
+
   // Icono "i" junto al OEM: muestra qué productos del catálogo ya tienen
   // registrado ese mismo código OEM (para detectar duplicados antes de crear
   // un producto pendiente nuevo). Si no hay coincidencias, el ícono se ve
@@ -4521,6 +4549,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         role="dialog"
         aria-modal="true"
         style={{ padding: `${VIEWPORT_PADDING}px`, zIndex: 2100 }}
+        onMouseOver={handleTitleMouseOver}
+        onMouseOut={handleTitleMouseOut}
       >
         {unsavedGuard.dialog}
         <div
@@ -5263,8 +5293,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         </div>
       </div>
       {cellHover && createPortal(
-        <div className="imp-cell-hover-card" style={{ top: cellHover.top, left: cellHover.left }}>
-          <div className="imp-cell-hover-card__title">{cellHover.label}</div>
+        // Por encima de la tarjeta de coincidencias OEM (también muestra títulos)
+        // y sin salirse por la derecha en las columnas finales.
+        <div className="imp-cell-hover-card" style={{ top: cellHover.top, left: Math.max(8, Math.min(cellHover.left, window.innerWidth - 388)), zIndex: 11001 }}>
+          {cellHover.label && <div className="imp-cell-hover-card__title">{cellHover.label}</div>}
           <div className="imp-cell-hover-card__row">{cellHover.value}</div>
         </div>,
         getPortalRoot()
@@ -5280,6 +5312,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           }}
           onMouseEnter={cancelHideOemMatchesHover}
           onMouseLeave={hideOemMatchesHover}
+          onMouseOver={handleTitleMouseOver}
+          onMouseOut={handleTitleMouseOut}
         >
           {oemMatchesHover.matches.length ? (
             <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--oem">
