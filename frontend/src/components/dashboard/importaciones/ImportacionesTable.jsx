@@ -4845,7 +4845,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde047', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
                           title="Clic: ir a ellos."
                         >
-                          Amarillo: {suggestedCount} coinciden solo por OEM
+                          {suggestedCount} coinciden solo por OEM
                         </span>
                       )}
                       {conflictoRows.length > 0 && (
@@ -4854,7 +4854,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           style={{ background: '#ffedd5', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
                           title="Clic: ir a ellos."
                         >
-                          Naranja: {conflictoRows.length} coinciden por referencia o código
+                          {conflictoRows.length} coinciden por referencia o código
                         </span>
                       )}
                       {referenciaConflictCount > 0 && (
