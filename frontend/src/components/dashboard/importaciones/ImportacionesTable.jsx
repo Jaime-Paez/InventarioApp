@@ -4063,9 +4063,11 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     setDownloadingReview(true)
     try {
       const XLSXStyle = (await import('xlsx-js-style')).default
+      // Mismas columnas (y en el mismo orden) que la tabla de revisión en
+      // pantalla; ORDEN, CASA COMERCIAL y NOTA son extras del Excel.
       const headers = [
-        'ORDEN', 'CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANTIDAD',
-        'PRECIO BASE (BD)', 'PRECIO NUEVO (EXCEL)', 'PVP APROX', 'CASA COMERCIAL', 'NOTA',
+        'ORDEN', 'CÓDIGO', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANT.',
+        'PVP JP', 'PVP APROX', 'PVP', 'CASA COMERCIAL', 'NOTA',
       ]
       const headerStyle = {
         font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
@@ -4081,13 +4083,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       const borderStyle = { style: 'thin', color: { rgb: 'DBEAFE' } }
       const border = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
       const yellowFill = { fgColor: { rgb: 'FEF08A' }, patternType: 'solid' }
-      const redFill = { fgColor: { rgb: 'FECACA' }, patternType: 'solid' }
-
-      const resolvePrecioNuevo = (row) => (
-        row.matched_producto_id
-          ? Number(row.pvp || 0)
-          : Number(row.precio_nuevo || 0) / 100
-      )
+      const orangeFill = { fgColor: { rgb: 'FFEDD5' }, patternType: 'solid' }
 
       // Se ordena por la fila que tenia cada producto en el Excel ORIGINAL
       // subido (row.orden), no por el orden en que se muestran en pantalla
@@ -4106,9 +4102,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           oem: row.oem || '',
           descripcion: row.descripcion || '',
           cantidad: row.cantidad ?? '',
-          precioBase: row.matched_producto_precio != null ? Number(row.matched_producto_precio) : '',
-          precioNuevo: resolvePrecioNuevo(row),
+          pvpJp: getSistemaPrecio(row) != null ? Number(getSistemaPrecio(row)) : '',
           pvpAprox: Number(row.pvp) > 0 ? Number(row.pvp) : '',
+          pvp: Number(row.precio_nuevo) > 0 ? Number(row.precio_nuevo) / 100 : '',
           casa: selectedCasa?.nombre || '',
           nota: isConflict
             ? `Ya existe en ${row.conflicto_casa_nombre || 'otra casa'} — se creará como nuevo`
@@ -4122,7 +4118,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         headers,
         ...rows.map((r) => [
           r.orden, r.codigo, r.referencia, r.oem, r.descripcion, r.cantidad,
-          r.precioBase, r.precioNuevo, r.pvpAprox, r.casa, r.nota,
+          r.pvpJp, r.pvpAprox, r.pvp, r.casa, r.nota,
         ]),
       ]
       const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
@@ -4138,17 +4134,15 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           worksheet[ref].s = {
             border,
             alignment: { vertical: 'center' },
-            ...(r.isConflict ? { fill: redFill } : {}),
+            // Mismos colores de fila que en pantalla: naranja = otra casa,
+            // amarillo = código sugerido por OEM.
+            ...(r.isConflict ? { fill: orangeFill } : r.isSuggested ? { fill: yellowFill } : {}),
           }
-        }
-        if (r.isSuggested && !r.isConflict) {
-          const codigoRef = XLSXStyle.utils.encode_cell({ r: ri, c: 1 })
-          worksheet[codigoRef].s = { ...worksheet[codigoRef].s, fill: yellowFill }
         }
       })
       worksheet['!cols'] = [
-        { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 11 },
-        { wch: 16 }, { wch: 18 }, { wch: 12 }, { wch: 20 }, { wch: 34 },
+        { wch: 8 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 8 },
+        { wch: 11 }, { wch: 12 }, { wch: 11 }, { wch: 20 }, { wch: 34 },
       ]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
