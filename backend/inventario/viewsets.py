@@ -1652,19 +1652,46 @@ class InventarioViewSet(viewsets.ModelViewSet):
         - vendido: lo que salio de POR UBICAR antes de contarlo.
         - guardado: lo ya contado y guardado en su ubicacion.
         - pendiente: lo que queda por contar (sigue en POR UBICAR)."""
-        from importaciones.models import ImportacionEnvio
+        from django.db.models import Prefetch
+
+        from importaciones.models import ImportacionEnvio, ImportacionEnvioDetalle
 
         from .por_ubicar import normalize_progress, serialize_progress_many
 
-        envios = ImportacionEnvio.objects.filter(
-            estado=ImportacionEnvio.ESTADO_PENDIENTE,
-            llegada_confirmada_en__isnull=False,
-        ).select_related("importacion", "compra_local", "sucursal")
+        # Solo los campos que se usan: la importacion y la compra traen JSON
+        # grandes (borradores, historial) que hacian lenta la lista.
+        envios = (
+            ImportacionEnvio.objects.filter(
+                estado=ImportacionEnvio.ESTADO_PENDIENTE,
+                llegada_confirmada_en__isnull=False,
+            )
+            .select_related("importacion", "compra_local", "sucursal")
+            .only(
+                "id",
+                "sucursal_id",
+                "importacion_id",
+                "compra_local_id",
+                "llegada_confirmada_en",
+                "recepcion_progreso",
+                "importacion__codigo",
+                "compra_local__no_documento",
+                "sucursal__nombre",
+            )
+        )
         if sucursal_id:
             envios = envios.filter(sucursal_id=sucursal_id)
         if allowed is not None:
             envios = envios.filter(sucursal_id__in=sorted(allowed))
-        envios = list(envios.prefetch_related("detalles__producto"))
+        envios = list(
+            envios.prefetch_related(
+                Prefetch(
+                    "detalles",
+                    queryset=ImportacionEnvioDetalle.objects.select_related("producto").only(
+                        "id", "envio_id", "producto_id", "cantidad", "producto__codigo", "producto__nombre"
+                    ),
+                )
+            )
+        )
         avances = serialize_progress_many([(envio.recepcion_progreso, envio.sucursal_id) for envio in envios])
 
         shipments = []
@@ -1773,21 +1800,24 @@ class InventarioViewSet(viewsets.ModelViewSet):
             | {int(s["sucursal_id"]) for s in shipments}
         )
 
-        # Ubicaciones donde se puede guardar (todas menos POR UBICAR).
+        # Ubicaciones donde se puede guardar (todas menos POR UBICAR). Con
+        # values(): select_related traia el plano de la bodega (`ubicaciones`)
+        # repetido en cada una de las ~2000 filas y tardaba segundos.
         storage = {}
         for sub in (
             SubDivision.objects.filter(division__bodega__sucursal_id__in=branch_ids)
             .exclude(nombre__iexact=POR_UBICAR_NOMBRE, division__nombre__iexact=POR_UBICAR_NOMBRE)
-            .select_related("division__bodega")
             .order_by("division__bodega__nombre", "division__nombre", "nombre", "id")
+            .values("id", "nombre", "division__nombre", "division__bodega__nombre", "division__bodega__sucursal_id")
         ):
-            storage.setdefault(int(sub.division.bodega.sucursal_id), []).append(
+            bodega, division, nombre = sub["division__bodega__nombre"], sub["division__nombre"], sub["nombre"]
+            storage.setdefault(int(sub["division__bodega__sucursal_id"]), []).append(
                 {
-                    "id": int(sub.id),
-                    "bodega": sub.division.bodega.nombre,
-                    "division": sub.division.nombre,
-                    "subdivision": sub.nombre,
-                    "label": f"{sub.division.bodega.nombre} / {sub.division.nombre} / {sub.nombre}",
+                    "id": int(sub["id"]),
+                    "bodega": bodega,
+                    "division": division,
+                    "subdivision": nombre,
+                    "label": f"{bodega} / {division} / {nombre}",
                 }
             )
 
