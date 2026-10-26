@@ -1568,17 +1568,18 @@ function RecordatoriosPopup({
     return [...timelineItems].reverse()
   }, [activeDetailIsTransferContext, activeDetailReminder, activeDetailSolicitud, activeDetailSolicitudLoading, issueReminderBySolicitudId, reminders])
 
-  // Al tocar un dia en rojo, lleva directo al recordatorio que lo pinta de rojo.
+  // Al tocar un dia en rojo o amarillo, lleva directo al recordatorio que le
+  // da ese color (el rojo gana si hay de los dos).
   const handleSelectTimelineDay = useCallback((day) => {
     setSelectedTimelineDate(day.dateKey)
-    if (day.severity !== 'critical') return
-    const criticalReminder = (remindersByDate.get(day.dateKey) || []).find(
-      (reminder) => getTimelineDaySeverityForReminder(reminder) === 'critical'
+    if (day.severity !== 'critical' && day.severity !== 'warning') return
+    const targetReminder = (remindersByDate.get(day.dateKey) || []).find(
+      (reminder) => getTimelineDaySeverityForReminder(reminder) === day.severity
     )
-    const criticalReminderId = normalizeId(criticalReminder?.id)
-    if (!criticalReminderId) return
-    setPendingScrollReminderId(criticalReminderId)
-    setHighlightedReminderId(criticalReminderId)
+    const targetReminderId = normalizeId(targetReminder?.id)
+    if (!targetReminderId) return
+    setPendingScrollReminderId(targetReminderId)
+    setHighlightedReminderId(targetReminderId)
   }, [getTimelineDaySeverityForReminder, remindersByDate])
 
   const shiftTimelineDay = useCallback((offset) => {
