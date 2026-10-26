@@ -11,6 +11,20 @@
   z-index: 1310;
 }
 
+/* Telefono/tablet: con una ventana abierta (ej. un producto del inventario)
+   el circulo naranja de urgente y los avisos quedan detras de ella, para
+   poder leerla y cerrarla; al cerrarla el aviso urgente vuelve. */
+@media (max-width: 900px) {
+  body:has(.create-user__overlay) .quick-actions__urgent-shield {
+    display: none;
+  }
+
+  body:has(.create-user__overlay) .quick-actions__dock.has-urgent-shield,
+  body:has(.create-user__overlay) .quick-actions.has-urgent-shield {
+    z-index: 30;
+  }
+}
+
 .workspace__toolbar .quick-actions__dock .quick-actions {
   margin-left: 0;
 }
