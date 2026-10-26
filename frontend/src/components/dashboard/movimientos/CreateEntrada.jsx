@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Info } from 'lucide-react'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
 import '../admin/UsersTable/UsersTable.css'
@@ -25,6 +24,7 @@ import {
   sanitizeRecipient,
 } from '../common/reminders/remindersStorage'
 import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
+import { UnsavedChangesDialog } from '../common/unsavedChanges/unsavedChanges'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -5252,56 +5252,19 @@ function CreateEntrada({
           </div>
         )}
 
-        {showCloseConfirm && (
-          <div
-            className="user-details__confirm-overlay"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget && !loading) setShowCloseConfirm(false)
-            }}
-          >
-            <div className="user-details__confirm-dialog">
-              <div className="user-details__confirm-icon">
-                <Info size={18} />
-              </div>
-              <div className="user-details__confirm-content">
-                <h4>¿Guardar cambios?</h4>
-                <p>¿Quieres guardar los cambios antes de cerrar?</p>
-              </div>
-              <div className="user-details__confirm-actions">
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--cancel"
-                  onClick={() => setShowCloseConfirm(false)}
-                  disabled={loading}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--secondary"
-                  onClick={() => {
-                    setShowCloseConfirm(false)
-                    onClose?.()
-                  }}
-                  disabled={loading}
-                >
-                  No guardar
-                </button>
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--primary"
-                  onClick={() => {
-                    setShowCloseConfirm(false)
-                    handleSubmit({ preventDefault: () => {} }, { guardarBorrador: true })
-                  }}
-                  disabled={loading}
-                >
-                  {loading ? 'Guardando...' : (isTraslado ? 'Guardar solicitud y cerrar' : 'Guardar y cerrar')}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <UnsavedChangesDialog
+          open={showCloseConfirm}
+          saving={loading}
+          onCancel={() => setShowCloseConfirm(false)}
+          onDiscard={() => {
+            setShowCloseConfirm(false)
+            onClose?.()
+          }}
+          onSave={() => {
+            setShowCloseConfirm(false)
+            handleSubmit({ preventDefault: () => {} }, { guardarBorrador: true })
+          }}
+        />
 
         {showLocationResolver && (
           <div

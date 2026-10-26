@@ -26,6 +26,7 @@ import './ImportacionesTable.css'
 import BlockerNotice from '../common/BlockerNotice'
 import { matchesFirst } from '../common/productDetailMatches'
 import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
+import { UnsavedChangesDialog } from '../common/unsavedChanges/unsavedChanges'
 import { isPhoneViewport } from '../../../utils/viewport'
 
 const getPortalRoot = () => getAppPortalRoot()
@@ -8918,38 +8919,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           getPortalRoot()
         )}
 
-        {showSaveOnCloseModal && createPortal(
-          <div className="user-details__confirm-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowSaveOnCloseModal(false) }}>
-            <div className="user-details__confirm-dialog">
-              <div className="user-details__confirm-icon">
-                <Info size={18} />
-              </div>
-              <div className="user-details__confirm-content">
-                <h4>¿Guardar cambios?</h4>
-                <p>¿Quieres guardar los cambios antes de cerrar?</p>
-              </div>
-              <div className="user-details__confirm-actions">
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--cancel"
-                  onClick={() => { setShowSaveOnCloseModal(false); onClose?.() }}
-                  disabled={submitting}
-                >
-                  No guardar
-                </button>
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--primary"
-                  onClick={handleSaveAndClose}
-                  disabled={submitting}
-                >
-                  {submitting ? 'Guardando...' : 'Guardar y cerrar'}
-                </button>
-              </div>
-            </div>
-          </div>,
-          getPortalRoot()
-        )}
+        <UnsavedChangesDialog
+          open={showSaveOnCloseModal}
+          saving={submitting}
+          onCancel={() => setShowSaveOnCloseModal(false)}
+          onDiscard={() => { setShowSaveOnCloseModal(false); onClose?.() }}
+          onSave={handleSaveAndClose}
+        />
 
         {showNuevoProductoView && createPortal(
           <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowNuevoProductoView(false) }}>

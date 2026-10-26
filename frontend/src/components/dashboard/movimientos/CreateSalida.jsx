@@ -32,6 +32,7 @@ import {
 } from '../common/reminders/remindersStorage'
 import { TIPO_ENVIO_OPTIONS } from './tipoEnvio'
 import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
+import { UnsavedChangesDialog } from '../common/unsavedChanges/unsavedChanges'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -5044,49 +5045,19 @@ function CreateSalida({
           </div>
         </form>
 
-        {showCloseConfirm && (
-          <div
-            className="create-salida__confirm-overlay"
-            onMouseDown={() => { if (!loading) setShowCloseConfirm(false) }}
-          >
-            <div className="create-salida__confirm-card" onMouseDown={(event) => event.stopPropagation()}>
-              <h4>¿Guardar cambios?</h4>
-              <p>¿Quieres guardar los cambios antes de cerrar?</p>
-              <div className="create-salida__confirm-actions">
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--cancel"
-                  onClick={() => setShowCloseConfirm(false)}
-                  disabled={loading}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--secondary"
-                  onClick={() => {
-                    setShowCloseConfirm(false)
-                    onClose?.()
-                  }}
-                  disabled={loading}
-                >
-                  No guardar
-                </button>
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--info"
-                  onClick={() => {
-                    setShowCloseConfirm(false)
-                    handleSubmit({ preventDefault: () => {} }, { guardarBorrador: true })
-                  }}
-                  disabled={loading}
-                >
-                  {loading ? 'Guardando...' : 'Guardar traslado y cerrar'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <UnsavedChangesDialog
+          open={showCloseConfirm}
+          saving={loading}
+          onCancel={() => setShowCloseConfirm(false)}
+          onDiscard={() => {
+            setShowCloseConfirm(false)
+            onClose?.()
+          }}
+          onSave={() => {
+            setShowCloseConfirm(false)
+            handleSubmit({ preventDefault: () => {} }, { guardarBorrador: true })
+          }}
+        />
 
         {autoConfirmData && (
           <div
