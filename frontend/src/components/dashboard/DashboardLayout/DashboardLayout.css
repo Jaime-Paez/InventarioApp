@@ -226,11 +226,26 @@
     grid-template-columns: 1fr;
   }
 
+  /* useMobileMenuButtonAnchor.js lo mueve a la esquina inferior izquierda de
+     la tabla visible; estos valores son su lugar cuando no hay tabla. */
   .sidebar__reopen {
     left: 17px;
     top: auto;
     bottom: 30px;
+    width: 40px;
+    height: 40px;
+    border: 1.5px solid color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
     background: var(--sidebar-backgorund-color);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.22);
+  }
+
+  .dashboard-shell.dark .sidebar__reopen {
+    border-color: color-mix(in srgb, #fff 30%, var(--color-surface-dark));
+  }
+
+  /* La paginacion deja libre su esquina izquierda para ese boton. */
+  .workspace__tab-panel .p-paginator {
+    padding-left: 54px !important;
   }
 
   .sidebar__backdrop {
