@@ -755,7 +755,6 @@ function PorGuardar({ token, darkMode, onSaved }) {
                       <section className="por-guardar__group">
                         {renderGroupHead({
                           title: 'En POR UBICAR',
-                          subtitle: 'Ya están en el inventario (ej. de un inconveniente); falta guardarlos en su ubicación.',
                         })}
                         {renderProgress({
                           done: doneCount,
