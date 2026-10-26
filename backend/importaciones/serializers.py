@@ -263,8 +263,11 @@ class ImportacionSerializer(serializers.ModelSerializer):
     def _resolve_producto_for_detalle(self, item, casa_comercial, importacion):
         """Si el detalle trae un código (sugerido por OEM o escrito a mano)
         pero no está vinculado a un producto existente, se crea el producto
-        real en el catálogo de una vez (con stock en 0) en lugar de dejarlo
-        pendiente — así futuras importaciones lo reconocen por OEM/código.
+        real en el catálogo (con stock en 0) en lugar de dejarlo pendiente —
+        así futuras importaciones lo reconocen por OEM/código. Mientras la
+        importación es una sugerencia (borrador) no se crea nada: queda como
+        detalle pendiente y se crea al pedir la cotización
+        (crear_productos_pendientes).
         """
         if item.get("producto") is not None:
             return
@@ -307,6 +310,23 @@ class ImportacionSerializer(serializers.ModelSerializer):
 
         item["producto"] = producto
 
+    def crear_productos_pendientes(self, importacion):
+        """Al pasar la sugerencia a cotizacion: los detalles con codigo que
+        todavia no tienen producto se crean en el catalogo (con su PVP aprox.
+        como precio) y quedan vinculados."""
+        for detalle in importacion.detalles.filter(producto__isnull=True).exclude(codigo=""):
+            item = {
+                "producto": None,
+                "codigo": detalle.codigo,
+                "nombre": detalle.nombre,
+                "referencia": detalle.referencia,
+                "oem": detalle.oem,
+                "precio_estimado": detalle.precio_estimado,
+            }
+            self._resolve_producto_for_detalle(item, importacion.casa_comercial, importacion)
+            detalle.producto = item["producto"]
+            detalle.save(update_fields=["producto"])
+
     @transaction.atomic
     def update(self, instance, validated_data):
         detalles_data = validated_data.pop("detalles", None)
@@ -315,8 +335,9 @@ class ImportacionSerializer(serializers.ModelSerializer):
         instance.save()
         if detalles_data is not None:
             casa_comercial = validated_data.get("casa_comercial") or instance.casa_comercial
-            for item in detalles_data:
-                self._resolve_producto_for_detalle(item, casa_comercial, instance)
+            if instance.estado != Importacion.ESTADO_BORRADOR:
+                for item in detalles_data:
+                    self._resolve_producto_for_detalle(item, casa_comercial, instance)
             instance.detalles.all().delete()
             ImportacionDetalle.objects.bulk_create([
                 ImportacionDetalle(
@@ -356,9 +377,9 @@ class ImportacionSerializer(serializers.ModelSerializer):
         if request and request.user and request.user.is_authenticated:
             validated_data["creado_por"] = request.user
 
+        # Se crea como sugerencia (borrador): los productos nuevos todavia no
+        # entran al catalogo, se crean al pedir la cotizacion.
         importacion = Importacion.objects.create(**validated_data)
-        for item in detalles_data:
-            self._resolve_producto_for_detalle(item, casa, importacion)
         ImportacionDetalle.objects.bulk_create(
             [
                 ImportacionDetalle(

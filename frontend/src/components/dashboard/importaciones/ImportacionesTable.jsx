@@ -3591,6 +3591,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
 
   // Step 3
   const [parsedRows, setParsedRows] = useState([])
+  // Buscador del paso 3 (como en las demas etapas): lo que coincide va primero.
+  const [reviewQuery, setReviewQuery] = useState('')
   const [referenciaDecisions, setReferenciaDecisions] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
@@ -4226,6 +4228,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
               // sin mostrarse en ninguna tabla, solo para exportarla de
               // vuelta como primera columna al descargar el Excel despues.
               orden: row.orden,
+              ...(parseInt(row.precio_nuevo || '0', 10) > 0
+                ? { precio_estimado: (parseInt(row.precio_nuevo, 10) / 100).toFixed(2) }
+                : {}),
               ...(hasReferenciaConflict(row) && referenciaDecisions[i] === 'excel'
                 ? { update_referencia: true, nueva_referencia: row.referencia }
                 : {}),
@@ -4281,6 +4286,14 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const validRows = parsedRows
     .filter(r => (r.faltan_datos || []).length === 0)
     .sort((a, b) => rowSortRank(a) - rowSortRank(b))
+  const reviewMatches = (row) => importItemMatches(
+    { codigo: row.codigo, nombre: row.descripcion, oem: row.oem, referencia: row.referencia, producto_busqueda: row.matched_producto_codigo },
+    reviewQuery
+  )
+  const reviewHasQuery = Boolean(reviewQuery.trim())
+  const reviewRows = validRows.map((row, i) => ({ row, i, hit: !reviewHasQuery || reviewMatches(row) }))
+  if (reviewHasQuery) reviewRows.sort((a, b) => Number(b.hit) - Number(a.hit))
+  const reviewHitCount = reviewHasQuery ? reviewRows.filter((entry) => entry.hit).length : validRows.length
   const matchedCount = validRows.filter(r => r.matched_producto_id).length
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
   const referenciaConflictCount = validRows.filter(r => hasReferenciaConflict(r)).length
@@ -4329,6 +4342,22 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     setParsedRows(prev => prev.map(r => (
       r.fila_excel === filaExcel ? { ...r, precio_nuevo: centavosDigits } : r
     )))
+  }
+
+  // PVP JP: el precio registrado en el sistema (el del producto vinculado o,
+  // si el codigo/referencia es de otra casa, el de ese producto). PVP Aprox:
+  // el que trae el Excel. Doble click en uno de ellos lo copia al PVP de la
+  // fila; doble click en su titulo lo copia a todas las filas que lo tengan.
+  const getSistemaPrecio = (row) => row.matched_producto_precio ?? row.conflicto_precio ?? null
+  const toCentavosDigits = (value) => String(Math.round(Number(value) * 100))
+  const copyPrecioToPvp = (filaExcel, value) => {
+    if (Number(value) > 0) updateRowPrecioCentavos(filaExcel, toCentavosDigits(value))
+  }
+  const copyPrecioToAllPvp = (getValue) => {
+    setParsedRows(prev => prev.map(r => {
+      const value = getValue(r)
+      return Number(value) > 0 ? { ...r, precio_nuevo: toCentavosDigits(value) } : r
+    }))
   }
 
   // Descripción de un producto pendiente (sin catálogo): se escribe a mano
@@ -4659,7 +4688,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       ))}
                     </div>
                     <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#9a3412' }}>
-                      Todo producto debe tener referencia. Si ya existe en el catálogo, también necesita una cantidad real a importar. La descripción y el PVP de un producto nuevo se pueden completar en el siguiente paso. Corrige esos datos en el Excel y vuelve a subirlo.
+                      Todo producto debe tener referencia u OEM. La cantidad no es obligatoria en la sugerencia: se completa antes de pedir la cotización. La descripción y el PVP de un producto nuevo se pueden completar en el siguiente paso. Corrige esos datos en el Excel y vuelve a subirlo.
                     </p>
                   </div>
                 ) : duplicateProductGroups.length > 0 ? (
@@ -4738,16 +4767,24 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       </div>
                     )}
 
+                    <ImportProductSearch
+                      value={reviewQuery}
+                      onChange={setReviewQuery}
+                      shown={reviewHitCount}
+                      total={validRows.length}
+                    />
+
                     <div ref={reviewTableWrapRef} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
-                      <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 870 }}>
+                      <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 960 }}>
                         <colgroup>
                           <col style={{ width: 100 }} />
                           <col style={{ width: 190 }} />
                           <col style={{ width: 130 }} />
                           <col style={{ width: 220 }} />
                           <col style={{ width: 60 }} />
-                          <col style={{ width: 80 }} />
-                          <col style={{ width: 90 }} />
+                          <col style={{ width: 85 }} />
+                          <col style={{ width: 85 }} />
+                          <col style={{ width: 95 }} />
                         </colgroup>
                         <thead>
                           <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1, fontSize: 'var(--font-size-sm)' }}>
@@ -4756,12 +4793,25 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>OEM</th>
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
                             <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
-                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="Precio registrado en el sistema (o el precio del producto nuevo)">PVP sistema</th>
-                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="Precio que traía el Excel">PVP Excel</th>
+                            <th
+                              style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}
+                              title="Precio registrado en el sistema. Doble click: copiarlo al PVP de todas las filas"
+                              onDoubleClick={() => copyPrecioToAllPvp(getSistemaPrecio)}
+                            >
+                              PVP JP
+                            </th>
+                            <th
+                              style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}
+                              title="Precio que traía el Excel. Doble click: copiarlo al PVP de todas las filas"
+                              onDoubleClick={() => copyPrecioToAllPvp((r) => r.pvp)}
+                            >
+                              PVP Aprox
+                            </th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="PVP que se guarda en la sugerencia (y el precio del producto nuevo)">PVP</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {validRows.map((row, i) => {
+                          {reviewRows.map(({ row, i }) => {
                             const conflict = hasReferenciaConflict(row)
                             const decision = referenciaDecisions[i]
                             const isSuggested = Boolean(row.codigo_sugerido)
@@ -4912,8 +4962,40 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                   })()}
                                 </td>
                                 <td style={{ padding: '7px 12px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>{row.cantidad}</td>
-                                <td style={{ padding: row.matched_producto_id ? '7px 12px' : '4px 8px', textAlign: 'right' }}>
-                                  {!row.matched_producto_id ? (() => {
+                                <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                  {(() => {
+                                    const sistema = getSistemaPrecio(row)
+                                    if (sistema == null) return <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
+                                    const otraCasa = !row.matched_producto_id && row.conflicto_casa
+                                    return (
+                                      <span
+                                        onDoubleClick={() => copyPrecioToPvp(row.fila_excel, sistema)}
+                                        style={{ fontWeight: 600, cursor: 'pointer', userSelect: 'none', color: otraCasa ? '#c2410c' : undefined }}
+                                        title={`${otraCasa ? `Precio en ${row.conflicto_casa_nombre || 'otra casa'}` : 'Precio registrado en el sistema'}. Doble click: usarlo como PVP`}
+                                      >
+                                        ${Number(sistema).toFixed(2)}
+                                      </span>
+                                    )
+                                  })()}
+                                </td>
+                                <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                  {(() => {
+                                    if (!(Number(row.pvp) > 0)) return <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
+                                    const sistema = getSistemaPrecio(row)
+                                    const difiere = sistema != null && Math.abs(Number(row.pvp) - Number(sistema)) >= 0.005
+                                    return (
+                                      <span
+                                        onDoubleClick={() => copyPrecioToPvp(row.fila_excel, row.pvp)}
+                                        style={{ cursor: 'pointer', userSelect: 'none', fontWeight: difiere ? 600 : undefined, color: difiere ? '#b45309' : 'var(--color-text-secondary)' }}
+                                        title={`${difiere ? `Distinto al PVP JP ($${Number(sistema).toFixed(2)})` : 'Precio que trae el Excel'}. Doble click: usarlo como PVP`}
+                                      >
+                                        ${Number(row.pvp).toFixed(2)}
+                                      </span>
+                                    )
+                                  })()}
+                                </td>
+                                <td style={{ padding: '4px 8px', textAlign: 'right' }}>
+                                  {(() => {
                                     const priceInvalid = !row.precio_nuevo || parseInt(row.precio_nuevo, 10) <= 0
                                     const showInvalid = row.codigo_sugerido && submitAttempted && priceInvalid
                                     return (
@@ -4924,7 +5006,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                           inputMode="numeric"
                                           value={formatCentavos(row.precio_nuevo)}
                                           onChange={() => {}}
-                                          title="Precio (PVP sin IVA) del producto nuevo. Escríbelo o pasa el mouse sobre el ícono del OEM y haz clic en una de las coincidencias."
+                                          title={row.matched_producto_id
+                                            ? 'PVP aproximado de esta sugerencia. Escríbelo o haz doble click en el PVP JP o el PVP Aprox.'
+                                            : 'Precio (PVP sin IVA) del producto nuevo. Escríbelo, haz doble click en el PVP JP o el PVP Aprox, o pasa el mouse sobre el ícono del OEM y haz clic en una de las coincidencias.'}
                                           onKeyDown={(e) => {
                                             if (e.key === 'Backspace') {
                                               e.preventDefault()
@@ -4940,31 +5024,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                           }}
                                         />
                                       </div>
-                                    )
-                                  })() : (
-                                    // Producto ya vinculado: el precio que tiene registrado en el
-                                    // sistema (el que se encontró por código/referencia), para
-                                    // compararlo con el que trae el Excel en la columna de al lado.
-                                    <span
-                                      style={{ fontWeight: 600, whiteSpace: 'nowrap' }}
-                                      title="Precio registrado en el sistema para este producto"
-                                    >
-                                      {row.matched_producto_precio != null ? `$${Number(row.matched_producto_precio).toFixed(2)}` : '—'}
-                                    </span>
-                                  )}
-                                </td>
-                                <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                  {(() => {
-                                    if (!(Number(row.pvp) > 0)) return <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
-                                    const sistema = row.matched_producto_id && row.matched_producto_precio != null ? Number(row.matched_producto_precio) : null
-                                    const difiere = sistema != null && Math.abs(Number(row.pvp) - sistema) >= 0.005
-                                    return (
-                                      <span
-                                        style={{ fontWeight: difiere ? 600 : undefined, color: difiere ? '#b45309' : 'var(--color-text-secondary)' }}
-                                        title={difiere ? `Distinto al precio del sistema ($${sistema.toFixed(2)})` : 'Precio que trae el Excel'}
-                                      >
-                                        ${Number(row.pvp).toFixed(2)}
-                                      </span>
                                     )
                                   })()}
                                 </td>
@@ -5616,17 +5675,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
         ...solId,
       }
     })
-    const badKeys = new Set(
-      details
-        .filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 })
-        .map((item) => item._key)
-    )
-    if (badKeys.size > 0) {
-      setInvalidQtyKeys(badKeys)
-      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Todas las cantidades deben ser mayores a cero.', life: 4000 })
-      return
-    }
-
+    // En la sugerencia la cantidad no es obligatoria (basta con lo que trae
+    // el Excel o lo que se escriba); se exige al pedir la cotizacion.
     setSubmitting(true)
     try {
       const response = await authFetch(
@@ -7188,8 +7238,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Agrega al menos un producto.', life: 4000 })
       return
     }
+    // En la sugerencia (borrador) la cantidad todavia no es obligatoria: se
+    // exige al pasarla a verificacion (Pedir cotizacion) y despues.
     const badKeys = new Set(
-      itemsToSubmit.filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 }).map((item) => item._key)
+      imp?.estado === 'borrador'
+        ? []
+        : itemsToSubmit.filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 }).map((item) => item._key)
     )
     if (badKeys.size > 0) {
       setInvalidQtyKeys(badKeys)
@@ -7208,7 +7262,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           : null,
         cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
         seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
-      } : {}
+      } : {
+        // Sugerencia: se conserva el PVP aprox. (el backend borra y vuelve a
+        // crear los detalles; sin reenviarlo se perdia al guardar).
+        precio_estimado: item.precio_estimado
+          ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
+          : null,
+      }
       // orden: la posición del producto en el Excel de sugerencia original --
       // el backend borra y vuelve a crear todos los detalles al guardar, así
       // que si no se reenvía aquí se pierde en cada "Guardar" (quedaba null).
@@ -7525,8 +7585,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     try {
       const normalizedDetails = details.map((item) => {
         const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...solId }
+        // El PVP aprox. se reenvia: con el se crean los productos nuevos al
+        // pedir la cotizacion.
+        const precioEstimado = {
+          precio_estimado: item.precio_estimado
+            ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
+            : null,
+        }
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
       })
       const saveResponse = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,

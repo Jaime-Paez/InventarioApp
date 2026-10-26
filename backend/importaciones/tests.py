@@ -103,3 +103,66 @@ class BorradorRecepcionEnvioTests(TestCase):
         self.assertIn(response.status_code, (403, 404))
         self.envio.refresh_from_db()
         self.assertEqual(self.envio.borrador_recepcion, {})
+
+
+class SugerenciaProductosNuevosTests(TestCase):
+    """En la sugerencia (borrador) los productos nuevos no entran al catalogo
+    ni se exige cantidad; al pedir la cotizacion se exige la cantidad y los
+    productos nuevos se crean con su PVP aprox."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_superuser(
+            username="admin-sug@test.com", email="admin-sug@test.com", password="x"
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+        self.casa = CasaComercial.objects.create(
+            nombre="Casa Imp", codigo="CI", tipo=CasaComercial.TIPO_IMPORTACION
+        )
+        self.existente = Producto.objects.create(codigo="EX-1", nombre="Faro", precio=Decimal("20"))
+
+    def _crear(self, cantidad_nuevo=0):
+        response = self.client.post(
+            f"{BASE_URL}/",
+            {
+                "casa_comercial_id": self.casa.id,
+                "detalles": [
+                    {"producto_id": self.existente.id, "cantidad": 0, "precio_estimado": "18.50"},
+                    {
+                        "codigo": "NUEVO-CI", "nombre": "Filtro nuevo", "referencia": "REF-NUEVO",
+                        "oem": "OEM-NUEVO", "cantidad": cantidad_nuevo, "precio_estimado": "12.30",
+                    },
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        return Importacion.objects.get(pk=response.data["id"])
+
+    def test_en_sugerencia_no_se_crea_el_producto_ni_se_exige_cantidad(self):
+        importacion = self._crear()
+        self.assertFalse(Producto.objects.filter(codigo="NUEVO-CI").exists())
+        detalle = importacion.detalles.get(codigo="NUEVO-CI")
+        self.assertIsNone(detalle.producto_id)
+        self.assertEqual(detalle.precio_estimado, Decimal("12.30"))
+        self.assertEqual(importacion.detalles.get(producto=self.existente).precio_estimado, Decimal("18.50"))
+
+    def test_pedir_cotizacion_exige_cantidad(self):
+        importacion = self._crear()
+        response = self.client.post(f"{BASE_URL}/{importacion.id}/pedir-cotizacion/")
+        self.assertEqual(response.status_code, 400)
+        importacion.refresh_from_db()
+        self.assertEqual(importacion.estado, Importacion.ESTADO_BORRADOR)
+        self.assertFalse(Producto.objects.filter(codigo="NUEVO-CI").exists())
+
+    def test_pedir_cotizacion_crea_los_productos_nuevos(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        importacion.detalles.filter(producto=self.existente).update(cantidad=2)
+        response = self.client.post(f"{BASE_URL}/{importacion.id}/pedir-cotizacion/")
+        self.assertEqual(response.status_code, 200, response.data)
+        producto = Producto.objects.get(codigo="NUEVO-CI")
+        self.assertEqual(producto.precio, Decimal("12.30"))
+        self.assertEqual(producto.creado_desde_importacion_id, importacion.id)
+        self.assertTrue(producto.casas_comerciales.filter(pk=self.casa.pk).exists())
+        self.assertEqual(importacion.detalles.get(codigo="NUEVO-CI").producto_id, producto.id)

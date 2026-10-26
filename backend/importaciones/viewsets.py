@@ -466,6 +466,7 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
             matched_via_identity = False
             conflicto_casa = False
             conflicto_casa_nombre = ""
+            conflicto_precio = None
             if codigo:
                 matched = _pick_producto_match(
                     list(Producto.objects.filter(codigo__iexact=codigo)), casa_comercial_id
@@ -503,6 +504,9 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                         otra = matched.casas_comerciales.exclude(id=casa_comercial_id).first()
                         conflicto_casa = True
                         conflicto_casa_nombre = otra.nombre if otra else "otra casa comercial"
+                        # Precio de ese producto de la otra casa: se muestra
+                        # como PVP JP para compararlo con el del Excel.
+                        conflicto_precio = float(matched.precio) if matched.precio is not None else None
                     # Si el match fue solo por OEM, no es un conflicto: se
                     # descarta el match (matched = None) y la fila sigue como
                     # sin catálogo, para que el frontend pueda sugerir un
@@ -575,6 +579,7 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                 "sucursal_quantities": suc_quantities,
                 "conflicto_casa": conflicto_casa,
                 "conflicto_casa_nombre": conflicto_casa_nombre,
+                "conflicto_precio": conflicto_precio,
                 "faltan_datos": faltan_datos,
             })
 
@@ -894,6 +899,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "Solo se puede pedir cotización desde estado borrador."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if instance.detalles.filter(cantidad__lte=0).exists():
+            return Response(
+                {"detail": "Antes de pedir la cotización, todas las cantidades deben ser mayores a cero."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Los productos nuevos de la sugerencia entran recien ahora al catalogo.
+        self.get_serializer(instance).crear_productos_pendientes(instance)
         instance.estado = Importacion.ESTADO_COTIZACION
         instance.save(update_fields=["estado"])
         serializer = self.get_serializer(instance)
