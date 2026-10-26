@@ -238,9 +238,9 @@ def _pick_producto_match(candidates, casa_comercial_id):
     return candidates[0]
 
 
-def _resolve_producto_by_referencia(referencia, casa_comercial_id):
+def _productos_by_referencia(referencia):
     if not referencia:
-        return None
+        return []
     # Un producto puede tener varias referencias (ProductoReferencia): hay
     # que buscar en todas, no solo en Producto.referencia (que es nada más
     # una copia de la primera, ver sync_producto_referencia_primary).
@@ -256,7 +256,11 @@ def _resolve_producto_by_referencia(referencia, casa_comercial_id):
             .filter(referencia_sin_ceros__iexact=stripped)
             .distinct()
         )
-    return _pick_producto_match(candidates, casa_comercial_id)
+    return candidates
+
+
+def _resolve_producto_by_referencia(referencia, casa_comercial_id):
+    return _pick_producto_match(_productos_by_referencia(referencia), casa_comercial_id)
 
 
 def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
@@ -536,6 +540,19 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                         # Precio de ese producto de la otra casa: se muestra
                         # como PVP JP para compararlo con el del Excel.
                         conflicto_precio = float(matched.precio) if matched.precio is not None else None
+                        # Las recomendaciones solo buscan el valor exacto: si
+                        # la referencia calzo ignorando ceros a la izquierda
+                        # ('248L6' vs '0248L6') o por codigo, la fila quedaba
+                        # naranja sin recomendaciones y sin codigo sugerido.
+                        # Se agregan el producto encontrado y los demas con esa
+                        # misma referencia (la misma pieza en otras casas).
+                        extras = [matched] + _productos_by_referencia(referencia)
+                        for producto in extras:
+                            if producto.id not in oem_matches_dict:
+                                oem_matches_dict[producto.id] = payload_by_product_id.get(
+                                    producto.id
+                                ) or match_payload(producto)
+                        oem_matches = list(oem_matches_dict.values())
                     # Si el match fue solo por OEM, no es un conflicto: se
                     # descarta el match (matched = None) y la fila sigue como
                     # sin catálogo, para que el frontend pueda sugerir un
