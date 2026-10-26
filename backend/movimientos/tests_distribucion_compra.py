@@ -24,6 +24,13 @@ class DistribucionCompraLocalTests(APITestCase):
         self.client.force_authenticate(self.admin)
         tipo_division, _ = TipoDivision.objects.get_or_create(nombre="General")
         self.matriz = Sucursal.objects.create(nombre="Matriz", direccion="Principal")
+        # Solo la matriz (sucursal central de Reposicion) reparte sus compras;
+        # las migraciones ya crean "9 de Octubre (Matriz)", por eso se fija aqui.
+        from app.models import ReposicionConfiguracion
+
+        config = ReposicionConfiguracion.get_global()
+        config.sucursal_central = self.matriz
+        config.save()
         division = Division.objects.create(
             bodega=Bodega.objects.create(sucursal=self.matriz, nombre="Bodega"),
             tipo_division=tipo_division,
