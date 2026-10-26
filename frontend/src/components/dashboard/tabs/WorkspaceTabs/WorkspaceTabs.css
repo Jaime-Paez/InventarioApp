@@ -13,6 +13,19 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
+  --tabs-fade-left: 0px;
+  --tabs-fade-right: 0px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--tabs-fade-left), #000 calc(100% - var(--tabs-fade-right)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--tabs-fade-left), #000 calc(100% - var(--tabs-fade-right)), transparent 100%);
+}
+
+/* Desvanece el borde donde hay mas pestañas ocultas */
+.workspace__tablist-wrapper.fade-left {
+  --tabs-fade-left: 36px;
+}
+
+.workspace__tablist-wrapper.fade-right {
+  --tabs-fade-right: 36px;
 }
 
 .workspace__tablist {

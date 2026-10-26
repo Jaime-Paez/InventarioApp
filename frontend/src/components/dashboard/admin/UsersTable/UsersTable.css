@@ -926,22 +926,70 @@ body:has(.dashboard-shell.dark) .p-overlaypanel.table-options-list.p-overlaypane
     font-size: 0.92rem;
   }
 
+  /* Busqueda, acciones y reportes en una sola fila: la busqueda se encoge */
   .users-header {
-    flex-direction: column;
-    align-items: stretch;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 8px 8px 6px;
   }
 
   .users-header__left {
-    min-width: unset;
+    min-width: 0;
+    gap: 5px;
   }
 
   .users-header__right {
-    width: 100%;
-    justify-content: flex-end;
+    flex-shrink: 0;
+    gap: 5px;
   }
 
-  .search-input-container {
+  .users-header__count {
+    font-size: 0.85rem;
+    margin-right: 0;
+    white-space: nowrap;
+  }
+
+  .users-header .search-input-container {
+    min-width: 64px;
     max-width: unset;
+    padding: 6px 9px;
+  }
+
+  .users-header .rounded-icon-btn,
+  .users-header .users-circle {
+    flex-shrink: 0;
+  }
+
+  /* Barra superior: Crear/Buscar arriba, filtros de tipo en la fila de abajo */
+  .users-page__actions {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .users-page .users-page__actions .entradas-type-filter,
+  .users-page .users-page__actions .salidas-type-filter,
+  .users-page .users-page__actions .transfer-issues-page__type-filter {
+    flex-basis: 100%;
+    padding-left: 0;
+    margin-left: 0;
+    border-left: none;
+    padding-top: 8px;
+    border-top: 1.5px solid var(--color-border);
+    gap: 6px;
+  }
+
+  .dashboard-shell.dark .users-page .users-page__actions .entradas-type-filter,
+  .dashboard-shell.dark .users-page .users-page__actions .salidas-type-filter,
+  .dashboard-shell.dark .users-page .users-page__actions .transfer-issues-page__type-filter {
+    border-top-color: var(--color-border-dark);
+  }
+
+  .users-page .users-page__actions .entradas-type-filter__btn.p-button,
+  .users-page .users-page__actions .salidas-type-filter__btn.p-button,
+  .users-page .users-page__actions .transfer-issues-page__type-btn.p-button {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
   }
 }
 

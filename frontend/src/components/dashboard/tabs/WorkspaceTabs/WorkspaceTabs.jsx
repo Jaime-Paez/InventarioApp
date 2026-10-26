@@ -286,7 +286,9 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
         </button>
       )}
 
-      <div className="workspace__tablist-wrapper">
+      <div
+        className={`workspace__tablist-wrapper${canScrollLeft ? ' fade-left' : ''}${canScrollRight ? ' fade-right' : ''}`}
+      >
         <div
           className={`workspace__tablist${isScrollDragging ? ' is-dragging' : ''}`}
           ref={listRef}
