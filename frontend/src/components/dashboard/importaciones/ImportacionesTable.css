@@ -2369,3 +2369,27 @@ body.app-theme-dark .imp-receive-footer-hint {
   font-size: 0.78rem;
   cursor: pointer;
 }
+
+.importaciones-page__top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Telefono: Buscar/Crear arriba y centrados, los estados en la fila de abajo */
+@media (max-width: 700px) {
+  .importaciones-page .users-page__actions .importaciones-page__top-actions {
+    order: -1;
+    margin-left: 0;
+  }
+
+  .importaciones-page .users-page__actions .importaciones-page__search-popup {
+    position: fixed !important;
+    top: auto !important;
+    margin-top: 4px;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+  }
+}

@@ -9775,7 +9775,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
               ))}
             </div>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <div className="importaciones-page__top-actions">
             <div style={{ position: 'relative' }} ref={searchImportacionesRef}>
               <button
                 type="button"
@@ -9787,7 +9787,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
                 <span>Buscar</span>
               </button>
               {showSearchImportaciones && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 500, background: 'var(--modal-color, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', width: 340, overflow: 'hidden' }}>
+                <div className="importaciones-page__search-popup" style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 500, background: 'var(--modal-color, #fff)', border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', width: 340, overflow: 'hidden' }}>
                   <div style={{ padding: 8, borderBottom: '1px solid var(--color-border, #e2e8f0)' }}>
                     <input
                       type="text"
