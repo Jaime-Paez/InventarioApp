@@ -166,3 +166,61 @@ class SugerenciaProductosNuevosTests(TestCase):
         self.assertEqual(producto.creado_desde_importacion_id, importacion.id)
         self.assertTrue(producto.casas_comerciales.filter(pk=self.casa.pk).exists())
         self.assertEqual(importacion.detalles.get(codigo="NUEVO-CI").producto_id, producto.id)
+
+
+class ExcelRecomendacionesPorReferenciaTests(TestCase):
+    """Las recomendaciones del Excel salen tanto de la columna OEM como de la
+    columna Referencia, comparando contra los OEM y las referencias del
+    catalogo (un producto puede tener la referencia guardada y no el OEM)."""
+
+    def setUp(self):
+        from productos.models import OEM, OEMProducto, ProductoReferencia
+
+        self.amerigo = CasaComercial.objects.create(nombre="AMERIGO", codigo="AM", tipo=CasaComercial.TIPO_IMPORTACION)
+        tecnova = CasaComercial.objects.create(nombre="TECNOVA", codigo="CL")
+        # Solo referencia guardada (sin OEM).
+        self.solo_ref = Producto.objects.create(codigo="C0513CL", nombre="Soporte", precio=Decimal("60"))
+        self.solo_ref.casas_comerciales.add(tecnova)
+        ProductoReferencia.objects.create(producto=self.solo_ref, valor="513A9")
+        # Solo OEM guardado (sin esa referencia).
+        self.solo_oem = Producto.objects.create(codigo="C0583CL", nombre="Copela", precio=Decimal("30"))
+        self.solo_oem.casas_comerciales.add(tecnova)
+        OEMProducto.objects.create(producto=self.solo_oem, oem=OEM.objects.create(codigo="516533"))
+
+    def _parse(self, headers, rows):
+        import io
+        from unittest import mock
+
+        import openpyxl
+
+        from .models import ImportacionExcelJob
+        from .viewsets import _run_parse_excel_job
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(headers)
+        for row in rows:
+            ws.append(row)
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        job = ImportacionExcelJob.objects.create()
+        # El job cierra las conexiones al terminar (corre en un thread); en la
+        # prueba eso romperia la transaccion.
+        with mock.patch("importaciones.viewsets.connections"):
+            _run_parse_excel_job(job.id, buffer.getvalue(), self.amerigo.id)
+        job.refresh_from_db()
+        self.assertEqual(job.estado, ImportacionExcelJob.ESTADO_LISTO, job.error)
+        return {row["referencia"] or row["oem"]: row for row in job.resultado["rows"]}
+
+    def test_solo_referencia_recomienda_por_referencia_y_por_oem(self):
+        rows = self._parse(["REFERENCIA", "PVP"], [["513A9", 40], ["516533", 15]])
+        self.assertEqual([m["codigo"] for m in rows["513A9"]["oem_matches"]], ["C0513CL"])
+        self.assertEqual([m["codigo"] for m in rows["516533"]["oem_matches"]], ["C0583CL"])
+        match = rows["516533"]["oem_matches"][0]
+        self.assertEqual(match["oems"], ["516533"])
+        self.assertEqual(match["precio"], 30.0)
+
+    def test_solo_oem_tambien_encuentra_la_referencia(self):
+        rows = self._parse(["OEM"], [["513A9"]])
+        self.assertEqual([m["codigo"] for m in rows["513A9"]["oem_matches"]], ["C0513CL"])
+        self.assertEqual(rows["513A9"]["oem_matches"][0]["referencias"], ["513A9"])

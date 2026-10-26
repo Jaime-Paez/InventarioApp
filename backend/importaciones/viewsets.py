@@ -40,7 +40,7 @@ from inventario.por_ubicar import (
     take_stock,
 )
 from movimientos.inconveniente_borrador import parse_borrador_items
-from productos.models import OEMProducto, Producto, ProductoAlterno, add_producto_referencia
+from productos.models import OEMProducto, Producto, ProductoAlterno, ProductoReferencia, add_producto_referencia
 
 from .models import (
     Importacion,
@@ -350,80 +350,108 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
 
         set_progress(10)
 
-        # Junta todos los códigos OEM del Excel para resolverlos en una sola
-        # consulta (en vez de una por fila) y así poder mostrar, por fila, qué
-        # productos del catálogo ya tienen registrado ese mismo OEM.
+        # Junta los códigos OEM y las referencias del Excel para resolverlos en
+        # pocas consultas (en vez de una por fila) y así poder mostrar, por
+        # fila, qué productos del catálogo ya son esa misma pieza. Referencia
+        # y OEM se tratan igual: un valor de cualquiera de las dos columnas se
+        # busca tanto entre los OEM como entre las referencias del catálogo
+        # (muchos productos tienen la referencia pero no el OEM guardado, o al
+        # revés), así basta con que el Excel traiga una de las dos.
         from django.db.models.functions import Lower
 
-        all_oem_codes_lower = set()
+        def split_codes(value):
+            return [code.strip() for code in str(value or "").split(",") if code.strip()]
+
+        all_codes_lower = set()
         for row in all_rows[1:]:
-            for code in safe_code(cell(row, "oem")).split(","):
-                code = code.strip()
-                if code:
-                    all_oem_codes_lower.add(code.lower())
+            for column in ("oem", "referencia"):
+                for code in split_codes(safe_code(cell(row, column))):
+                    all_codes_lower.add(code.lower())
 
         iva_rate = ConfiguracionSistema.get_solo().iva_rate or 0
 
         def with_iva(precio):
             return round(float(precio) * (1 + float(iva_rate)), 2) if precio is not None else None
 
-        oem_matches_by_code = {}
-        if all_oem_codes_lower:
-            oem_links = (
-                OEMProducto.objects
-                .select_related("producto", "oem")
-                .prefetch_related(
-                    "producto__casas_comerciales",
-                    "producto__alternativas__alterno__casas_comerciales",
-                    "producto__alternativas_para__producto__casas_comerciales",
-                )
-                .annotate(codigo_lower=Lower("oem__codigo"))
-                .filter(codigo_lower__in=all_oem_codes_lower)
-            )
-            for link in oem_links:
-                precio = float(link.producto.precio) if link.producto.precio is not None else None
-                # Productos "alternos" (ProductoAlterno, en cualquiera de las dos
-                # direcciones): aunque no compartan este mismo OEM, son la MISMA
-                # pieza física en otras casas comerciales, así que también sirven
-                # como fuente del patrón <base><sufijo> para sugerir un código
-                # nuevo cuando el match directo por OEM no alcanza otra casa.
-                alterno_productos = [rel.alterno for rel in link.producto.alternativas.all()]
-                alterno_productos += [rel.producto for rel in link.producto.alternativas_para.all()]
-                alternos_payload = []
-                for alt in alterno_productos:
-                    alt_precio = float(alt.precio) if alt.precio is not None else None
-                    alternos_payload.append({
-                        "producto_id": alt.id,
-                        "codigo": alt.codigo,
-                        "nombre": alt.nombre,
-                        "referencia": alt.referencia,
-                        "casas_comerciales_codigos": [
-                            c.codigo for c in alt.casas_comerciales.all() if c.codigo
-                        ],
-                        "precio": alt_precio,
-                        "precio_con_iva": with_iva(alt_precio),
-                    })
-                oem_matches_by_code.setdefault(link.codigo_lower, []).append({
-                    "producto_id": link.producto_id,
-                    "codigo": link.producto.codigo,
-                    "nombre": link.producto.nombre,
-                    "referencia": link.producto.referencia,
-                    # Códigos JP se arman como <base><sufijo de la casa comercial>;
-                    # se manda el sufijo de cada casa a la que pertenece este
-                    # producto para que el frontend pueda inferir la base y
-                    # sugerir el código con el sufijo de la casa actual.
+        def match_payload(producto):
+            precio = float(producto.precio) if producto.precio is not None else None
+            # Productos "alternos" (ProductoAlterno, en cualquiera de las dos
+            # direcciones): aunque no compartan este mismo OEM, son la MISMA
+            # pieza física en otras casas comerciales, así que también sirven
+            # como fuente del patrón <base><sufijo> para sugerir un código
+            # nuevo cuando el match directo no alcanza otra casa.
+            alterno_productos = [rel.alterno for rel in producto.alternativas.all()]
+            alterno_productos += [rel.producto for rel in producto.alternativas_para.all()]
+            alternos_payload = []
+            for alt in alterno_productos:
+                alt_precio = float(alt.precio) if alt.precio is not None else None
+                alternos_payload.append({
+                    "producto_id": alt.id,
+                    "codigo": alt.codigo,
+                    "nombre": alt.nombre,
+                    "referencia": alt.referencia,
                     "casas_comerciales_codigos": [
-                        c.codigo for c in link.producto.casas_comerciales.all() if c.codigo
+                        c.codigo for c in alt.casas_comerciales.all() if c.codigo
                     ],
-                    # Nombres completos (para mostrarlos en el hover de OEMs,
-                    # a diferencia de los códigos de arriba que son para lógica).
-                    "casas_comerciales_nombres": [
-                        c.nombre for c in link.producto.casas_comerciales.all() if c.nombre
-                    ],
-                    "alternos": alternos_payload,
-                    "precio": precio,
-                    "precio_con_iva": with_iva(precio),
+                    "precio": alt_precio,
+                    "precio_con_iva": with_iva(alt_precio),
                 })
+            return {
+                "producto_id": producto.id,
+                "codigo": producto.codigo,
+                "nombre": producto.nombre,
+                "referencia": producto.referencia,
+                # Todas las referencias y OEM del producto, para mostrarlas en
+                # el hover de recomendaciones.
+                "referencias": [r.valor for r in producto.referencias.all()],
+                "oems": [link.oem.codigo for link in producto.oem_productos.all()],
+                # Códigos JP se arman como <base><sufijo de la casa comercial>;
+                # se manda el sufijo de cada casa a la que pertenece este
+                # producto para que el frontend pueda inferir la base y
+                # sugerir el código con el sufijo de la casa actual.
+                "casas_comerciales_codigos": [
+                    c.codigo for c in producto.casas_comerciales.all() if c.codigo
+                ],
+                # Nombres completos (para mostrarlos en el hover de OEMs,
+                # a diferencia de los códigos de arriba que son para lógica).
+                "casas_comerciales_nombres": [
+                    c.nombre for c in producto.casas_comerciales.all() if c.nombre
+                ],
+                "alternos": alternos_payload,
+                "precio": precio,
+                "precio_con_iva": with_iva(precio),
+            }
+
+        # codigo (en minúsculas) -> ids de los productos que lo tienen como
+        # OEM o como referencia.
+        product_ids_by_code = {}
+        if all_codes_lower:
+            for codigo_lower, producto_id in (
+                OEMProducto.objects.annotate(codigo_lower=Lower("oem__codigo"))
+                .filter(codigo_lower__in=all_codes_lower)
+                .values_list("codigo_lower", "producto_id")
+            ):
+                product_ids_by_code.setdefault(codigo_lower, set()).add(producto_id)
+            for valor_lower, producto_id in (
+                ProductoReferencia.objects.annotate(valor_lower=Lower("valor"))
+                .filter(valor_lower__in=all_codes_lower)
+                .values_list("valor_lower", "producto_id")
+            ):
+                product_ids_by_code.setdefault(valor_lower, set()).add(producto_id)
+
+        payload_by_product_id = {}
+        matched_ids = set().union(*product_ids_by_code.values()) if product_ids_by_code else set()
+        if matched_ids:
+            for producto in (
+                Producto.objects.filter(pk__in=matched_ids).prefetch_related(
+                    "casas_comerciales",
+                    "referencias",
+                    "oem_productos__oem",
+                    "alternativas__alterno__casas_comerciales",
+                    "alternativas_para__producto__casas_comerciales",
+                )
+            ):
+                payload_by_product_id[producto.id] = match_payload(producto)
 
         set_progress(20)
 
@@ -478,13 +506,14 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                 if matched:
                     matched_via_identity = True
 
+            # Recomendaciones: productos del catálogo que tienen como OEM o como
+            # referencia cualquiera de los valores de las columnas OEM o
+            # Referencia de esta fila.
             oem_matches_dict = {}
-            for code in oem.split(","):
-                code = code.strip()
-                if not code:
-                    continue
-                for m in oem_matches_by_code.get(code.lower(), []):
-                    oem_matches_dict[m["producto_id"]] = m
+            for code in split_codes(oem) + split_codes(referencia):
+                for producto_id in sorted(product_ids_by_code.get(code.lower(), ())):
+                    if producto_id in payload_by_product_id:
+                        oem_matches_dict[producto_id] = payload_by_product_id[producto_id]
             oem_matches = list(oem_matches_dict.values())
 
             # Si el Excel solo trae OEM (sin código ni referencia, o con datos

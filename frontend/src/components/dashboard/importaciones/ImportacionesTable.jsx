@@ -3748,9 +3748,11 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     return { codigo: codigo.slice(0, m.index), lado: `-${m[1]}` }
   }
 
+  // Devuelve { codigo, fuente } (fuente = el producto del que salió la
+  // sugerencia, para mostrar su precio como PVP JP) o null.
   const deriveSuggestedCodigo = (row, casaCodigo) => {
     const targetSuffix = (casaCodigo || '').trim().toUpperCase()
-    if (!targetSuffix) return ''
+    if (!targetSuffix) return null
     const allCandidates = []
     for (const match of row.oem_matches || []) {
       allCandidates.push(match, ...(match.alternos || []))
@@ -3763,7 +3765,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         if (!suffix || suffix === targetSuffix) continue
         if (candidateCodigo.endsWith(suffix)) {
           const base = candidateCodigo.slice(0, candidateCodigo.length - suffix.length)
-          if (base) return `${base}${targetSuffix}${lado}`
+          if (base) return { codigo: `${base}${targetSuffix}${lado}`, fuente: candidate }
         }
       }
     }
@@ -3776,10 +3778,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       const { codigo: candidateCodigo, lado } = splitLado((candidate.codigo || '').trim().toUpperCase())
       if (candidateCodigo.length > CODIGO_BASE_LENGTH) {
         const base = candidateCodigo.slice(0, CODIGO_BASE_LENGTH)
-        return `${base}${targetSuffix}${lado}`
+        return { codigo: `${base}${targetSuffix}${lado}`, fuente: candidate }
       }
     }
-    return ''
+    return null
   }
 
   // Solo el paso 3 (la tabla) se beneficia de maximizar — los pasos 1/2 son
@@ -4203,7 +4205,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         }
         const suggested = deriveSuggestedCodigo(row, selectedCasa?.codigo)
         if (suggested) {
-          return withFirstMatchDescripcion({ ...row, codigo: suggested, codigo_sugerido: true })
+          return withFirstMatchDescripcion({
+            ...row,
+            codigo: suggested.codigo,
+            codigo_sugerido: true,
+            sugerido_precio: suggested.fuente?.precio ?? null,
+            sugerido_desde: suggested.fuente?.codigo || '',
+          })
         }
         return withFirstMatchDescripcion(row)
       })
@@ -4315,6 +4323,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const reviewHitCount = reviewHasQuery ? reviewRows.filter((entry) => entry.hit).length : validRows.length
   const matchedCount = validRows.filter(r => r.matched_producto_id).length
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
+  const suggestedCount = validRows.filter(r => r.codigo_sugerido && !r.conflicto_casa).length
   const referenciaConflictCount = validRows.filter(r => hasReferenciaConflict(r)).length
   const allConflictsResolved = validRows.every((row, i) => !hasReferenciaConflict(row) || referenciaDecisions[i] !== undefined)
   const pendingPriceCount = validRows.filter(r => r.codigo_sugerido && (!r.precio_nuevo || parseInt(r.precio_nuevo, 10) <= 0)).length
@@ -4367,7 +4376,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // si el codigo/referencia es de otra casa, el de ese producto). PVP Aprox:
   // el que trae el Excel. Doble click en uno de ellos lo copia al PVP de la
   // fila; doble click en su titulo lo copia a todas las filas que lo tengan.
-  const getSistemaPrecio = (row) => row.matched_producto_precio ?? row.conflicto_precio ?? null
+  const getSistemaPrecio = (row) => row.matched_producto_precio ?? row.conflicto_precio ?? row.sugerido_precio ?? null
   const toCentavosDigits = (value) => String(Math.round(Number(value) * 100))
   const copyPrecioToPvp = (filaExcel, value) => {
     if (Number(value) > 0) updateRowPrecioCentavos(filaExcel, toCentavosDigits(value))
@@ -4756,6 +4765,23 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           — {unmatchedCount} sin catálogo
                         </span>
                       )}
+                      {/* Leyenda de los colores de las filas. */}
+                      {suggestedCount > 0 && (
+                        <span
+                          style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde047', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
+                          title="El mismo repuesto existe en otra casa comercial (por OEM o referencia): se propone su código con el sufijo de esta casa. Revísalo antes de crear."
+                        >
+                          Amarillo: {suggestedCount} con código sugerido
+                        </span>
+                      )}
+                      {conflictoRows.length > 0 && (
+                        <span
+                          style={{ background: '#ffedd5', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
+                          title="Ese código o referencia ya pertenece a un producto de otra casa comercial."
+                        >
+                          Naranja: {conflictoRows.length} ya existen en otra casa
+                        </span>
+                      )}
                       {referenciaConflictCount > 0 && (
                         <span style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
                           ⚠ {referenciaConflictCount} con referencia diferente
@@ -4986,11 +5012,12 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                     const sistema = getSistemaPrecio(row)
                                     if (sistema == null) return <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
                                     const otraCasa = !row.matched_producto_id && row.conflicto_casa
+                                    const desdeSugerido = !row.matched_producto_id && !row.conflicto_casa && row.sugerido_desde
                                     return (
                                       <span
                                         onDoubleClick={() => copyPrecioToPvp(row.fila_excel, sistema)}
-                                        style={{ fontWeight: 600, cursor: 'pointer', userSelect: 'none', color: otraCasa ? '#c2410c' : undefined }}
-                                        title={`${otraCasa ? `Precio en ${row.conflicto_casa_nombre || 'otra casa'}` : 'Precio registrado en el sistema'}. Doble click: usarlo como PVP`}
+                                        style={{ fontWeight: 600, cursor: 'pointer', userSelect: 'none', color: otraCasa ? '#c2410c' : desdeSugerido ? '#a16207' : undefined }}
+                                        title={`${otraCasa ? `Precio en ${row.conflicto_casa_nombre || 'otra casa'}` : desdeSugerido ? `Precio de ${row.sugerido_desde} (de donde salió el código sugerido)` : 'Precio registrado en el sistema'}. Doble click: usarlo como PVP`}
                                       >
                                         ${Number(sistema).toFixed(2)}
                                       </span>
@@ -5172,7 +5199,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           {oemMatchesHover.matches.length ? (
             <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--oem">
               <thead>
-                <tr><th>Código</th><th>Nombre</th><th>Referencia</th><th>Casa comercial</th><th>PVP</th><th>PVP + IVA</th></tr>
+                <tr><th>Código</th><th>Nombre</th><th>Referencia</th><th>OEM</th><th>Casa comercial</th><th>PVP</th><th>PVP + IVA</th></tr>
               </thead>
               <tbody>
                 {oemMatchesHover.matches.map((p, i) => {
@@ -5190,7 +5217,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                     >
                       <td title={p.codigo || ''}>{p.codigo || '-'}</td>
                       <td>{p.nombre || '-'}</td>
-                      <td title={p.referencia || ''}>{p.referencia || '-'}</td>
+                      <td title={(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ')}>
+                        {(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ') || '-'}
+                      </td>
+                      <td title={(p.oems || []).join(', ')}>{(p.oems || []).join(', ') || '-'}</td>
                       <td title={(p.casas_comerciales_nombres || []).join(', ')}>{(p.casas_comerciales_nombres || []).join(', ') || '-'}</td>
                       <td>{p.precio != null ? `$${Number(p.precio).toFixed(2)}` : '-'}</td>
                       <td>{p.precio_con_iva != null ? `$${Number(p.precio_con_iva).toFixed(2)}` : '-'}</td>
@@ -5200,7 +5230,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
               </tbody>
             </table>
           ) : (
-            <div className="imp-alternos-hover-card__message">Ningún producto del catálogo tiene este OEM registrado.</div>
+            <div className="imp-alternos-hover-card__message">Ningún producto del catálogo tiene este OEM o esta referencia registrados.</div>
           )}
         </div>,
         getPortalRoot()
