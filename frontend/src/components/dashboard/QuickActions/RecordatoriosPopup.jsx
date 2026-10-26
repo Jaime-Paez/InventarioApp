@@ -1568,6 +1568,19 @@ function RecordatoriosPopup({
     return [...timelineItems].reverse()
   }, [activeDetailIsTransferContext, activeDetailReminder, activeDetailSolicitud, activeDetailSolicitudLoading, issueReminderBySolicitudId, reminders])
 
+  // Al tocar un dia en rojo, lleva directo al recordatorio que lo pinta de rojo.
+  const handleSelectTimelineDay = useCallback((day) => {
+    setSelectedTimelineDate(day.dateKey)
+    if (day.severity !== 'critical') return
+    const criticalReminder = (remindersByDate.get(day.dateKey) || []).find(
+      (reminder) => getTimelineDaySeverityForReminder(reminder) === 'critical'
+    )
+    const criticalReminderId = normalizeId(criticalReminder?.id)
+    if (!criticalReminderId) return
+    setPendingScrollReminderId(criticalReminderId)
+    setHighlightedReminderId(criticalReminderId)
+  }, [getTimelineDaySeverityForReminder, remindersByDate])
+
   const shiftTimelineDay = useCallback((offset) => {
     setSelectedTimelineDate((current) => normalizeWorkingDateKey(addDaysToDateKey(current, offset)))
   }, [])
@@ -2752,7 +2765,7 @@ function RecordatoriosPopup({
                           }${
                             day.severity === 'critical' ? ' is-critical' : day.severity === 'warning' ? ' is-warning' : ''
                           }`}
-                          onClick={() => setSelectedTimelineDate(day.dateKey)}
+                          onClick={() => handleSelectTimelineDay(day)}
                           title={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
                           aria-label={`${day.dayName} ${day.dayDate}: ${day.count} recordatorio(s)`}
                         >
