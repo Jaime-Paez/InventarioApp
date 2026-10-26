@@ -190,10 +190,33 @@ function WorkspaceTabs({ openTabs = [], activeItem, onSelectTab, onCloseTab }) {
     return () => resizeObserver.disconnect()
   }, [updateScrollControls, openTabs.length])
 
+  // Centra la pestaña activa desplazando SOLO la fila de pestañas.
+  // scrollIntoView tambien desplazaba de lado los contenedores de la pagina
+  // (workspace, app-shell) y en tablet/telefono todo quedaba corrido y tapado.
   useEffect(() => {
-    const activeTab = listRef.current?.querySelector('.workspace__tab.active')
-    activeTab?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+    const list = listRef.current
+    const activeTab = list?.querySelector('.workspace__tab.active')
+    if (!list || !activeTab) return
+    const listRect = list.getBoundingClientRect()
+    const tabRect = activeTab.getBoundingClientRect()
+    const target = list.scrollLeft + (tabRect.left - listRect.left) - (list.clientWidth - tabRect.width) / 2
+    list.scrollTo({ left: Math.max(0, target), behavior: 'smooth' })
   }, [activeItem])
+
+  // Seguro: los contenedores de la pagina no se desplazan de lado nunca (tienen
+  // overflow oculto, pero el navegador igual puede moverlos al enfocar o
+  // centrar algo). Si pasa, se devuelven a su sitio al instante.
+  useEffect(() => {
+    const PAGE_CONTAINERS = '#root, .app-shell, .dashboard-shell, .workspace'
+    const handleScroll = (event) => {
+      const target = event.target
+      if (target instanceof Element && target.scrollLeft && target.matches(PAGE_CONTAINERS)) {
+        target.scrollLeft = 0
+      }
+    }
+    document.addEventListener('scroll', handleScroll, true)
+    return () => document.removeEventListener('scroll', handleScroll, true)
+  }, [])
 
   if (!openTabs.length) return null
 
