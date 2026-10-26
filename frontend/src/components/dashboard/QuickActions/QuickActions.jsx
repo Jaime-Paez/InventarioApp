@@ -539,6 +539,7 @@ function QuickActions({
   const remindersPollInFlightRef = useRef(false)
   const pendingShipmentsPollInFlightRef = useRef(false)
   const inTransitShipmentsPollInFlightRef = useRef(false)
+  const inTransitShipmentsRequestSeqRef = useRef(0)
   const receiveShipmentLoadRequestRef = useRef(0)
   const receiveShipmentDraftSaveDebounceRef = useRef(null)
   // Guardado del borrador de recepcion que aun esta esperando el debounce:
@@ -582,6 +583,10 @@ function QuickActions({
   const [reminders, setReminders] = useState(() => readRemindersFromStorage())
   const [pendingShipments, setPendingShipments] = useState([])
   const [inTransitShipments, setInTransitShipments] = useState([])
+  // La lista del servidor ya cargo: es la que manda y no se completa con
+  // recordatorios (un recordatorio "enviado" de un traslado ya recibido lo
+  // haria reaparecer en "Envios en camino").
+  const [inTransitShipmentsFromServer, setInTransitShipmentsFromServer] = useState(false)
   const [pendingShipmentsLoading, setPendingShipmentsLoading] = useState(false)
   const [inTransitShipmentsLoading, setInTransitShipmentsLoading] = useState(false)
   const [unreadSolicitudesWeb, setUnreadSolicitudesWeb] = useState([])
@@ -813,14 +818,19 @@ function QuickActions({
     }
   }, [canDecideTransferRequest, showErrorToast, token])
 
-  const fetchInTransitTransferShipments = useCallback(async ({ silent = false } = {}) => {
+  const fetchInTransitTransferShipments = useCallback(async ({ silent = false, force = false } = {}) => {
     if (!token || !canViewInTransitShipments) {
       setInTransitShipments([])
       return []
     }
 
-    if (inTransitShipmentsPollInFlightRef.current) return []
+    // `force` (tras cerrar una recepcion): no se salta aunque haya otra
+    // consulta en curso; esa otra empezo antes del cierre y su respuesta
+    // vieja se descarta para que el envio no reaparezca en la lista.
+    if (inTransitShipmentsPollInFlightRef.current && !force) return []
     inTransitShipmentsPollInFlightRef.current = true
+    const requestSeq = ++inTransitShipmentsRequestSeqRef.current
+    const isStale = () => requestSeq !== inTransitShipmentsRequestSeqRef.current
     if (!silent) setInTransitShipmentsLoading(true)
 
     try {
@@ -850,16 +860,19 @@ function QuickActions({
         }
         return Number(b?.id || 0) - Number(a?.id || 0)
       })
+      if (isStale()) return rows
       setInTransitShipments(rows)
+      setInTransitShipmentsFromServer(true)
       return rows
     } catch (error) {
+      if (isStale()) return []
       if (!silent) setInTransitShipments([])
       if (!silent) {
         showErrorToast(error?.message || 'No se pudieron cargar los envíos en camino.')
       }
       return []
     } finally {
-      inTransitShipmentsPollInFlightRef.current = false
+      if (!isStale()) inTransitShipmentsPollInFlightRef.current = false
       if (!silent) setInTransitShipmentsLoading(false)
     }
   }, [canViewInTransitShipments, showErrorToast, shouldIncludeInTransitShipment, token])
@@ -1108,6 +1121,7 @@ function QuickActions({
   )
 
   const fallbackInTransitShipments = useMemo(() => {
+    if (inTransitShipmentsFromServer) return []
     const existingShipmentIds = new Set(
       (Array.isArray(inTransitShipments) ? inTransitShipments : [])
         .map((shipment) => normalizeId(shipment?.id))
@@ -1145,7 +1159,7 @@ function QuickActions({
         }
       })
       .sort((a, b) => getReminderTimestamp(b?.reminder) - getReminderTimestamp(a?.reminder))
-  }, [canViewInTransitShipments, currentReceiveBranchIdSet, currentUserIds, inTransitShipments, reminders, user])
+  }, [canViewInTransitShipments, currentReceiveBranchIdSet, currentUserIds, inTransitShipments, inTransitShipmentsFromServer, reminders, user])
 
   const visibleInTransitShipments = useMemo(
     () => [
@@ -5656,29 +5670,47 @@ function QuickActions({
           token
         )
         const payload = await response.json().catch(() => ({}))
-        if (!response.ok) {
+        // Ya estaba cerrada (un "Listo" anterior llego al servidor pero la
+        // respuesta se perdio, u otra persona la cerro): no es un error, el
+        // inventario ya esta bien; se cierra el modal y se refresca la lista.
+        const alreadyRegistered = !response.ok && Boolean(payload?.ya_registrada)
+        if (!response.ok && !alreadyRegistered) {
           throw new Error(
             String(payload?.detail || '').trim() || 'No se pudo confirmar la recepción del envío.'
           )
         }
 
-        const backendReminderSent = Boolean(payload?.recordatorio_enviado)
-        if (backendReminderSent) {
-          const remoteReminders = await fetchRemindersFromBackend(token)
-          setReminders(remoteReminders)
-        } else {
-          await appendShipmentReceptionReminder({
-            shipment: activeInTransitShipment,
-            result: normalizedResult,
-            totalMissing,
-            items: builtItems,
-          })
+        // La recepcion ya quedo guardada: si falla el recordatorio no debe
+        // dejar el modal abierto (el siguiente "Listo" chocaria con
+        // "ya fue registrada").
+        try {
+          if (alreadyRegistered) {
+            // Nada que avisar: el recordatorio salio con la primera confirmacion.
+          } else if (payload?.recordatorio_enviado) {
+            const remoteReminders = await fetchRemindersFromBackend(token)
+            setReminders(remoteReminders)
+          } else {
+            await appendShipmentReceptionReminder({
+              shipment: activeInTransitShipment,
+              result: normalizedResult,
+              totalMissing,
+              items: builtItems,
+            })
+          }
+        } catch (reminderError) {
+          console.error('No se pudo registrar el recordatorio de recepcion.', reminderError)
         }
         if (isImportacionEnvio) {
           try { localStorage.removeItem(`rs_draft_${normalizeId(activeInTransitShipment?.id)}`) } catch { /* noop */ }
         }
+        // Sale de "Envios en camino" de inmediato, sin esperar al refresco.
+        const closedId = normalizeId(activeInTransitShipment?.id)
+        const closedSource = activeInTransitShipment?._source
+        setInTransitShipments((prev) => (Array.isArray(prev)
+          ? prev.filter((item) => !(normalizeId(item?.id) === closedId && item?._source === closedSource))
+          : prev))
         closeReceiveShipmentModal()
-        await fetchInTransitTransferShipments({ silent: true })
+        await fetchInTransitTransferShipments({ silent: true, force: true })
       } catch (error) {
         setReceiveShipmentError(
           error?.message || 'No se pudo confirmar la recepción del envío.'

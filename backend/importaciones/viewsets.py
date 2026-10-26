@@ -2136,7 +2136,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             envio_locked = ImportacionEnvio.objects.select_for_update().get(pk=envio.pk)
             if envio_locked.estado != ImportacionEnvio.ESTADO_PENDIENTE:
                 return Response(
-                    {"detail": "El envío ya fue recibido."},
+                    {"detail": "El envío ya fue recibido.", "ya_registrada": True},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             # Proceso en dos pasos: cerrar la recepcion ("llego") ya no exige

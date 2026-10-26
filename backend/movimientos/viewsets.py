@@ -4828,7 +4828,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         )
         if "recib" in estado_actual or "parcial" in estado_actual:
             return Response(
-                {"detail": "La recepcion ya fue registrada anteriormente."},
+                {"detail": "La recepcion ya fue registrada anteriormente.", "ya_registrada": True},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -5073,7 +5073,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
             if "recib" in estado_actual_locked or "parcial" in estado_actual_locked:
                 return Response(
-                    {"detail": "La recepcion ya fue registrada anteriormente."},
+                    {"detail": "La recepcion ya fue registrada anteriormente.", "ya_registrada": True},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
