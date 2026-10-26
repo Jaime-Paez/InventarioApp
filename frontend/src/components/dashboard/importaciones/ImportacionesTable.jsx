@@ -3619,6 +3619,23 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     el.scrollTop = reviewScrollRef.current.top
     el.scrollLeft = reviewScrollRef.current.left
   }, [isTabActive, step])
+  // Clic en un contador de arriba (vinculados, sin catalogo, amarillo...):
+  // salta a la siguiente fila de ese grupo. `reviewJump` = posicion a la que
+  // hay que llevar el scroll en cuanto esa fila este dibujada.
+  const [reviewJump, setReviewJump] = useState(null)
+  const reviewJumpLastRef = useRef({ key: '', pos: -1 })
+  useLayoutEffect(() => {
+    if (!reviewJump) return
+    const wrap = reviewTableWrapRef.current
+    const rowEl = wrap?.querySelector(`[data-review-pos="${reviewJump.pos}"]`)
+    if (!wrap || !rowEl) return
+    const headHeight = wrap.querySelector('thead')?.offsetHeight || 0
+    wrap.scrollTo({ top: Math.max(0, rowEl.offsetTop - headHeight), behavior: 'smooth' })
+    rowEl.classList.remove('imp-excel-review__row--flash')
+    void rowEl.offsetWidth
+    rowEl.classList.add('imp-excel-review__row--flash')
+    setReviewJump(null)
+  }, [reviewJump, reviewRenderCount])
   const handleReviewTableScroll = (event) => {
     const el = event.currentTarget
     reviewScrollRef.current = { top: el.scrollTop, left: el.scrollLeft }
@@ -4339,6 +4356,42 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
   const suggestedCount = validRows.filter(r => r.codigo_sugerido && !r.conflicto_casa).length
   const referenciaConflictCount = validRows.filter(r => hasReferenciaConflict(r)).length
+  // Grupos de los contadores de arriba. "Sin catalogo" busca primero los que
+  // no son amarillos ni naranjas (esos tienen su propio contador).
+  const REVIEW_GROUPS = {
+    vinculados: (r) => Boolean(r.matched_producto_id),
+    sinCatalogo: (r) => !r.matched_producto_id && !r.codigo_sugerido && !r.conflicto_casa,
+    sinCatalogoTodos: (r) => !r.matched_producto_id,
+    sugeridos: (r) => Boolean(r.codigo_sugerido) && !r.conflicto_casa,
+    otraCasa: (r) => Boolean(r.conflicto_casa),
+    referencia: (r) => hasReferenciaConflict(r),
+  }
+  const jumpToReviewGroup = (key) => {
+    let test = REVIEW_GROUPS[key]
+    if (key === 'sinCatalogo' && !reviewRows.some(({ row }) => test(row))) test = REVIEW_GROUPS.sinCatalogoTodos
+    const positions = reviewRows.reduce((acc, { row }, pos) => (test(row) ? [...acc, pos] : acc), [])
+    if (!positions.length) return
+    // Cada clic avanza a la siguiente fila del grupo (y vuelve a la primera).
+    const last = reviewJumpLastRef.current
+    const next = last.key === key ? positions.find((p) => p > last.pos) : undefined
+    const pos = next ?? positions[0]
+    reviewJumpLastRef.current = { key, pos }
+    if (pos >= reviewRenderCount) setReviewRenderCount(pos + REVIEW_ROWS_BATCH)
+    setReviewJump({ pos })
+  }
+  const reviewGroupChipProps = (key, label) => ({
+    role: 'button',
+    tabIndex: 0,
+    onClick: () => jumpToReviewGroup(key),
+    onKeyDown: (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        jumpToReviewGroup(key)
+      }
+    },
+    className: 'imp-excel-review__group-chip',
+    'aria-label': `Ir a ${label}`,
+  })
   const allConflictsResolved = validRows.every((row, i) => !hasReferenciaConflict(row) || referenciaDecisions[i] !== undefined)
   const pendingPriceCount = validRows.filter(r => r.codigo_sugerido && (!r.precio_nuevo || parseInt(r.precio_nuevo, 10) <= 0)).length
   const allPricesSet = pendingPriceCount === 0
@@ -4770,34 +4823,36 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
 
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {matchedCount > 0 && (
-                        <span style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                        <span {...reviewGroupChipProps('vinculados', 'los vinculados al catálogo')} title="Clic: ir a los vinculados al catálogo" style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
                           ✓ {matchedCount} vinculado{matchedCount !== 1 ? 's' : ''} al catálogo
                         </span>
                       )}
                       {unmatchedCount > 0 && (
-                        <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                        <span {...reviewGroupChipProps('sinCatalogo', 'los productos sin catálogo')} title="Clic: ir a los productos sin catálogo" style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
                           — {unmatchedCount} sin catálogo
                         </span>
                       )}
                       {/* Leyenda de los colores de las filas. */}
                       {suggestedCount > 0 && (
                         <span
+                          {...reviewGroupChipProps('sugeridos', 'los productos con código sugerido')}
                           style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde047', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
-                          title="El mismo repuesto existe en otra casa comercial (por OEM o referencia): se propone su código con el sufijo de esta casa. Revísalo antes de crear."
+                          title="El mismo repuesto existe en otra casa comercial (por OEM o referencia): se propone su código con el sufijo de esta casa. Revísalo antes de crear. Clic: ir a ellos."
                         >
                           Amarillo: {suggestedCount} con código sugerido
                         </span>
                       )}
                       {conflictoRows.length > 0 && (
                         <span
+                          {...reviewGroupChipProps('otraCasa', 'los que ya existen en otra casa')}
                           style={{ background: '#ffedd5', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
-                          title="Ese código o referencia ya pertenece a un producto de otra casa comercial."
+                          title="Ese código o referencia ya pertenece a un producto de otra casa comercial. Clic: ir a ellos."
                         >
                           Naranja: {conflictoRows.length} ya existen en otra casa
                         </span>
                       )}
                       {referenciaConflictCount > 0 && (
-                        <span style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                        <span {...reviewGroupChipProps('referencia', 'los que tienen referencia diferente')} title="Clic: ir a los que tienen referencia diferente" style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
                           ⚠ {referenciaConflictCount} con referencia diferente
                         </span>
                       )}
@@ -4870,7 +4925,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {reviewRows.slice(0, reviewRenderCount).map(({ row, i }) => {
+                          {reviewRows.slice(0, reviewRenderCount).map(({ row, i }, pos) => {
                             const conflict = hasReferenciaConflict(row)
                             const decision = referenciaDecisions[i]
                             const isSuggested = Boolean(row.codigo_sugerido)
@@ -4883,6 +4938,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             return (
                               <tr
                                 key={i}
+                                data-review-pos={pos}
                                 style={{
                                   borderBottom: '1px solid var(--color-border, #e2e8f0)',
                                   background: isCasaConflict
