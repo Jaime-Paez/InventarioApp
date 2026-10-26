@@ -791,6 +791,13 @@
   row-gap: 12px;
 }
 
+/* Ver salida / Ver entrada (solo administrador). */
+.transfer-issues-detail__doc-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .transfer-issues-dialog {
   display: flex;
   flex-direction: column;

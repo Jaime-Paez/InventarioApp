@@ -3261,6 +3261,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 or ""
             ).strip(),
             "movimiento_entrada_id": int(inconveniente.movimiento_entrada_id),
+            "movimiento_salida_id": (
+                getattr(getattr(inconveniente, "solicitud", None), "movimiento_salida_id", None) or None
+            ),
             "producto_id": int(inconveniente.producto_id) if inconveniente.producto_id else None,
             "producto_codigo": str(getattr(getattr(inconveniente, "producto", None), "codigo", "") or "").strip(),
             "producto_nombre": str(getattr(getattr(inconveniente, "producto", None), "nombre", "") or "").strip(),

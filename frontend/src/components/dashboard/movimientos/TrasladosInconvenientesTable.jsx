@@ -244,7 +244,9 @@ const buildIssueGroups = (list) => {
       solicitud_id: first?.solicitud_id,
       solicitud_no_documento: first?.solicitud_no_documento,
       movimiento_entrada_id: first?.movimiento_entrada_id,
+      movimiento_salida_id: first?.movimiento_salida_id,
       sucursal_solicitante_id: first?.sucursal_solicitante_id,
+      sucursal_proveedora_id: first?.sucursal_proveedora_id,
       sucursal_proveedora: first?.sucursal_proveedora,
       // Una importacion puede haber ido a varias sucursales.
       sucursal_solicitante:
@@ -300,6 +302,7 @@ function TrasladosInconvenientesTable({
   pendingOpenSolicitudId,
   onPendingOpenHandled,
   onOpenTransferRequestInEntradas,
+  onOpenTransferRequestInSalidas,
 }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
@@ -2627,23 +2630,42 @@ function TrasladosInconvenientesTable({
                       <p className="create-user__eyebrow">Resumen</p>
                       <h4>Detalle general</h4>
                     </div>
-                    {groupFirst?.movimiento_entrada_id && typeof onOpenTransferRequestInEntradas === 'function' ? (
-                      <button
-                        type="button"
-                        className="create-user__ghost"
-                        onClick={() => {
-                          onOpenTransferRequestInEntradas({
-                            solicitudId: groupFirst.solicitud_id,
-                            movimientoEntradaId: groupFirst.movimiento_entrada_id,
-                            sucursalSolicitanteId: groupFirst.sucursal_solicitante_id,
-                            mode: 'view',
-                          })
-                          closeDetails()
-                        }}
-                      >
-                        Ver entrada
-                      </button>
-                    ) : null}
+                    <div className="transfer-issues-detail__doc-links">
+                      {groupFirst?.movimiento_salida_id && typeof onOpenTransferRequestInSalidas === 'function' ? (
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={() => {
+                            onOpenTransferRequestInSalidas({
+                              solicitudId: groupFirst.solicitud_id,
+                              movimientoSalidaId: groupFirst.movimiento_salida_id,
+                              sucursalProveedoraId: groupFirst.sucursal_proveedora_id,
+                              mode: 'view',
+                            })
+                            closeDetails()
+                          }}
+                        >
+                          Ver salida
+                        </button>
+                      ) : null}
+                      {groupFirst?.movimiento_entrada_id && typeof onOpenTransferRequestInEntradas === 'function' ? (
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          onClick={() => {
+                            onOpenTransferRequestInEntradas({
+                              solicitudId: groupFirst.solicitud_id,
+                              movimientoEntradaId: groupFirst.movimiento_entrada_id,
+                              sucursalSolicitanteId: groupFirst.sucursal_solicitante_id,
+                              mode: 'view',
+                            })
+                            closeDetails()
+                          }}
+                        >
+                          Ver entrada
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="create-salida__field-group--defined">
                     <div className={`create-user__grid ${isImportacionGroup ? 'transfer-issues-summary--four' : 'transfer-issues-summary--five'}`}>

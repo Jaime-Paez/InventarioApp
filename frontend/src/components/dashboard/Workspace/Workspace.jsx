@@ -620,9 +620,15 @@ function Workspace({
             ? () => { setPendingOpenDetailsId(null); setPendingOpenDetailsTab(null); setPendingOpenDetailsStatus(null) }
             : undefined
         }
+        // Ver entrada / Ver salida desde inconvenientes: solo administrador.
         onOpenTransferRequestInEntradas={
-          (tab === INCONVENIENTES_TAB || tab === INCONVENIENTES_TAB_LEGACY)
+          (tab === INCONVENIENTES_TAB || tab === INCONVENIENTES_TAB_LEGACY) && isAdministrator
             ? handleOpenTransferRequestInEntradas
+            : undefined
+        }
+        onOpenTransferRequestInSalidas={
+          (tab === INCONVENIENTES_TAB || tab === INCONVENIENTES_TAB_LEGACY) && isAdministrator
+            ? handleOpenTransferRequestInSalidas
             : undefined
         }
       />
