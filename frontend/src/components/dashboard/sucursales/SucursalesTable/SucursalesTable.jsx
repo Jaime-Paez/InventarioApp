@@ -18,6 +18,7 @@ import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import { memoryStore } from '../../../../utils/memoryStore'
+import { isPhoneViewport } from '../../../../utils/viewport'
 
 const normId = (v) => (v == null ? null : String(v))
 const isCheckboxSelection = (event) => {
@@ -494,6 +495,11 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
   const handleRowClick = (event) => {
     const t = event?.originalEvent?.target
     if (t?.closest?.('.p-checkbox') || t?.closest?.('.row-selection-column')) return
+    // En el telefono un toque abre el registro (el doble toque no es confiable)
+    if (isPhoneViewport()) {
+      handleRowDoubleClick(event)
+      return
+    }
 
     const rowData = event?.data
     if (!rowData) return

@@ -20,6 +20,7 @@ import { formatDate } from '../../../utils/dateFormat'
 import {
   requestSystemNotificationPermission,
   showSystemNotification,
+  subscribeToNotificationClicks,
 } from '../../../utils/systemNotifications'
 import {
   REMINDERS_STORAGE_KEY,
@@ -1082,7 +1083,9 @@ function QuickActions({
       title,
       body,
       tag: `inventario-${notificationType}`,
-      url: '/',
+      target: notificationType === 'solicitud_traslado_envio_pendiente'
+        ? { kind: 'envios' }
+        : { kind: 'recordatorio', id: reminderIds[0] || '' },
       requireInteraction: true,
     })
   }, [suppressAdminAlerts])
@@ -1737,7 +1740,7 @@ function QuickActions({
         title: 'Tienes una inspección aleatoria pendiente',
         body: `Revisa ${newReminderIds.length} recordatorio(s) de inspección.`,
         tag: 'inventario-inspeccion-aleatoria',
-        url: '/',
+        target: { kind: 'inspeccion', id: newReminderIds[0] },
         requireInteraction: true,
       })
     }
@@ -1813,7 +1816,7 @@ function QuickActions({
             : 'Tienes una solicitud nueva del sitio web.',
           body: 'Revisa el formulario de contacto en Configuración.',
           tag: 'inventario-solicitud-web',
-          url: '/',
+          target: { kind: 'solicitud_web', id: newIds[0] },
           requireInteraction: true,
         })
       }
@@ -5747,6 +5750,40 @@ function QuickActions({
       openReminderModal(shield.reminderId)
     },
     [fetchPendingTransferShipments, handleOpenPendingShipment, isPendingShipmentsOpen, openReminderModal]
+  )
+
+  // Clic en una notificacion del sistema: llevar al usuario al lugar exacto
+  // de la notificacion (su recordatorio, los envios, la inspeccion o la
+  // solicitud web), no solo enfocar la app.
+  const remindersRef = useRef(reminders)
+  remindersRef.current = reminders
+  const handleNotificationTargetRef = useRef(null)
+  handleNotificationTargetRef.current = (target) => {
+    const kind = target?.kind
+    const id = normalizeId(target?.id)
+    if (kind === 'envios' && canDecideTransferRequest && hasPendingShipments) {
+      setIsInTransitShipmentsOpen(false)
+      setIsPendingShipmentsOpen(true)
+      void fetchPendingTransferShipments()
+      return
+    }
+    if (kind === 'solicitud_web' && id && typeof onOpenSolicitudWeb === 'function') {
+      onOpenSolicitudWeb(id)
+      return
+    }
+    if (kind === 'inspeccion' && id) {
+      const reminder = (remindersRef.current || []).find((item) => normalizeId(item?.id) === id)
+      if (reminder) {
+        void handleOpenRandomInspectionFromReminder(reminder)
+        return
+      }
+    }
+    openReminderModal(id)
+  }
+
+  useEffect(
+    () => subscribeToNotificationClicks((target) => handleNotificationTargetRef.current?.(target)),
+    []
   )
 
   // Todo recibido (y nada en POR UBICAR): popup de "completo" con confeti;

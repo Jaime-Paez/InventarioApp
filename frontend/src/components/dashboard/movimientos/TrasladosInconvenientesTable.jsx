@@ -23,6 +23,7 @@ import '../admin/UsersTable/UsersTable.css'
 import './CreateSalida.css'
 import './TrasladosInconvenientesTable.css'
 import StaticFieldDisplay from './StaticFieldDisplay'
+import { isPhoneViewport } from '../../../utils/viewport'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeId = (value) => (value == null ? '' : String(value).trim())
@@ -1729,6 +1730,11 @@ function TrasladosInconvenientesTable({
 
     const rowData = event?.data
     if (!rowData) return
+    // En el telefono un toque abre el registro (el doble toque no es confiable)
+    if (isPhoneViewport()) {
+      openDetails(rowData)
+      return
+    }
     const id = normalizeId(rowData?.id)
     if (!id) return
     const isSameRow = pendingClickRowRef.current === id
@@ -1754,7 +1760,7 @@ function TrasladosInconvenientesTable({
       })
     }, 220)
     },
-    []
+    [openDetails]
   )
 
   const handleRowDoubleClick = useCallback(

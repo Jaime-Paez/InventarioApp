@@ -24,6 +24,7 @@ import {
   getPrimeGlobalFilterValue,
 } from '../../../../utils/primeTableQuery'
 import { memoryStore } from '../../../../utils/memoryStore'
+import { isPhoneViewport } from '../../../../utils/viewport'
 
 const normId = (v) => (v == null ? null : String(v))
 const COMPANY_FILTER_FIELDS = ['nombre', 'codigo', 'tipo', 'pais_nombre', 'telefono', 'correo', 'descripcion']
@@ -553,6 +554,11 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
   const handleRowClick = (event) => {
     const t = event?.originalEvent?.target
     if (t?.closest?.('.p-checkbox') || t?.closest?.('.row-selection-column')) return
+    // En el telefono un toque abre el registro (el doble toque no es confiable)
+    if (isPhoneViewport()) {
+      handleRowDoubleClick(event)
+      return
+    }
 
     const rowData = event?.data
     if (!rowData) return

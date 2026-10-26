@@ -2459,3 +2459,82 @@ button.create-user__locations-row {
 .create-user__branch-blocker {
   margin: 4px 0 10px;
 }
+
+/* TELEFONO: cualquier registro (detalle, crear, editar) se abre a pantalla
+   completa, no como ventana flotante tipo pestaña. Las ventanas fijan
+   top/left/width/height en linea al arrastrarlas en escritorio, por eso los
+   !important. */
+@media (max-width: 900px) {
+  .create-user__overlay {
+    padding: 0;
+  }
+
+  .create-user__overlay .create-user__modal {
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .create-user__overlay .create-user__header,
+  .create-user__overlay .create-user__header-text {
+    cursor: default;
+  }
+
+  /* El titulo pasa de "pestaña" centrada a barra superior completa */
+  .create-user__overlay .create-user__header h3 {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    border-radius: 0;
+    padding: 12px 52px;
+    font-size: 1rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .create-user__overlay .create-user__header-actions {
+    top: 7px;
+  }
+
+  .create-user__overlay .create-user__icon-button {
+    width: 30px;
+    height: 30px;
+    background: color-mix(in srgb, #ffffff 22%, transparent);
+  }
+
+  .create-user__overlay .create-user__resize-handle,
+  .create-user__overlay .create-user__icon-button--maximize {
+    display: none;
+  }
+
+  /* Pie: si los botones no entran en una fila, bajan a la siguiente en vez
+     de salirse de la pantalla */
+  .create-user__overlay .create-user__footer {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .create-user__overlay .create-user__footer > div {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .create-user__overlay .create-user__footer button {
+    flex: 1 1 auto;
+    min-width: 96px;
+  }
+}

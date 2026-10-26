@@ -18,6 +18,7 @@ import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../../utils/exportUtils'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { memoryStore } from '../../../../utils/memoryStore'
+import { isPhoneViewport } from '../../../../utils/viewport'
 
 const formatFullName = (u) =>
   [u?.nombres, u?.apellidos].filter(Boolean).join(' ').trim() || u?.nombre || '-'
@@ -558,6 +559,11 @@ function UsersTable({
   const handleRowClick = (event) => {
     const t = event?.originalEvent?.target
     if (t?.closest?.('.p-checkbox') || t?.closest?.('.row-selection-column')) return
+    // En el telefono un toque abre el registro (el doble toque no es confiable)
+    if (isPhoneViewport()) {
+      handleRowDoubleClick(event)
+      return
+    }
 
     const rowData = event?.data
     if (!rowData) return

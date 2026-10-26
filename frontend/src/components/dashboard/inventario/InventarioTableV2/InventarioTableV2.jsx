@@ -28,6 +28,7 @@ import { getModuleActions, moduleHasAnyAction } from '../../menuConfig'
 import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { memoryStore } from '../../../../utils/memoryStore'
+import { isPhoneViewport } from '../../../../utils/viewport'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -1699,6 +1700,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const handleRowClick = (event) => {
     const target = event?.originalEvent?.target
     if (target?.closest?.('.p-checkbox') || target?.closest?.('.row-selection-column')) return
+    // En el telefono un toque abre el registro (el doble toque no es confiable)
+    if (isPhoneViewport()) {
+      handleRowDoubleClick(event)
+      return
+    }
 
     const rowData = event?.data
     if (!rowData) return
