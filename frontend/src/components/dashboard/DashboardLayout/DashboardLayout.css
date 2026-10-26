@@ -217,6 +217,8 @@
     border: none;
     padding: 0;
     margin: 0;
-    z-index: 15;
+    /* Encima de la barra de avisos (z-index 30) para que no se pueda tocar
+       con el panel abierto; debajo del panel (50). */
+    z-index: 45;
   }
 }

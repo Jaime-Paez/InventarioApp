@@ -727,5 +727,9 @@
     height: 100dvh;
     width: min(78vw, 320px);
     box-shadow: 12px 0 32px rgba(15, 23, 42, 0.18);
+    /* Por encima de la barra de avisos (Por ubicar, envios, recordatorios:
+       z-index 30) y de su fondo oscuro, que los tapa mientras el panel
+       esta abierto. */
+    z-index: 50;
   }
 }
