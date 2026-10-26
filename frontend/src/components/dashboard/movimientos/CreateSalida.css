@@ -404,6 +404,12 @@
   align-content: start;
 }
 
+/* Compra local: la tabla de productos ya se desplaza de lado por si sola;
+   el cuerpo no necesita (y mostraba sin motivo) una barra horizontal. */
+.create-salida__content--compra-local .create-user__body {
+  overflow-x: hidden;
+}
+
 .create-salida__field-groups {
   display: grid;
   gap: 14px;
@@ -1266,6 +1272,22 @@
 
 .create-entrada__location-picker-item .create-user__dropdown-panel {
   min-width: 0;
+}
+
+/* "Asignar ubicaciones faltantes": dos columnas (producto | ubicacion), no
+   las cinco de la matriz de permisos. Los menus cerrados no se elevan (si no,
+   al hacer scroll se pintaban encima del encabezado fijo); el panel abierto
+   sigue por encima de las filas de abajo. */
+.create-entrada__location-resolver .permissions-matrix__row {
+  grid-template-columns: minmax(140px, 1fr) minmax(0, 1.6fr);
+}
+
+.create-entrada__location-resolver .create-entrada__location-picker-grid {
+  width: 100%;
+}
+
+.create-entrada__location-resolver .create-salida__product-dropdown {
+  z-index: auto;
 }
 
 .create-salida__numeric {

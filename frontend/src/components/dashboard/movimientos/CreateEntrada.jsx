@@ -3931,7 +3931,7 @@ function CreateEntrada({
                 </div>
               )}
 
-              <div className="create-user__content create-salida__content">
+              <div className={`create-user__content create-salida__content${isCompraEntrada ? ' create-salida__content--compra-local' : ''}`}>
               <div className="create-user__body">
                 {showGeneralTab && (
                   <>
@@ -5244,7 +5244,7 @@ function CreateEntrada({
               {locationResolverLoading ? (
                 <p className="muted">Cargando ubicaciones disponibles...</p>
               ) : (
-                <div className="permissions-matrix__table" role="grid">
+                <div className="permissions-matrix__table create-entrada__location-resolver" role="grid">
                   <div className="permissions-matrix__row permissions-matrix__row--head">
                     <div className="permissions-matrix__cell permissions-matrix__cell--label">Producto</div>
                     <div className="permissions-matrix__cell permissions-matrix__cell--label">Ubicacion inicial</div>
