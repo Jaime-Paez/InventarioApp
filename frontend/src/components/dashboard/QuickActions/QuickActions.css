@@ -23,6 +23,18 @@
   body:has(.create-user__overlay) .quick-actions.has-urgent-shield {
     z-index: 30;
   }
+
+  /* Con el panel de navegacion abierto (su fondo oscuro solo existe en
+     telefono/tablet), el circulo y los avisos quedan por debajo del fondo
+     (45) y del panel (50). */
+  body:has(.sidebar__backdrop) .quick-actions__urgent-shield {
+    z-index: 40;
+  }
+
+  body:has(.sidebar__backdrop) .quick-actions__dock.has-urgent-shield,
+  body:has(.sidebar__backdrop) .quick-actions.has-urgent-shield {
+    z-index: 42;
+  }
 }
 
 .workspace__toolbar .quick-actions__dock .quick-actions {
