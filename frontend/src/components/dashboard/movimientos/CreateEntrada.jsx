@@ -3189,12 +3189,20 @@ function CreateEntrada({
               : null,
             ...(isCompraEntrada ? { producto_referencia: String(detail.productoReferencia || '').trim() } : {}),
           })),
+          // Cada item lleva subdivision_id o ubicacion_especial ("por_ubicar" /
+          // "temporal"); el backend resuelve la especial a su subdivision.
           ubicaciones_iniciales: (Array.isArray(ubicacionesIniciales) ? ubicacionesIniciales : [])
-            .map((item) => ({
-              producto_id: Number(item?.producto_id),
-              subdivision_id: Number(item?.subdivision_id),
-            }))
-            .filter((item) => Number.isFinite(item.producto_id) && Number.isFinite(item.subdivision_id)),
+            .map((item) => {
+              const productoId = Number(item?.producto_id)
+              if (!Number.isFinite(productoId)) return null
+              if (item?.ubicacion_especial) {
+                return { producto_id: productoId, ubicacion_especial: item.ubicacion_especial }
+              }
+              const subdivisionId = Number(item?.subdivision_id)
+              if (!Number.isFinite(subdivisionId)) return null
+              return { producto_id: productoId, subdivision_id: subdivisionId }
+            })
+            .filter(Boolean),
         }
 
         if (ivaRate !== null) {
