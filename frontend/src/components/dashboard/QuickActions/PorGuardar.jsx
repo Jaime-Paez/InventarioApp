@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Checkbox } from 'primereact/checkbox'
-import { Search, X } from 'lucide-react'
+import { Inbox, Search, X } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDateTime } from '../../../utils/dateFormat'
 import BlockerNotice from '../common/BlockerNotice'
@@ -639,7 +639,8 @@ function PorGuardar({ token, darkMode, onSaved }) {
             aria-label={`Por ubicar: ${count} producto(s)`}
             title="Envios que ya llegaron (importaciones y compras locales): cuenta lo que queda y guardalo en su ubicacion"
           >
-            <span>Por ubicar</span>
+            <Inbox className="quick-actions__pending-shipments-icon" aria-hidden="true" />
+            <span className="quick-actions__pending-shipments-label">Por ubicar</span>
             <span className="quick-actions__pending-shipments-count">{count}</span>
           </button>
         </div>

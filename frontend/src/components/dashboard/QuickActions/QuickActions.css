@@ -2865,42 +2865,48 @@
 .quick-actions.dark .quick-actions__pending-dot--2 { background: #ffa040; }
 .quick-actions.dark .quick-actions__pending-dot--3 { background: #ffc87a; }
 
-.quick-actions__mobile-count {
+/* Icono de las pildoras de envios / Por ubicar: solo en movil, donde la
+   pildora queda compacta (icono + numero) en vez del texto. */
+.quick-actions__pending-shipments-icon {
   display: none;
 }
 
 @media (max-width: 640px) {
-  .quick-actions__pending-shipments {
-    display: none;
-  }
-
-  .quick-actions__mobile-count {
-    display: flex;
-    align-items: center;
+  .quick-actions__pending-shipments-trigger {
+    min-height: 32px;
+    min-width: 36px;
+    padding: 4px 9px;
     justify-content: center;
-    position: absolute;
-    top: 2px;
-    left: 50%;
-    transform: translateX(4px);
-    min-width: 14px;
-    height: 14px;
-    border-radius: 999px;
-    background: #ef4444;
-    color: #fff;
-    font-size: 0.58rem;
-    font-weight: 700;
-    padding: 0 3px;
-    pointer-events: none;
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-surface) 75%, transparent);
   }
 
-  /* En esta pantalla angosta el numero de envios y el punto de "recordatorio
-     pendiente" caen en el mismo lugar sobre la campana. El numero ya avisa
-     que hay algo pendiente, asi que el punto sobra ahi -- se oculta solo
-     cuando el numero esta presente (en desktop el punto sigue solo, porque
-     ahi el numero nunca se muestra). */
-  .quick-actions__mobile-count ~ .quick-actions__pending-dots {
+  .quick-actions__pending-shipments-label {
     display: none;
+  }
+
+  .quick-actions__pending-shipments-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+  }
+
+  .quick-actions__pending-shipments-count {
+    top: -7px;
+    right: -7px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 0.68rem;
+  }
+
+  /* El panel se ancla a la pantalla (no a la pildora) para no salirse por
+     la izquierda; top: auto lo deja justo debajo del boton. */
+  .quick-actions__dock .quick-actions__pending-shipments-panel,
+  .quick-actions__dock .quick-actions__in-transit-panel {
+    position: fixed;
+    top: auto;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    margin-top: 8px;
   }
 }
 

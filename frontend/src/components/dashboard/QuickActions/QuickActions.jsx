@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowUpDown, Bell, Check, ChevronDown, Loader2, Moon, Search, SunMedium, X } from 'lucide-react'
+import { ArrowUpDown, Bell, Check, ChevronDown, Loader2, Moon, PackageCheck, Search, SunMedium, Truck, X } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import { Toast } from 'primereact/toast'
 import './QuickActions.css'
@@ -20,6 +20,7 @@ import { formatDate } from '../../../utils/dateFormat'
 import {
   requestSystemNotificationPermission,
   showSystemNotification,
+  subscribeToNotificationClicks,
 } from '../../../utils/systemNotifications'
 import {
   REMINDERS_STORAGE_KEY,
@@ -1082,7 +1083,9 @@ function QuickActions({
       title,
       body,
       tag: `inventario-${notificationType}`,
-      url: '/',
+      target: notificationType === 'solicitud_traslado_envio_pendiente'
+        ? { kind: 'envios' }
+        : { kind: 'recordatorio', id: reminderIds[0] || '' },
       requireInteraction: true,
     })
   }, [suppressAdminAlerts])
@@ -1218,10 +1221,6 @@ function QuickActions({
       }),
     [pendingRemindersForCurrentUser]
   )
-
-  const mobileShipmentCount = canOpenInTransitShipments
-    ? pendingShipments.length + visibleInTransitShipments.length
-    : 0
 
   const pendingSpecialDecisionReminders = useMemo(
     () =>
@@ -1741,7 +1740,7 @@ function QuickActions({
         title: 'Tienes una inspección aleatoria pendiente',
         body: `Revisa ${newReminderIds.length} recordatorio(s) de inspección.`,
         tag: 'inventario-inspeccion-aleatoria',
-        url: '/',
+        target: { kind: 'inspeccion', id: newReminderIds[0] },
         requireInteraction: true,
       })
     }
@@ -1817,7 +1816,7 @@ function QuickActions({
             : 'Tienes una solicitud nueva del sitio web.',
           body: 'Revisa el formulario de contacto en Configuración.',
           tag: 'inventario-solicitud-web',
-          url: '/',
+          target: { kind: 'solicitud_web', id: newIds[0] },
           requireInteraction: true,
         })
       }
@@ -5753,6 +5752,40 @@ function QuickActions({
     [fetchPendingTransferShipments, handleOpenPendingShipment, isPendingShipmentsOpen, openReminderModal]
   )
 
+  // Clic en una notificacion del sistema: llevar al usuario al lugar exacto
+  // de la notificacion (su recordatorio, los envios, la inspeccion o la
+  // solicitud web), no solo enfocar la app.
+  const remindersRef = useRef(reminders)
+  remindersRef.current = reminders
+  const handleNotificationTargetRef = useRef(null)
+  handleNotificationTargetRef.current = (target) => {
+    const kind = target?.kind
+    const id = normalizeId(target?.id)
+    if (kind === 'envios') {
+      setIsInTransitShipmentsOpen(false)
+      setIsPendingShipmentsOpen(true)
+      void fetchPendingTransferShipments()
+      return
+    }
+    if (kind === 'solicitud_web' && id && typeof onOpenSolicitudWeb === 'function') {
+      onOpenSolicitudWeb(id)
+      return
+    }
+    if (kind === 'inspeccion' && id) {
+      const reminder = (remindersRef.current || []).find((item) => normalizeId(item?.id) === id)
+      if (reminder) {
+        void handleOpenRandomInspectionFromReminder(reminder)
+        return
+      }
+    }
+    openReminderModal(id)
+  }
+
+  useEffect(
+    () => subscribeToNotificationClicks((target) => handleNotificationTargetRef.current?.(target)),
+    []
+  )
+
   // Todo recibido (y nada en POR UBICAR): popup de "completo" con confeti;
   // "Listo" confirma la recepcion y cierra el envio.
   const [receiveCompleteDismissedKey, setReceiveCompleteDismissedKey] = useState('')
@@ -5860,7 +5893,8 @@ function QuickActions({
               onClick={() => void toggleInTransitShipmentsPanel()}
               aria-label="Envíos en camino"
             >
-              <span>Envíos en camino</span>
+              <Truck className="quick-actions__pending-shipments-icon" aria-hidden="true" />
+              <span className="quick-actions__pending-shipments-label">Envíos en camino</span>
               <span className="quick-actions__pending-shipments-count">
                 {inTransitShipmentsLoading ? '...' : visibleInTransitShipments.length}
               </span>
@@ -5961,7 +5995,8 @@ function QuickActions({
               onClick={() => void togglePendingShipmentsPanel()}
               aria-label="Envíos pendientes"
             >
-              <span>Envíos pendientes</span>
+              <PackageCheck className="quick-actions__pending-shipments-icon" aria-hidden="true" />
+              <span className="quick-actions__pending-shipments-label">Envíos pendientes</span>
               <span className="quick-actions__pending-shipments-count">
                 {pendingShipmentsLoading ? '...' : pendingShipments.length}
               </span>
@@ -6065,11 +6100,6 @@ function QuickActions({
             onFocus={() => showAndMove(1)}
           >
             <Bell />
-            {mobileShipmentCount > 0 && (
-              <span className="quick-actions__mobile-count" aria-hidden="true">
-                {mobileShipmentCount > 9 ? '9+' : mobileShipmentCount}
-              </span>
-            )}
             {(hasPendingReminder || unreadSolicitudesWeb.length > 0) && (
               <span className="quick-actions__pending-dots" aria-hidden="true">
                 <span className="quick-actions__pending-dot quick-actions__pending-dot--1" />
