@@ -7489,13 +7489,20 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const headers = ['Orden', 'Código', 'Descripción', 'OEM', 'Referencia', 'Precio', 'Cantidad']
       const hdrS = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: '1e3a5f' }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { ...border, bottom: { style: 'medium', color: { rgb: '2563EB' } } } }
       const sortedDetails = [...details].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
+      // Precio: el PVP puesto en la sugerencia (a mano o con doble click,
+      // guardado en centavos); si no tiene, el del catalogo.
+      const precioSugerencia = (item) => {
+        const centavos = parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
+        if (centavos > 0) return centavos / 100
+        return item.producto?.precio != null ? +Number(item.producto.precio).toFixed(2) : ''
+      }
       const rows = sortedDetails.map((item) => [
         item.orden ?? '',
         item.producto?.codigo || item.codigo || 'SIN CATÁLOGO',
         item.producto?.nombre || item.nombre || '',
         getProductoOem(item.producto) || item.oem || '',
         item.producto?.referencia || item.referencia || '',
-        item.producto?.precio != null ? +Number(item.producto.precio).toFixed(2) : '',
+        precioSugerencia(item),
         +Number(item.cantidad || 0),
       ])
       const worksheet = XLSXStyle.utils.aoa_to_sheet([headers, ...rows])
