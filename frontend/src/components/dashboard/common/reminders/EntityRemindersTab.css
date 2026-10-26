@@ -956,9 +956,16 @@
     max-height: 128px;
   }
 
+  /* En el telefono el titulo de la ventana y la pestaña ya dicen de que son
+     estos recordatorios: sin encabezado, y la lista llega hasta abajo. */
+  .entity-reminders__head {
+    display: none;
+  }
+
   .entity-reminders__table-wrap {
-    max-height: min(46vh, 360px);
-    max-height: min(46dvh, 360px);
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
   }
 
   .entity-reminders__detail-overlay {
