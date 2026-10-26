@@ -166,6 +166,7 @@ function SalidasTable({
   moduleActions,
   pendingTransferSalidaRequest = null,
   onPendingTransferSalidaRequestHandled,
+  onRequestCreateBranch,
 }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
@@ -1095,7 +1096,24 @@ function SalidasTable({
   }
 
   const openGuardadoTrasladoDraft = async (rowData) => {
-    if (!canCreate) return
+    if (!canCreate) {
+      // En "Todas" no se puede crear ni editar: se cambia a la sucursal de
+      // origen del traslado y se abre ahi (ver el efecto de abajo). Antes el
+      // doble click no hacia nada y no decia por que.
+      const branchId = String(rowData?.sucursal_proveedora_id || '').trim()
+      if (branchId && branchId !== normalizedCreateBranchId && typeof onRequestCreateBranch === 'function') {
+        setPendingGuardadoOpen(rowData)
+        onRequestCreateBranch(branchId)
+        return
+      }
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'No se puede abrir el traslado',
+        detail: `No tienes permiso para crear salidas en ${String(rowData?.sucursal_nombre || 'la sucursal de origen').trim()}: pide a un administrador ese permiso para continuar este traslado guardado.`,
+        life: 5000,
+      })
+      return
+    }
     try {
       await preloadSalidaCatalogs()
     } catch {
@@ -1105,6 +1123,18 @@ function SalidasTable({
     setCreatePrefillGuardadoTraslado(rowData)
     setShowCreateModal(true)
   }
+
+  // Traslado guardado abierto desde "Todas": se abre cuando ya se cambio a su
+  // sucursal de origen (si en esa sucursal tampoco hay permiso, avisa).
+  const [pendingGuardadoOpen, setPendingGuardadoOpen] = useState(null)
+  useEffect(() => {
+    if (!pendingGuardadoOpen) return
+    if (String(pendingGuardadoOpen?.sucursal_proveedora_id || '').trim() !== normalizedCreateBranchId) return
+    const rowData = pendingGuardadoOpen
+    setPendingGuardadoOpen(null)
+    void openGuardadoTrasladoDraft(rowData)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingGuardadoOpen, normalizedCreateBranchId, canCreate])
 
   const handleOpenCreateModal = async () => {
     if (!canCreate) return

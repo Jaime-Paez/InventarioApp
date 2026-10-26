@@ -559,6 +559,10 @@ function Workspace({
         moduleActions={scopedModuleActions}
         permissionIndex={permissionIndex}
         pendingTransferSalidaRequest={tab === 'Salidas' ? pendingTransferSalidaRequest : null}
+        // Abrir un traslado guardado desde "Todas" cambia a su sucursal de origen.
+        onRequestCreateBranch={
+          tab === 'Salidas' ? (branchId) => handleMovementBranchChange('Salidas', branchId) : undefined
+        }
         pendingTransferEntradaRequest={tab === 'Entradas' ? pendingTransferEntradaRequest : null}
         onPendingTransferSalidaRequestHandled={
           tab === 'Salidas' ? handleTransferSalidaRequestHandled : undefined
