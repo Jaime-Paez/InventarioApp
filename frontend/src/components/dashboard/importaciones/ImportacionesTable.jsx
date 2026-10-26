@@ -4830,12 +4830,12 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {matchedCount > 0 && (
                         <span {...reviewGroupChipProps('vinculados', 'los vinculados al catálogo')} title="Clic: ir a los vinculados al catálogo" style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                          ✓ {matchedCount} vinculado{matchedCount !== 1 ? 's' : ''} al catálogo
+                          {matchedCount} vinculado{matchedCount !== 1 ? 's' : ''} al catálogo
                         </span>
                       )}
                       {unmatchedCount > 0 && (
                         <span {...reviewGroupChipProps('sinCatalogo', 'los productos sin catálogo')} title="Clic: ir a los productos sin catálogo" style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                          — {unmatchedCount} sin catálogo
+                          {unmatchedCount} sin catálogo
                         </span>
                       )}
                       {/* Leyenda de los colores de las filas. */}
@@ -4859,7 +4859,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       )}
                       {referenciaConflictCount > 0 && (
                         <span {...reviewGroupChipProps('referencia', 'los que tienen referencia diferente')} title="Clic: ir a los que tienen referencia diferente" style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                          ⚠ {referenciaConflictCount} con referencia diferente
+                          {referenciaConflictCount} con referencia diferente
                         </span>
                       )}
                     </div>
