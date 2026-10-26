@@ -3126,6 +3126,12 @@
     padding-right: 0;
   }
 
+  /* El motivo del error va al final de la tarjeta: en esta vista la fila 2
+     es la de Por ubicar / Contados / check y el texto se encimaba ahi. */
+  .quick-actions__receive-step--list .quick-actions__receive-item.has-validation-error .quick-actions__receive-item-hint {
+    grid-row: 4;
+  }
+
   .quick-actions__receive-step--list .quick-actions__receive-item-title {
     box-shadow: none;
     padding-right: 0;
