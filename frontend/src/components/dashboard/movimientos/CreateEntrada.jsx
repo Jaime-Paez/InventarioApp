@@ -185,7 +185,7 @@ const createEmptyLocationAssignment = () => ({
 const SPECIAL_LOCATIONS = [
   {
     key: 'por_ubicar',
-    label: 'Guardar en Por ubicar',
+    label: 'Por ubicar',
     icon: 'pi pi-inbox',
     info:
       'El producto entra al stock en POR UBICAR y ya se puede vender. Queda una notificacion en ' +
@@ -3399,7 +3399,7 @@ function CreateEntrada({
 
     if (missingAssignments.length > 0) {
       setLocationResolverError(
-        'Para cada producto sin ubicación en la sucursal selecciona bodega, división y subdivisión, o elige "Guardar en Por ubicar" o "Temporal".'
+        'Para cada producto sin ubicación en la sucursal selecciona bodega, división y subdivisión, o elige guardarlo en "Por ubicar" o "Temporal".'
       )
       return
     }
@@ -5379,47 +5379,7 @@ function CreateEntrada({
                             .join(' - ') || `Producto #${productId}`}
                         </div>
                         <div className="permissions-matrix__cell permissions-matrix__cell--action">
-                          <div className="create-entrada__location-special">
-                            {SPECIAL_LOCATIONS.map((option) => {
-                              const isActive = assignment.especial === option.key
-                              const infoKey = `${productId}:${option.key}`
-                              return (
-                                <div key={option.key} className="create-entrada__location-special-item">
-                                  <button
-                                    type="button"
-                                    className={`create-entrada__location-special-btn${
-                                      isActive ? ' create-entrada__location-special-btn--active' : ''
-                                    }`}
-                                    aria-pressed={isActive}
-                                    onClick={() => handleLocationEspecialToggle(productId, option.key)}
-                                    disabled={locationResolverSubmitting}
-                                  >
-                                    <i className={isActive ? 'pi pi-check' : option.icon} />
-                                    {option.label}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="create-entrada__location-special-info"
-                                    aria-label={`Que es ${option.label}`}
-                                    aria-expanded={locationInfoKey === infoKey}
-                                    title={option.info}
-                                    onClick={() =>
-                                      setLocationInfoKey((prev) => (prev === infoKey ? '' : infoKey))
-                                    }
-                                  >
-                                    <i className="pi pi-info-circle" />
-                                  </button>
-                                </div>
-                              )
-                            })}
-                          </div>
-                          {SPECIAL_LOCATIONS.filter(
-                            (option) => locationInfoKey === `${productId}:${option.key}`
-                          ).map((option) => (
-                            <p key={option.key} className="create-entrada__location-special-help">
-                              <strong>{option.label}:</strong> {option.info}
-                            </p>
-                          ))}
+                          <div className="create-entrada__location-cell">
                           {assignment.especial ? (
                             <small className="create-entrada__location-special-note">
                               {assignment.especial === 'por_ubicar'
@@ -5674,6 +5634,54 @@ function CreateEntrada({
                             </div>
                           </div>
                           )}
+
+                          <div className="create-entrada__location-divider" aria-hidden="true">
+                            <span>o</span>
+                          </div>
+
+                          <small className="create-entrada__location-special-title">Guardar en:</small>
+                          <div className="create-entrada__location-special">
+                            {SPECIAL_LOCATIONS.map((option) => {
+                              const isActive = assignment.especial === option.key
+                              const infoKey = `${productId}:${option.key}`
+                              return (
+                                <div key={option.key} className="create-entrada__location-special-item">
+                                  <button
+                                    type="button"
+                                    className={`create-entrada__location-special-btn${
+                                      isActive ? ' create-entrada__location-special-btn--active' : ''
+                                    }`}
+                                    aria-pressed={isActive}
+                                    onClick={() => handleLocationEspecialToggle(productId, option.key)}
+                                    disabled={locationResolverSubmitting}
+                                  >
+                                    <i className={isActive ? 'pi pi-check' : option.icon} />
+                                    {option.label}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="create-entrada__location-special-info"
+                                    aria-label={`Que es ${option.label}`}
+                                    aria-expanded={locationInfoKey === infoKey}
+                                    title={option.info}
+                                    onClick={() =>
+                                      setLocationInfoKey((prev) => (prev === infoKey ? '' : infoKey))
+                                    }
+                                  >
+                                    <i className="pi pi-info-circle" />
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                          {SPECIAL_LOCATIONS.filter(
+                            (option) => locationInfoKey === `${productId}:${option.key}`
+                          ).map((option) => (
+                            <p key={option.key} className="create-entrada__location-special-help">
+                              <strong>{option.label}:</strong> {option.info}
+                            </p>
+                          ))}
+                          </div>
                         </div>
                       </div>
                     )

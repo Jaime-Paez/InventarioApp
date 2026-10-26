@@ -1290,12 +1290,41 @@
   z-index: auto;
 }
 
-/* Alternativas a la ubicacion exacta: "Guardar en Por ubicar" y "Temporal". */
+.create-entrada__location-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.create-entrada__location-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.create-entrada__location-divider::before,
+.create-entrada__location-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--color-border);
+}
+
+.create-entrada__location-special-title {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Alternativas a la ubicacion exacta: "Por ubicar" y "Temporal". */
 .create-entrada__location-special {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 10px;
 }
 
 .create-entrada__location-special-item {
@@ -1354,7 +1383,7 @@
 }
 
 .create-entrada__location-special-help {
-  margin: 0 0 10px;
+  margin: 0;
   padding: 8px 10px;
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-primary) 8%, transparent);
