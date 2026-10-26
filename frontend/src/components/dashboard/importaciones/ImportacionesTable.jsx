@@ -4756,8 +4756,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>OEM</th>
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
                             <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
-                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>PVP</th>
-                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="Precio que traía el Excel, como referencia">PVP Aprox</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="Precio registrado en el sistema (o el precio del producto nuevo)">PVP sistema</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="Precio que traía el Excel">PVP Excel</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -4941,24 +4941,32 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                         />
                                       </div>
                                     )
-                                  })() : (() => {
-                                    // Si el Excel no trae PVP para un producto ya vinculado al
-                                    // catálogo, se muestra el precio que ya tiene ese producto
-                                    // en vez de un "$0.00" sin sentido.
-                                    const fromCatalogo = !(Number(row.pvp) > 0) && row.matched_producto_precio != null
-                                    const displayPvp = fromCatalogo ? row.matched_producto_precio : row.pvp
+                                  })() : (
+                                    // Producto ya vinculado: el precio que tiene registrado en el
+                                    // sistema (el que se encontró por código/referencia), para
+                                    // compararlo con el que trae el Excel en la columna de al lado.
+                                    <span
+                                      style={{ fontWeight: 600, whiteSpace: 'nowrap' }}
+                                      title="Precio registrado en el sistema para este producto"
+                                    >
+                                      {row.matched_producto_precio != null ? `$${Number(row.matched_producto_precio).toFixed(2)}` : '—'}
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                  {(() => {
+                                    if (!(Number(row.pvp) > 0)) return <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
+                                    const sistema = row.matched_producto_id && row.matched_producto_precio != null ? Number(row.matched_producto_precio) : null
+                                    const difiere = sistema != null && Math.abs(Number(row.pvp) - sistema) >= 0.005
                                     return (
                                       <span
-                                        style={{ fontWeight: 600, whiteSpace: 'nowrap', color: fromCatalogo ? 'var(--color-text-secondary)' : undefined }}
-                                        title={fromCatalogo ? 'El Excel no traía PVP para este producto; se muestra el precio actual del catálogo.' : undefined}
+                                        style={{ fontWeight: difiere ? 600 : undefined, color: difiere ? '#b45309' : 'var(--color-text-secondary)' }}
+                                        title={difiere ? `Distinto al precio del sistema ($${sistema.toFixed(2)})` : 'Precio que trae el Excel'}
                                       >
-                                        ${Number(displayPvp || 0).toFixed(2)}
+                                        ${Number(row.pvp).toFixed(2)}
                                       </span>
                                     )
                                   })()}
-                                </td>
-                                <td style={{ padding: '7px 12px', textAlign: 'right', color: 'var(--color-text-secondary)' }}>
-                                  {Number(row.pvp) > 0 ? `$${Number(row.pvp).toFixed(2)}` : '—'}
                                 </td>
                               </tr>
                             )
