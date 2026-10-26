@@ -4775,10 +4775,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                     />
 
                     <div ref={reviewTableWrapRef} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
-                      <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 960 }}>
+                      <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 880 }}>
                         <colgroup>
                           <col style={{ width: 100 }} />
-                          <col style={{ width: 190 }} />
+                          <col style={{ width: 120 }} />
                           <col style={{ width: 130 }} />
                           <col style={{ width: 220 }} />
                           <col style={{ width: 60 }} />
