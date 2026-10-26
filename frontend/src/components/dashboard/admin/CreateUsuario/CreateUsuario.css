@@ -2467,8 +2467,9 @@ button.create-user__locations-row {
    top/left/width/height en linea al arrastrarlas en escritorio, por eso los
    !important. */
 @media (max-width: 900px) {
+  /* Algunas ventanas ponen padding en linea al contenedor */
   .create-user__overlay {
-    padding: 0;
+    padding: 0 !important;
   }
 
   .create-user__overlay .create-user__modal {
@@ -2492,7 +2493,13 @@ button.create-user__locations-row {
     cursor: default;
   }
 
-  /* El titulo pasa de "pestaña" centrada a barra superior completa */
+  /* El titulo pasa de "pestaña" centrada a barra superior completa (algunas
+     ventanas lo envuelven en un grupo propio, que tambien se estira) */
+  .create-user__overlay .create-user__header-text > * {
+    width: 100%;
+    min-width: 0;
+  }
+
   .create-user__overlay .create-user__header h3 {
     width: 100%;
     min-width: 0;
@@ -2538,5 +2545,203 @@ button.create-user__locations-row {
   .create-user__overlay .create-user__footer button {
     flex: 1 1 auto;
     min-width: 96px;
+  }
+}
+
+/* TELEFONO: nada de scroll horizontal dentro de las ventanas.
+   - Las grillas de campos pasan a una sola columna.
+   - Las tablas (productos de salidas/entradas, etc.) pasan a tarjetas: cada
+     fila es una tarjeta y cada celda muestra el nombre de su columna
+     (data-label, puesto por utils/mobileTableLabels). La tabla de
+     ubicaciones del inventario tiene su propio diseño y no entra aqui. */
+@media (max-width: 700px) {
+  .create-user__overlay .create-user__grid--two,
+  .create-user__overlay .create-user__grid--three,
+  .create-user__overlay .create-user__grid--four {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .create-user__overlay .create-user__section,
+  .create-user__overlay .create-user__field {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Bloques "etiquetas arriba / valores abajo" por columnas (salidas y
+     entradas): en el telefono cada campo va con su etiqueta, uno debajo del
+     otro. */
+  .create-user__overlay .create-salida__field-group--paired .create-user__grid {
+    grid-auto-flow: row;
+    grid-template-rows: none;
+  }
+
+  .create-user__overlay .create-salida__field-group--paired .create-user__grid > .create-user__field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  /* Tabla de usuarios a recordar: usuario y casilla en una linea, el correo
+     debajo (sin ancho minimo que obligue a desplazarse a los lados). */
+  .create-user__overlay .create-salida__reminder-table-wrap {
+    overflow-x: visible;
+  }
+
+  .create-user__overlay .create-salida__reminder-table {
+    min-width: 0 !important;
+  }
+
+  .create-user__overlay .create-salida__reminder-table .permissions-matrix__row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .create-user__overlay .create-salida__reminder-table .permissions-matrix__row > :nth-child(2) {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    padding-top: 0;
+  }
+
+  .create-user__overlay .create-salida__reminder-table .permissions-matrix__row > :nth-child(3) {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .create-user__overlay .create-salida__reminder-table .permissions-matrix__row--head > :nth-child(2) {
+    display: none;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) {
+    min-width: 0 !important;
+    max-width: 100%;
+    overflow-x: visible;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row--head {
+    display: none;
+  }
+
+  /* Cada fila es un renglon compacto:
+       CODIGO                         [acciones]
+       Descripcion
+       CANT. 2   PRECIO $30.00     TOTAL $60.00 */
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 14px;
+    min-width: 0 !important;
+    width: auto !important;
+    padding: 10px 14px !important;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > * {
+    flex: 0 0 auto;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0 !important;
+    border: none !important;
+    background: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left !important;
+    justify-content: flex-start !important;
+    order: 2;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label] {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 5px;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label]::before {
+    content: attr(data-label);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    opacity: 0.55;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Codigo: primero y en negrita, sin etiqueta */
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > :first-child {
+    order: 0;
+    flex: 1 1 auto;
+    font-weight: 700;
+  }
+
+  /* Descripcion: renglon propio, sin etiqueta */
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label^='Descrip'] {
+    order: 1;
+    flex: 1 1 100%;
+    font-size: 0.85rem;
+    opacity: 0.85;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > :first-child::before,
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label^='Descrip']::before {
+    content: none !important;
+  }
+
+  /* Acciones: arriba a la derecha, sin etiqueta */
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > .create-user__locations-cell--action,
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label='Acciones'] {
+    order: 0;
+    margin-left: auto;
+    gap: 6px;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > .create-user__locations-cell--action::before,
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label='Acciones']::before {
+    content: none !important;
+  }
+
+  /* Filas de totales: etiqueta a la izquierda, valor a la derecha */
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head).create-salida__totals-row,
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head).create-salida__totals-row--strong {
+    flex-wrap: nowrap;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head).create-salida__totals-row > :last-child,
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head).create-salida__totals-row--strong > :last-child {
+    margin-left: auto;
+    text-align: right !important;
+  }
+
+  /* El total del producto se alinea a la derecha */
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label='Precio total'],
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label='Total'],
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label='Subtotal'] {
+    margin-left: auto;
+    font-weight: 700;
+  }
+
+  /* Fila para agregar (selector de producto): el selector ocupa todo el ancho */
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head).create-user__locations-row--form > :first-child {
+    flex-basis: 100%;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label] input,
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > [data-label] select {
+    width: 96px;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head).create-user__locations-row--form > :first-child input,
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head).create-user__locations-row--form > :first-child select,
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head).create-user__locations-row--form > :first-child > * {
+    width: 100%;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row:not(.create-user__locations-row--head) > * * {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .create-user__overlay .create-user__locations-table:not(.create-user__locations-table--locations-selectors) > .create-user__locations-row--empty {
+    min-width: 0 !important;
+    width: auto !important;
   }
 }

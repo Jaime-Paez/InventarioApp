@@ -1829,9 +1829,10 @@
   left: 0;
   z-index: 36;
   pointer-events: none;
-  width: 170px;
-  height: 70px;
-  padding: 12px 10px 0 12px;
+  /* Cuadrado recortado en diagonal: triangulo rectangulo de catetos iguales */
+  width: 104px;
+  height: 104px;
+  padding: 10px 8px 0 10px;
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
@@ -1843,14 +1844,14 @@
   font-weight: 700;
   letter-spacing: 0.01em;
   text-transform: uppercase;
-  max-width: 100px;
+  max-width: none;
   text-wrap: balance;
   box-shadow: 0 8px 14px color-mix(in srgb, #f59e0b 26%, transparent);
 }
 
 .entrada-details__pending-ribbon-label {
   display: block;
-  max-width: 84px;
+  max-width: 72px;
   white-space: pre-line;
   overflow-wrap: normal;
   text-wrap: balance;
@@ -2060,10 +2061,13 @@
   }
 
   .entrada-details__pending-ribbon {
-    width: 138px;
-    height: 138px;
-    max-width: 78px;
+    width: 92px;
+    height: 92px;
     font-size: 0.62rem;
+  }
+
+  .entrada-details__pending-ribbon-label {
+    max-width: 64px;
   }
 
   .entrada-details__rejection-reason {
