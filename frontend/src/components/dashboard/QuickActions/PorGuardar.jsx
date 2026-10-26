@@ -405,12 +405,12 @@ function PorGuardar({ token, darkMode, onSaved }) {
   // Al buscar no se oculta nada: lo que coincide va primero.
   const visibleShipments = useMemo(
     () => {
-      const list = shipments.map((shipment) => ({
+      // Los grupos no se reordenan al buscar: el buscador vive dentro del
+      // primero y moverlo le quitaria el foco mientras se escribe.
+      return shipments.map((shipment) => ({
         ...shipment,
         visibleItems: term ? matchesFirst(shipment.items, matches) : shipment.items,
       }))
-      if (!term) return list
-      return matchesFirst(list, (shipment) => shipment.items.some(matches) || normalize(shipment.codigo).includes(term))
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [shipments, term]
@@ -588,25 +588,41 @@ function PorGuardar({ token, darkMode, onSaved }) {
     </div>
   )
 
-  const renderGroupHead = ({ title, subtitle, allDone, someDone, onCheckAll, checkAllDisabled, extra }) => (
+  // Justo encima de la lista de productos del primer grupo.
+  const searchBar = (
+    <div className="quick-actions__receive-search-bar">
+      <div className="quick-actions__receive-search">
+        <input
+          type="text"
+          placeholder="Buscar por código, descripción o documento..."
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        {query && (
+          <button
+            type="button"
+            className="quick-actions__receive-search-clear"
+            onClick={() => setQuery('')}
+            aria-label="Limpiar búsqueda"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {term && (
+        <span className="quick-actions__receive-search-count">{matchCount} de {totalCount}</span>
+      )}
+    </div>
+  )
+
+  // Sin "Marcar todo": cada producto se cuenta y se marca uno por uno.
+  const renderGroupHead = ({ title, subtitle, extra }) => (
     <div className="por-guardar__group-head">
       <div className="por-guardar__group-copy">
         <strong>{title}</strong>
         {subtitle && <span>{subtitle}</span>}
       </div>
-      <div className="por-guardar__group-actions">
-        <label className="quick-actions__receive-check quick-actions__receive-check--bulk">
-          <input
-            type="checkbox"
-            checked={allDone}
-            ref={(element) => { if (element) element.indeterminate = someDone && !allDone }}
-            onChange={(event) => { if (event.target.checked) void onCheckAll() }}
-            disabled={saving || checkAllDisabled}
-          />
-          <span>Marcar todo</span>
-        </label>
-        {extra}
-      </div>
+      {extra && <div className="por-guardar__group-actions">{extra}</div>}
     </div>
   )
 
@@ -672,31 +688,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                 </p>
               ) : (
                 <div className="quick-actions__receive-step quick-actions__receive-step--list">
-                  <div className="quick-actions__receive-search-bar">
-                    <div className="quick-actions__receive-search">
-                      <input
-                        type="text"
-                        placeholder="Buscar por código, descripción o documento..."
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                      />
-                      {query && (
-                        <button
-                          type="button"
-                          className="quick-actions__receive-search-clear"
-                          onClick={() => setQuery('')}
-                          aria-label="Limpiar búsqueda"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                    {term && (
-                      <span className="quick-actions__receive-search-count">{matchCount} de {totalCount}</span>
-                    )}
-                  </div>
-
-                  {visibleShipments.map((shipment) => {
+                  {visibleShipments.map((shipment, index) => {
                     const pendientes = shipment.items.filter((item) => item.pendiente > 0)
                     const doneCount = shipment.items.length - pendientes.length
                     return (
@@ -707,10 +699,6 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             `Para ${shipment.sucursal_nombre}`,
                             shipment.llegada_confirmada_en && `llegó ${formatDateTime(shipment.llegada_confirmada_en)}`,
                           ].filter(Boolean).join(' · '),
-                          allDone: !pendientes.length,
-                          someDone: doneCount > 0,
-                          onCheckAll: () => checkShipmentItems(shipment, pendientes),
-                          checkAllDisabled: !pendientes.length,
                           extra: (
                             <button
                               type="button"
@@ -730,6 +718,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                           unitsTotal: shipment.items.reduce((sum, item) => sum + item.enviado, 0),
                           toStore: pendientes.length,
                         })}
+                        {index === 0 && searchBar}
                         <div className="quick-actions__receive-list">
                           {renderListHeader('Quedan')}
                           {shipment.visibleItems.map((item) => {
@@ -766,10 +755,6 @@ function PorGuardar({ token, darkMode, onSaved }) {
                         {renderGroupHead({
                           title: 'En POR UBICAR',
                           subtitle: 'Ya están en el inventario (ej. de un inconveniente); falta guardarlos en su ubicación.',
-                          allDone: !pendientes.length,
-                          someDone: doneCount > 0,
-                          onCheckAll: () => checkPorUbicar(pendientes),
-                          checkAllDisabled: !pendientes.length,
                         })}
                         {renderProgress({
                           done: doneCount,
@@ -778,6 +763,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                           unitsTotal: porUbicarRows.reduce((sum, row) => sum + row.guardado + row.cantidad, 0),
                           toStore: pendientes.length,
                         })}
+                        {!visibleShipments.length && searchBar}
                         <div className="quick-actions__receive-list">
                           {renderListHeader('Por ubicar')}
                           {visiblePorUbicar.map((row) => renderRow({

@@ -3581,7 +3581,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     }
     el.addEventListener('wheel', handleWheel, { passive: false })
     return () => el.removeEventListener('wheel', handleWheel)
-  }, [step])
+    // isTabActive: al volver a la pestaña la tabla se vuelve a montar.
+  }, [step, isTabActive])
 
   // Step 2: file upload
   const fileInputRef = useRef(null)
@@ -3604,10 +3605,23 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const [reviewRenderCount, setReviewRenderCount] = useState(REVIEW_ROWS_BATCH)
   useEffect(() => {
     setReviewRenderCount(REVIEW_ROWS_BATCH)
+    reviewScrollRef.current = { top: 0, left: 0 }
     if (reviewTableWrapRef.current) reviewTableWrapRef.current.scrollTop = 0
   }, [reviewQuery, parsedRows.length])
+  // Al ir a otra pestaña este modal se desmonta (ver isTabActive más abajo) y
+  // la tabla volvía a empezar arriba: se guarda dónde estaba y se devuelve al
+  // volver.
+  const reviewScrollRef = useRef({ top: 0, left: 0 })
+  useLayoutEffect(() => {
+    if (isTabActive === false || step !== 3) return
+    const el = reviewTableWrapRef.current
+    if (!el) return
+    el.scrollTop = reviewScrollRef.current.top
+    el.scrollLeft = reviewScrollRef.current.left
+  }, [isTabActive, step])
   const handleReviewTableScroll = (event) => {
     const el = event.currentTarget
+    reviewScrollRef.current = { top: el.scrollTop, left: el.scrollLeft }
     if (el.scrollTop + el.clientHeight >= el.scrollHeight - REVIEW_ROWS_PRELOAD_PX) {
       setReviewRenderCount((count) => count + REVIEW_ROWS_BATCH)
     }
