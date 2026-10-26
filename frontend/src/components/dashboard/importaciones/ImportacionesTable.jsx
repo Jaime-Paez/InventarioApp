@@ -4362,6 +4362,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const unmatchedCount = validRows.filter(r => !r.matched_producto_id).length
   const suggestedCount = validRows.filter(r => r.codigo_sugerido && !r.conflicto_casa).length
   const referenciaConflictCount = validRows.filter(r => hasReferenciaConflict(r)).length
+  // Los amarillos y naranjas tambien son "sin catalogo"; para que los
+  // contadores sumen el total, el de sin catalogo cuenta solo el resto.
+  const coincidenTotal = matchedCount + suggestedCount + conflictoRows.length
+  const sinCoincidenciaCount = validRows.filter(r => !r.matched_producto_id && !r.codigo_sugerido && !r.conflicto_casa).length
   // Grupos de los contadores de arriba. "Sin catalogo" busca primero los que
   // no son amarillos ni naranjas (esos tienen su propio contador).
   const REVIEW_GROUPS = {
@@ -4818,27 +4822,14 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                   </div>
                 ) : (
                   <>
-                    {conflictoRows.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
-                        <i className="pi pi-exclamation-triangle" style={{ color: '#c2410c', fontSize: 'var(--font-size-base)', flexShrink: 0 }} />
-                        <span style={{ fontSize: 'var(--font-size-sm)', color: '#9a3412' }}>
-                          {conflictoRows.length} producto{conflictoRows.length !== 1 ? 's' : ''} (marcado{conflictoRows.length !== 1 ? 's' : ''} en naranja) ya tiene{conflictoRows.length !== 1 ? 'n' : ''} ese código/referencia en otra casa comercial. Se incluirán igual, creando un producto nuevo con la misma referencia para <strong>{selectedCasa?.nombre}</strong> — revisa que sea correcto antes de continuar.
-                        </span>
-                      </div>
-                    )}
-
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {/* Izquierda: los que coinciden con algo del catálogo y su suma.
+                        Derecha: los que no coinciden con nada. */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                       {matchedCount > 0 && (
                         <span {...reviewGroupChipProps('vinculados', 'los vinculados al catálogo')} title="Clic: ir a los vinculados al catálogo" style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
                           {matchedCount} vinculado{matchedCount !== 1 ? 's' : ''} al catálogo
                         </span>
                       )}
-                      {unmatchedCount > 0 && (
-                        <span {...reviewGroupChipProps('sinCatalogo', 'los productos sin catálogo')} title="Clic: ir a los productos sin catálogo" style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                          {unmatchedCount} sin catálogo
-                        </span>
-                      )}
-                      {/* Leyenda de los colores de las filas. */}
                       {suggestedCount > 0 && (
                         <span
                           {...reviewGroupChipProps('sugeridos', 'los productos con código sugerido')}
@@ -4857,9 +4848,22 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           {conflictoRows.length} coinciden por referencia o código
                         </span>
                       )}
+                      {coincidenTotal > 0 && (
+                        <span
+                          style={{ background: 'var(--color-primary)', color: 'var(--color-button-primary, #fff)', borderRadius: 20, padding: '2px 12px', fontSize: 'var(--font-size-sm)', fontWeight: 700 }}
+                          title="Vinculados al catálogo + coinciden solo por OEM + coinciden por referencia o código"
+                        >
+                          = {coincidenTotal} con coincidencia
+                        </span>
+                      )}
                       {referenciaConflictCount > 0 && (
                         <span {...reviewGroupChipProps('referencia', 'los que tienen referencia diferente')} title="Clic: ir a los que tienen referencia diferente" style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
                           {referenciaConflictCount} con referencia diferente
+                        </span>
+                      )}
+                      {sinCoincidenciaCount > 0 && (
+                        <span {...reviewGroupChipProps('sinCatalogo', 'los productos sin catálogo')} title="Clic: ir a los productos sin catálogo" style={{ marginLeft: 'auto', background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
+                          {sinCoincidenciaCount} sin catálogo
                         </span>
                       )}
                     </div>
