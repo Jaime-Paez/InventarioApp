@@ -5845,8 +5845,16 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
     if (!nuevoProductoDraft.nombre.trim()) errors.nombre = 'El nombre es requerido'
     if (!nuevoProductoDraft.oem.trim()) errors.oem = 'El OEM es requerido'
     if (!nuevoProductoDraft.referencia.trim()) errors.referencia = 'La referencia es requerida'
+    if (!nuevoProductoDraft.codigo.trim()) errors.codigo = 'El código JP es requerido'
+    // En la sugerencia la cantidad no es obligatoria: se exige al pedir la
+    // cotización. Si se escribe, no puede ser negativa.
+    const cantidadOpcional = true
     const qty = Number(nuevoProductoDraft.cantidad)
-    if (!nuevoProductoDraft.cantidad || !Number.isFinite(qty) || qty <= 0) errors.cantidad = 'La cantidad debe ser mayor a 0'
+    if (nuevoProductoDraft.cantidad === ''
+      ? !cantidadOpcional
+      : (!Number.isFinite(qty) || qty < 0 || (!cantidadOpcional && qty <= 0))) {
+      errors.cantidad = cantidadOpcional ? 'La cantidad no puede ser negativa' : 'La cantidad debe ser mayor a 0'
+    }
     setNuevoProductoErrors(errors)
     let blocked = false
     if (Object.keys(errors).length > 0) {
@@ -5867,6 +5875,13 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       setNuevoProductoErrors((p) => ({ ...p, referencia: 'Ya existe un producto con esta referencia en el listado.' }))
       return
     }
+    // Codigo JP: no se puede repetir con otro producto del listado.
+    const incomingCodigo = nuevoProductoDraft.codigo.trim().toLowerCase()
+    if (details.some((d) => String(d.producto?.codigo || d.codigo || '').trim().toLowerCase() === incomingCodigo)) {
+      setNuevoProductoErrors((p) => ({ ...p, codigo: 'Ya hay un producto con este código JP en el listado.' }))
+      toastRef.current?.show({ severity: 'warn', summary: 'Código repetido', detail: 'Ya hay un producto con este código JP en el listado.', life: 4500 })
+      return
+    }
     const key = 'manual_' + Date.now() + '_' + Math.floor(Math.random() * 10000)
     setDetails((prev) => [...prev, {
       _key: key,
@@ -5876,7 +5891,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
       oem: nuevoProductoDraft.oem.trim(),
       referencia: nuevoProductoDraft.referencia.trim(),
       precio: nuevoProductoDraft.precio !== '' ? Number(nuevoProductoDraft.precio) : null,
-      cantidad: String(nuevoProductoDraft.cantidad),
+      cantidad: String(nuevoProductoDraft.cantidad || '0'),
       comentario: nuevoProductoDraft.comentario.trim(),
     }])
     setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
@@ -6606,14 +6621,19 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
             <div className="imp-aceptados-popup__body">
               <div className="create-user__grid create-user__grid--two" style={{ padding: '4px 0' }}>
                 <label className={`create-user__field${nuevoProductoErrors.codigo || nuevoProductoExisting.codigo ? ' create-user__field--invalid' : ''}`}>
-                  <span>Código JP</span>
+                  <span>Código JP <span style={{ color: '#dc2626' }}>*</span></span>
                   <input
                     type="text"
                     value={nuevoProductoDraft.codigo}
                     onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, codigo: toUpperCode(e.target.value) })); setNuevoProductoErrors((p) => ({ ...p, codigo: undefined })) }}
-                    placeholder="Opcional"
+                    placeholder="Código del producto"
                     autoComplete="off"
                   />
+                  {(nuevoProductoErrors.codigo || nuevoProductoExisting.codigo) && (
+                    <small style={{ color: '#dc2626' }}>
+                      {nuevoProductoErrors.codigo || `Ya existe en el catálogo: ${nuevoProductoExisting.codigo.codigo} — ${nuevoProductoExisting.codigo.nombre || nuevoProductoExisting.codigo.descripcion || ''}`}
+                    </small>
+                  )}
                 </label>
                 <label className={`create-user__field${nuevoProductoErrors.nombre ? ' create-user__field--invalid' : ''}`}>
                   <span>Descripción <span style={{ color: '#dc2626' }}>*</span></span>
@@ -6659,10 +6679,10 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                   />
                 </label>
                 <label className={`create-user__field${nuevoProductoErrors.cantidad ? ' create-user__field--invalid' : ''}`}>
-                  <span>Cantidad <span style={{ color: '#dc2626' }}>*</span></span>
+                  <span>Cantidad</span>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
                     step="1"
                     value={nuevoProductoDraft.cantidad}
                     onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, cantidad: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, cantidad: undefined })) }}
@@ -7192,8 +7212,16 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     if (!nuevoProductoDraft.nombre.trim()) errors.nombre = 'El nombre es requerido'
     if (!nuevoProductoDraft.oem.trim()) errors.oem = 'El OEM es requerido'
     if (!nuevoProductoDraft.referencia.trim()) errors.referencia = 'La referencia es requerida'
+    if (!nuevoProductoDraft.codigo.trim()) errors.codigo = 'El código JP es requerido'
+    // En la sugerencia la cantidad no es obligatoria: se exige al pedir la
+    // cotización. Si se escribe, no puede ser negativa.
+    const cantidadOpcional = imp?.estado === 'borrador'
     const qty = Number(nuevoProductoDraft.cantidad)
-    if (!nuevoProductoDraft.cantidad || !Number.isFinite(qty) || qty <= 0) errors.cantidad = 'La cantidad debe ser mayor a 0'
+    if (nuevoProductoDraft.cantidad === ''
+      ? !cantidadOpcional
+      : (!Number.isFinite(qty) || qty < 0 || (!cantidadOpcional && qty <= 0))) {
+      errors.cantidad = cantidadOpcional ? 'La cantidad no puede ser negativa' : 'La cantidad debe ser mayor a 0'
+    }
     setNuevoProductoErrors(errors)
     let blocked = false
     if (Object.keys(errors).length > 0) {
@@ -7214,6 +7242,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       setNuevoProductoErrors((p) => ({ ...p, referencia: 'Ya existe un producto con esta referencia en el listado.' }))
       return
     }
+    // Codigo JP: no se puede repetir con otro producto del listado.
+    const incomingCodigo = nuevoProductoDraft.codigo.trim().toLowerCase()
+    if (details.some((d) => String(d.producto?.codigo || d.codigo || '').trim().toLowerCase() === incomingCodigo)) {
+      setNuevoProductoErrors((p) => ({ ...p, codigo: 'Ya hay un producto con este código JP en el listado.' }))
+      toastRef.current?.show({ severity: 'warn', summary: 'Código repetido', detail: 'Ya hay un producto con este código JP en el listado.', life: 4500 })
+      return
+    }
     const key = 'manual_' + Date.now() + '_' + Math.floor(Math.random() * 10000)
     setDetails((prev) => [...prev, {
       _key: key,
@@ -7223,7 +7258,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       oem: nuevoProductoDraft.oem.trim(),
       referencia: nuevoProductoDraft.referencia.trim(),
       precio: nuevoProductoDraft.precio !== '' ? Number(nuevoProductoDraft.precio) : null,
-      cantidad: String(nuevoProductoDraft.cantidad),
+      cantidad: String(nuevoProductoDraft.cantidad || '0'),
       comentario: nuevoProductoDraft.comentario.trim(),
     }])
     setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
@@ -8750,14 +8785,19 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
               <div className="imp-aceptados-popup__body">
                 <div className="create-user__grid create-user__grid--two" style={{ padding: '4px 0' }}>
                   <label className={`create-user__field${nuevoProductoErrors.codigo || nuevoProductoExisting.codigo ? ' create-user__field--invalid' : ''}`}>
-                    <span>Código JP</span>
+                    <span>Código JP <span style={{ color: '#dc2626' }}>*</span></span>
                     <input
                       type="text"
                       value={nuevoProductoDraft.codigo}
                       onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, codigo: toUpperCode(e.target.value) })); setNuevoProductoErrors((p) => ({ ...p, codigo: undefined })) }}
-                      placeholder="Opcional"
+                      placeholder="Código del producto"
                       autoComplete="off"
                     />
+                    {(nuevoProductoErrors.codigo || nuevoProductoExisting.codigo) && (
+                      <small style={{ color: '#dc2626' }}>
+                        {nuevoProductoErrors.codigo || `Ya existe en el catálogo: ${nuevoProductoExisting.codigo.codigo} — ${nuevoProductoExisting.codigo.nombre || nuevoProductoExisting.codigo.descripcion || ''}`}
+                      </small>
+                    )}
                   </label>
                   <label className={`create-user__field${nuevoProductoErrors.nombre ? ' create-user__field--invalid' : ''}`}>
                     <span>Descripción <span style={{ color: '#dc2626' }}>*</span></span>
@@ -8803,10 +8843,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                     />
                   </label>
                   <label className={`create-user__field${nuevoProductoErrors.cantidad ? ' create-user__field--invalid' : ''}`}>
-                    <span>Cantidad <span style={{ color: '#dc2626' }}>*</span></span>
+                    <span>Cantidad{imp?.estado === 'borrador' ? '' : <span style={{ color: '#dc2626' }}> *</span>}</span>
                     <input
                       type="number"
-                      min="1"
+                      min="0"
                       step="1"
                       value={nuevoProductoDraft.cantidad}
                       onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, cantidad: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, cantidad: undefined })) }}
