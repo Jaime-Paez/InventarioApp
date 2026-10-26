@@ -23,7 +23,7 @@ class DistribucionCompraLocalTests(APITestCase):
         self.admin = User.objects.create_superuser(username="admin-cl@test.com", email="admin-cl@test.com", password="x")
         self.client.force_authenticate(self.admin)
         tipo_division, _ = TipoDivision.objects.get_or_create(nombre="General")
-        self.matriz = Sucursal.objects.create(nombre="Matriz", direccion="Principal")
+        self.matriz = Sucursal.objects.create(nombre="Matriz", direccion="Principal", puede_compra_local=True)
         # Solo la matriz (sucursal central de Reposicion) reparte sus compras;
         # las migraciones ya crean "9 de Octubre (Matriz)", por eso se fija aqui.
         from app.models import ReposicionConfiguracion

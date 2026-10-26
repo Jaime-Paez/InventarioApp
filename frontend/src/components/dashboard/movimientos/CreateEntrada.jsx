@@ -619,6 +619,11 @@ function CreateEntrada({
     () => subTiposEntrada.find((sub) => String(sub.id) === String(formData.subTipoId)),
     [subTiposEntrada, formData.subTipoId]
   )
+  const selectedEntradaBranch = useMemo(() => {
+    const branchId = normalizeId(prefilledSucursalId || formData.sucursalId)
+    if (!branchId) return null
+    return branches.find((branch) => normalizeId(branch?.id) === branchId) || null
+  }, [branches, prefilledSucursalId, formData.sucursalId])
   const entradaSubTipoOptions = useMemo(
     () =>
       subTiposEntrada
@@ -645,10 +650,16 @@ function CreateEntrada({
 
           const isCompra = normalizedName.includes('compra')
           let blocked = false
+          let blockedReason = ''
           if (currentUserEntradasSubtypeActions) {
             if (isCompra) blocked = !currentUserEntradasSubtypeActions.puede_crear_compra_local
             else if (normalizedName.includes('trasl')) blocked = !currentUserEntradasSubtypeActions.puede_crear_traslado
             else if (normalizedName.includes('devol')) blocked = !currentUserEntradasSubtypeActions.puede_crear_devolucion
+          }
+          // Permiso de la sucursal (no del usuario): solo algunas sucursales hacen compras locales.
+          if (isCompra && selectedEntradaBranch && !selectedEntradaBranch.puede_compra_local) {
+            blocked = true
+            blockedReason = `La sucursal ${selectedEntradaBranch.nombre} no tiene permiso para hacer compras locales. El administrador lo activa en Sucursales.`
           }
 
           return {
@@ -665,10 +676,11 @@ function CreateEntrada({
             order,
             index,
             blocked,
+            blockedReason,
           }
         })
         .sort((first, second) => first.order - second.order || first.index - second.index),
-    [subTiposEntrada, currentUserEntradasSubtypeActions]
+    [subTiposEntrada, currentUserEntradasSubtypeActions, selectedEntradaBranch]
   )
   const selectedSubTipoLabel = useMemo(
     () =>

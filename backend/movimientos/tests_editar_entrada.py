@@ -21,7 +21,7 @@ class EditarCantidadesEntradaTests(APITestCase):
     """Editar una entrada recibida aplica solo la diferencia de cada producto."""
 
     def setUp(self):
-        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="Principal")
+        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="Principal", puede_compra_local=True)
         tipo_division, _ = TipoDivision.objects.get_or_create(nombre="General")
         bodega = Bodega.objects.create(sucursal=self.sucursal, nombre="Bodega 1")
         division = Division.objects.create(bodega=bodega, tipo_division=tipo_division, nombre="Pasillo 1")

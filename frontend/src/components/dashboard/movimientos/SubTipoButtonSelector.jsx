@@ -44,7 +44,7 @@ function SubTipoButtonSelector({
 
   const allBlocked = normalizedOptions.length > 0 && normalizedOptions.every((option) => option?.blocked)
   const resolvedHelperText = hoveredOption?.blocked
-    ? `No tienes permiso para crear este tipo de ${movimientoLabel} en esta sucursal.`
+    ? hoveredOption.blockedReason || `No tienes permiso para crear este tipo de ${movimientoLabel} en esta sucursal.`
     : hoveredOption?.description || selectedOption?.description || helperText
   const helperClassName = [
     'create-salida__subtipo-help',

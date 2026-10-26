@@ -5,7 +5,8 @@ from .models import Bodega, Division, Inventario, SubDivision, Sucursal
 
 @admin.register(Sucursal)
 class SucursalAdmin(admin.ModelAdmin):
-    list_display = ("nombre", "direccion")
+    list_display = ("nombre", "direccion", "puede_compra_local")
+    list_filter = ("puede_compra_local",)
     search_fields = ("nombre",)
 
 

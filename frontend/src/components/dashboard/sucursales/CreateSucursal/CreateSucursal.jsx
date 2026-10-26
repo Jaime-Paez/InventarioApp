@@ -13,6 +13,7 @@ const VIEWPORT_PADDING = 12
 const initialForm = {
   nombre: '',
   direccion: '',
+  puede_compra_local: false,
 }
 
 const DEFAULT_CENTER = { latitud: -0.204404, longitud: -78.496283 }
@@ -165,10 +166,10 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
   }, [location])
 
   const handleChange = (event) => {
-    const { name, value } = event.target
+    const { name, value, type, checked } = event.target
     setFormData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: type === 'checkbox' ? checked : value,
     }))
   }
 
@@ -179,6 +180,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
     const payload = {
       nombre: formData.nombre.trim(),
       direccion: formData.direccion.trim(),
+      puede_compra_local: Boolean(formData.puede_compra_local),
       latitud: formatCoordinate(Number(location.latitud)),
       longitud: formatCoordinate(Number(location.longitud)),
     }
@@ -476,6 +478,20 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
                     onChange={handleChange}
                     disabled={loading}
                   />
+                </label>
+
+                <label className="create-user__checkbox create-user__field--full">
+                  <input
+                    type="checkbox"
+                    name="puede_compra_local"
+                    checked={Boolean(formData.puede_compra_local)}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                  <div>
+                    <span>Puede hacer compras locales</span>
+                    <p>Solo las sucursales con este permiso pueden registrar entradas de compra local.</p>
+                  </div>
                 </label>
               </div>
 

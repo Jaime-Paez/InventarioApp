@@ -32,7 +32,7 @@ from .models import (
 
 class MovimientoInventarioStockRulesTests(TestCase):
     def setUp(self):
-        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="Principal")
+        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="Principal", puede_compra_local=True)
         self.sucursal_secundaria = Sucursal.objects.create(
             nombre="Sucursal Norte",
             direccion="Secundaria",
@@ -251,7 +251,7 @@ class DocumentNumberConcurrencyTests(TransactionTestCase):
     """
 
     def setUp(self):
-        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="Principal")
+        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="Principal", puede_compra_local=True)
 
         tipo_division, _ = TipoDivision.objects.get_or_create(nombre="General")
         bodega = Bodega.objects.create(sucursal=self.sucursal, nombre="Bodega A")
@@ -523,7 +523,7 @@ class MovimientoInventarioTablaTests(APITestCase):
         UsuarioPreferencia.objects.get_or_create(usuario=self.user, defaults={"es_administrador": True})
         self.client.force_authenticate(user=self.user)
 
-        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="Principal")
+        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="Principal", puede_compra_local=True)
         self.sucursal_destino = Sucursal.objects.create(
             nombre="Sucursal Norte",
             direccion="Secundaria",

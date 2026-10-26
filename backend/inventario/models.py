@@ -8,6 +8,9 @@ class Sucursal(models.Model):
     direccion = models.CharField(max_length=255)
     latitud = models.DecimalField(max_digits=9, decimal_places=6, default=0)
     longitud = models.DecimalField(max_digits=9, decimal_places=6, default=0)
+    # Permiso de la sucursal (no del usuario): solo las sucursales con este
+    # permiso pueden registrar entradas de compra local.
+    puede_compra_local = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["nombre"]

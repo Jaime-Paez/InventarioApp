@@ -1037,6 +1037,18 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"factura_referencia": message})
             attrs["factura_referencia"] = factura_referencia if requires_factura else ""
 
+            if subtipo_key == "compra_local" and (is_create or "sucursal" in attrs):
+                sucursal_entrada = attrs.get("sucursal") or getattr(self.instance, "sucursal", None)
+                if sucursal_entrada is not None and not sucursal_entrada.puede_compra_local:
+                    raise serializers.ValidationError(
+                        {
+                            "sub_tipo_movimiento": (
+                                f"La sucursal {sucursal_entrada.nombre} no tiene permiso para hacer compras locales. "
+                                "Activalo en Sucursales si corresponde."
+                            )
+                        }
+                    )
+
             if subtipo_key == "compra_local" and detalles_data:
                 for item in detalles_data:
                     if item.get("costo") is None:
