@@ -2022,6 +2022,179 @@
   accent-color: var(--color-primary-dark);
 }
 
+/* Checkbox "No enviar": misma medida que el de Separado, con X roja. */
+.recordatorios-popup__decision-x {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  border: 1.5px solid #9ca3af;
+  border-radius: 3px;
+  background: #fff;
+  color: #fff;
+  cursor: pointer;
+}
+
+.recordatorios-popup__decision-x.is-checked {
+  background: #dc2626;
+  border-color: #b91c1c;
+}
+
+.recordatorios-popup__decision-x:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-x:not(.is-checked) {
+  background: #1f242b;
+  border-color: #6b7280;
+}
+
+.recordatorios-popup__decision-row--no-enviar > td {
+  background: color-mix(in srgb, #dc2626 7%, transparent);
+}
+
+.recordatorios-popup__decision-codigo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.recordatorios-popup__decision-info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: color-mix(in srgb, currentColor 60%, transparent);
+  cursor: pointer;
+}
+
+.recordatorios-popup__decision-info:hover,
+.recordatorios-popup__decision-info.is-active {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-info:hover,
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-info.is-active {
+  color: #7cc4f0;
+}
+
+.recordatorios-popup__decision-motivo {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--font-size-sm, 0.85rem);
+  color: #b91c1c;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-motivo {
+  color: #fca5a5;
+}
+
+.recordatorios-popup__decision-motivo-edit {
+  margin-left: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.recordatorios-popup__decision-ubicaciones-row > td {
+  background: color-mix(in srgb, var(--color-primary) 5%, transparent);
+}
+
+.recordatorios-popup__decision-ubicaciones-title,
+.recordatorios-popup__decision-ubicaciones-empty {
+  margin: 0 0 6px;
+  font-size: var(--font-size-sm, 0.85rem);
+}
+
+.recordatorios-popup__decision-ubicaciones-empty {
+  margin: 0;
+  color: #b45309;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-ubicaciones-empty {
+  color: #fbbf24;
+}
+
+.recordatorios-popup__decision-ubicaciones table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm, 0.85rem);
+}
+
+.recordatorios-popup__decision-ubicaciones th,
+.recordatorios-popup__decision-ubicaciones td {
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  text-align: left;
+}
+
+.recordatorios-popup__decision-no-enviados {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recordatorios-popup__decision-no-enviados > span {
+  font-size: var(--font-size-sm, 0.85rem);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #b91c1c;
+}
+
+.recordatorios-popup__decision-no-enviados ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-no-enviados > span {
+  color: #fca5a5;
+}
+
+.recordatorios-popup__no-enviar-producto {
+  margin: 0;
+  font-weight: 600;
+}
+
+.recordatorios-popup__no-enviar-motivos {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recordatorios-popup__no-enviar-motivo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.recordatorios-popup__no-enviar-motivo.is-selected {
+  border-color: #dc2626;
+  background: color-mix(in srgb, #dc2626 8%, transparent);
+}
+
+.recordatorios-popup__no-enviar-motivo input {
+  accent-color: #dc2626;
+}
+
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table th,
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table td {
   color: rgba(255, 255, 255, 0.92);
