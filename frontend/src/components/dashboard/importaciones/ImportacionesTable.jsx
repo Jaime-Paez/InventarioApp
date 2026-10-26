@@ -4857,11 +4857,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                 {conflictoRows.length} coinciden por referencia o código
                               </span>
                             )}
-                            {referenciaConflictCount > 0 && (
-                              <span {...reviewGroupChipProps('referencia', 'los que tienen referencia diferente')} title="Clic: ir a los que tienen referencia diferente (son parte de los vinculados)" style={{ background: '#fff7ed', color: '#c2410c', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                                {referenciaConflictCount} con referencia diferente
-                              </span>
-                            )}
                           </div>
                         </div>
                       )}
@@ -4882,6 +4877,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
 
                     {referenciaConflictCount > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
+                        <span {...reviewGroupChipProps('referencia', 'los que tienen referencia diferente')} title="Clic: ir a los que tienen referencia diferente" style={{ background: '#ffedd5', color: '#c2410c', border: '1px solid #fdba74', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          {referenciaConflictCount} con referencia diferente
+                        </span>
                         <span style={{ fontSize: 'var(--font-size-sm)', color: '#9a3412', flex: 1 }}>
                           Debes seleccionar la referencia a guardar para cada conflicto antes de continuar.
                         </span>
