@@ -467,40 +467,28 @@ function EntradaDetails({
     [details, productSearch]
   )
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
-  // Tarjeta con la solucion de los faltantes de un producto (clic en el "(n)" rojo).
+  // Tarjeta con la solucion de los faltantes de un producto (hover en el "(n)" rojo).
   const [faltantePopover, setFaltantePopover] = useState(null)
   const openFaltantePopover = useCallback((event, detail) => {
-    event.stopPropagation()
     const rect = event.currentTarget.getBoundingClientRect()
-    setFaltantePopover((current) =>
-      current?.uid === detail.uid
-        ? null
-        : {
-            uid: detail.uid,
-            top: rect.bottom + 6,
-            left: Math.max(8, Math.min(rect.left - 120, window.innerWidth - 328)),
-            codigo: detail.productoCodigo,
-            detalles: detail.faltanteDetalles || [],
-          }
-    )
+    setFaltantePopover({
+      uid: detail.uid,
+      top: rect.bottom + 6,
+      left: Math.max(8, Math.min(rect.left - 120, window.innerWidth - 328)),
+      codigo: detail.productoCodigo,
+      detalles: detail.faltanteDetalles || [],
+    })
   }, [])
+  const closeFaltantePopover = useCallback(() => setFaltantePopover(null), [])
   useEffect(() => {
     if (!faltantePopover) return undefined
-    const close = () => setFaltantePopover(null)
-    const handleKey = (event) => {
-      if (event.key === 'Escape') close()
-    }
-    document.addEventListener('mousedown', close)
-    document.addEventListener('keydown', handleKey)
-    window.addEventListener('scroll', close, true)
-    window.addEventListener('resize', close)
+    window.addEventListener('scroll', closeFaltantePopover, true)
+    window.addEventListener('resize', closeFaltantePopover)
     return () => {
-      document.removeEventListener('mousedown', close)
-      document.removeEventListener('keydown', handleKey)
-      window.removeEventListener('scroll', close, true)
-      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', closeFaltantePopover, true)
+      window.removeEventListener('resize', closeFaltantePopover)
     }
-  }, [faltantePopover])
+  }, [faltantePopover, closeFaltantePopover])
   const [detailDraft, setDetailDraft] = useState(initialDetail)
   const [detailError, setDetailError] = useState('')
   const [showProductDropdown, setShowProductDropdown] = useState(false)
@@ -3622,15 +3610,13 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                                 {detail.cantidadFaltante > 0 && (
                                   <>
                                     {' '}
-                                    <button
-                                      type="button"
+                                    <span
                                       className="create-salida__cantidad-faltante"
-                                      title="Ver como se soluciono el faltante"
-                                      onMouseDown={(event) => event.stopPropagation()}
-                                      onClick={(event) => openFaltantePopover(event, detail)}
+                                      onMouseEnter={(event) => openFaltantePopover(event, detail)}
+                                      onMouseLeave={closeFaltantePopover}
                                     >
                                       ({detail.cantidadFaltante})
-                                    </button>
+                                    </span>
                                   </>
                                 )}
                               </span>
@@ -4208,8 +4194,8 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       {faltantePopover && createPortal(
         <div
           className="table-cell-hover-card create-salida__faltante-card"
-          style={{ top: faltantePopover.top, left: faltantePopover.left }}
-          onMouseDown={(event) => event.stopPropagation()}
+          role="tooltip"
+          style={{ top: faltantePopover.top, left: faltantePopover.left, pointerEvents: 'none' }}
         >
           <div className="table-cell-hover-card__title">
             Faltante {faltantePopover.codigo ? `de ${faltantePopover.codigo}` : ''}

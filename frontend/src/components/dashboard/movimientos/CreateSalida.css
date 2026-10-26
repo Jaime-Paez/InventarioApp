@@ -100,7 +100,7 @@
   font: inherit;
   color: var(--color-error-text);
   font-weight: 700;
-  cursor: pointer;
+  cursor: help;
   text-decoration: underline dotted;
   text-underline-offset: 3px;
 }
