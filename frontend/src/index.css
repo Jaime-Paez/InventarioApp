@@ -193,3 +193,11 @@ input[type='number']::-webkit-inner-spin-button {
 input[type='number'] {
   -moz-appearance: textfield;
 }
+
+/* Pantallas tactiles: un toque abre el registro, no debe mostrar los
+   tooltips de "pasar el mouse" (PrimeReact los dispara con el toque). */
+@media (hover: none) and (pointer: coarse) {
+  .p-tooltip {
+    display: none !important;
+  }
+}
