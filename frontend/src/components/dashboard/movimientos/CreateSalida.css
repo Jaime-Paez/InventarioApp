@@ -1313,6 +1313,7 @@
 }
 
 .create-entrada__location-special-title {
+  align-self: center;
   color: var(--color-text-secondary);
   font-size: 0.75rem;
   font-weight: 700;
@@ -1324,20 +1325,15 @@
 .create-entrada__location-special {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px;
-}
-
-.create-entrada__location-special-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
 }
 
 .create-entrada__location-special-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 6px 8px 6px 12px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background: var(--color-surface);
@@ -1364,32 +1360,33 @@
   cursor: default;
 }
 
+/* Icono de info dentro del boton; al pasar el mouse muestra la tarjeta flotante. */
 .create-entrada__location-special-info {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 0;
+  width: 22px;
+  height: 22px;
+  margin-left: 2px;
   border-radius: 50%;
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+  cursor: help;
+  transition: opacity 0.15s ease;
 }
 
-.create-entrada__location-special-info:hover,
-.create-entrada__location-special-info[aria-expanded='true'] {
-  color: var(--color-primary);
+.create-entrada__location-special-info:hover {
+  opacity: 1;
 }
 
-.create-entrada__location-special-help {
+.create-entrada__location-info-text {
   margin: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
-  color: var(--color-text-primary);
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   line-height: 1.4;
+  color: var(--color-text-primary);
+}
+
+.dashboard-shell.dark .create-entrada__location-info-text {
+  color: var(--color-text-dark);
 }
 
 .create-entrada__location-special-note {
@@ -1397,10 +1394,6 @@
   color: var(--color-text-secondary);
   font-size: 0.8rem;
   line-height: 1.4;
-}
-
-.dashboard-shell.dark .create-entrada__location-special-help {
-  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
 .create-salida__numeric {

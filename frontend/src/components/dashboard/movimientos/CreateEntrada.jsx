@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Info } from 'lucide-react'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersDetails/UsersDetails.css'
+import '../admin/UsersTable/UsersTable.css'
 import './CreateSalida.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
@@ -477,7 +478,16 @@ function CreateEntrada({
   const [missingLocationProducts, setMissingLocationProducts] = useState([])
   const [locationResolverSubdivisions, setLocationResolverSubdivisions] = useState([])
   // "<productId>:<especial>" cuya explicacion (icono de informacion) esta abierta.
-  const [locationInfoKey, setLocationInfoKey] = useState('')
+  // Tarjeta flotante con la explicacion de "Por ubicar" / "Temporal", igual
+  // que los hover de informacion de Importaciones.
+  const [locationInfoHover, setLocationInfoHover] = useState(null)
+  const showLocationInfo = useCallback((event, text) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const width = 280
+    const left = Math.max(12, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 12))
+    setLocationInfoHover({ text, top: rect.bottom + 8, left, width })
+  }, [])
+  const hideLocationInfo = useCallback(() => setLocationInfoHover(null), [])
   const [locationAssignmentsByProduct, setLocationAssignmentsByProduct] = useState({})
   const [locationDropdownProductId, setLocationDropdownProductId] = useState('')
   const [locationDropdownField, setLocationDropdownField] = useState('')
@@ -1757,7 +1767,7 @@ function CreateEntrada({
     if (locationResolverSubmitting) return
     setShowLocationResolver(false)
     setLocationResolverError('')
-    setLocationInfoKey('')
+    setLocationInfoHover(null)
     setLocationDropdownProductId('')
     setLocationDropdownField('')
     setLocationDropdownMaxHeight(null)
@@ -5643,44 +5653,31 @@ function CreateEntrada({
                           <div className="create-entrada__location-special">
                             {SPECIAL_LOCATIONS.map((option) => {
                               const isActive = assignment.especial === option.key
-                              const infoKey = `${productId}:${option.key}`
                               return (
-                                <div key={option.key} className="create-entrada__location-special-item">
-                                  <button
-                                    type="button"
-                                    className={`create-entrada__location-special-btn${
-                                      isActive ? ' create-entrada__location-special-btn--active' : ''
-                                    }`}
-                                    aria-pressed={isActive}
-                                    onClick={() => handleLocationEspecialToggle(productId, option.key)}
-                                    disabled={locationResolverSubmitting}
-                                  >
-                                    <i className={isActive ? 'pi pi-check' : option.icon} />
-                                    {option.label}
-                                  </button>
-                                  <button
-                                    type="button"
+                                <button
+                                  key={option.key}
+                                  type="button"
+                                  className={`create-entrada__location-special-btn${
+                                    isActive ? ' create-entrada__location-special-btn--active' : ''
+                                  }`}
+                                  aria-pressed={isActive}
+                                  onClick={() => handleLocationEspecialToggle(productId, option.key)}
+                                  disabled={locationResolverSubmitting}
+                                >
+                                  <i className={isActive ? 'pi pi-check' : option.icon} />
+                                  {option.label}
+                                  <span
                                     className="create-entrada__location-special-info"
                                     aria-label={`Que es ${option.label}`}
-                                    aria-expanded={locationInfoKey === infoKey}
-                                    title={option.info}
-                                    onClick={() =>
-                                      setLocationInfoKey((prev) => (prev === infoKey ? '' : infoKey))
-                                    }
+                                    onMouseEnter={(event) => showLocationInfo(event, option.info)}
+                                    onMouseLeave={hideLocationInfo}
                                   >
                                     <i className="pi pi-info-circle" />
-                                  </button>
-                                </div>
+                                  </span>
+                                </button>
                               )
                             })}
                           </div>
-                          {SPECIAL_LOCATIONS.filter(
-                            (option) => locationInfoKey === `${productId}:${option.key}`
-                          ).map((option) => (
-                            <p key={option.key} className="create-entrada__location-special-help">
-                              <strong>{option.label}:</strong> {option.info}
-                            </p>
-                          ))}
                           </div>
                         </div>
                       </div>
@@ -5691,6 +5688,22 @@ function CreateEntrada({
 
               {locationResolverError && (
                 <p className="create-salida__confirm-error">{locationResolverError}</p>
+              )}
+
+              {locationInfoHover && createPortal(
+                <div
+                  className="movimientos-table__product-hover-card"
+                  role="tooltip"
+                  style={{
+                    top: locationInfoHover.top,
+                    left: locationInfoHover.left,
+                    width: locationInfoHover.width,
+                    zIndex: 20000,
+                  }}
+                >
+                  <p className="create-entrada__location-info-text">{locationInfoHover.text}</p>
+                </div>,
+                getAppPortalRoot()
               )}
               </div>
 
