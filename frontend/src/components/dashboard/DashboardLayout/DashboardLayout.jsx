@@ -12,6 +12,7 @@ import { buildModuleScopeAccessIndex, buildPermissionIndex, labelHasAccess } fro
 import { UnsavedChangesHost } from '../common/unsavedChanges/unsavedChanges'
 import { requestTabClose } from '../common/unsavedChanges/unsavedStore'
 import { NAVIGATE_EVENT } from '../../../utils/navigation'
+import useMobileMenuButtonAnchor from './useMobileMenuButtonAnchor'
 import { startDropdownAutoFlip } from '../../../utils/dropdownAutoFlip'
 import { startMobileTableLabels } from '../../../utils/mobileTableLabels'
 
@@ -106,6 +107,11 @@ function DashboardLayout({
   useEffect(() => startMobileTableLabels(), [])
 
   // Avisos y otros componentes piden ir a una seccion (goToSection).
+  // Boton para abrir el menu: en el telefono va en la esquina inferior
+  // izquierda de la tabla visible.
+  const reopenButtonRef = useRef(null)
+  useMobileMenuButtonAnchor(reopenButtonRef, !isSidebarOpen)
+
   const handleSelectRef = useRef(handleSelect)
   handleSelectRef.current = handleSelect
   useEffect(() => {
@@ -188,7 +194,9 @@ function DashboardLayout({
       {!isSidebarOpen && (
         <button
           type="button"
+          ref={reopenButtonRef}
           className="sidebar__reopen"
+          aria-label="Abrir menu"
           onClick={() => setIsSidebarOpen(true)}
         >
           <PanelLeftOpen />
