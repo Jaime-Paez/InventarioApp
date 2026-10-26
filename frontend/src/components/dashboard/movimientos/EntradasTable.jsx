@@ -915,6 +915,15 @@ function EntradasTable({
             Registro previo a Kava
           </span>
         )}
+        {field === 'estado_nombre' && rowData?.compra_por_repartir > 0 && (
+          <span
+            className="entradas-por-repartir-badge"
+            title={`Quedan ${rowData.compra_por_repartir} u. de esta compra que se pueden enviar a otras sucursales`}
+          >
+            <i className="pi pi-send" />
+            Por enviar a sucursales
+          </span>
+        )}
       </span>
     )
   }

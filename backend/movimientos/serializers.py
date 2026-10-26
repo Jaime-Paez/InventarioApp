@@ -755,7 +755,8 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
     # Solo la matriz reparte sus compras locales a las demas sucursales.
     es_sucursal_matriz = serializers.SerializerMethodField(read_only=True)
     # Unidades de una compra local de la matriz que aun se pueden enviar a
-    # otras sucursales; None si no aplica. Con 0 se oculta "Enviar a sucursales".
+    # otras sucursales; None si no aplica. Con 0 se oculta "Enviar a
+    # sucursales"; con mas de 0 el listado muestra el indicador.
     compra_por_repartir = serializers.SerializerMethodField(read_only=True)
 
     def get_es_sucursal_matriz(self, obj):
@@ -767,38 +768,65 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         central_id = self.context["_central_branch_id"]
         return bool(central_id) and int(obj.sucursal_id or 0) == int(central_id)
 
-    def get_compra_por_repartir(self, obj):
+    def _is_compra_local_repartible(self, obj):
+        return (
+            isinstance(obj, MovimientoInventario)
+            and self._resolve_subtipo_key(obj.sub_tipo_movimiento) == "compra_local"
+            and not obj.es_legado
+            and self.get_es_sucursal_matriz(obj)
+        )
+
+    def _compute_compras_por_repartir(self, compras):
         # Por producto: lo comprado menos lo ya enviado, sin pasar del stock
         # que queda en la sucursal (lo vendido o trasladado ya no se reparte).
-        # Solo en el detalle: en el listado serian consultas extra por fila.
-        view = self.context.get("view")
-        if getattr(view, "action", None) != "retrieve":
-            return None
-        if self._resolve_subtipo_key(obj.sub_tipo_movimiento) != "compra_local" or obj.es_legado:
-            return None
-        if not self.get_es_sucursal_matriz(obj):
-            return None
-        comprado = defaultdict(int)
-        for producto_id, cantidad in obj.detalles.filter(producto_id__isnull=False).values_list(
-            "producto_id", "cantidad"
-        ):
-            comprado[int(producto_id)] += int(cantidad or 0)
-        if not comprado:
-            return 0
-        enviado = defaultdict(int)
-        for envio in obj.envios_compra.prefetch_related("detalles"):
-            for detalle in envio.detalles.all():
-                enviado[int(detalle.producto_id)] += int(detalle.cantidad or 0)
+        # Tres consultas para todas las compras juntas.
+        from importaciones.models import ImportacionEnvioDetalle
+
+        ids = [int(obj.pk) for obj in compras]
+        if not ids:
+            return {}
+        comprado = defaultdict(lambda: defaultdict(int))
+        for mov_id, producto_id, cantidad in DetalleMovimiento.objects.filter(
+            movimiento_inventario_id__in=ids, producto_id__isnull=False
+        ).values_list("movimiento_inventario_id", "producto_id", "cantidad"):
+            comprado[int(mov_id)][int(producto_id)] += int(cantidad or 0)
+        enviado = defaultdict(lambda: defaultdict(int))
+        for mov_id, producto_id, cantidad in ImportacionEnvioDetalle.objects.filter(
+            envio__compra_local_id__in=ids
+        ).values_list("envio__compra_local_id", "producto_id", "cantidad"):
+            enviado[int(mov_id)][int(producto_id)] += int(cantidad or 0)
+        producto_ids = {pid for items in comprado.values() for pid in items}
+        sucursal_ids = {int(obj.sucursal_id) for obj in compras}
         en_sucursal = defaultdict(int)
-        for producto_id, cantidad in Inventario.objects.filter(
-            producto_id__in=list(comprado),
-            subdivision__division__bodega__sucursal_id=obj.sucursal_id,
-        ).values_list("producto_id", "cantidad"):
-            en_sucursal[int(producto_id)] += int(cantidad or 0)
-        return sum(
-            max(0, min(cantidad - enviado[pid], en_sucursal[pid]))
-            for pid, cantidad in comprado.items()
-        )
+        for sucursal_id, producto_id, cantidad in Inventario.objects.filter(
+            producto_id__in=sorted(producto_ids),
+            subdivision__division__bodega__sucursal_id__in=sorted(sucursal_ids),
+        ).values_list("subdivision__division__bodega__sucursal_id", "producto_id", "cantidad"):
+            en_sucursal[(int(sucursal_id), int(producto_id))] += int(cantidad or 0)
+        result = {}
+        for obj in compras:
+            mov_id = int(obj.pk)
+            result[mov_id] = sum(
+                max(0, min(cantidad - enviado[mov_id][pid], en_sucursal[(int(obj.sucursal_id), pid)]))
+                for pid, cantidad in comprado[mov_id].items()
+            )
+        return result
+
+    def get_compra_por_repartir(self, obj):
+        if not self._is_compra_local_repartible(obj):
+            return None
+        # En el listado se calcula una vez para toda la pagina.
+        parent = getattr(self, "parent", None)
+        page = getattr(parent, "instance", None) if parent is not None else None
+        if page is not None and not isinstance(page, MovimientoInventario):
+            cache = self.context.get("_compras_por_repartir")
+            if cache is None:
+                compras = [item for item in page if self._is_compra_local_repartible(item)]
+                cache = self._compute_compras_por_repartir(compras)
+                self.context["_compras_por_repartir"] = cache
+            if int(obj.pk) in cache:
+                return cache[int(obj.pk)]
+        return self._compute_compras_por_repartir([obj]).get(int(obj.pk), 0)
 
     def _resolve_otro_inconveniente(self, obj):
         # La nota general de "algo no salio como lo esperado" al recibir un

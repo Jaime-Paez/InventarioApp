@@ -111,6 +111,30 @@
   color: #e2e8f0 !important;
 }
 
+/* Compra local de la matriz con unidades que aun se pueden enviar a sucursales. */
+.entradas-por-repartir-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #0ea5e9 22%, transparent);
+  color: #075985 !important;
+  font-weight: 600;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.entradas-por-repartir-badge i {
+  font-size: 0.68rem;
+}
+
+.dashboard-shell.dark .entradas-por-repartir-badge {
+  background: color-mix(in srgb, #38bdf8 30%, transparent);
+  color: #e0f2fe !important;
+}
+
 .entradas-pending-state-chip {
   display: inline-flex;
   align-items: center;
