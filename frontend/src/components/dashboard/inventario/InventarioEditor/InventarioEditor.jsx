@@ -1805,6 +1805,9 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         ? makeDropdown('sucursal', location.sucursalNombre || 'Sucursal', branches, (b) => b.nombre || `Sucursal ${b.id}`, (b) => b.id, false)
                         : location.sucursalNombre}
                     </span>
+                    {!canInlineEdit && (positionByUid.get(location.uid) ?? 0) === 0 && (
+                      <span className="inventario-editor__principal-tag inventario-editor__principal-tag--inline">Principal</span>
+                    )}
                   </span>
                   <span data-label="Bodega" className="inventario-editor__bodega-cell">
                     {canInlineEdit

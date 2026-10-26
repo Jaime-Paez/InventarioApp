@@ -353,3 +353,132 @@ body.app-theme-dark .inventario-editor__drag-ghost {
     transform: none;
   }
 }
+
+/* "Principal" junto al nombre de la sucursal: solo en la tarjeta del telefono */
+.inventario-editor__principal-tag--inline {
+  display: none;
+}
+
+/* TELEFONO: cada ubicacion es una tarjeta que se lee de un vistazo.
+   Arriba: sucursal (con el asa de arrastre y "Principal") y la cantidad.
+   Al medio: bodega / division / subdivision en tres columnas.
+   Abajo: acciones con texto, a todo el ancho. */
+@media (max-width: 640px) {
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      'branch branch qty'
+      'bodega division subdivision'
+      'actions actions actions';
+    gap: 12px 10px;
+    padding: 12px;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > .inventario-editor__branch-cell {
+    grid-area: branch;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+    padding-left: 0;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > .inventario-editor__branch-cell::before {
+    content: none;
+  }
+
+  .inventario-editor__row > .inventario-editor__branch-cell > .inventario-editor__drag-handle {
+    position: static;
+    transform: none;
+    width: 28px;
+    height: 28px;
+    margin-left: -4px;
+    touch-action: none;
+  }
+
+  .inventario-editor__row .inventario-editor__branch-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    text-align: left;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .inventario-editor__row .inventario-editor__principal-tag--inline {
+    display: inline-block;
+  }
+
+  .inventario-editor__row .inventario-editor__bodega-cell > .inventario-editor__principal-tag:not(.inventario-editor__principal-tag--inline) {
+    display: none;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > span[data-label='Bodega'] {
+    grid-area: bodega;
+    align-items: flex-start;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > span[data-label='Division'] {
+    grid-area: division;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > span[data-label='Subdivision'] {
+    grid-area: subdivision;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > span[data-label='Bodega'],
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > span[data-label='Division'],
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > span[data-label='Subdivision'] {
+    font-weight: 600;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > span[data-label='Cantidad'] {
+    grid-area: qty;
+    align-items: flex-end;
+    text-align: right;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .inventario-editor__row > span[data-label='Cantidad'] .create-user__locations-total {
+    font-size: 1.35rem;
+    line-height: 1.1;
+  }
+
+  .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > span.create-user__locations-cell--action {
+    grid-area: actions;
+    justify-content: stretch;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--color-border);
+  }
+
+  .inventario-editor__row > .create-user__locations-cell--action > *,
+  .inventario-editor__row > .create-user__locations-cell--action .inventario-map-preview__trigger {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .inventario-editor__row > .create-user__locations-cell--action .inventario-map-preview__trigger,
+  .inventario-editor__row > .create-user__locations-cell--action .create-user__locations-transfer,
+  .inventario-editor__row > .create-user__locations-cell--action .create-user__locations-remove {
+    width: 100%;
+    height: 34px;
+    border-radius: 8px;
+    gap: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
+  .inventario-editor__row > .create-user__locations-cell--action .inventario-map-preview__trigger::after {
+    content: 'Mapa';
+  }
+
+  .inventario-editor__row > .create-user__locations-cell--action .create-user__locations-transfer::after {
+    content: 'Trasladar';
+  }
+
+  .inventario-editor__row > .create-user__locations-cell--action .create-user__locations-remove::after {
+    content: 'Quitar';
+  }
+}
