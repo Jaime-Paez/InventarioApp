@@ -360,16 +360,16 @@ body.app-theme-dark .inventario-editor__drag-ghost {
 }
 
 /* TELEFONO: cada ubicacion es una tarjeta que se lee de un vistazo.
-   Arriba: sucursal (con el asa de arrastre y "Principal") y la cantidad.
-   Al medio: bodega / division / subdivision en tres columnas.
+   Arriba: sucursal (con el asa de arrastre y "Principal").
+   Al medio: bodega / division / subdivision / cantidad en una fila.
    Abajo: acciones con texto, a todo el ancho. */
 @media (max-width: 640px) {
   .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr);
     grid-template-areas:
-      'branch branch qty'
-      'bodega division subdivision'
-      'actions actions actions';
+      'branch branch branch branch'
+      'bodega division subdivision qty'
+      'actions actions actions actions';
     gap: 12px 10px;
     padding: 12px;
   }
@@ -441,8 +441,8 @@ body.app-theme-dark .inventario-editor__drag-ghost {
   }
 
   .inventario-editor__row > span[data-label='Cantidad'] .create-user__locations-total {
-    font-size: 1.35rem;
-    line-height: 1.1;
+    font-size: 1.05rem;
+    line-height: 1.35;
   }
 
   .create-user__locations-table.create-user__locations-table--locations-selectors .create-user__locations-row.inventario-editor__row > span.create-user__locations-cell--action {
