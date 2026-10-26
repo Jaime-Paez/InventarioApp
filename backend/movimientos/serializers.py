@@ -355,13 +355,9 @@ class SolicitudTrasladoDetalleSerializer(serializers.ModelSerializer):
             "cantidad",
             "valor",
             "verificado",
-            "no_enviar",
-            "motivo_no_envio",
         ]
         extra_kwargs = {
             "verificado": {"read_only": True},
-            "no_enviar": {"read_only": True},
-            "motivo_no_envio": {"read_only": True},
         }
 
     def _resolve_ubicacion_actual(self, instance):
@@ -480,7 +476,6 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "recibido_por",
             "recibido_por_nombre",
             "detalles",
-            "detalles_no_enviados",
             "recordatorio_destinatario_ids",
             "created_at",
             "updated_at",
@@ -504,7 +499,6 @@ class SolicitudTrasladoSerializer(serializers.ModelSerializer):
             "movimiento_entrada_id",
             "factura_referencia",
             "historial_transfer",
-            "detalles_no_enviados",
             "created_at",
             "updated_at",
         ]
