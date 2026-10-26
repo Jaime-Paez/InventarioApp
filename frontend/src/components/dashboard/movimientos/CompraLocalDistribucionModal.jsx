@@ -50,6 +50,8 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
   const [step, setStep] = useState(1)
   const [distribution, setDistribution] = useState({})
   const [recipientsBySucursal, setRecipientsBySucursal] = useState({})
+  // No. Documento de cada envio (obligatorio): queda ligado al envio de esa sucursal.
+  const [documentosBySucursal, setDocumentosBySucursal] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const isDark = Boolean(document.querySelector('.dashboard-shell')?.classList.contains('dark'))
@@ -74,6 +76,9 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
       setDistribution(borrador.distribution && typeof borrador.distribution === 'object' ? borrador.distribution : {})
       setRecipientsBySucursal(
         borrador.recipientsBySucursal && typeof borrador.recipientsBySucursal === 'object' ? borrador.recipientsBySucursal : {}
+      )
+      setDocumentosBySucursal(
+        borrador.documentosBySucursal && typeof borrador.documentosBySucursal === 'object' ? borrador.documentosBySucursal : {}
       )
       setStep(borrador.step === 2 ? 2 : 1)
     } catch (error) {
@@ -160,9 +165,30 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
     if (u.es_admin || !u.puede_entradas) return false
     return u.entradas_sucursales_ids.includes(sucId) || u.sucursales_ids.includes(sucId)
   })
-  const canConfirm = canNext && sucursalesWithItems.every((suc) => (recipientsBySucursal[suc.id] || []).length > 0)
+  const documentoFor = (sucId) => String(documentosBySucursal[sucId] || '').trim()
+  const sinDocumento = sucursalesWithItems.filter((suc) => !documentoFor(suc.id))
+  const documentosRepetidos = (() => {
+    const seen = new Set()
+    const repeated = new Set()
+    sucursalesWithItems.forEach((suc) => {
+      const doc = documentoFor(suc.id).toUpperCase()
+      if (!doc) return
+      if (seen.has(doc)) repeated.add(doc)
+      seen.add(doc)
+    })
+    return repeated
+  })()
+  const canConfirm =
+    canNext &&
+    sinDocumento.length === 0 &&
+    documentosRepetidos.size === 0 &&
+    sucursalesWithItems.every((suc) => (recipientsBySucursal[suc.id] || []).length > 0)
   const confirmBlockReason = (() => {
     if (step !== 2 || canConfirm) return ''
+    if (sinDocumento.length) {
+      return `Para enviar, escribe el No. Documento del envío a: ${sinDocumento.map((s) => s.nombre).join(', ')}.`
+    }
+    if (documentosRepetidos.size) return 'Cada envío debe tener un No. Documento distinto.'
     if (usersError) return 'No se puede enviar: no se cargaron los usuarios destinatarios.'
     const sinUsuarios = sucursalesWithItems.filter((suc) => getUsersForSucursal(suc.id).length === 0)
     if (sinUsuarios.length) {
@@ -188,7 +214,7 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ borrador: { step, distribution, recipientsBySucursal } }),
+          body: JSON.stringify({ borrador: { step, distribution, recipientsBySucursal, documentosBySucursal } }),
           keepalive,
         },
         token
@@ -196,7 +222,7 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
     } catch {
       // Sin conexion: se reintenta con el siguiente cambio o al cerrar.
     }
-  }, [entradaId, token, step, distribution, recipientsBySucursal])
+  }, [entradaId, token, step, distribution, recipientsBySucursal, documentosBySucursal])
 
   const autosaveTimerRef = useRef(null)
   const autosavePendingRef = useRef(null)
@@ -251,9 +277,17 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
         sucursal_id: suc.id,
         user_ids: recipientsBySucursal[suc.id] || [],
       }))
+      const documentos_por_sucursal = sucursalesWithItems.map((suc) => ({
+        sucursal_id: suc.id,
+        no_documento: documentoFor(suc.id),
+      }))
       const resp = await authFetch(
         `${API_URL}/movimientos/movimiento_inventario/${entradaId}/distribucion-compra/`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ distribuciones, destinatarios_por_sucursal }) },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ distribuciones, destinatarios_por_sucursal, documentos_por_sucursal }),
+        },
         token
       )
       if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo enviar a las sucursales.'))
@@ -269,7 +303,8 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
 
   if (!open) return null
 
-  const gridCols = `minmax(72px, 0.5fr) minmax(140px, 1.6fr) 56px 70px repeat(${destinos.length}, 62px)`
+  const showStep1Hint = !loading && !loadError && rows.length > 0 && destinos.length > 0 && !canNext
+  const gridCols =`minmax(72px, 0.5fr) minmax(140px, 1.6fr) 56px 70px repeat(${destinos.length}, 62px)`
 
   return createPortal(
     <div
@@ -404,7 +439,7 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
                 <div className="quick-actions__receive-stage-copy">
                   <p className="quick-actions__receive-stage-kicker">Paso 2 — Destinatarios del envío</p>
                   <h5>Vas a enviar productos a {sucursalesWithItems.length === 1 ? 'una sucursal' : 'varias sucursales'}</h5>
-                  <p className="quick-actions__receive-stage-name">Escoge a quién debe llegarle el recordatorio de cada envío. Cada sucursal que recibe productos necesita al menos un destinatario.</p>
+                  <p className="quick-actions__receive-stage-name">Escribe el No. Documento de cada envío y escoge a quién debe llegarle el recordatorio. Cada sucursal que recibe productos necesita su No. Documento y al menos un destinatario.</p>
                 </div>
               </article>
               {usersError ? (
@@ -427,6 +462,40 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
                         <p style={{ fontSize: '0.88rem', color: 'var(--color-text-secondary)', margin: '3px 0 10px' }}>
                           {suc.items.map((item) => `${item.codigo} × ${item.qty}`).join(' · ')}
                         </p>
+                        {(() => {
+                          const doc = documentoFor(suc.id)
+                          const invalid = !doc || documentosRepetidos.has(doc.toUpperCase())
+                          return (
+                            <label style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: '0 0 12px', maxWidth: 320 }}>
+                              <span style={{ fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
+                                No. Documento <span style={{ color: '#dc2626' }}>*</span>
+                              </span>
+                              <input
+                                type="text"
+                                value={documentosBySucursal[suc.id] ?? ''}
+                                disabled={submitting}
+                                placeholder="Número del documento del envío"
+                                aria-invalid={invalid}
+                                onChange={(e) => {
+                                  setSubmitError('')
+                                  setDocumentosBySucursal((prev) => ({ ...prev, [suc.id]: e.target.value }))
+                                }}
+                                style={{
+                                  padding: '8px 10px',
+                                  borderRadius: 8,
+                                  border: `1px solid ${invalid ? '#dc2626' : 'var(--color-border, #e2e8f0)'}`,
+                                  background: 'var(--color-surface-elevated, var(--color-surface, #fff))',
+                                  color: 'var(--color-text-primary)',
+                                  font: 'inherit',
+                                  fontSize: '0.92rem',
+                                }}
+                              />
+                              {doc && documentosRepetidos.has(doc.toUpperCase()) && (
+                                <small style={{ color: '#dc2626' }}>Este número ya está en otro envío.</small>
+                              )}
+                            </label>
+                          )
+                        })()}
                         {usersForSuc.length === 0 ? (
                           <BlockerNotice
                             compact
@@ -461,12 +530,12 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
         <footer className="quick-actions__receive-actions">
           {step === 1 ? (
             <>
-              {!loading && !loadError && rows.length > 0 && destinos.length > 0 && !canNext && (
+              {showStep1Hint && (
                 <span className="imp-receive-footer-hint">
                   {overRows.length ? 'Corrige las cantidades marcadas en rojo.' : 'Para continuar, indica cuánto va a al menos una sucursal.'}
                 </span>
               )}
-              <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={handleClose}>Ahora no</button>
+              <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" style={showStep1Hint ? { marginRight: 0 } : undefined} onClick={handleClose}>Ahora no</button>
               <button
                 type="button"
                 className={`quick-actions__receive-btn${canNext ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`}
@@ -479,7 +548,8 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
           ) : (
             <>
               {confirmBlockReason && <span className="imp-receive-footer-hint">{confirmBlockReason}</span>}
-              <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)} disabled={submitting}>Atrás</button>
+              {/* Junto a "Enviar": el aviso ya empuja los botones a la derecha. */}
+              <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" style={{ marginRight: 0 }} onClick={() => setStep(1)} disabled={submitting}>Atrás</button>
               <button
                 type="button"
                 title={confirmBlockReason || undefined}

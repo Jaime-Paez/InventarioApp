@@ -1290,6 +1290,90 @@
   z-index: auto;
 }
 
+/* Alternativas a la ubicacion exacta: "Guardar en Por ubicar" y "Temporal". */
+.create-entrada__location-special {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.create-entrada__location-special-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.create-entrada__location-special-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.create-entrada__location-special-btn:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.create-entrada__location-special-btn--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-button-primary);
+}
+
+.create-entrada__location-special-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.create-entrada__location-special-info {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.create-entrada__location-special-info:hover,
+.create-entrada__location-special-info[aria-expanded='true'] {
+  color: var(--color-primary);
+}
+
+.create-entrada__location-special-help {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  color: var(--color-text-primary);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.create-entrada__location-special-note {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.dashboard-shell.dark .create-entrada__location-special-help {
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
 .create-salida__numeric {
   text-align: center;
   font-variant-numeric: tabular-nums;

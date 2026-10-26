@@ -20,6 +20,9 @@ from .models import Bodega, Division, Inventario, SubDivision
 
 POR_UBICAR_NOMBRE = "POR UBICAR"
 POR_UBICAR_TIPO = "Temporal"
+# Ubicacion temporal "fija": a diferencia de POR UBICAR no queda pendiente de
+# guardar (no sale en "Por ubicar"); el producto simplemente se queda ahi.
+TEMPORAL_NOMBRE = "TEMPORAL"
 
 
 def _main_bodega(sucursal_id):
@@ -33,11 +36,20 @@ def _main_bodega(sucursal_id):
 
 def get_por_ubicar_subdivision(sucursal_id, *, create=True):
     """Subdivision "POR UBICAR / POR UBICAR" del almacen de la sucursal."""
+    return _special_subdivision(sucursal_id, POR_UBICAR_NOMBRE, create=create)
+
+
+def get_temporal_subdivision(sucursal_id, *, create=True):
+    """Subdivision "TEMPORAL / TEMPORAL" del almacen de la sucursal."""
+    return _special_subdivision(sucursal_id, TEMPORAL_NOMBRE, create=create)
+
+
+def _special_subdivision(sucursal_id, nombre, *, create):
     existing = (
         SubDivision.objects.filter(
             division__bodega__sucursal_id=int(sucursal_id),
-            division__nombre__iexact=POR_UBICAR_NOMBRE,
-            nombre__iexact=POR_UBICAR_NOMBRE,
+            division__nombre__iexact=nombre,
+            nombre__iexact=nombre,
         )
         .order_by("id")
         .first()
@@ -53,10 +65,10 @@ def get_por_ubicar_subdivision(sucursal_id, *, create=True):
     tipo, _ = TipoDivision.objects.get_or_create(nombre=POR_UBICAR_TIPO)
     division, _ = Division.objects.get_or_create(
         bodega=bodega,
-        nombre=POR_UBICAR_NOMBRE,
+        nombre=nombre,
         defaults={"tipo_division": tipo},
     )
-    subdivision, _ = SubDivision.objects.get_or_create(division=division, nombre=POR_UBICAR_NOMBRE)
+    subdivision, _ = SubDivision.objects.get_or_create(division=division, nombre=nombre)
     return subdivision
 
 
@@ -419,7 +431,7 @@ def in_transit_by_product_branch(product_ids, branch_ids=None):
         ).values("envio_id", "producto_id", "cantidad"):
             envio = envios_by_id[int(detalle["envio_id"])]
             pid = int(detalle["producto_id"])
-            codigo = envio.origen_codigo
+            codigo = envio.documento
             if envio.llegada_confirmada_en:
                 entry = por_contar.get(int(envio.id), {}).get(str(pid)) or {}
                 add((pid, int(envio.sucursal_id)), "importacion", int(envio.id), codigo,

@@ -1814,7 +1814,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             payload.append({
                 "id": int(envio.id),
                 "envio_id": int(envio.id),
-                "no_documento": envio.origen_codigo,
+                "no_documento": envio.documento,
                 "fecha": envio.fecha,
                 "sucursal_solicitante_id": int(envio.sucursal_id),
                 "sucursal_solicitante": str(getattr(envio.sucursal, "nombre", "") or "").strip(),

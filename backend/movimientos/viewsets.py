@@ -2742,7 +2742,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         llegada -> Por ubicar -> terminar conteo).
 
         POST body: {distribuciones: [{producto_id, sucursal_id, cantidad}],
-        destinatarios_por_sucursal: [{sucursal_id, user_ids}]}.
+        destinatarios_por_sucursal: [{sucursal_id, user_ids}],
+        documentos_por_sucursal: [{sucursal_id, no_documento}]}.
         PATCH body: {borrador: {...}}: guarda el reparto a medio hacer.
         """
         from importaciones.models import ImportacionEnvio, ImportacionEnvioDetalle
@@ -2816,6 +2817,41 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Cada envio lleva su No. Documento (obligatorio y sin repetir).
+        documentos = {}
+        for raw in request.data.get("documentos_por_sucursal") or []:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                sucursal_id = int(raw.get("sucursal_id") or 0)
+            except (TypeError, ValueError):
+                continue
+            documentos[sucursal_id] = str(raw.get("no_documento") or "").strip()
+        sin_documento = [sucursales[sid].nombre for sid in sorted(por_sucursal) if not documentos.get(sid)]
+        if sin_documento:
+            return Response(
+                {"detail": f"Falta el No. Documento del envio a: {', '.join(sin_documento)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        usados = [documentos[sid] for sid in por_sucursal]
+        if len({doc.upper() for doc in usados}) != len(usados):
+            return Response(
+                {"detail": "Cada envio debe tener un No. Documento distinto."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        repetidos = [
+            doc
+            for doc in usados
+            if ImportacionEnvio.objects.filter(no_documento__iexact=doc).exists()
+            or MovimientoInventario.objects.filter(no_documento__iexact=doc).exists()
+            or SolicitudTraslado.objects.filter(no_documento__iexact=doc).exists()
+        ]
+        if repetidos:
+            return Response(
+                {"detail": f"El No. Documento {', '.join(repetidos)} ya existe; usa otro."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         with transaction.atomic():
             # Bloquea la compra: dos repartos a la vez no pueden pasarse de lo comprado.
             MovimientoInventario.objects.select_for_update().filter(pk=instance.pk).first()
@@ -2858,7 +2894,9 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 helper._adjust_stock(instance.sucursal, producto_id, -cantidad)
                 stock_reductions.setdefault(int(instance.sucursal_id), set()).add(producto_id)
             for sucursal_id, items in por_sucursal.items():
-                envio = ImportacionEnvio.objects.create(compra_local=instance, sucursal_id=sucursal_id)
+                envio = ImportacionEnvio.objects.create(
+                    compra_local=instance, sucursal_id=sucursal_id, no_documento=documentos[sucursal_id]
+                )
                 ImportacionEnvioDetalle.objects.bulk_create(
                     [
                         ImportacionEnvioDetalle(envio=envio, producto_id=producto_id, cantidad=cantidad)

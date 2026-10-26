@@ -163,6 +163,9 @@ class ImportacionEnvio(models.Model):
         on_delete=models.PROTECT,
         related_name="importacion_envios",
     )
+    # No. Documento del envio (obligatorio al repartir una compra local; cada
+    # sucursal destino lleva el suyo). Vacio en los envios de importacion.
+    no_documento = models.CharField(max_length=100, blank=True, default="")
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_PENDIENTE)
     fecha = models.DateField(default=timezone.localdate)
     fecha_recepcion = models.DateField(null=True, blank=True)
@@ -210,6 +213,12 @@ class ImportacionEnvio(models.Model):
         if self.compra_local_id:
             return str(self.compra_local.no_documento or "").strip()
         return str(getattr(self.importacion, "codigo", "") or "").strip()
+
+    @property
+    def documento(self):
+        """Numero con el que se identifica el envio: el suyo propio si lo
+        tiene; si no (envios de importacion), el de su origen."""
+        return str(self.no_documento or "").strip() or self.origen_codigo
 
     @property
     def origen_label(self):

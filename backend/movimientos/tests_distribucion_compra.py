@@ -90,9 +90,25 @@ class DistribucionCompraLocalTests(APITestCase):
                     for sucursal, cantidad in pares
                 ],
                 "destinatarios_por_sucursal": [{"sucursal_id": self.norte.id, "user_ids": [self.admin.id]}],
+                "documentos_por_sucursal": [
+                    {"sucursal_id": sucursal.id, "no_documento": f"ENV-{sucursal.id}"} for sucursal, _ in pares
+                ],
             },
             format="json",
         )
+
+    def test_sin_no_documento_no_se_envia(self):
+        response = self.client.post(
+            self.url,
+            {
+                "distribuciones": [{"producto_id": self.producto.id, "sucursal_id": self.norte.id, "cantidad": 2}],
+                "documentos_por_sucursal": [{"sucursal_id": self.norte.id, "no_documento": "  "}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("No. Documento", response.data["detail"])
+        self.assertEqual(self._stock(self.matriz), 10)
 
     def test_reparte_y_cada_sucursal_lo_recibe_como_envio(self):
         response = self._repartir((self.norte, 4), (self.sur, 2))
@@ -104,7 +120,7 @@ class DistribucionCompraLocalTests(APITestCase):
 
         pendientes = self.client.get("/importaciones/importaciones/envios-pendientes/").data
         envio_norte = next(row for row in pendientes if row["sucursal_solicitante_id"] == self.norte.id)
-        self.assertEqual(envio_norte["no_documento"], self.compra.no_documento)
+        self.assertEqual(envio_norte["no_documento"], f"ENV-{self.norte.id}")
         self.assertEqual(envio_norte["sucursal_proveedora"], "Compra local")
         self.assertEqual(envio_norte["detalles"][0]["cantidad_enviada"], 4)
 

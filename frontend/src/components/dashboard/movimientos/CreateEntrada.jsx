@@ -178,13 +178,35 @@ const createEmptyLocationAssignment = () => ({
   bodegaId: '',
   divisionId: '',
   subdivisionId: '',
+  especial: '',
 })
+// Alternativas a elegir bodega/division/subdivision al asignar ubicacion
+// inicial. El backend las resuelve a "POR UBICAR" o "TEMPORAL" del almacen.
+const SPECIAL_LOCATIONS = [
+  {
+    key: 'por_ubicar',
+    label: 'Guardar en Por ubicar',
+    icon: 'pi pi-inbox',
+    info:
+      'El producto entra al stock en POR UBICAR y ya se puede vender. Queda una notificacion en ' +
+      '"Por ubicar" que no desaparece hasta que lo guardes en su ubicacion definitiva.',
+  },
+  {
+    key: 'temporal',
+    label: 'Temporal',
+    icon: 'pi pi-clock',
+    info:
+      'El producto entra al stock en la ubicacion TEMPORAL y se queda ahi. No genera ninguna ' +
+      'notificacion: es para cuando aun no tiene un lugar fijo y no hace falta recordarlo.',
+  },
+]
 const normalizeLocationAssignment = (value) => {
   if (typeof value === 'string') {
     return {
       bodegaId: '',
       divisionId: '',
       subdivisionId: String(value || '').trim(),
+      especial: '',
     }
   }
   if (!value || typeof value !== 'object') {
@@ -194,6 +216,7 @@ const normalizeLocationAssignment = (value) => {
     bodegaId: String(value?.bodegaId || '').trim(),
     divisionId: String(value?.divisionId || '').trim(),
     subdivisionId: String(value?.subdivisionId || '').trim(),
+    especial: String(value?.especial || '').trim(),
   }
 }
 
@@ -453,6 +476,8 @@ function CreateEntrada({
   const [checkingLocationCoverage, setCheckingLocationCoverage] = useState(false)
   const [missingLocationProducts, setMissingLocationProducts] = useState([])
   const [locationResolverSubdivisions, setLocationResolverSubdivisions] = useState([])
+  // "<productId>:<especial>" cuya explicacion (icono de informacion) esta abierta.
+  const [locationInfoKey, setLocationInfoKey] = useState('')
   const [locationAssignmentsByProduct, setLocationAssignmentsByProduct] = useState({})
   const [locationDropdownProductId, setLocationDropdownProductId] = useState('')
   const [locationDropdownField, setLocationDropdownField] = useState('')
@@ -1652,6 +1677,10 @@ function CreateEntrada({
           const next = {}
           missingIds.forEach((productId) => {
             const normalizedCurrent = normalizeLocationAssignment(prev?.[productId])
+            if (normalizedCurrent.especial) {
+              next[productId] = { ...createEmptyLocationAssignment(), especial: normalizedCurrent.especial }
+              return
+            }
             const subdivisionPath = normalizedCurrent.subdivisionId
               ? subdivisionPathById.get(normalizedCurrent.subdivisionId) || null
               : null
@@ -1716,6 +1745,7 @@ function CreateEntrada({
     if (locationResolverSubmitting) return
     setShowLocationResolver(false)
     setLocationResolverError('')
+    setLocationInfoKey('')
     setLocationDropdownProductId('')
     setLocationDropdownField('')
     setLocationDropdownMaxHeight(null)
@@ -3324,11 +3354,29 @@ function CreateEntrada({
     ]
   )
 
+  const handleLocationEspecialToggle = useCallback((productId, especial) => {
+    const normalizedProductId = String(productId || '').trim()
+    if (!normalizedProductId) return
+    setLocationAssignmentsByProduct((prev) => {
+      const current = normalizeLocationAssignment(prev?.[normalizedProductId])
+      return {
+        ...prev,
+        [normalizedProductId]:
+          current.especial === especial
+            ? createEmptyLocationAssignment()
+            : { ...createEmptyLocationAssignment(), especial },
+      }
+    })
+    setLocationResolverError('')
+    closeLocationDropdown()
+  }, [closeLocationDropdown])
+
   const handleConfirmLocationResolver = async () => {
     if (locationResolverSubmitting) return
     const missingAssignments = missingLocationProducts.filter((item) => {
       const productId = String(item?.productoId || '').trim()
       const assignment = normalizeLocationAssignment(locationAssignmentsByProduct?.[productId])
+      if (productId && assignment.especial) return false
       return (
         !productId ||
         !assignment.bodegaId ||
@@ -3339,7 +3387,7 @@ function CreateEntrada({
 
     if (missingAssignments.length > 0) {
       setLocationResolverError(
-        'Debes seleccionar bodega, división y subdivisión para cada producto sin ubicación en la sucursal.'
+        'Para cada producto sin ubicación en la sucursal selecciona bodega, división y subdivisión, o elige "Guardar en Por ubicar" o "Temporal".'
       )
       return
     }
@@ -3350,6 +3398,10 @@ function CreateEntrada({
         const assignment = normalizeLocationAssignment(
           locationAssignmentsByProduct?.[String(item?.productoId || '').trim()]
         )
+        if (assignment.especial) {
+          if (!Number.isFinite(productId)) return null
+          return { producto_id: productId, ubicacion_especial: assignment.especial }
+        }
         const subdivisionId = Number(assignment.subdivisionId)
         if (!Number.isFinite(productId) || !Number.isFinite(subdivisionId)) return null
         return {
@@ -5237,7 +5289,8 @@ function CreateEntrada({
               <p>
                 Algunos productos no tienen ubicación en{' '}
                 <strong>{selectedSucursalName || 'la sucursal seleccionada'}</strong>. Selecciona
-                bodega, division y subdivision para cada producto y luego confirma la creacion.
+                bodega, division y subdivision para cada producto, o guardalo en Por ubicar o
+                Temporal, y luego confirma la creacion.
               </p>
 
               <div className="create-salida__confirm-scroll">
@@ -5314,6 +5367,55 @@ function CreateEntrada({
                             .join(' - ') || `Producto #${productId}`}
                         </div>
                         <div className="permissions-matrix__cell permissions-matrix__cell--action">
+                          <div className="create-entrada__location-special">
+                            {SPECIAL_LOCATIONS.map((option) => {
+                              const isActive = assignment.especial === option.key
+                              const infoKey = `${productId}:${option.key}`
+                              return (
+                                <div key={option.key} className="create-entrada__location-special-item">
+                                  <button
+                                    type="button"
+                                    className={`create-entrada__location-special-btn${
+                                      isActive ? ' create-entrada__location-special-btn--active' : ''
+                                    }`}
+                                    aria-pressed={isActive}
+                                    onClick={() => handleLocationEspecialToggle(productId, option.key)}
+                                    disabled={locationResolverSubmitting}
+                                  >
+                                    <i className={isActive ? 'pi pi-check' : option.icon} />
+                                    {option.label}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="create-entrada__location-special-info"
+                                    aria-label={`Que es ${option.label}`}
+                                    aria-expanded={locationInfoKey === infoKey}
+                                    title={option.info}
+                                    onClick={() =>
+                                      setLocationInfoKey((prev) => (prev === infoKey ? '' : infoKey))
+                                    }
+                                  >
+                                    <i className="pi pi-info-circle" />
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                          {SPECIAL_LOCATIONS.filter(
+                            (option) => locationInfoKey === `${productId}:${option.key}`
+                          ).map((option) => (
+                            <p key={option.key} className="create-entrada__location-special-help">
+                              <strong>{option.label}:</strong> {option.info}
+                            </p>
+                          ))}
+                          {assignment.especial ? (
+                            <small className="create-entrada__location-special-note">
+                              {assignment.especial === 'por_ubicar'
+                                ? 'Se guardara en POR UBICAR y quedara pendiente en "Por ubicar".'
+                                : 'Se guardara en la ubicacion TEMPORAL.'}{' '}
+                              Vuelve a pulsar el boton para elegir bodega, division y subdivision.
+                            </small>
+                          ) : (
                           <div className="create-entrada__location-picker-grid">
                             <div className="create-entrada__location-picker-item">
                               <small>Bodega</small>
@@ -5559,6 +5661,7 @@ function CreateEntrada({
                               </div>
                             </div>
                           </div>
+                          )}
                         </div>
                       </div>
                     )

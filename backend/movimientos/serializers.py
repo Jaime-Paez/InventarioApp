@@ -318,7 +318,19 @@ class UbicacionInicialEntradaSerializer(serializers.Serializer):
     subdivision_id = serializers.PrimaryKeyRelatedField(
         source="subdivision",
         queryset=SubDivision.objects.all(),
+        required=False,
     )
+    # En vez de una subdivision: "por_ubicar" (queda pendiente de guardar en
+    # "Por ubicar") o "temporal" (ubicacion temporal, sin pendiente).
+    ubicacion_especial = serializers.ChoiceField(
+        choices=["por_ubicar", "temporal"],
+        required=False,
+    )
+
+    def validate(self, attrs):
+        if not attrs.get("subdivision") and not attrs.get("ubicacion_especial"):
+            raise serializers.ValidationError("Indica la subdivision o la ubicacion especial.")
+        return attrs
 
 
 class SolicitudTrasladoDetalleSerializer(serializers.ModelSerializer):
@@ -1366,11 +1378,28 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         self._apply_inventory_effect(entrada, normalized_details, reverse=False)
         return entrada
 
-    def _build_entry_initial_locations_map(self, ubicaciones_iniciales):
+    def _build_entry_initial_locations_map(self, ubicaciones_iniciales, sucursal_id):
+        from inventario.por_ubicar import get_por_ubicar_subdivision, get_temporal_subdivision
+
+        special_getters = {
+            "por_ubicar": get_por_ubicar_subdivision,
+            "temporal": get_temporal_subdivision,
+        }
+        special_ids = {}
         mapping = {}
         for item in ubicaciones_iniciales or []:
             product = item.get("producto")
             subdivision = item.get("subdivision")
+            especial = item.get("ubicacion_especial")
+            if subdivision is None and especial in special_getters:
+                if especial not in special_ids:
+                    special = special_getters[especial](sucursal_id)
+                    if special is None:
+                        raise serializers.ValidationError(
+                            {"ubicaciones_iniciales": "La sucursal no tiene bodegas para ubicar el producto."}
+                        )
+                    special_ids[especial] = special
+                subdivision = special_ids[especial]
             product_id = int(getattr(product, "id", 0) or 0)
             subdivision_id = int(getattr(subdivision, "id", 0) or 0)
             if product_id <= 0 or subdivision_id <= 0:
@@ -1426,7 +1455,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
         if not missing_product_ids:
             return
 
-        location_map = self._build_entry_initial_locations_map(ubicaciones_iniciales)
+        location_map = self._build_entry_initial_locations_map(ubicaciones_iniciales, sucursal_id)
         unassigned_ids = [pid for pid in missing_product_ids if pid not in location_map]
         if unassigned_ids:
             raise serializers.ValidationError(
