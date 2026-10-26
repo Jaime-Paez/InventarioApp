@@ -3549,6 +3549,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // de minWidth) entre completa sin scroll horizontal, contando el padding
   // del modal y el scrollbar vertical de la tabla cuando hay muchas filas.
   const EXCEL_STEP3_WIDTH = 950
+  // Filas del paso 3 que se dibujan por tanda, y cuántos px antes del final
+  // del scroll se agrega la siguiente.
+  const REVIEW_ROWS_BATCH = 150
+  const REVIEW_ROWS_PRELOAD_PX = 800
 
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 })
   const [modalSize, setModalSize] = useState({ width: EXCEL_STEP_WIDTH, height: SELECTOR_HEIGHT_EMPTY })
@@ -3593,6 +3597,21 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const [parsedRows, setParsedRows] = useState([])
   // Buscador del paso 3 (como en las demas etapas): lo que coincide va primero.
   const [reviewQuery, setReviewQuery] = useState('')
+  // Un Excel puede traer miles de filas (cada una con varios inputs):
+  // dibujarlas todas hacia lento todo (maximizar se trababa). Se dibujan por
+  // tandas y se agregan mas al acercarse al final del scroll. Crear, descargar
+  // y los atajos de doble click siguen usando todas las filas.
+  const [reviewRenderCount, setReviewRenderCount] = useState(REVIEW_ROWS_BATCH)
+  useEffect(() => {
+    setReviewRenderCount(REVIEW_ROWS_BATCH)
+    if (reviewTableWrapRef.current) reviewTableWrapRef.current.scrollTop = 0
+  }, [reviewQuery, parsedRows.length])
+  const handleReviewTableScroll = (event) => {
+    const el = event.currentTarget
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - REVIEW_ROWS_PRELOAD_PX) {
+      setReviewRenderCount((count) => count + REVIEW_ROWS_BATCH)
+    }
+  }
   const [referenciaDecisions, setReferenciaDecisions] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
@@ -4774,7 +4793,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       total={validRows.length}
                     />
 
-                    <div ref={reviewTableWrapRef} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
+                    <div ref={reviewTableWrapRef} onScroll={handleReviewTableScroll} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45vh)' : 'none' }}>
                       <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 880 }}>
                         <colgroup>
                           <col style={{ width: 100 }} />
@@ -4811,7 +4830,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {reviewRows.map(({ row, i }) => {
+                          {reviewRows.slice(0, reviewRenderCount).map(({ row, i }) => {
                             const conflict = hasReferenciaConflict(row)
                             const decision = referenciaDecisions[i]
                             const isSuggested = Boolean(row.codigo_sugerido)
@@ -5030,6 +5049,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                               </tr>
                             )
                           })}
+                          {reviewRows.length > reviewRenderCount && (
+                            <tr>
+                              <td colSpan={8} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
+                                {`Mostrando ${reviewRenderCount} de ${reviewRows.length} productos — baja para ver más`}
+                              </td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
