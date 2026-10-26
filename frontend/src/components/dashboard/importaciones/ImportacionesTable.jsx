@@ -4864,29 +4864,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       )}
                     </div>
 
-                    {(suggestedCount > 0 || conflictoRows.length > 0) && (
-                      <div className="imp-excel-review__legend">
-                        {conflictoRows.length > 0 && (
-                          <p>
-                            <span className="imp-excel-review__legend-dot imp-excel-review__legend-dot--naranja" />
-                            <span>
-                              <strong>Naranja:</strong> la <strong>referencia o el código</strong> del Excel es exactamente el de un producto de otra casa comercial (el mismo producto ya registrado allá).
-                            </span>
-                          </p>
-                        )}
-                        {suggestedCount > 0 && (
-                          <p>
-                            <span className="imp-excel-review__legend-dot imp-excel-review__legend-dot--amarillo" />
-                            <span>
-                              <strong>Amarillo:</strong> solo coincide el <strong>OEM</strong> con un producto de otra casa; su referencia es distinta (una pieza equivalente de otra marca).
-                            </span>
-                          </p>
-                        )}
-                        <p className="imp-excel-review__legend-note">
-                          En los dos casos se crea un producto nuevo para {selectedCasa?.nombre || 'esta casa'} con el código sugerido (el de la otra casa con el sufijo de esta) y su descripción. Pasa el mouse por el ícono ⓘ del OEM para ver los productos que coinciden.
-                        </p>
-                      </div>
-                    )}
 
                     {referenciaConflictCount > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8 }}>
