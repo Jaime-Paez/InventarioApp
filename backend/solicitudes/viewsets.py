@@ -46,7 +46,13 @@ class ClienteViewSet(viewsets.ModelViewSet):
     ]
 
     def get_queryset(self):
-        queryset = super().get_queryset().annotate(autos_count_backend=Count("autos", distinct=True))
+        # prefetch_related evita una consulta de autos por cada cliente de la pagina.
+        queryset = (
+            super()
+            .get_queryset()
+            .prefetch_related("autos")
+            .annotate(autos_count_backend=Count("autos", distinct=True))
+        )
         params = self.request.query_params
 
         nombres = (params.get("nombres") or "").strip()
