@@ -2927,12 +2927,20 @@
     min-height: 0;
   }
 
+  /* Flechas para cambiar de semana tambien en movil, mas grandes para el dedo. */
   .recordatorios-popup__timeline-head {
-    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .recordatorios-popup__timeline-arrow {
-    display: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+
+  .recordatorios-popup__timeline-arrow svg {
+    width: 16px;
+    height: 16px;
   }
 
   /* Antes esta fila usaba ancho fijo por dia (58px) con scroll horizontal,
