@@ -2010,6 +2010,14 @@
 .recordatorios-popup__decision-checkbox {
   appearance: none;
   -webkit-appearance: none;
+  /* Safari deja relleno y content-box en un input sin apariencia: quedaba
+     mas alto que el cuadro de Rechazar (que es un boton). */
+  box-sizing: border-box;
+  display: inline-block;
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  line-height: 0;
   margin: 0;
   width: 18px;
   height: 18px;
@@ -2039,8 +2047,11 @@
 
 /* Checkbox "No enviar": misma medida que el de Separado, con X roja. */
 .recordatorios-popup__decision-x {
+  box-sizing: border-box;
   width: 18px;
   height: 18px;
+  min-width: 0;
+  min-height: 0;
   flex-shrink: 0;
   padding: 0;
   display: inline-flex;
