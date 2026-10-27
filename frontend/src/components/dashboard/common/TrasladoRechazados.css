@@ -1,0 +1,107 @@
+/* Mismo aviso ambar que BlockerNotice, con la lista de rechazados debajo. */
+.traslado-rechazados {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #fcd34d;
+  border-left: 4px solid #d97706;
+  border-radius: 10px;
+  background: #fffbeb;
+  color: #78350f;
+  text-align: left;
+}
+
+.traslado-rechazados--en-detalle {
+  margin-top: 12px;
+}
+
+.traslado-rechazados__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.traslado-rechazados__head > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #d97706;
+}
+
+.traslado-rechazados__head strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--font-size-base, 14px);
+}
+
+.traslado-rechazados__head p {
+  margin: 0;
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.45;
+}
+
+.traslado-rechazados__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.traslado-rechazados__list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 2fr);
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.traslado-rechazados__producto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.traslado-rechazados__producto span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92em;
+  opacity: 0.85;
+}
+
+.traslado-rechazados__cantidad {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.traslado-rechazados__motivo {
+  overflow-wrap: anywhere;
+}
+
+/* Telefono: el motivo baja debajo del producto. */
+@media (max-width: 560px) {
+  .traslado-rechazados__list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .traslado-rechazados__motivo {
+    grid-column: 1 / -1;
+  }
+}
+
+.dashboard-shell.dark .traslado-rechazados,
+body.app-theme-dark .traslado-rechazados,
+.traslado-rechazados.is-dark {
+  border-color: rgba(217, 119, 6, 0.55);
+  background: rgba(217, 119, 6, 0.12);
+  color: #fde68a;
+}
+
+.dashboard-shell.dark .traslado-rechazados__list li,
+body.app-theme-dark .traslado-rechazados__list li,
+.traslado-rechazados.is-dark .traslado-rechazados__list li {
+  background: rgba(0, 0, 0, 0.18);
+}

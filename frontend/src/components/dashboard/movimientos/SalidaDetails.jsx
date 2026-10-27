@@ -12,6 +12,7 @@ import MovementHistoryTab from '../common/history/MovementHistoryTab'
 import { normalizeId } from '../common/reminders/remindersStorage'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
+import TrasladoRechazados from '../common/TrasladoRechazados'
 import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
 import { matchesFirst, productDetailMatches } from '../common/productDetailMatches'
 import { tipoEnvioLabel } from './tipoEnvio'
@@ -286,6 +287,8 @@ function SalidaDetails({
     enviadoPorNombre: '',
     recibidoPorNombre: '',
   })
+  // Productos que se rechazaron al aceptar el traslado (envio parcial).
+  const [transferRechazados, setTransferRechazados] = useState([])
   const [originalData, setOriginalData] = useState(null)
   const [loadingData, setLoadingData] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -940,6 +943,7 @@ function SalidaDetails({
         enviadoPorNombre: String(linkedSolicitud?.enviado_por_nombre || '').trim(),
         recibidoPorNombre: String(linkedSolicitud?.recibido_por_nombre || '').trim(),
       })
+      setTransferRechazados(Array.isArray(linkedSolicitud?.detalles_no_enviados) ? linkedSolicitud.detalles_no_enviados : [])
       const normalized = buildFormData(salidaData, {
         branchesList: resolvedBranches,
         subTiposList,
@@ -2275,6 +2279,9 @@ function SalidaDetails({
                       </div>
                     )}
                   </div>
+
+                  {/* Envio parcial: lo que se rechazo al aceptar el traslado. */}
+                  <TrasladoRechazados items={transferRechazados} className="traslado-rechazados--en-detalle" />
 
                 </section>
 

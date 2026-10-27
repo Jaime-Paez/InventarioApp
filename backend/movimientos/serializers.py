@@ -36,7 +36,7 @@ from .entry_adjustment import (
     quantities_by_product,
 )
 from .stock_availability import get_available_transfer_quantities_by_product
-from .transfer_helpers import cancel_pending_transfer_requests, REMINDERS_SYNC_FLAG
+from .transfer_helpers import cancel_pending_transfer_requests, public_detalles_no_enviados, REMINDERS_SYNC_FLAG
 
 
 def normalize_name(value):
@@ -1078,6 +1078,9 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             "creado_por_nombre": format_actor_display_name(getattr(solicitud, "creado_por", None)),
             "enviado_por_nombre": format_actor_display_name(enviado_por),
             "recibido_por_nombre": format_actor_display_name(getattr(solicitud, "recibido_por", None)),
+            # Productos que quien envia rechazo (aceptacion parcial), con su
+            # motivo: la salida y la entrada muestran que el envio fue parcial.
+            "detalles_no_enviados": public_detalles_no_enviados(solicitud),
         }
 
     def to_internal_value(self, data):
@@ -1742,6 +1745,15 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 detalles_data,
                 ubicaciones_iniciales,
             )
+            if is_transfer_approval:
+                # La salida se vincula ANTES de descontar el stock: al
+                # descontarlo se revisan los traslados pendientes, y sin el
+                # vinculo este mismo traslado seguia contando como reserva
+                # sobre el stock ya descontado -- se "rechazaba" solo por
+                # cambio de stock (p. ej. disponible 0, solicitado 1) aunque
+                # se enviaba completo, y su reserva doble podia cancelar otros.
+                solicitud_traslado.movimiento_salida = movimiento
+                solicitud_traslado.save(update_fields=["movimiento_salida", "updated_at"])
             self._apply_inventory_effect(movimiento, detalles_data, reverse=False)
 
             if is_transfer_approval:

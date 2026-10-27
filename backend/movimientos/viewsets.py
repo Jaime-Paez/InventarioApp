@@ -94,6 +94,7 @@ from .stock_availability import get_available_transfer_quantities_by_product
 from .transfer_helpers import (
     build_sale_stock_change_extra_reason,
     cancel_pending_transfer_requests,
+    public_detalles_no_enviados,
     REMINDERS_SYNC_FLAG,
 )
 
@@ -5152,6 +5153,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "estado_entrada": str(getattr(movimiento_entrada.estado_movimiento, "nombre", "") or "").strip(),
                     "descripcion": str(solicitud.descripcion or "").strip(),
                     "detalles": detalles_payload,
+                    # Lo que quien envio rechazo, con su motivo (envio parcial).
+                    "detalles_no_enviados": public_detalles_no_enviados(solicitud),
                     "inconvenientes_pendientes": pending_issue_count_by_solicitud.get(int(solicitud.id), 0),
                     "recepcion_progreso": (solicitud.recepcion_progreso, solicitud.sucursal_solicitante_id),
                 }

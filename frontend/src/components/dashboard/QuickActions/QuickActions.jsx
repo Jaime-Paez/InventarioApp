@@ -11,6 +11,7 @@ import LlegadaDialog from './LlegadaDialog'
 import useDockEntrance from './useDockEntrance'
 import { requestPorGuardarRefresh } from './porGuardarEvents'
 import BlockerNotice from '../common/BlockerNotice'
+import TrasladoRechazados from '../common/TrasladoRechazados'
 import { matchesFirst } from '../common/productDetailMatches'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
 import urgentNotificationAudioSrc from '../common/reminders/urgentnotifications.mp3'
@@ -7150,6 +7151,11 @@ function QuickActions({
             </header>
 
             <div className="quick-actions__receive-body">
+              {/* Envio parcial: lo que quien envio rechazo no viene en la caja. */}
+              <TrasladoRechazados
+                items={activeInTransitShipment?.detalles_no_enviados}
+                className={darkMode ? 'is-dark' : ''}
+              />
               {!receiveShipmentShowSummary && !inTransitSubdivisionsLoading && (receiveLocationsError ? (
                 <BlockerNotice
                   compact

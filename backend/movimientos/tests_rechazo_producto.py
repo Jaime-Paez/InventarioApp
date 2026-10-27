@@ -140,6 +140,46 @@ class RechazoPorProductoTrasladoTests(APITestCase):
         self.assertIn("RCH-2 x4 (Esta dañado)", self.solicitud.motivo_rechazo)
         self.assertFalse(InspeccionAleatoriaItem.objects.exists())
 
+    def test_crear_la_salida_no_rechaza_el_propio_traslado_por_cambio_de_stock(self):
+        """Con el stock justo (lo pedido = lo que hay), descontarlo al crear
+        la salida no debe "rechazar" el mismo traslado por cambio de stock."""
+        from tipos.models import EstadoMovimiento, SubTipoMovimiento, TipoMovimiento
+
+        Inventario.objects.filter(producto=self.producto_1).update(cantidad=2)
+        Inventario.objects.filter(producto=self.producto_2).update(cantidad=4)
+        for detalle in (self.detalle_1, self.detalle_2):
+            self.assertEqual(self._marcar(detalle, {"estado": "separado"}).status_code, 200)
+        self.assertEqual(self._decidir().status_code, 200)
+
+        tipo_salida, _ = TipoMovimiento.objects.get_or_create(nombre="Salida")
+        subtipo_traslado, _ = SubTipoMovimiento.objects.get_or_create(tipo_movimiento=tipo_salida, nombre="Traslado")
+        estado_enviado, _ = EstadoMovimiento.objects.get_or_create(nombre="Enviado")
+        response = self.client.post(
+            reverse("movimientos-movimiento-inventario-list"),
+            {
+                "sucursal_id": self.proveedora.id,
+                "sucursal_objetivo_id": self.solicitante.id,
+                "tipo_movimiento_id": tipo_salida.id,
+                "sub_tipo_movimiento_id": subtipo_traslado.id,
+                "estado_movimiento_id": estado_enviado.id,
+                "solicitud_traslado_id": self.solicitud.id,
+                "tipo_envio": "envio_provincia",
+                "descripcion": "Salida del traslado",
+                "fecha": "2026-10-27",
+                "detalles": [
+                    {"producto_id": self.producto_1.id, "cantidad": 2, "valor": "10.00"},
+                    {"producto_id": self.producto_2.id, "cantidad": 4, "valor": "10.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, SolicitudTraslado.Estados.APROBADA)
+        self.assertEqual(self.solicitud.motivo_rechazo, "")
+        self.assertIsNone(self.solicitud.rechazada_en)
+        self.assertIsNotNone(self.solicitud.movimiento_salida_id)
+
     def test_validaciones_del_rechazo(self):
         self.assertEqual(self._marcar(self.detalle_1, {"estado": "no_enviar"}).status_code, 400)
         self.assertEqual(

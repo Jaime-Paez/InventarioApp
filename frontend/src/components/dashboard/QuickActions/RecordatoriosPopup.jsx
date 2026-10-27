@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Info, Loader2, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
 import BodegaLocationPreview from '../inventario/InventarioEditor/BodegaLocationPreview'
+import TrasladoRechazados from '../common/TrasladoRechazados'
 import { API_URL, authFetch } from '../../../utils/api'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
 import { formatDate, formatDateTime } from '../../../utils/dateFormat'
@@ -344,6 +345,18 @@ const getReminderRawTransferHistory = (reminder) => (
       : []
 )
 
+// Aceptacion parcial: el backend deja en el historial "... fue aceptada
+// parcialmente. Rechazados: A x1 (motivo); B x2 (motivo)". Devuelve cuantos
+// productos se rechazaron (0 si se envio todo).
+const countTransferRechazados = (reminder) => {
+  const evento = getReminderRawTransferHistory(reminder).find((entry) => (
+    /aceptada parcialmente/i.test(String(entry?.description || ''))
+  ))
+  if (!evento) return 0
+  const lista = String(evento.description).split(/Rechazados:\s*/i)[1] || ''
+  return lista.split('; ').filter((item) => item.trim()).length
+}
+
 const mergeTransferHistoryForContext = (reminders, contextType, contextId) => {
   const normalizedContextType = normalizeReminderContextType(contextType)
   const normalizedContextId = normalizeId(contextId)
@@ -615,9 +628,12 @@ const getTimelineReminderSummary = ({
   }
 
   if (isTransferContextReminder && !isSpecialReminder) {
-    if (visualDecisionStatus === 'recibido') return 'Recibido.'
-    if (visualDecisionStatus === 'enviado') return 'En camino.'
-    if (visualDecisionStatus === 'aceptada') return 'Aceptado.'
+    // Envio parcial: se dice en la tarjeta cuantos productos se rechazaron.
+    const rechazados = countTransferRechazados(reminder)
+    const parcial = rechazados > 0 ? ` · parcial (${rechazados} rechazado${rechazados !== 1 ? 's' : ''})` : ''
+    if (visualDecisionStatus === 'recibido') return `Recibido${parcial}.`
+    if (visualDecisionStatus === 'enviado') return `En camino${parcial}.`
+    if (visualDecisionStatus === 'aceptada') return rechazados > 0 ? `Aceptado${parcial}.` : 'Aceptado.'
     if (visualDecisionStatus === 'rechazada') return 'Rechazado.'
     if (visualDecisionStatus === 'cancelado') return 'Cancelado.'
   }
@@ -4832,6 +4848,14 @@ function RecordatoriosPopup({
                       <p className="recordatorios-popup__error">{activeDetailIssuesError}</p>
                     )}
                   </div>
+                )}
+
+                {/* Envio parcial: cada producto rechazado con su motivo. */}
+                {activeDetailIsTransferContext && !activeDetailSolicitudLoading && (
+                  <TrasladoRechazados
+                    items={activeDetailSolicitud?.detalles_no_enviados}
+                    className={darkMode ? 'is-dark' : ''}
+                  />
                 )}
 
                 {activeDetailIsTransferContext && activeDetailSolicitudLoading && (

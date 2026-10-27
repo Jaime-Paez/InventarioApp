@@ -12,6 +12,7 @@ import useTableCellHover from '../common/useTableCellHover.jsx'
 import MovementHistoryTab from '../common/history/MovementHistoryTab'
 import StaticFieldDisplay from './StaticFieldDisplay'
 import BlockerNotice from '../common/BlockerNotice'
+import TrasladoRechazados from '../common/TrasladoRechazados'
 import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
 import { matchesFirst, productDetailMatches } from '../common/productDetailMatches'
 import EntradaAjustePreview from './EntradaAjustePreview'
@@ -507,6 +508,8 @@ function EntradaDetails({
   const [stockByProduct, setStockByProduct] = useState({})
   const [stockLoading, setStockLoading] = useState(false)
   const [transferSolicitudId, setTransferSolicitudId] = useState('')
+  // Productos que quien envio rechazo (envio parcial), con su motivo.
+  const [transferRechazados, setTransferRechazados] = useState([])
   const [reminderUsers, setReminderUsers] = useState([])
   const [reminderUsersLoading, setReminderUsersLoading] = useState(false)
   const [reminderUsersError, setReminderUsersError] = useState('')
@@ -1508,6 +1511,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
 
     setStockByProduct({})
     setTransferSolicitudId(requestId)
+    setTransferRechazados(Array.isArray(preview?.detalles_no_enviados) ? preview.detalles_no_enviados : [])
     setCreatorInfo({
       creadoPorNombre: String(preview?.creado_por_nombre || '').trim(),
       enviadoPorNombre: String(preview?.enviado_por_nombre || '').trim(),
@@ -1631,6 +1635,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
 
       const linkedSolicitud = salidaData?.solicitud_traslado || null
       setTransferSolicitudId(String(linkedSolicitud?.id || '').trim())
+      setTransferRechazados(Array.isArray(linkedSolicitud?.detalles_no_enviados) ? linkedSolicitud.detalles_no_enviados : [])
       setCreatorInfo({
         creadoPorNombre: String(salidaData?.creado_por_nombre || linkedSolicitud?.creado_por_nombre || '').trim(),
         enviadoPorNombre: String(linkedSolicitud?.enviado_por_nombre || '').trim(),
@@ -1750,6 +1755,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     setClienteLoading(false)
     setStockByProduct({})
     setTransferSolicitudId('')
+    setTransferRechazados([])
     setOriginalData(null)
     setIsEditing(canStartEditingPreviewSolicitud)
     setIsMaximized(false)
@@ -3659,6 +3665,9 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       </div>
                     )}
                   </div>
+
+                  {/* Envio parcial: lo que se rechazo al aceptar el traslado. */}
+                  <TrasladoRechazados items={transferRechazados} className="traslado-rechazados--en-detalle" />
 
                 </section>
 

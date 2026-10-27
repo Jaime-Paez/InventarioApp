@@ -19,6 +19,25 @@ def build_sale_stock_change_extra_reason(reference=None):
 REMINDERS_SYNC_FLAG = "reminders_sync_required"
 
 
+def public_detalles_no_enviados(solicitud):
+    """Productos rechazados al aceptar el traslado (aceptacion parcial), para
+    mostrarlos en la salida, la entrada y la recepcion: codigo, nombre,
+    cantidad y motivo. Sin el conteo por ubicacion de quien rechazo."""
+    items = getattr(solicitud, "detalles_no_enviados", None) or []
+    return [
+        {
+            "producto_id": item.get("producto_id"),
+            "producto_codigo": str(item.get("producto_codigo") or ""),
+            "producto_nombre": str(item.get("producto_nombre") or ""),
+            "cantidad": int(item.get("cantidad") or 0),
+            "motivo": str(item.get("motivo") or ""),
+            "motivo_tipo": str(item.get("motivo_tipo") or ""),
+        }
+        for item in items
+        if isinstance(item, dict)
+    ]
+
+
 def _normalize_product_ids(product_ids):
     normalized = set()
     for raw in product_ids or []:
