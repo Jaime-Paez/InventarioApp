@@ -4278,13 +4278,12 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     try {
       const XLSXStyle = (await import('xlsx-js-style')).default
       // Mismas columnas (y en el mismo orden) que la tabla de revisión en
-      // pantalla: PVP JP (sistema) y su casa, PVP Aprox. (el que se guarda;
-      // vacío si todavía no se elige) y su casa, y al final PVP (el que trae
-      // el archivo subido). NOTA es extra del Excel; la casa de la sugerencia
-      // va en el nombre del archivo.
+      // pantalla: PVP JP (sistema) y su casa, y PVP (el que se guarda) y su
+      // casa. NOTA es extra del Excel; la casa de la sugerencia va en el
+      // nombre del archivo.
       const headers = [
         'CÓDIGO', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANT.',
-        'PVP JP', 'CASA PVP JP', 'PVP APROX.', 'CASA PVP APROX.', 'PVP', 'NOTA',
+        'PVP JP', 'CASA PVP JP', 'PVP', 'CASA PVP', 'NOTA',
       ]
       const headerStyle = {
         font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
@@ -4321,9 +4320,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           // Casa del producto del que sale el PVP JP (esta, otra casa con el
           // mismo código/referencia o la del código sugerido).
           pvpJpCasa: getSistemaPrecio(row) != null ? getSistemaCasa(row) : '',
-          pvpExcel: Number(row.pvp) > 0 ? Number(row.pvp) : '',
-          pvpAprox: Number(row.precio_nuevo) > 0 ? Number(row.precio_nuevo) / 100 : '',
-          pvpAproxCasa: Number(row.precio_nuevo) > 0 ? (row.precio_casa || '') : '',
+          pvp: getPrecioGuardado(row)?.valor ?? '',
+          pvpCasa: getPrecioGuardado(row)?.casa ?? '',
           nota: isConflict
             ? `Ya existe en ${row.conflicto_casa_nombre || 'otra casa'} — se creará como nuevo`
             : (row.codigo_sugerido ? 'Sugerido (nuevo)' : ''),
@@ -4336,7 +4334,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         headers,
         ...rows.map((r) => [
           r.codigo, r.referencia, r.oem, r.descripcion, r.cantidad,
-          r.pvpJp, r.pvpJpCasa, r.pvpAprox, r.pvpAproxCasa, r.pvpExcel, r.nota,
+          r.pvpJp, r.pvpJpCasa, r.pvp, r.pvpCasa, r.nota,
         ]),
       ]
       const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
@@ -4360,7 +4358,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       })
       worksheet['!cols'] = [
         { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 8 },
-        { wch: 11 }, { wch: 20 }, { wch: 12 }, { wch: 20 }, { wch: 11 }, { wch: 34 },
+        { wch: 11 }, { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 34 },
       ]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
@@ -4436,16 +4434,15 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         ...indexed.filter(({ row }) => row.matched_producto_id).sort(byExcelRow),
         ...indexed.filter(({ row }) => !row.matched_producto_id).sort(byExcelRow),
       ]
-      const detalles = ordered.map(({ row, i }, pos) =>
-        row.matched_producto_id
+      const detalles = ordered.map(({ row, i }, pos) => {
+        const precio = getPrecioGuardado(row)
+        return row.matched_producto_id
           ? {
               producto_id: row.matched_producto_id,
               referencia: row.referencia,
               cantidad: row.cantidad,
               orden: pos + 1,
-              ...(parseInt(row.precio_nuevo || '0', 10) > 0
-                ? { precio_estimado: (parseInt(row.precio_nuevo, 10) / 100).toFixed(2), precio_casa: row.precio_casa || '' }
-                : {}),
+              ...(precio ? { precio_estimado: precio.valor.toFixed(2), precio_casa: precio.casa } : {}),
               ...(hasReferenciaConflict(row) && referenciaDecisions[i] === 'excel'
                 ? { update_referencia: true, nueva_referencia: row.referencia }
                 : {}),
@@ -4454,8 +4451,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           // catálogo): se crea como pendiente, sin vincular todavía a un
           // Producto real, pero con la cantidad que trae el Excel — el
           // producto recién se crea en el catálogo al importar.
-          : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad, precio_estimado: (parseInt(row.precio_nuevo || '0', 10) / 100).toFixed(2), precio_casa: row.precio_casa || '', orden: pos + 1 }
-      )
+          : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad, precio_estimado: (precio?.valor ?? 0).toFixed(2), precio_casa: precio?.casa || '', orden: pos + 1 }
+      })
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ casa_comercial_id: selectedCasa.id, detalles }) },
@@ -4553,8 +4550,29 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     className: 'imp-excel-review__group-chip',
     'aria-label': `Ir a ${label}`,
   })
+  // PVP JP: el precio registrado en el sistema (el del producto vinculado o,
+  // si el codigo/referencia es de otra casa, el de ese producto).
+  const getSistemaPrecio = (row) => row.matched_producto_precio ?? row.conflicto_precio ?? row.sugerido_precio ?? null
+  // Casa del PVP JP (misma prioridad que getSistemaPrecio).
+  const getSistemaCasa = (row) => (
+    row.matched_producto_precio != null ? (selectedCasa?.nombre || '')
+      : row.conflicto_precio != null ? (row.conflicto_casa_nombre || '')
+        : (row.sugerido_casa || '')
+  )
+  // PVP: el precio que se guarda en la sugerencia. Ya no se escribe a mano:
+  // una promoción trae el precio en el Excel y se usa ese; una importación
+  // normal no trae precio, así que los productos del catálogo quedan sin
+  // precio y los nuevos toman el PVP JP. Elegir una coincidencia por OEM
+  // (precio_nuevo) tiene prioridad.
+  const getPrecioGuardado = (row) => {
+    if (parseInt(row.precio_nuevo || '0', 10) > 0) return { valor: parseInt(row.precio_nuevo, 10) / 100, casa: row.precio_casa || '' }
+    if (Number(row.pvp) > 0) return { valor: Number(row.pvp), casa: selectedCasa?.nombre || '' }
+    const sistema = getSistemaPrecio(row)
+    if (!row.matched_producto_id && Number(sistema) > 0) return { valor: Number(sistema), casa: getSistemaCasa(row) }
+    return null
+  }
   const allConflictsResolved = validRows.every((row, i) => !hasReferenciaConflict(row) || referenciaDecisions[i] !== undefined)
-  const pendingPriceCount = validRows.filter(r => r.codigo_sugerido && (!r.precio_nuevo || parseInt(r.precio_nuevo, 10) <= 0)).length
+  const pendingPriceCount = validRows.filter(r => r.codigo_sugerido && !getPrecioGuardado(r)).length
   const allPricesSet = pendingPriceCount === 0
   // Un producto con código sugerido (match por OEM) sí se crea de una vez en
   // el catálogo, así que necesita nombre. Uno realmente "sin catálogo" (sin
@@ -4602,30 +4620,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     )))
   }
 
-  // PVP JP: el precio registrado en el sistema (el del producto vinculado o,
-  // si el codigo/referencia es de otra casa, el de ese producto). PVP: el
-  // que trae el Excel subido. Doble click en uno de ellos lo copia al PVP Aprox. de la
-  // fila; doble click en su titulo lo copia a todas las filas que lo tengan.
-  const getSistemaPrecio = (row) => row.matched_producto_precio ?? row.conflicto_precio ?? row.sugerido_precio ?? null
-  // Casa del PVP JP (misma prioridad que getSistemaPrecio).
-  const getSistemaCasa = (row) => (
-    row.matched_producto_precio != null ? (selectedCasa?.nombre || '')
-      : row.conflicto_precio != null ? (row.conflicto_casa_nombre || '')
-        : (row.sugerido_casa || '')
-  )
-  // El PVP es el que trae el Excel de esta casa.
-  const getExcelCasa = () => selectedCasa?.nombre || ''
-  const toCentavosDigits = (value) => String(Math.round(Number(value) * 100))
-  const copyPrecioToPvp = (filaExcel, value, casa) => {
-    if (Number(value) > 0) updateRowPrecioCentavos(filaExcel, toCentavosDigits(value), casa)
-  }
-  const copyPrecioToAllPvp = (getValue, getCasa) => {
-    setParsedRows(prev => prev.map(r => {
-      const value = getValue(r)
-      return Number(value) > 0 ? { ...r, precio_nuevo: toCentavosDigits(value), precio_casa: getCasa(r) } : r
-    }))
-  }
-
   // Descripción de un producto pendiente (sin catálogo): se escribe a mano
   // en la tabla o se toma con un clic desde la tarjeta de coincidencias por
   // OEM (igual que el precio) — ya no hace falta traerla en el Excel.
@@ -4633,15 +4627,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     setParsedRows(prev => prev.map(r => (
       r.fila_excel === filaExcel ? { ...r, descripcion: value } : r
     )))
-  }
-
-  const formatCentavos = (centsStr) => {
-    const digits = String(centsStr || '').replace(/\D/g, '')
-    if (!digits) return '0.00'
-    const n = parseInt(digits, 10)
-    const intPart = Math.floor(n / 100)
-    const decPart = n % 100
-    return `${intPart.toLocaleString('en-US')}.${String(decPart).padStart(2, '0')}`
   }
 
   const stepLabel = step === 1 ? 'Descarga la plantilla' : step === 2 ? 'Sube el archivo' : 'Revisa los productos'
@@ -5080,7 +5065,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           <col style={{ width: 220 }} />
                           <col style={{ width: 60 }} />
                           <col style={{ width: 85 }} />
-                          <col style={{ width: 85 }} />
                           <col style={{ width: 95 }} />
                         </colgroup>
                         <thead>
@@ -5090,21 +5074,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>OEM</th>
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
                             <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
-                            <th
-                              style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}
-                              title="Precio registrado en el sistema. Doble click: copiarlo al PVP Aprox. de todas las filas"
-                              onDoubleClick={() => copyPrecioToAllPvp(getSistemaPrecio, getSistemaCasa)}
-                            >
-                              PVP JP
-                            </th>
-                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="PVP que se guarda en la sugerencia (y el precio del producto nuevo)">PVP Aprox.</th>
-                            <th
-                              style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, cursor: 'pointer', userSelect: 'none' }}
-                              title="Precio que traía el Excel. Doble click: copiarlo al PVP Aprox. de todas las filas"
-                              onDoubleClick={() => copyPrecioToAllPvp((r) => r.pvp, getExcelCasa)}
-                            >
-                              PVP
-                            </th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="Precio registrado en el sistema">PVP JP</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="PVP que se guarda en la sugerencia: el que trae el Excel o, en un producto nuevo sin precio en el Excel, el PVP JP">PVP</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -5268,60 +5239,30 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                     const desdeSugerido = !row.matched_producto_id && !row.conflicto_casa && row.sugerido_desde
                                     return (
                                       <span
-                                        onDoubleClick={() => copyPrecioToPvp(row.fila_excel, sistema, getSistemaCasa(row))}
-                                        style={{ fontWeight: 600, cursor: 'pointer', userSelect: 'none', color: otraCasa ? '#c2410c' : desdeSugerido ? '#a16207' : undefined }}
-                                        title={`${otraCasa ? `Precio en ${row.conflicto_casa_nombre || 'otra casa'}` : desdeSugerido ? `Precio de ${row.sugerido_desde} (de donde salió el código sugerido)` : 'Precio registrado en el sistema'}. Doble click: usarlo como PVP Aprox.`}
+                                        style={{ fontWeight: 600, color: otraCasa ? '#c2410c' : desdeSugerido ? '#a16207' : undefined }}
+                                        title={otraCasa ? `Precio en ${row.conflicto_casa_nombre || 'otra casa'}` : desdeSugerido ? `Precio de ${row.sugerido_desde} (de donde salió el código sugerido)` : 'Precio registrado en el sistema'}
                                       >
                                         ${Number(sistema).toFixed(2)}
                                       </span>
                                     )
                                   })()}
                                 </td>
-                                <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                                  {(() => {
-                                    const priceInvalid = !row.precio_nuevo || parseInt(row.precio_nuevo, 10) <= 0
-                                    const showInvalid = row.codigo_sugerido && submitAttempted && priceInvalid
-                                    return (
-                                      <div className={`imp-excel-review__precio-box${showInvalid ? ' imp-excel-review__precio-box--invalid' : ''}`}>
-                                        <span style={{ color: 'var(--color-text-secondary)', fontSize: '0.85em', flexShrink: 0 }}>$</span>
-                                        <input
-                                          type="text"
-                                          inputMode="numeric"
-                                          value={formatCentavos(row.precio_nuevo)}
-                                          onChange={() => {}}
-                                          title={row.matched_producto_id
-                                            ? 'PVP aproximado de esta sugerencia. Escríbelo o haz doble click en el PVP JP o el PVP.'
-                                            : 'Precio (PVP sin IVA) del producto nuevo. Escríbelo, haz doble click en el PVP JP o el PVP, o pasa el mouse sobre el ícono del OEM y haz clic en una de las coincidencias.'}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Backspace') {
-                                              e.preventDefault()
-                                              updateRowPrecioCentavos(row.fila_excel, String(row.precio_nuevo || '').replace(/\D/g, '').slice(0, -1))
-                                            } else if (/^\d$/.test(e.key)) {
-                                              e.preventDefault()
-                                              updateRowPrecioCentavos(row.fila_excel, String(row.precio_nuevo || '').replace(/\D/g, '') + e.key)
-                                            }
-                                          }}
-                                          style={{
-                                            flex: 1, minWidth: 0, textAlign: 'right', border: 'none', outline: 'none', background: 'transparent',
-                                            padding: 0, fontSize: 'inherit', fontFamily: 'inherit', fontWeight: 600, color: 'inherit', cursor: 'text',
-                                          }}
-                                        />
-                                      </div>
-                                    )
-                                  })()}
-                                </td>
                                 <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                                   {(() => {
-                                    if (!(Number(row.pvp) > 0)) return <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
+                                    const precio = getPrecioGuardado(row)
+                                    if (!precio) {
+                                      return row.codigo_sugerido && submitAttempted
+                                        ? <span style={{ color: '#dc2626', fontWeight: 600 }} title="Producto nuevo sin precio: elige una coincidencia en el ícono del OEM">Falta</span>
+                                        : <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
+                                    }
                                     const sistema = getSistemaPrecio(row)
-                                    const difiere = sistema != null && Math.abs(Number(row.pvp) - Number(sistema)) >= 0.005
+                                    const difiere = sistema != null && Math.abs(precio.valor - Number(sistema)) >= 0.005
                                     return (
                                       <span
-                                        onDoubleClick={() => copyPrecioToPvp(row.fila_excel, row.pvp, getExcelCasa())}
-                                        style={{ cursor: 'pointer', userSelect: 'none', fontWeight: difiere ? 600 : undefined, color: difiere ? '#b45309' : 'var(--color-text-secondary)' }}
-                                        title={`${difiere ? `Distinto al PVP JP ($${Number(sistema).toFixed(2)})` : 'Precio que trae el Excel'}. Doble click: usarlo como PVP Aprox.`}
+                                        style={{ fontWeight: 600, color: difiere ? '#b45309' : undefined }}
+                                        title={difiere ? `Distinto al PVP JP ($${Number(sistema).toFixed(2)})` : 'PVP que se guarda en la sugerencia'}
                                       >
-                                        ${Number(row.pvp).toFixed(2)}
+                                        ${precio.valor.toFixed(2)}
                                       </span>
                                     )
                                   })()}
@@ -5331,7 +5272,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           })}
                           {reviewRows.length > reviewRenderCount && (
                             <tr>
-                              <td colSpan={8} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
+                              <td colSpan={7} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
                                 {`Mostrando ${reviewRenderCount} de ${reviewRows.length} productos — baja para ver más`}
                               </td>
                             </tr>
