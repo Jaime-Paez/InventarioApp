@@ -4491,16 +4491,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // (como producto nuevo para la casa actual) mostrando una advertencia en
   // vez de bloquearla. conflictoRows queda solo para el contador del aviso.
   const conflictoRows = parsedRows.filter(r => r.conflicto_casa)
-  // Lo que le falta a un producto sin catalogo para pedir la cotizacion
-  // (misma regla que la sugerencia guardada y el backend). No impide crear
-  // la sugerencia; la cantidad puede quedar en 0.
-  const faltantesFila = (row) => (row.matched_producto_id ? [] : [
-    ['codigo', 'Código'],
-    ['referencia', 'Referencia'],
-    ['oem', 'OEM'],
-    ['descripcion', 'Descripción'],
-  ].filter(([field]) => !String(row[field] || '').trim()).map(([, label]) => label))
-  const incompleteRows = parsedRows.filter(r => faltantesFila(r).length > 0)
   // Orden: 1) código/referencia en otra casa (necesitan revisión), 2) código
   // sugerido (amarillo, necesitan confirmar el código nuevo), 3) ya
   // vinculados al catálogo, 4) el resto (sin catálogo). sort es estable, así
@@ -4588,8 +4578,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // El backend rechaza toda la importacion si el mismo producto del catalogo
   // aparece en mas de una fila (validate_detalles), pero recien al crear —
   // despues de que el usuario ya resolvio conflictos de referencia y precios.
-  // Se detecta aca antes, para bloquear el paso 3 de una vez, igual que
-  // incompleteRows.
+  // Se detecta aca antes, para bloquear el paso 3 de una vez.
   const duplicateProductGroups = (() => {
     const byProductId = new Map()
     validRows.forEach((row) => {
@@ -4957,21 +4946,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
             {/* ── PASO 3: Revisar productos ── */}
             {step === 3 && (
               <>
-                {/* Datos incompletos: no impiden crear la sugerencia, solo
-                    pedir la cotizacion (se completan dentro de la sugerencia). */}
-                {incompleteRows.length > 0 && !duplicateProductGroups.length && (
-                  <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <i className="pi pi-exclamation-triangle" style={{ color: '#b45309', fontSize: 'var(--font-size-base)' }} />
-                      <strong style={{ fontSize: 'var(--font-size-sm)', color: '#92400e' }}>
-                        {incompleteRows.length} producto{incompleteRows.length !== 1 ? 's' : ''} con datos incompletos
-                      </strong>
-                    </div>
-                    <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#92400e' }}>
-                      Puedes crear la sugerencia igual; lo que falta está marcado en rojo. Antes de pedir la cotización cada producto debe tener código, referencia, OEM y descripción (la cantidad puede quedar en 0).
-                    </p>
-                  </div>
-                )}
+                {/* Los datos incompletos no se marcan en la vista previa: no
+                    impiden crearla y se completan dentro de la sugerencia,
+                    antes de pedir la cotizacion. */}
                 {duplicateProductGroups.length > 0 ? (
                   <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -5151,7 +5128,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                     {isEditableCodigo ? (
                                       <input
                                         type="text"
-                                        className={`imp-excel-review__codigo-input${faltantesFila(row).includes('Código') ? ' imp-excel-review__codigo-input--invalid' : ''}`}
+                                        className="imp-excel-review__codigo-input"
                                         value={row.codigo || ''}
                                         onChange={(e) => updateRowCodigo(row.fila_excel, e.target.value.toUpperCase())}
                                         placeholder="Sin catálogo"
@@ -5220,8 +5197,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                         </button>
                                       </div>
                                     </div>
-                                  ) : faltantesFila(row).includes('Referencia') ? (
-                                    <span className="imp-falta-dato">Falta</span>
                                   ) : (
                                     <span
                                       title={row.referencia || ''}
@@ -5248,19 +5223,16 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                         onMouseLeave={hideOemMatchesHover}
                                       />
                                     </div>
-                                  ) : faltantesFila(row).includes('OEM')
-                                    ? <span className="imp-falta-dato">Falta</span>
-                                    : '—'}
+                                  ) : '—'}
                                 </td>
                                 <td style={{ padding: row.matched_producto_id ? '7px 12px' : '4px 8px' }}>
                                   {row.matched_producto_id ? (
                                     row.descripcion || '—'
                                   ) : (() => {
-                                    const showInvalid = faltantesFila(row).includes('Descripción')
                                     return (
                                       <input
                                         type="text"
-                                        className={`imp-excel-review__codigo-input${showInvalid ? ' imp-excel-review__codigo-input--invalid' : ''}`}
+                                        className="imp-excel-review__codigo-input"
                                         value={row.descripcion || ''}
                                         onChange={(e) => updateRowDescripcion(row.fila_excel, e.target.value)}
                                         placeholder={row.codigo_sugerido ? 'Descripción' : 'Descripción (opcional)'}
