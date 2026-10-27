@@ -2441,3 +2441,20 @@ body.app-theme-dark .imp-receive-footer-hint {
     width: auto !important;
   }
 }
+
+/* Spinner mientras se lee un Excel subido (cubre todo el modal). */
+.imp-excel-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  border-radius: inherit;
+}
+
+.imp-excel-loading__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}

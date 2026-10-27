@@ -741,6 +741,32 @@ const SELECTOR_WIDTH = 520
 const SELECTOR_HEIGHT_EMPTY = 'auto'
 const SELECTOR_HEIGHT_FULL = 'auto'
 const VIEWPORT_PADDING = 12
+
+// Mientras se lee un Excel subido se cubre el modal con el spinner (igual que
+// al cargar datos). Se muestra al menos un instante para que no parpadee.
+const MIN_EXCEL_LOADING_MS = 500
+const withExcelLoading = async (setLoading, task) => {
+  setLoading(true)
+  const start = Date.now()
+  try {
+    return await task()
+  } finally {
+    const left = MIN_EXCEL_LOADING_MS - (Date.now() - start)
+    if (left > 0) await new Promise((resolve) => setTimeout(resolve, left))
+    setLoading(false)
+  }
+}
+
+function ExcelLoadingOverlay() {
+  return (
+    <div className="spinner-container spinner-container--table imp-excel-loading" role="status" aria-live="polite">
+      <div className="imp-excel-loading__content">
+        <div className="spinner" />
+        <span>Cargando Excel...</span>
+      </div>
+    </div>
+  )
+}
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
 // Vacío del buscador de casas comerciales (solo se buscan las de tipo Importación).
@@ -770,6 +796,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [isMaximized, setIsMaximized] = useState(false)
 
   const [showReceiveExcelDropdown, setShowReceiveExcelDropdown] = useState(false)
+  const [uploadingExcel, setUploadingExcel] = useState(false)
   const receiveExcelDropdownRef = useRef(null)
   const receiveFileInputRef = useRef(null)
   useEffect(() => {
@@ -1737,9 +1764,11 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
             maxHeight: isMaximized ? '95dvh' : undefined,
             gridTemplateRows: 'auto 1fr auto',
             transition: 'width .25s, max-height .25s',
+            position: 'relative',
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
+          {uploadingExcel && <ExcelLoadingOverlay />}
           <header className="quick-actions__receive-head">
             <div>
               <h4>{imp.codigo}</h4>
@@ -2251,7 +2280,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     type="file"
                     accept=".xlsx"
                     style={{ display: 'none' }}
-                    onChange={(e) => { handleUploadReceiveExcel(e.target.files?.[0]); e.target.value = '' }}
+                    onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) withExcelLoading(setUploadingExcel, () => handleUploadReceiveExcel(file)) }}
                   />
                 </div>
                 <button type="button" className={`quick-actions__receive-btn${allChecked ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep4} disabled={!allChecked}>Siguiente</button>
@@ -6911,6 +6940,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const [freshImp, setFreshImp] = useState(null)
   const imp = freshImp && impProp && freshImp.id === impProp.id ? freshImp : impProp
   const [loadingImp, setLoadingImp] = useState(true)
+  const [uploadingExcel, setUploadingExcel] = useState(false)
   useEffect(() => {
     if (!open || !impProp?.id) { setLoadingImp(false); return }
     let cancelled = false
@@ -8298,6 +8328,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
               <div className="spinner" />
             </div>
           )}
+          {uploadingExcel && <ExcelLoadingOverlay />}
 
           <form className="create-user__form" noValidate onSubmit={(e) => { e.preventDefault(); handleSubmit() }}>
             <div className="create-user__tabs create-salida__tabs" role="tablist">
@@ -8824,7 +8855,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                       type="file"
                       accept=".xlsx"
                       style={{ display: 'none' }}
-                      onChange={(e) => { handleUploadVerificarExcel(e.target.files?.[0]); e.target.value = '' }}
+                      onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) withExcelLoading(setUploadingExcel, () => handleUploadVerificarExcel(file)) }}
                     />
                   </div>
                 )}
