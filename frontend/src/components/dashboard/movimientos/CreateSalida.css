@@ -1878,6 +1878,19 @@
   box-shadow: 0 12px 20px color-mix(in srgb, #dc2626 54%, transparent);
 }
 
+/* Guardado: mismo naranja que su chip en la tabla de Entradas. */
+.entrada-details__pending-ribbon--guardado {
+  background: linear-gradient(135deg, #fdba74 0%, #f97316 100%);
+  color: #7c2d12;
+  box-shadow: 0 10px 18px color-mix(in srgb, #f97316 40%, transparent);
+}
+
+.dashboard-shell.dark .entrada-details__pending-ribbon--guardado {
+  background: linear-gradient(135deg, #f97316 0%, #c2410c 100%);
+  color: #ffedd5;
+  box-shadow: 0 12px 20px color-mix(in srgb, #f97316 50%, transparent);
+}
+
 .entrada-details__pending-ribbon--accepted {
   background: linear-gradient(135deg, #22c55e 0%, #15803d 100%);
   color: #ecfdf5;

@@ -3129,6 +3129,8 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                 ? ' entrada-details__pending-ribbon--legado'
                 : isRejectedSolicitudRibbon
                   ? ' entrada-details__pending-ribbon--rejected'
+                  : isGuardadoSolicitudRibbon
+                    ? ' entrada-details__pending-ribbon--guardado'
                   : isAcceptedSolicitudRibbon
                     ? ' entrada-details__pending-ribbon--accepted'
                     : isSentSolicitudRibbon
