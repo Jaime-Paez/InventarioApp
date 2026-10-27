@@ -14,6 +14,12 @@ const VERTICAL_LABEL_RATIO = 1.6
 const DEFAULT_TYPES = ['Estantería', 'Cajonera', 'Muebles']
 const TYPE_COLORS = ['#4f8df8', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14b8a6']
 const OVERLAP_TOLERANCE = 0.05
+// Pasos (en metros) del panel de ajuste fino: mover y cambiar tamaño sin arrastrar.
+const NUDGE_STEPS = [0.1, 0.5, 1]
+// Distancia minima (px) antes de empezar a arrastrar: con el dedo un toque
+// siempre se mueve un poco, y eso no debe desplazar la ubicacion.
+const DRAG_THRESHOLD_MOUSE = 2
+const DRAG_THRESHOLD_TOUCH = 8
 
 // Walk up the DOM to find the nearest scrollable ancestor
 const findScrollParent = (el) => {
@@ -312,6 +318,8 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   const cardRefs = useRef({})
   const [resizeOverlay, setResizeOverlay] = useState(null)
   const [isAdding, setIsAdding] = useState(false)
+  const [nudgeStep, setNudgeStep] = useState(0.5)
+  const [nudgeMessage, setNudgeMessage] = useState('')
   const [types, setTypes] = useState(DEFAULT_TYPES)
   const [typeColors, setTypeColors] = useState(() =>
     DEFAULT_TYPES.reduce((acc, type, index) => {
@@ -412,14 +420,18 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     }
   }
 
-  const handlePlanMouseDown = (event) => {
+  const handlePlanPointerDown = (event) => {
     if (disabled || !planRef.current || isAdding) return
     if (event.target !== planRef.current) return
+    // Con el dedo, arrastrar sobre el fondo del plano hace scroll de la pagina;
+    // la seleccion por recuadro queda solo para el mouse.
+    if (event.pointerType !== 'mouse') return
     const rect = planRef.current.getBoundingClientRect()
     const xPct = clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100)
     const yPct = clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100)
     dragStateRef.current = {
       mode: 'select',
+      pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       startXPct: xPct,
@@ -486,11 +498,16 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
 
   const handleDragStart = (event, location, mode) => {
     if (disabled || !planRef.current) return
+    if (event.pointerType === 'mouse' && event.button !== 0) return
     event.stopPropagation()
     const rect = planRef.current.getBoundingClientRect()
     if (!rect.width || !rect.height) return
 
     const isAlreadySelected = selectedIds.has(location.id)
+    // Con el dedo: el primer toque solo selecciona (asi deslizar sobre una
+    // ubicacion no seleccionada sigue haciendo scroll); ya seleccionada, se arrastra.
+    if (event.pointerType !== 'mouse' && mode === 'move' && !isAlreadySelected) return
+    event.currentTarget.setPointerCapture?.(event.pointerId)
     const draggingIds = isAlreadySelected ? [...selectedIds] : [location.id]
 
     if (!isAlreadySelected) setSelectedIds(new Set([location.id]))
@@ -517,6 +534,9 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
       allOriginsSnapshot,
       // Bounding box of the selection at drag start (used for proportional group resize)
       bbox: { x: bboxX, y: bboxY, w: bboxRight - bboxX, h: bboxBottom - bboxY },
+      pointerId: event.pointerId,
+      threshold: event.pointerType === 'mouse' ? DRAG_THRESHOLD_MOUSE : DRAG_THRESHOLD_TOUCH,
+      active: false,
       startX: event.clientX,
       startY: event.clientY,
       rect,
@@ -525,9 +545,9 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
 
   // Single stable effect — uses refs instead of closing over changing state
   useEffect(() => {
-    const handleMouseMove = (event) => {
+    const handlePointerMove = (event) => {
       const dragState = dragStateRef.current
-      if (!dragState) return
+      if (!dragState || event.pointerId !== dragState.pointerId) return
 
       if (dragState.mode === 'select') {
         const xPct = clamp(((event.clientX - dragState.rect.left) / dragState.rect.width) * 100, 0, 100)
@@ -536,6 +556,12 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
         selectionBoxRef.current = box
         setSelectionBox(box)
         return
+      }
+
+      if (!dragState.active) {
+        const distance = Math.hypot(event.clientX - dragState.startX, event.clientY - dragState.startY)
+        if (distance < dragState.threshold) return
+        dragState.active = true
       }
 
       const safeW = safeWidthRef.current
@@ -611,9 +637,10 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
       }
     }
 
-    const handleMouseUp = (event) => {
+    const handlePointerUp = (event) => {
       const dragState = dragStateRef.current
-      if (dragState?.mode === 'select') {
+      if (!dragState || event.pointerId !== dragState.pointerId) return
+      if (dragState.mode === 'select') {
         const dx = Math.abs(event.clientX - dragState.startX)
         const dy = Math.abs(event.clientY - dragState.startY)
         if (dx > 5 || dy > 5) {
@@ -643,20 +670,71 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
       setSelectionBox(null)
     }
 
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
     }
   }, []) // stable — reads all values through refs
+
+  const selectedLocations = locations.filter((location) => selectedIds.has(location.id))
+  const singleSelected = selectedLocations.length === 1 ? selectedLocations[0] : null
+
+  // Panel de ajuste fino: en tablet arrastrar al milimetro es incomodo, asi
+  // que se puede mover y cambiar el tamaño de lo seleccionado con botones.
+  const moveSelected = (deltaX, deltaY) => {
+    if (disabled || !selectedLocations.length || !safeWidth || !safeHeight) return
+    let appliedX = deltaX
+    let appliedY = deltaY
+    selectedLocations.forEach((origin) => {
+      appliedX = clamp(appliedX, -origin.x, safeWidth - origin.ancho - origin.x)
+      appliedY = clamp(appliedY, -origin.y, safeHeight - origin.alto - origin.y)
+    })
+    if (Math.abs(appliedX) < 0.05 && Math.abs(appliedY) < 0.05) {
+      setNudgeMessage('Ya está en el borde del plano.')
+      return
+    }
+    setNudgeMessage('')
+    const working = locations.map((location) => (
+      selectedIds.has(location.id)
+        ? {
+          ...location,
+          x: Number((location.x + appliedX).toFixed(1)),
+          y: Number((location.y + appliedY).toFixed(1)),
+        }
+        : { ...location }
+    ))
+    onChange(resolveOverlaps(working, [...selectedIds], safeWidth, safeHeight))
+  }
+
+  const resizeSelected = (field, delta) => {
+    if (disabled || !singleSelected) return
+    const next = clampLocation({
+      ...singleSelected,
+      [field]: Math.max(MIN_SIZE_METERS, Number((singleSelected[field] + delta).toFixed(1))),
+    })
+    if (next[field] === singleSelected[field]) {
+      setNudgeMessage(delta < 0 ? `Ya tiene el tamaño mínimo (${MIN_SIZE_METERS} m).` : 'Ya llega al borde del plano.')
+      return
+    }
+    const blocker = locations.find((location) => location.id !== singleSelected.id && rectsOverlap(next, location))
+    if (blocker) {
+      setNudgeMessage(`No cabe: chocaría con ${blocker.nombre || 'otra ubicación'}.`)
+      return
+    }
+    setNudgeMessage('')
+    onChange(locations.map((location) => (location.id === singleSelected.id ? next : location)))
+  }
 
   return (
     <div className="bodega-layout">
       <div className="bodega-layout__meta">
         <p>
-          Plano interactivo para distribuir ubicaciones internas. Define las medidas de la bodega
-          y haz clic dentro del plano para agregar nuevas ubicaciones.
+          Plano interactivo para distribuir ubicaciones internas. Toca una ubicación para
+          seleccionarla y luego arrástrala, o usa las flechas de abajo para moverla con precisión.
         </p>
         <button
           type="button"
@@ -664,7 +742,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
           onClick={() => setIsAdding((prev) => !prev)}
           disabled={disabled || !safeWidth || !safeHeight}
         >
-          {isAdding ? 'Haz clic en el plano...' : 'Agregar ubicación'}
+          {isAdding ? 'Toca el plano donde va...' : 'Agregar ubicación'}
         </button>
       </div>
 
@@ -698,7 +776,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
             className={`bodega-layout__plan${disabled || !safeWidth || !safeHeight ? ' bodega-layout__plan--disabled' : ''}`}
             role="presentation"
             onClick={handlePlanClick}
-            onMouseDown={handlePlanMouseDown}
+            onPointerDown={handlePlanPointerDown}
             ref={planRef}
             style={planStyle}
           >
@@ -737,7 +815,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                     event.stopPropagation()
                     scrollToCard(location.id)
                   }}
-                  onMouseDown={(event) => handleDragStart(event, location, 'move')}
+                  onPointerDown={(event) => handleDragStart(event, location, 'move')}
                 >
                   <span className="bodega-layout__location-label" title={location.nombre}>
                     {location.nombre}
@@ -745,7 +823,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                   <button
                     type="button"
                     className="bodega-layout__resize-handle"
-                    onMouseDown={(event) => handleDragStart(event, location, 'resize')}
+                    onPointerDown={(event) => handleDragStart(event, location, 'resize')}
                     aria-label="Cambiar tamaño de ubicación"
                     disabled={disabled}
                   />
@@ -777,6 +855,95 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
           )}
         </div>
       </div>
+      {selectedLocations.length > 0 && (
+        <div className="bodega-layout__adjust" role="group" aria-label="Ajustar ubicación seleccionada">
+          <div className="bodega-layout__adjust-head">
+            <strong>
+              {singleSelected
+                ? (singleSelected.nombre || 'Ubicación seleccionada')
+                : `${selectedLocations.length} ubicaciones seleccionadas`}
+            </strong>
+            {singleSelected && (
+              <span className="bodega-layout__adjust-meta">
+                X {singleSelected.x} · Y {singleSelected.y} · {singleSelected.ancho} × {singleSelected.alto} m
+              </span>
+            )}
+            <button
+              type="button"
+              className="bodega-layout__adjust-close"
+              onClick={() => { setSelectedIds(new Set()); setNudgeMessage('') }}
+              aria-label="Quitar selección"
+            >
+              <i className="pi pi-times" />
+            </button>
+          </div>
+
+          <div className="bodega-layout__adjust-steps" role="radiogroup" aria-label="Paso">
+            <span>Paso</span>
+            {NUDGE_STEPS.map((step) => (
+              <button
+                key={step}
+                type="button"
+                role="radio"
+                aria-checked={nudgeStep === step}
+                className={`bodega-layout__adjust-step${nudgeStep === step ? ' is-active' : ''}`}
+                onClick={() => setNudgeStep(step)}
+              >
+                {step} m
+              </button>
+            ))}
+          </div>
+
+          <div className="bodega-layout__adjust-body">
+            <div className="bodega-layout__adjust-pad">
+              <span className="bodega-layout__adjust-label">Mover</span>
+              <div className="bodega-layout__adjust-arrows">
+                <button type="button" className="bodega-layout__adjust-btn bodega-layout__adjust-btn--up" onClick={() => moveSelected(0, -nudgeStep)} disabled={disabled} aria-label="Mover arriba">
+                  <i className="pi pi-arrow-up" />
+                </button>
+                <button type="button" className="bodega-layout__adjust-btn bodega-layout__adjust-btn--left" onClick={() => moveSelected(-nudgeStep, 0)} disabled={disabled} aria-label="Mover a la izquierda">
+                  <i className="pi pi-arrow-left" />
+                </button>
+                <button type="button" className="bodega-layout__adjust-btn bodega-layout__adjust-btn--right" onClick={() => moveSelected(nudgeStep, 0)} disabled={disabled} aria-label="Mover a la derecha">
+                  <i className="pi pi-arrow-right" />
+                </button>
+                <button type="button" className="bodega-layout__adjust-btn bodega-layout__adjust-btn--down" onClick={() => moveSelected(0, nudgeStep)} disabled={disabled} aria-label="Mover abajo">
+                  <i className="pi pi-arrow-down" />
+                </button>
+              </div>
+            </div>
+
+            {singleSelected && (
+              <div className="bodega-layout__adjust-sizes">
+                {[['ancho', 'Ancho'], ['alto', 'Alto']].map(([field, label]) => (
+                  <div key={field} className="bodega-layout__adjust-size">
+                    <span className="bodega-layout__adjust-label">{label}</span>
+                    <div className="bodega-layout__adjust-stepper">
+                      <button type="button" className="bodega-layout__adjust-btn" onClick={() => resizeSelected(field, -nudgeStep)} disabled={disabled} aria-label={`Reducir ${label.toLowerCase()}`}>
+                        <i className="pi pi-minus" />
+                      </button>
+                      <span className="bodega-layout__adjust-value">{singleSelected[field]} m</span>
+                      <button type="button" className="bodega-layout__adjust-btn" onClick={() => resizeSelected(field, nudgeStep)} disabled={disabled} aria-label={`Aumentar ${label.toLowerCase()}`}>
+                        <i className="pi pi-plus" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {nudgeMessage && <p className="bodega-layout__adjust-message">{nudgeMessage}</p>}
+
+          {singleSelected && (
+            <button type="button" className="bodega-layout__adjust-edit" onClick={() => scrollToCard(singleSelected.id)}>
+              <i className="pi pi-pencil" />
+              Editar nombre, tipo y medidas
+            </button>
+          )}
+        </div>
+      )}
+
       <p className="bodega-layout__hint">
         {safeWidth && safeHeight
           ? `Plano: ${safeWidth}m x ${safeHeight}m`

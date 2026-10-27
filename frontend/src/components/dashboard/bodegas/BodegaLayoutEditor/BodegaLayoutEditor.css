@@ -544,3 +544,237 @@
 .bodega-layout__view-in-map i {
   font-size: 0.75rem;
 }
+
+/* ── Tactil (tablet / telefono) ───────────────────────────────────────────
+   Una ubicacion sin seleccionar deja hacer scroll con el dedo; la
+   seleccionada (y su control de tamaño) toman el gesto para arrastrarse. */
+.bodega-layout__location {
+  touch-action: pan-x pan-y;
+}
+
+.bodega-layout__location--selected,
+.bodega-layout__resize-handle {
+  touch-action: none;
+}
+
+.bodega-layout__location--selected {
+  z-index: 2;
+}
+
+@media (pointer: coarse) {
+  .bodega-layout__resize-handle {
+    right: 2px;
+    bottom: 2px;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 2px solid var(--color-primary);
+    background: color-mix(in srgb, var(--color-surface) 85%, transparent);
+  }
+
+  /* El control grande solo en la seleccionada: en las demas taparia el nombre. */
+  .bodega-layout__location:not(.bodega-layout__location--selected) .bodega-layout__resize-handle {
+    display: none;
+  }
+}
+
+/* ── Panel de ajuste de la ubicacion seleccionada ───────────────────────── */
+.bodega-layout__adjust {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+}
+
+.bodega-layout__adjust-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.bodega-layout__adjust-head strong {
+  font-size: 1rem;
+}
+
+.bodega-layout__adjust-meta {
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.bodega-layout__adjust-close {
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.bodega-layout__adjust-steps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bodega-layout__adjust-steps > span,
+.bodega-layout__adjust-label {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.65;
+}
+
+.bodega-layout__adjust-step {
+  min-width: 56px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bodega-layout__adjust-step.is-active {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.bodega-layout__adjust-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 28px;
+}
+
+.bodega-layout__adjust-pad,
+.bodega-layout__adjust-size {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bodega-layout__adjust-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+}
+
+/* Cruz de flechas: arriba / izquierda-derecha / abajo */
+.bodega-layout__adjust-arrows {
+  display: grid;
+  grid-template-columns: repeat(3, 48px);
+  grid-template-rows: repeat(3, 48px);
+  gap: 4px;
+}
+
+.bodega-layout__adjust-btn--up { grid-column: 2; grid-row: 1; }
+.bodega-layout__adjust-btn--left { grid-column: 1; grid-row: 2; }
+.bodega-layout__adjust-btn--right { grid-column: 3; grid-row: 2; }
+.bodega-layout__adjust-btn--down { grid-column: 2; grid-row: 3; }
+
+.bodega-layout__adjust-btn {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font-size: 1rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 100ms ease-out, background 100ms ease-out;
+}
+
+.bodega-layout__adjust-btn:active:not(:disabled) {
+  transform: scale(0.94);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+}
+
+.bodega-layout__adjust-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bodega-layout__adjust-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bodega-layout__adjust-value {
+  min-width: 64px;
+  text-align: center;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.bodega-layout__adjust-message {
+  margin: 0;
+  font-size: var(--font-size-sm, 0.85rem);
+  color: #b45309;
+}
+
+.bodega-layout__adjust-edit {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dashboard-shell.dark .bodega-layout__adjust {
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-darker));
+  border-color: var(--color-border-dark);
+}
+
+.dashboard-shell.dark .bodega-layout__adjust-step,
+.dashboard-shell.dark .bodega-layout__adjust-btn {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border-dark);
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .bodega-layout__adjust-step.is-active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.dashboard-shell.dark .bodega-layout__adjust-edit {
+  border-color: var(--color-border-dark);
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .bodega-layout__adjust-message {
+  color: #fbbf24;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bodega-layout__adjust-btn {
+    transition: none;
+  }
+}
