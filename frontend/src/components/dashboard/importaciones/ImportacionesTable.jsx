@@ -7218,9 +7218,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     // las columnas: min-width de la tabla en ImportacionesTable.css (866 /
     // 854) + 40 de padding del modal + 16 por si la tabla muestra scroll
     // vertical.
-    const targetWidth = imp?.estado === 'cotizacion' ? 922 : imp?.estado === 'confirmacion' ? 910 : MIN_WIDTH
+    // Sugerencia abre grande: con 700 x 520 la tabla de productos (9
+    // columnas) quedaba cortada, con scroll lateral y solo 4 filas a la vista.
+    const isSugerenciaOpen = imp?.estado === 'borrador'
+    const targetWidth = isSugerenciaOpen ? 1240 : imp?.estado === 'cotizacion' ? 922 : imp?.estado === 'confirmacion' ? 910 : MIN_WIDTH
+    const targetHeight = isSugerenciaOpen ? 780 : MIN_HEIGHT
     const nextWidth = Math.min(targetWidth, availableWidth)
-    const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
+    const nextHeight = Math.min(targetHeight, availableHeight)
     const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
     const centerY = Math.max((window.innerHeight - nextHeight) / 2, VIEWPORT_PADDING)
     setModalSize({ width: nextWidth, height: nextHeight })

@@ -321,8 +321,10 @@
     84px
     84px
     minmax(100px, 1fr)
-    44px;
-  min-width: 822px;
+    88px;
+  /* 88px: ahi va la X de cada producto y el boton "Agregar" de la fila de
+     arriba, que con 44px quedaba cortado. */
+  min-width: 866px;
 }
 
 .importaciones-modal__products-table--sugerencia {
