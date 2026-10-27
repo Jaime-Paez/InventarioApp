@@ -506,7 +506,8 @@ const computeSmartPopoverPosition = (trigger, cardEl) => {
 const findMatrizSucursal = (list) =>
   (list || []).find((s) => String(s?.nombre || '').toLowerCase().includes('matriz')) || null
 
-const GRID_ROW_SELECTOR = '.create-user__locations-row'
+// Tambien las filas <tr> de la tabla de la sugerencia (misma que el Paso 3).
+const GRID_ROW_SELECTOR = '.create-user__locations-row, .imp-excel-review-table tbody tr'
 const GRID_FOCUSABLE_SELECTOR = 'input, button:not(:disabled)'
 
 const focusGridInput = (input) => {
@@ -8481,6 +8482,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     ? [...details].sort((a, b) => VERIFICAR_GRUPOS.indexOf(verificarGrupoDe(a)) - VERIFICAR_GRUPOS.indexOf(verificarGrupoDe(b)))
     : details
   const verificarConteo = VERIFICAR_GRUPOS.reduce((acc, g) => ({ ...acc, [g]: shownDetails.filter((item) => verificarGrupoDe(item) === g).length }), {})
+  // Filas de la tabla de la sugerencia: con busqueda, las coincidencias primero.
+  const sugerenciaFilas = isSugerencia
+    ? (productSearch.trim() ? matchesFirst(shownDetails, (item) => importItemMatches(item, productSearch)) : shownDetails)
+    : []
   // Sugerencia: los mismos grupos que la vista previa del Excel (vinculados,
   // solo por OEM, por referencia o codigo en otra casa, sin catalogo).
   const sugerenciaGrupoDe = (item) => (
@@ -8506,7 +8511,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     ].filter(([field]) => !String(item[field] || '').trim()).map(([, label]) => label)
   }
   const incompletos = isSugerencia ? details.filter((item) => faltantesDe(item).length > 0) : []
+  // Igual que el Paso 3 de la vista previa: cada clic en un contador lleva a
+  // la siguiente fila de ese grupo, la deja arriba (debajo del encabezado)
+  // dentro de la tabla y la hace parpadear.
+  const SUGERENCIA_ROWS_BATCH = 150
+  const sugerenciaWrapRef = useRef(null)
+  const [sugerenciaRenderCount, setSugerenciaRenderCount] = useState(SUGERENCIA_ROWS_BATCH)
+  const [sugerenciaJump, setSugerenciaJump] = useState(null)
   const sugerenciaJumpRef = useRef({ grupo: '', idx: -1 })
+  useEffect(() => { setSugerenciaRenderCount(SUGERENCIA_ROWS_BATCH) }, [open, imp])
   const jumpToSugerenciaGrupo = (grupo) => {
     const keys = details.filter((item) => sugerenciaGrupoDe(item) === grupo).map((item) => item._key)
     if (!keys.length) return
@@ -8514,7 +8527,28 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     const idx = last.grupo === grupo && last.idx + 1 < keys.length ? last.idx + 1 : 0
     sugerenciaJumpRef.current = { grupo, idx }
     setProductSearch('')
-    jumpToDetailRow(keys[idx])
+    const pos = details.findIndex((item) => item._key === keys[idx])
+    if (pos >= sugerenciaRenderCount) setSugerenciaRenderCount(pos + SUGERENCIA_ROWS_BATCH)
+    setSugerenciaJump({ key: keys[idx] })
+  }
+  useLayoutEffect(() => {
+    if (!sugerenciaJump) return
+    const wrap = sugerenciaWrapRef.current
+    const rowEl = wrap?.querySelector(`[data-detail-key="${CSS.escape(String(sugerenciaJump.key))}"]`)
+    if (!wrap || !rowEl) return
+    const headHeight = wrap.querySelector('thead')?.offsetHeight || 0
+    wrap.scrollTo({ top: Math.max(0, rowEl.offsetTop - headHeight), behavior: 'smooth' })
+    rowEl.classList.remove('imp-excel-review__row--flash')
+    void rowEl.offsetWidth
+    rowEl.classList.add('imp-excel-review__row--flash')
+    setSugerenciaJump(null)
+  }, [sugerenciaJump, sugerenciaRenderCount])
+  // Con miles de productos se dibujan por partes, al bajar (como el Paso 3).
+  const handleSugerenciaScroll = (event) => {
+    const el = event.currentTarget
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) {
+      setSugerenciaRenderCount((count) => (count < details.length ? count + SUGERENCIA_ROWS_BATCH : count))
+    }
   }
   // Cada clic en un contador lleva a la siguiente fila de ese grupo.
   const verificarJumpRef = useRef({ grupo: '', idx: -1 })
@@ -8635,6 +8669,93 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       return next
     })
   }, [])
+
+  // Selector de codigo de la fila "Agregar" (se usa en la tabla de la
+  // sugerencia y en la de verificacion).
+  const productPickerDropdown = (
+    <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
+      <button
+        type="button"
+        className="create-user__dropdown-trigger"
+        onClick={() => {
+          setShowProductDropdown((prev) => !prev)
+          if (!showProductDropdown) { setProductQuery('') }
+        }}
+      >
+        <span>{detailDraft.producto ? String(detailDraft.producto.codigo || '').trim() : 'Selecciona un código'}</span>
+        <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
+      </button>
+      {showProductDropdown && productPanelStyle && createPortal(
+        <div data-product-portal-edit className="create-user__dropdown-panel" style={productPanelStyle}>
+          <div className="create-user__dropdown-search">
+            <i className="pi pi-search" />
+            <input
+              type="text"
+              placeholder="Buscar código o nombre"
+              value={productQuery}
+              onChange={(e) => setProductQuery(e.target.value)}
+              autoFocus
+              autoComplete="off"
+            />
+          </div>
+          <div className="create-user__dropdown-results">
+            {productLoading && <small className="muted">Buscando productos...</small>}
+            {!productLoading && !productQuery.trim() && !productOptions.length && <small className="muted">Escribe para buscar.</small>}
+            {listedMatches.length > 0 && (
+              <div className="imp-listed-matches">
+                <small className="imp-listed-matches__title">Ya en la lista — toca para ir a la fila</small>
+                {listedMatches.map((item) => (
+                  <button
+                    key={`listed-${item._key}`}
+                    type="button"
+                    className="create-salida__result-row imp-listed-matches__row"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => jumpToDetailRow(item._key)}
+                  >
+                    <span className="result-codigo">{String(item.producto?.codigo || item.codigo || '').trim()}</span>
+                    <span className="result-nombre">{String(item.producto?.nombre || item.nombre || '').trim()}</span>
+                    <span className="result-stock">{`Cant. ${Number(item.cantidad || 0)}`}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {!productLoading && productQuery.trim() && !productOptions.length && !listedMatches.length && <small className="muted">Sin resultados.</small>}
+            {productOptions.length > 0 && (
+              <div className="create-salida__results-header">
+                <span>Código</span><span>Descripción</span><span>Stock</span>
+              </div>
+            )}
+            {productOptions.map((product) => {
+              const isAlreadyAdded = details.some((d) => d.producto?.id && String(d.producto.id) === String(product.id))
+              const isSelected = String(detailDraft.producto?.id) === String(product.id)
+              return (
+                <button
+                  key={product.id}
+                  type="button"
+                  className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    if (isAlreadyAdded) {
+                      const existing = details.find((d) => d.producto?.id && String(d.producto.id) === String(product.id))
+                      jumpToDetailRow(existing?._key)
+                      return
+                    }
+                    setDetailDraft({ producto: product, cantidad: '' }); setProductQuery(''); setShowProductDropdown(false); setProductOptions([])
+                  }}
+                  title={isAlreadyAdded ? 'Ya está en la lista: ir a la fila' : undefined}
+                >
+                  <span className="result-codigo">{String(product.codigo || '').trim()}</span>
+                  <span className="result-nombre">{String(product.nombre || '').trim()}</span>
+                  <span className="result-stock">{Number(product.total_stock ?? 0)}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>,
+        getPortalRoot()
+      )}
+    </div>
+  )
 
   if (!open || !imp) return null
 
@@ -8848,16 +8969,256 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         </button>
                       </div>
                     )}
-                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}${isSugerencia ? ' importaciones-modal__products-table--sugerencia' : ''}`} onKeyDown={handleProductsGridKeyDown}>
+                    {isSugerencia ? (
+                      // Misma tabla que el Paso 3 de "Sugerencia desde Excel"
+                      // (estructura, colores, anchos y salto de los contadores),
+                      // mas la fila "Agregar" y el comentario de la sugerencia.
+                      <div ref={sugerenciaWrapRef} onScroll={handleSugerenciaScroll} onKeyDown={handleProductsGridKeyDown} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160 }}>
+                        <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 1000 }}>
+                          <colgroup>
+                            <col style={{ width: 150 }} />
+                            <col style={{ width: 120 }} />
+                            <col style={{ width: 130 }} />
+                            <col />
+                            <col style={{ width: 80 }} />
+                            <col style={{ width: 90 }} />
+                            <col style={{ width: 100 }} />
+                            <col style={{ width: 140 }} />
+                            <col style={{ width: 88 }} />
+                          </colgroup>
+                          <thead>
+                            <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1, fontSize: 'var(--font-size-sm)' }}>
+                              <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Código</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Referencia</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>OEM</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>PVP JP</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>PVP Aprox.</th>
+                              <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Comentario</th>
+                              <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600 }}>Eliminar</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {canEdit && (
+                              <tr style={{ borderBottom: '2px solid var(--color-border, #e2e8f0)', background: 'var(--color-surface, #f8fafc)' }}>
+                                <td style={{ padding: '4px 8px' }}>
+                                  <span className="create-salida__product-picker create-salida__product-code-cell">{productPickerDropdown}</span>
+                                </td>
+                                <td style={{ padding: '7px 12px', color: 'var(--color-text-secondary)' }}>{detailDraft.producto ? String(detailDraft.producto.referencia || '').trim() || '—' : '—'}</td>
+                                <td style={{ padding: '7px 12px', color: 'var(--color-text-secondary)' }}>{detailDraft.producto ? getProductoOem(detailDraft.producto) || '—' : '—'}</td>
+                                <td style={{ padding: '7px 12px', color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detailDraft.producto ? String(detailDraft.producto.nombre || '').trim() : '—'}</td>
+                                <td style={{ padding: '4px 8px' }}>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    className="imp-excel-review__codigo-input imp-sugerencia__cant-input"
+                                    value={detailDraft.cantidad}
+                                    onChange={(e) => setDetailDraft((prev) => ({ ...prev, cantidad: e.target.value }))}
+                                    disabled={!detailDraft.producto}
+                                    aria-label="Cantidad del producto a agregar"
+                                  />
+                                </td>
+                                <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600 }}>{detailDraft.producto?.precio != null ? `$${Number(detailDraft.producto.precio).toFixed(2)}` : '—'}</td>
+                                <td style={{ padding: '7px 12px', textAlign: 'right', color: 'var(--color-text-secondary)' }}>—</td>
+                                <td style={{ padding: '4px 8px' }}>
+                                  <input
+                                    type="text"
+                                    className="imp-excel-review__codigo-input"
+                                    value={detailDraft.comentario}
+                                    onChange={(e) => setDetailDraft((prev) => ({ ...prev, comentario: e.target.value }))}
+                                    disabled={!detailDraft.producto}
+                                    placeholder="Opcional"
+                                    autoComplete="off"
+                                  />
+                                </td>
+                                <td style={{ padding: '4px', textAlign: 'center' }}>
+                                  <button
+                                    type="button"
+                                    className="create-user__ghost"
+                                    disabled={!canAddDetailDraft}
+                                    onClick={() => { if (!canAddDetailDraft) return; handleAddProduct(detailDraft.producto, detailDraft.cantidad, detailDraft.comentario); setDetailDraft({ producto: null, cantidad: '', comentario: '' }) }}
+                                  >
+                                    Agregar
+                                  </button>
+                                </td>
+                              </tr>
+                            )}
+                            {!details.length && (
+                              <tr>
+                                <td colSpan={9} style={{ padding: '12px', textAlign: 'center', color: 'var(--color-text-secondary)' }}>Sin productos agregados.</td>
+                              </tr>
+                            )}
+                            {sugerenciaFilas.slice(0, sugerenciaRenderCount).map((item, pos) => {
+                              const sinCatalogo = !item.producto?.id
+                              const otraCasa = sinCatalogo && item.coincidencia === 'otra_casa'
+                              const porOem = sinCatalogo && item.coincidencia === 'oem'
+                              const codigo = item.producto?.codigo || item.codigo || ''
+                              const nombre = item.producto?.nombre || item.nombre || ''
+                              const oem = String(getProductoOem(item.producto) || item.oem || '').trim()
+                              const referencia = String(item.producto?.referencia || item.referencia || '').trim()
+                              const pvpJp = item.producto?.precio ?? item.coincidencia_precio
+                              const precioEstimado = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
+                              const pvp = precioEstimado > 0 ? precioEstimado : null
+                              const pvpDifiere = pvp != null && pvpJp != null && Math.abs(pvp - Number(pvpJp)) >= 0.005
+                              const faltantes = faltantesDe(item)
+                              const editable = sinCatalogo && canEdit
+                              const setCampo = (field, value) => setDetails((prev) => prev.map((d) => (d._key === item._key ? { ...d, [field]: value } : d)))
+                              const textoCelda = (valor, label) => (
+                                <span
+                                  onMouseEnter={(e) => valor && showCellHover(e, valor, label)}
+                                  onMouseLeave={hideCellHover}
+                                  style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                >
+                                  {valor || '—'}
+                                </span>
+                              )
+                              return (
+                                <tr
+                                  key={item._key}
+                                  data-detail-key={item._key}
+                                  className={highlightedDetailKey === String(item._key) ? 'imp-excel-review__row--flash' : undefined}
+                                  style={{
+                                    borderBottom: '1px solid var(--color-border, #e2e8f0)',
+                                    background: otraCasa ? '#ffedd5' : porOem ? '#fef08a' : pos % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)',
+                                  }}
+                                >
+                                  <td style={{ padding: editable ? '4px 8px' : '7px 12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                      {editable ? (
+                                        <input
+                                          type="text"
+                                          className={`imp-excel-review__codigo-input${faltantes.includes('Código') ? ' imp-excel-review__codigo-input--invalid' : ''}`}
+                                          value={item.codigo || ''}
+                                          onChange={(e) => setCampo('codigo', e.target.value.toUpperCase())}
+                                          onMouseEnter={(e) => porOem && item._sugeridoDesde && showCellHover(e, `Sugerido a partir de ${item._sugeridoDesde}${item._sugeridoCasa ? ` (${item._sugeridoCasa})` : ''}. Puedes corregirlo.`, 'Código sugerido')}
+                                          onMouseLeave={hideCellHover}
+                                          placeholder="Sin catálogo"
+                                          aria-label="Código del producto nuevo"
+                                          style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
+                                        />
+                                      ) : (
+                                        <span onMouseEnter={(e) => codigo && showCellHover(e, codigo, 'Código')} onMouseLeave={hideCellHover}>{codigo || '—'}</span>
+                                      )}
+                                      {otraCasa && (
+                                        <Info
+                                          size={13}
+                                          style={{ flexShrink: 0, color: '#c2410c' }}
+                                          onMouseEnter={(e) => showCellHover(e, `Coincide por referencia o código con un producto de ${item._sugeridoCasa || 'otra casa comercial'}. Se creará un producto nuevo para ${selectedCasa?.nombre || 'esta casa'} al importar.`, 'Ya existe en otra casa')}
+                                          onMouseLeave={hideCellHover}
+                                        />
+                                      )}
+                                    </div>
+                                  </td>
+                                  {/* Referencia y OEM: como en el Paso 3; solo si falta (hace
+                                      falta para pedir la cotizacion) se puede escribir aqui. */}
+                                  {[
+                                    ['referencia', 'Referencia', referencia],
+                                    ['oem', 'OEM', oem],
+                                  ].map(([field, label, valor]) => (
+                                    <td key={field} style={{ padding: editable && faltantes.includes(label) ? '4px 8px' : '7px 12px' }}>
+                                      {editable && (faltantes.includes(label) || item[`_editando_${field}`]) ? (
+                                        <input
+                                          type="text"
+                                          className={`imp-excel-review__codigo-input${faltantes.includes(label) ? ' imp-excel-review__codigo-input--invalid' : ''}`}
+                                          value={item[field] || ''}
+                                          onChange={(e) => setDetails((prev) => prev.map((d) => (d._key === item._key ? { ...d, [field]: e.target.value, [`_editando_${field}`]: true } : d)))}
+                                          placeholder={`Falta ${label.toLowerCase()}`}
+                                          aria-label={`${label} del producto nuevo`}
+                                          autoComplete="off"
+                                          style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
+                                        />
+                                      ) : textoCelda(valor, label)}
+                                    </td>
+                                  ))}
+                                  <td style={{ padding: editable ? '4px 8px' : '7px 12px' }}>
+                                    {editable ? (
+                                      <input
+                                        type="text"
+                                        className={`imp-excel-review__codigo-input${faltantes.includes('Descripción') ? ' imp-excel-review__codigo-input--invalid' : ''}`}
+                                        value={item.nombre || ''}
+                                        onChange={(e) => setCampo('nombre', e.target.value)}
+                                        placeholder="Descripción"
+                                        aria-label="Descripción del producto nuevo"
+                                        autoComplete="off"
+                                        style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
+                                      />
+                                    ) : textoCelda(nombre, 'Descripción')}
+                                  </td>
+                                  <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                    <input
+                                      type="number"
+                                      className="imp-excel-review__codigo-input imp-sugerencia__cant-input"
+                                      value={item.cantidad}
+                                      onChange={(e) => handleQuantityChange(item._key, e.target.value)}
+                                      style={invalidQtyKeys.has(item._key) ? { borderColor: '#ef4444' } : undefined}
+                                      aria-label={`Cantidad de ${codigo || 'producto'}`}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                    {pvpJp != null ? (
+                                      <span
+                                        style={{ fontWeight: 600, color: otraCasa ? '#c2410c' : porOem ? '#a16207' : undefined }}
+                                        onMouseEnter={(e) => showCellHover(e, `${((otraCasa || porOem) ? item._sugeridoCasa : imp?.casa_comercial?.nombre) || 'Casa comercial'}: $${Number(pvpJp).toFixed(2)}`, 'PVP JP')}
+                                        onMouseLeave={hideCellHover}
+                                      >
+                                        ${Number(pvpJp).toFixed(2)}
+                                      </span>
+                                    ) : <span style={{ color: 'var(--color-text-secondary)' }}>—</span>}
+                                  </td>
+                                  <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                    {pvp != null ? (
+                                      <span
+                                        style={{ fontWeight: 600, color: pvpDifiere ? '#b45309' : undefined }}
+                                        onMouseEnter={(e) => showCellHover(e, `Precio subido desde el Excel: $${pvp.toFixed(2)}`, 'PVP Aprox.')}
+                                        onMouseLeave={hideCellHover}
+                                      >
+                                        ${pvp.toFixed(2)}
+                                      </span>
+                                    ) : <span style={{ color: 'var(--color-text-secondary)' }}>—</span>}
+                                  </td>
+                                  <td style={{ padding: '4px 8px' }}>
+                                    <input
+                                      type="text"
+                                      className="imp-excel-review__codigo-input"
+                                      value={item.comentario || ''}
+                                      onChange={(e) => handleComentarioChange(item._key, e.target.value)}
+                                      placeholder="Comentario"
+                                      autoComplete="off"
+                                      style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
+                                    />
+                                  </td>
+                                  <td style={{ padding: '4px', textAlign: 'center' }}>
+                                    <button
+                                      type="button"
+                                      className="imp-excel-review__quitar"
+                                      onClick={() => setDetails((prev) => prev.filter((d) => d._key !== item._key))}
+                                      aria-label={`Quitar ${codigo || 'producto'} de la sugerencia`}
+                                      title="Quitar de la sugerencia"
+                                    >
+                                      <X size={15} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                            {sugerenciaFilas.length > sugerenciaRenderCount && (
+                              <tr>
+                                <td colSpan={9} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
+                                  {`Mostrando ${sugerenciaRenderCount} de ${sugerenciaFilas.length} productos — baja para ver más`}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`} onKeyDown={handleProductsGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head imp-sticky-head" ref={productsHeadRef}>
-                        {/* Sugerencia: mismas columnas que la vista previa del Excel. */}
-                        {isSugerencia ? (
-                          <><span>Código</span><span>Referencia</span><span>OEM</span><span>Descripción</span><span>Cant.</span><span>PVP JP</span><span>PVP Aprox.</span><span>Comentario</span><span>Eliminar</span></>
-                        ) : (
-                          <><span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span></>
-                        )}
-                        {!isVerificarOrConfirmacion && !isSugerencia && <span>Cantidad</span>}
-                        {isSugerencia ? null : isVerificar ? (
+                        <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span>
+                        {!isVerificarOrConfirmacion && <span>Cantidad</span>}
+                        {isVerificar ? (
                           <>
                             <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, precio_estimado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_estimado })))} title="Doble click: llenar todas con precio original" style={{ cursor: 'pointer' }}>PVP Aprox.</span>
                             <span>Diferencia</span>
@@ -8900,88 +9261,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
                       {(!isVerificarOrConfirmacion || (isVerificar && canEdit)) && <div className="create-user__locations-row create-user__locations-row--form imp-sticky-form" style={{ top: productsHeadHeight }}>
                         <span className="create-salida__product-picker create-salida__product-code-cell">
-                          <div className="create-user__dropdown create-salida__product-dropdown" ref={productDropdownRef}>
-                            <button
-                              type="button"
-                              className="create-user__dropdown-trigger"
-                              onClick={() => {
-                                setShowProductDropdown((prev) => !prev)
-                                if (!showProductDropdown) { setProductQuery('') }
-                              }}
-                            >
-                              <span>{detailDraft.producto ? String(detailDraft.producto.codigo || '').trim() : 'Selecciona un código'}</span>
-                              <i className={`pi pi-chevron-${showProductDropdown ? 'up' : 'down'}`} />
-                            </button>
-                            {showProductDropdown && productPanelStyle && createPortal(
-                              <div data-product-portal-edit className="create-user__dropdown-panel" style={productPanelStyle}>
-                                <div className="create-user__dropdown-search">
-                                  <i className="pi pi-search" />
-                                  <input
-                                    type="text"
-                                    placeholder="Buscar código o nombre"
-                                    value={productQuery}
-                                    onChange={(e) => setProductQuery(e.target.value)}
-                                    autoFocus
-                                    autoComplete="off"
-                                  />
-                                </div>
-                                <div className="create-user__dropdown-results">
-                                  {productLoading && <small className="muted">Buscando productos...</small>}
-                                  {!productLoading && !productQuery.trim() && !productOptions.length && <small className="muted">Escribe para buscar.</small>}
-                                  {listedMatches.length > 0 && (
-                                    <div className="imp-listed-matches">
-                                      <small className="imp-listed-matches__title">Ya en la lista — toca para ir a la fila</small>
-                                      {listedMatches.map((item) => (
-                                        <button
-                                          key={`listed-${item._key}`}
-                                          type="button"
-                                          className="create-salida__result-row imp-listed-matches__row"
-                                          onMouseDown={(e) => e.preventDefault()}
-                                          onClick={() => jumpToDetailRow(item._key)}
-                                        >
-                                          <span className="result-codigo">{String(item.producto?.codigo || item.codigo || '').trim()}</span>
-                                          <span className="result-nombre">{String(item.producto?.nombre || item.nombre || '').trim()}</span>
-                                          <span className="result-stock">{`Cant. ${Number(item.cantidad || 0)}`}</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {!productLoading && productQuery.trim() && !productOptions.length && !listedMatches.length && <small className="muted">Sin resultados.</small>}
-                                  {productOptions.length > 0 && (
-                                    <div className="create-salida__results-header">
-                                      <span>Código</span><span>Descripción</span><span>Stock</span>
-                                    </div>
-                                  )}
-                                  {productOptions.map((product) => {
-                                    const isAlreadyAdded = details.some((d) => d.producto?.id && String(d.producto.id) === String(product.id))
-                                    const isSelected = String(detailDraft.producto?.id) === String(product.id)
-                                    return (
-                                      <button
-                                        key={product.id}
-                                        type="button"
-                                        className={`create-salida__result-row${isSelected ? ' is-selected' : ''}${isAlreadyAdded ? ' is-added' : ''}`}
-                                        onMouseDown={(e) => e.preventDefault()}
-                                        onClick={() => {
-                                          if (isAlreadyAdded) {
-                                            const existing = details.find((d) => d.producto?.id && String(d.producto.id) === String(product.id))
-                                            jumpToDetailRow(existing?._key)
-                                            return
-                                          }
-                                          setDetailDraft({ producto: product, cantidad: '' }); setProductQuery(''); setShowProductDropdown(false); setProductOptions([])
-                                        }}
-                                        title={isAlreadyAdded ? 'Ya está en la lista: ir a la fila' : undefined}
-                                      >
-                                        <span className="result-codigo">{String(product.codigo || '').trim()}</span>
-                                        <span className="result-nombre">{String(product.nombre || '').trim()}</span>
-                                        <span className="result-stock">{Number(product.total_stock ?? 0)}</span>
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              </div>,
-                              getPortalRoot()
-                            )}
-                          </div>
+                          {productPickerDropdown}
                         </span>
                         {(() => {
                           const draftNombre = (
@@ -9019,10 +9299,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                               />
                             </span>
                           )
-                          // Sugerencia: Referencia, OEM, Descripción, Cant., PVP JP, PVP.
-                          return isSugerencia ? (
-                            <>{draftReferencia}{draftOem}{draftNombre}{draftCantidad}{draftPrecio}<span className="create-salida__table-static-value">-</span></>
-                          ) : (
+                          return (
                             <>
                               {draftNombre}{draftOem}{draftReferencia}{draftPrecio}
                               {isVerificar && <><span className="create-salida__table-static-value">-</span><span className="create-salida__table-static-value">-</span></>}
@@ -9066,142 +9343,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const precioEstimadoValue = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
                         const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
-                        if (isSugerencia) {
-                          // Igual que la vista previa del Excel: naranja = ya existe en
-                          // otra casa, amarillo = código sugerido por OEM.
-                          const otraCasa = sinCatalogo && item.coincidencia === 'otra_casa'
-                          const porOem = sinCatalogo && item.coincidencia === 'oem'
-                          const pvpJp = item.producto?.precio ?? item.coincidencia_precio
-                          const pvp = precioEstimadoValue > 0 ? precioEstimadoValue : null
-                          const pvpDifiere = pvp != null && pvpJp != null && Math.abs(pvp - Number(pvpJp)) >= 0.005
-                          const faltantes = faltantesDe(item)
-                          return (
-                            <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${otraCasa ? ' imp-sugerencia__row--otra-casa' : porOem ? ' imp-sugerencia__row--oem' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`}>
-                              <span
-                                className="imp-table-cell-tip"
-                                onMouseEnter={(e) => codigo && showCellHover(e, sinCatalogo ? `${codigo} (nuevo: se crea al importar)` : codigo, 'Código')}
-                                onMouseLeave={hideCellHover}
-                              >
-                                {sinCatalogo && canEdit ? (
-                                  <span className="imp-codigo-editable">
-                                    <span className="imp-codigo-editable__fila">
-                                      <input
-                                        type="text"
-                                        className={`imp-excel-review__codigo-input${faltantes.includes('Código') ? ' imp-excel-review__codigo-input--invalid' : ''}`}
-                                        value={item.codigo || ''}
-                                        onChange={(e) => {
-                                          const value = e.target.value.toUpperCase()
-                                          setDetails((prev) => prev.map((d) => (d._key === item._key ? { ...d, codigo: value } : d)))
-                                        }}
-                                        placeholder="Sin catálogo"
-                                        aria-label="Código del producto nuevo"
-                                      />
-                                      {otraCasa && (
-                                        <Info
-                                          size={14}
-                                          style={{ flexShrink: 0, color: '#c2410c' }}
-                                          onMouseEnter={(e) => { e.stopPropagation(); showCellHover(e, `Coincide por referencia o código con un producto de ${item._sugeridoCasa || 'otra casa comercial'}. Se creará un producto nuevo para ${selectedCasa?.nombre || 'esta casa'} al importar.`, 'Ya existe en otra casa') }}
-                                          onMouseLeave={hideCellHover}
-                                        />
-                                      )}
-                                    </span>
-                                    {porOem && item._sugeridoDesde && (
-                                      <span className="imp-codigo-editable__origen">
-                                        Sugerido de {item._sugeridoDesde}{item._sugeridoCasa ? ` (${item._sugeridoCasa})` : ''}
-                                      </span>
-                                    )}
-                                  </span>
-                                ) : sinCatalogo && !codigo
-                                  ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
-                                  : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
-                              </span>
-                              {/* Sin catalogo: referencia, OEM y descripcion se
-                                  completan aqui (hacen falta para pedir la cotizacion). */}
-                              {sinCatalogo && canEdit ? (
-                                <>
-                                  {[
-                                    { field: 'referencia', label: 'Referencia', falta: faltantes.includes('Referencia') },
-                                    { field: 'oem', label: 'OEM', falta: faltantes.includes('OEM') },
-                                    { field: 'nombre', label: 'Descripción', falta: faltantes.includes('Descripción') },
-                                  ].map(({ field, label, falta }) => (
-                                    <span key={field}>
-                                      <input
-                                        type="text"
-                                        className={`imp-excel-review__codigo-input${falta ? ' imp-excel-review__codigo-input--invalid' : ''}`}
-                                        value={item[field] || ''}
-                                        onChange={(e) => {
-                                          const value = e.target.value
-                                          setDetails((prev) => prev.map((d) => (d._key === item._key ? { ...d, [field]: value } : d)))
-                                        }}
-                                        placeholder={falta ? `Falta ${label.toLowerCase()}` : label}
-                                        aria-label={`${label} del producto nuevo`}
-                                        autoComplete="off"
-                                      />
-                                    </span>
-                                  ))}
-                                </>
-                              ) : (
-                                <>
-                                  <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')} onMouseLeave={hideCellHover}>
-                                    <span className="imp-table-cell-text">{referencia}</span>
-                                  </span>
-                                  <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, oemList, 'OEM')} onMouseLeave={hideCellHover}>
-                                    <span className="imp-table-cell-text">{oem}</span>
-                                  </span>
-                                  <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, nombre, 'Descripción')} onMouseLeave={hideCellHover}>
-                                    <span className="imp-table-cell-text">{nombre}</span>
-                                  </span>
-                                </>
-                              )}
-                              <span>
-                                <input
-                                  type="number"
-                                  value={item.cantidad}
-                                  onChange={(e) => handleQuantityChange(item._key, e.target.value)}
-                                  style={invalidQtyKeys.has(item._key) ? { borderColor: '#ef4444' } : undefined}
-                                />
-                              </span>
-                              {/* Hover: de que casa es el PVP JP, y que el PVP Aprox.
-                                  es el que se subio en el Excel. */}
-                              <span
-                                className="imp-sugerencia__precio"
-                                style={{ color: otraCasa ? '#c2410c' : porOem ? '#a16207' : undefined }}
-                                onMouseEnter={(e) => pvpJp != null && showCellHover(e, `${((otraCasa || porOem) ? item.coincidencia_casa : imp?.casa_comercial?.nombre) || 'Casa comercial'}: $${Number(pvpJp).toFixed(2)}`, 'PVP JP')}
-                                onMouseLeave={hideCellHover}
-                              >
-                                {pvpJp != null ? `$${Number(pvpJp).toFixed(2)}` : '—'}
-                              </span>
-                              <span
-                                className="imp-sugerencia__precio"
-                                style={{ color: pvpDifiere ? '#b45309' : pvp == null ? 'var(--color-text-secondary)' : undefined }}
-                                onMouseEnter={(e) => pvp != null && showCellHover(e, `Precio subido desde el Excel: $${pvp.toFixed(2)}`, 'PVP Aprox.')}
-                                onMouseLeave={hideCellHover}
-                              >
-                                {pvp != null ? `$${pvp.toFixed(2)}` : '—'}
-                              </span>
-                              <span>
-                                <input
-                                  type="text"
-                                  value={item.comentario || ''}
-                                  onChange={(e) => handleComentarioChange(item._key, e.target.value)}
-                                  placeholder="Comentario"
-                                  autoComplete="off"
-                                />
-                              </span>
-                              <span className="create-user__locations-cell create-user__locations-cell--action">
-                                <button
-                                  type="button"
-                                  className="imp-excel-review__quitar"
-                                  onClick={() => setDetails((prev) => prev.filter((d) => d._key !== item._key))}
-                                  aria-label={`Quitar ${codigo || 'producto'} de la sugerencia`}
-                                  title="Quitar de la sugerencia"
-                                >
-                                  <X size={15} />
-                                </button>
-                              </span>
-                            </div>
-                          )
-                        }
                         return (
                           <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? ' imp-verificar__row--agregado' : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
                             <span
@@ -9417,6 +9558,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         )
                       })}
                     </div>
+                    )}
                   </section>
                 )}
               </div>

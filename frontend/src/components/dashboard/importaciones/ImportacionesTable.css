@@ -296,7 +296,7 @@
   max-height: 300px;
 }
 
-.importaciones-modal__products-table:not(.importaciones-modal__products-table--verificar):not(.importaciones-modal__products-table--confirmacion):not(.importaciones-modal__products-table--sugerencia) .create-user__locations-row:not(.imp-details__productos-row):not(.imp-historial__row):not(.imp-receive__productos-row):not(.imp-distribucion__productos-row) {
+.importaciones-modal__products-table:not(.importaciones-modal__products-table--verificar):not(.importaciones-modal__products-table--confirmacion) .create-user__locations-row:not(.imp-details__productos-row):not(.imp-historial__row):not(.imp-receive__productos-row):not(.imp-distribucion__productos-row) {
   grid-template-columns:
     minmax(100px, 1.18fr)
     minmax(110px, 1.32fr)
@@ -309,78 +309,11 @@
   min-width: 0;
 }
 
-/* Sugerencia: mismas columnas que la vista previa del Excel (Código,
-   Referencia, OEM, Descripción, Cant., PVP JP, PVP) + Comentario y la X. */
-.importaciones-modal__products-table--sugerencia .create-user__locations-row:not(.create-user__locations-row--empty) {
-  grid-template-columns:
-    minmax(120px, 1.2fr)
-    minmax(90px, 1fr)
-    minmax(90px, 1fr)
-    minmax(140px, 2fr)
-    70px
-    84px
-    84px
-    minmax(100px, 1fr)
-    88px;
-  /* 88px: ahi va la X de cada producto y el boton "Agregar" de la fila de
-     arriba, que con 44px quedaba cortado. */
-  min-width: 866px;
-}
-
-.importaciones-modal__products-table--sugerencia {
-  overflow-x: auto;
-}
-
-.importaciones-modal__products-table--sugerencia .create-user__locations-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty) > span:nth-child(5) {
-  justify-content: center;
-  padding-left: 4px;
-  padding-right: 4px;
-}
-
-/* :not(#_) solo sube la especificidad: la regla general de
-   .create-salida__products-table (una cadena larga de :not) centra todo. */
-.importaciones-modal__products-table--sugerencia:not(#_) .create-user__locations-row--head > span:nth-child(-n+4) {
-  justify-content: flex-start;
-  text-align: left;
-  padding-left: 8px;
-}
-
-.importaciones-modal__products-table--sugerencia:not(#_) .create-user__locations-row--head > span:nth-child(n+6):nth-child(-n+7),
-.importaciones-modal__products-table--sugerencia:not(#_) .create-user__locations-row > span.imp-sugerencia__precio {
-  justify-content: flex-end;
-  text-align: right;
-  padding-right: 12px;
-}
-
-.imp-sugerencia__precio {
+/* Cantidad editable en la tabla de la sugerencia: centrada y en negrita,
+   como el numero del Paso 3. */
+.imp-excel-review__codigo-input.imp-sugerencia__cant-input {
+  text-align: center;
   font-weight: 600;
-  white-space: nowrap;
-  padding-right: 12px;
-}
-
-/* Mismos colores que la vista previa: naranja = ya existe en otra casa,
-   amarillo = código sugerido por OEM. */
-.importaciones-modal__products-table .create-user__locations-row.imp-sugerencia__row--otra-casa {
-  background: #ffedd5;
-}
-
-.importaciones-modal__products-table .create-user__locations-row.imp-sugerencia__row--oem {
-  background: #fef08a;
-}
-
-.dashboard-shell.dark .importaciones-modal__products-table .create-user__locations-row.imp-sugerencia__row--otra-casa {
-  background: color-mix(in srgb, #f97316 22%, transparent);
-}
-
-.dashboard-shell.dark .importaciones-modal__products-table .create-user__locations-row.imp-sugerencia__row--oem {
-  background: color-mix(in srgb, #eab308 22%, transparent);
-}
-
-.imp-codigo-editable__fila {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
 }
 
 /* "Quitar todos" junto al contador de no encontrados (vista previa). */
@@ -1453,22 +1386,6 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
 }
 
-/* Al enfocar un precio o descripción inválidos, se mantiene el rojo (más
-   intenso) en vez de cambiar a azul — igual que .create-user__field--invalid
-   input:focus. */
-.imp-excel-review__precio-box--invalid:focus-within,
-/* Vista previa del Excel: dato que falta (se completa en la sugerencia). */
-.imp-falta-dato {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #fee2e2;
-  color: #b91c1c;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 /* Sugerencia guardada con productos incompletos: no se puede pedir la
    cotizacion hasta completarlos. */
 .imp-incompletos-aviso {
@@ -1514,11 +1431,6 @@
 .dashboard-shell.dark .imp-incompletos-aviso__ir {
   background: transparent;
   color: #fde68a;
-}
-
-.dashboard-shell.dark .imp-falta-dato {
-  background: color-mix(in srgb, #ef4444 22%, transparent);
-  color: #fecaca;
 }
 
 .imp-excel-review__codigo-input--invalid:focus {
