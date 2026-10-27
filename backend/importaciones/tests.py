@@ -191,9 +191,10 @@ class SugerenciaProductosNuevosTests(TestCase):
         self.assertFalse(Producto.objects.filter(codigo="NUEVO-CI").exists())
 
     def test_sugerencia_incompleta_se_crea_pero_no_pasa_a_cotizacion(self):
-        """Un producto sin catalogo al que le falta codigo, referencia, OEM o
+        """Un producto sin catalogo al que le falta codigo, referencia o
         descripcion no impide crear la sugerencia, solo pedir la cotizacion;
-        completado, ya se puede (con cantidad 0)."""
+        completado, ya se puede (con cantidad 0). El OEM no es obligatorio:
+        hay casas cuyos productos no tienen OEM."""
         response = self.client.post(
             f"{BASE_URL}/",
             {
@@ -211,12 +212,14 @@ class SugerenciaProductosNuevosTests(TestCase):
 
         response = self.client.post(f"{BASE_URL}/{importacion.id}/pedir-cotizacion/")
         self.assertEqual(response.status_code, 400)
-        for falta in ("1 sin código", "1 sin referencia", "1 sin OEM", "1 sin descripción"):
+        for falta in ("1 sin código", "1 sin referencia", "1 sin descripción"):
             self.assertIn(falta, response.data["detail"])
+        self.assertNotIn("OEM", response.data["detail"])
         importacion.refresh_from_db()
         self.assertEqual(importacion.estado, Importacion.ESTADO_BORRADOR)
 
-        importacion.detalles.filter(codigo="INC-1").update(referencia="REF-INC-1", oem="OEM-INC-1")
+        # Sin OEM, pero con referencia: ya puede pasar a cotizacion.
+        importacion.detalles.filter(codigo="INC-1").update(referencia="REF-INC-1")
         importacion.detalles.filter(referencia="REF-INC-2").update(codigo="INC-2", nombre="Ya completo")
         response = self.client.post(f"{BASE_URL}/{importacion.id}/pedir-cotizacion/")
         self.assertEqual(response.status_code, 200, response.data)

@@ -506,6 +506,34 @@ const computeSmartPopoverPosition = (trigger, cardEl) => {
 const findMatrizSucursal = (list) =>
   (list || []).find((s) => String(s?.nombre || '').toLowerCase().includes('matriz')) || null
 
+// Salto de los contadores (vinculados, solo por OEM, nuevos, eliminados...),
+// igual que el Paso 3 de "Sugerencia desde Excel": la fila queda arriba del
+// contenedor que de verdad se desplaza (la tabla o, si la tabla no tiene alto
+// propio, el modal), debajo de lo que queda fijo (encabezado y fila
+// "Agregar"), y parpadea.
+const scrollRowToTopAndFlash = (rowEl) => {
+  if (!rowEl) return
+  let container = rowEl.parentElement
+  while (container && container !== document.body) {
+    const { overflowY } = window.getComputedStyle(container)
+    if (/(auto|scroll)/.test(overflowY) && container.scrollHeight > container.clientHeight + 1) break
+    container = container.parentElement
+  }
+  if (container && container !== document.body) {
+    const fijos = ['thead', '.imp-sticky-head', '.imp-sticky-form']
+      .map((selector) => container.querySelector(selector))
+      .filter((el) => el && window.getComputedStyle(el).position === 'sticky')
+      .reduce((sum, el) => sum + el.offsetHeight, 0)
+    const top = rowEl.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - fijos
+    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  } else {
+    rowEl.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
+  rowEl.classList.remove('imp-excel-review__row--flash')
+  void rowEl.offsetWidth
+  rowEl.classList.add('imp-excel-review__row--flash')
+}
+
 // Tambien las filas <tr> de la tabla de la sugerencia (misma que el Paso 3).
 const GRID_ROW_SELECTOR = '.create-user__locations-row, .imp-excel-review-table tbody tr'
 const GRID_FOCUSABLE_SELECTOR = 'input, button:not(:disabled)'
@@ -8469,8 +8497,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     setProductOptions([])
     setHighlightedDetailKey(String(detailKey))
     window.requestAnimationFrame(() => {
-      const row = document.querySelector(`[data-detail-key="${CSS.escape(String(detailKey))}"]`)
-      row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      scrollRowToTopAndFlash(document.querySelector(`[data-detail-key="${CSS.escape(String(detailKey))}"]`))
     })
     window.setTimeout(() => setHighlightedDetailKey((current) => (current === String(detailKey) ? '' : current)), 2600)
   }, [])
@@ -8500,13 +8527,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // Datos que le faltan a un producto sin catalogo para pedir la cotizacion
   // (la sugerencia se puede crear y guardar sin ellos). Misma regla que el
   // backend en pedir_cotizacion.
-  // La cantidad puede quedar en 0.
+  // La cantidad puede quedar en 0, y el OEM tambien puede faltar (hay casas
+  // cuyos productos no tienen OEM, p. ej. Loma Hermosa Plast).
   const faltantesDe = (item) => {
     if (item.producto?.id) return []
     return [
       ['codigo', 'Código'],
       ['referencia', 'Referencia'],
-      ['oem', 'OEM'],
       ['nombre', 'Descripción'],
     ].filter(([field]) => !String(item[field] || '').trim()).map(([, label]) => label)
   }
@@ -8533,14 +8560,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   }
   useLayoutEffect(() => {
     if (!sugerenciaJump) return
-    const wrap = sugerenciaWrapRef.current
-    const rowEl = wrap?.querySelector(`[data-detail-key="${CSS.escape(String(sugerenciaJump.key))}"]`)
-    if (!wrap || !rowEl) return
-    const headHeight = wrap.querySelector('thead')?.offsetHeight || 0
-    wrap.scrollTo({ top: Math.max(0, rowEl.offsetTop - headHeight), behavior: 'smooth' })
-    rowEl.classList.remove('imp-excel-review__row--flash')
-    void rowEl.offsetWidth
-    rowEl.classList.add('imp-excel-review__row--flash')
+    const rowEl = sugerenciaWrapRef.current?.querySelector(`[data-detail-key="${CSS.escape(String(sugerenciaJump.key))}"]`)
+    if (!rowEl) return
+    scrollRowToTopAndFlash(rowEl)
     setSugerenciaJump(null)
   }, [sugerenciaJump, sugerenciaRenderCount])
   // Con miles de productos se dibujan por partes, al bajar (como el Paso 3).
@@ -8958,7 +8980,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                           <strong>
                             {incompletos.length} producto{incompletos.length !== 1 ? 's' : ''} con datos incompletos.
                           </strong>{' '}
-                          Completa el código, la referencia, el OEM y la descripción (marcados en rojo) para poder pedir la cotización. La cantidad puede quedar en 0.
+                          Completa el código, la referencia y la descripción (marcados en rojo) para poder pedir la cotización. El OEM y la cantidad pueden quedar vacíos.
                         </span>
                         <button
                           type="button"
@@ -8973,7 +8995,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                       // Misma tabla que el Paso 3 de "Sugerencia desde Excel"
                       // (estructura, colores, anchos y salto de los contadores),
                       // mas la fila "Agregar" y el comentario de la sugerencia.
-                      <div ref={sugerenciaWrapRef} onScroll={handleSugerenciaScroll} onKeyDown={handleProductsGridKeyDown} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160 }}>
+                      // Alto propio (como el Paso 3): la tabla se desplaza por
+                      // dentro con el encabezado fijo, y los contadores pueden
+                      // llevar cada fila arriba.
+                      <div ref={sugerenciaWrapRef} onScroll={handleSugerenciaScroll} onKeyDown={handleProductsGridKeyDown} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: 'max(320px, calc(100dvh - 380px))' }}>
                         <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 1000 }}>
                           <colgroup>
                             <col style={{ width: 150 }} />

@@ -1460,7 +1460,8 @@
   outline-offset: 2px;
 }
 
-.imp-excel-review__row--flash td {
+.imp-excel-review__row--flash td,
+.create-user__locations-row.imp-excel-review__row--flash > span {
   animation: imp-review-row-flash 1.4s ease-out;
 }
 
@@ -1475,7 +1476,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .imp-excel-review__row--flash td {
+  .imp-excel-review__row--flash td,
+  .create-user__locations-row.imp-excel-review__row--flash > span {
     animation-duration: 0.01s;
   }
 }
