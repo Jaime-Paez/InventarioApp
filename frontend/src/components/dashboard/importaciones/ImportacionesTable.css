@@ -311,36 +311,36 @@
 
 .importaciones-modal__products-table--verificar .create-user__locations-row:not(.imp-details__productos-row) {
   grid-template-columns:
-    minmax(100px, 0.8fr)
-    minmax(150px, 1.3fr)
-    minmax(80px, 0.7fr)
     minmax(90px, 0.8fr)
+    minmax(120px, 1.3fr)
+    minmax(60px, 0.6fr)
+    minmax(70px, 0.7fr)
+    minmax(62px, 0.5fr)
+    minmax(92px, 0.7fr)
+    minmax(62px, 0.5fr)
+    minmax(54px, 0.45fr)
     minmax(70px, 0.55fr)
-    100px
-    minmax(70px, 0.55fr)
-    minmax(70px, 0.55fr)
-    90px
-    minmax(150px, 1.2fr)
-    84px;
-  /* Suma de los anchos minimos: en pantallas chicas la tabla no aplasta
-     las columnas, se hace scroll horizontal. */
-  min-width: 1054px;
+    minmax(110px, 1.2fr)
+    76px;
+  /* Suma de los anchos minimos: cabe en el modal en su tamaño normal; solo
+     si se achica más que eso aparece el scroll horizontal. */
+  min-width: 866px;
 }
 
 .importaciones-modal__products-table--confirmacion .create-user__locations-row:not(.imp-details__productos-row) {
   grid-template-columns:
-    minmax(100px, 0.8fr)
-    minmax(150px, 1.3fr)
-    minmax(80px, 0.7fr)
     minmax(90px, 0.8fr)
+    minmax(120px, 1.3fr)
+    minmax(60px, 0.6fr)
+    minmax(70px, 0.7fr)
+    minmax(62px, 0.5fr)
+    minmax(92px, 0.7fr)
+    minmax(62px, 0.5fr)
+    minmax(54px, 0.45fr)
     minmax(70px, 0.55fr)
-    100px
-    minmax(70px, 0.55fr)
-    minmax(70px, 0.55fr)
-    90px
-    minmax(150px, 1.2fr)
+    minmax(110px, 1.2fr)
     64px;
-  min-width: 1034px;
+  min-width: 854px;
 }
 
 /* Producto quitado durante la verificacion: sigue en la lista (se puede
@@ -865,6 +865,15 @@
 .importaciones-modal__products-table--verificar .create-user__locations-row--head > span {
   min-width: 0;
   overflow: hidden;
+}
+
+/* Encabezados largos ("Cant. aprox.") bajan de línea en vez de cortarse. */
+.importaciones-modal__products-table--verificar .create-user__locations-row--head > span,
+.importaciones-modal__products-table--confirmacion .create-user__locations-row--head > span {
+  white-space: normal;
+  text-overflow: clip;
+  line-height: 1.15;
+  min-width: 0;
 }
 
 .importaciones-modal__products-table .create-user__locations-cell--action,

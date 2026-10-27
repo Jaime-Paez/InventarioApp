@@ -7031,6 +7031,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const [productPanelStyle, setProductPanelStyle] = useState(null)
 
   const selectedCasa = imp?.casa_comercial || null
+  const isSugerencia = imp?.estado === 'borrador'
   const isVerificar = imp?.estado === 'cotizacion'
   const isConfirmacion = imp?.estado === 'confirmacion'
   const isVerificarOrConfirmacion = isVerificar || isConfirmacion
@@ -7054,7 +7055,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     if (!open) { isFirstOpenRef.current = true; return }
     const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
     const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
-    const targetWidth = imp?.estado === 'confirmacion' ? 980 : imp?.estado === 'cotizacion' ? 900 : MIN_WIDTH
+    // Verificacion y confirmacion abren con espacio para todas las columnas.
+    const targetWidth = imp?.estado === 'confirmacion' || imp?.estado === 'cotizacion' ? 1240 : MIN_WIDTH
     const nextWidth = Math.min(targetWidth, availableWidth)
     const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
     const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
@@ -7540,7 +7542,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const XLSXStyle = (await import('xlsx-js-style')).default
       const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
       const border = { top: bt, bottom: bt, left: bt, right: bt }
-      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'Precio', 'Cantidad']
+      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'Precio', 'Cantidad', '_key']
       const hdrS = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: '1e3a5f' }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { ...border, bottom: { style: 'medium', color: { rgb: '2563EB' } } } }
       const sortedDetails = [...details].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
       // Precio: el PVP puesto en la sugerencia (a mano o con doble click,
@@ -7557,9 +7559,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         item.producto?.referencia || item.referencia || '',
         precioSugerencia(item),
         +Number(item.cantidad || 0),
+        item._key,
       ])
       const worksheet = XLSXStyle.utils.aoa_to_sheet([headers, ...rows])
-      headers.forEach((_, ci) => { worksheet[XLSXStyle.utils.encode_cell({ r: 0, c: ci })].s = hdrS })
+      headers.forEach((_, ci) => { worksheet[XLSXStyle.utils.encode_cell({ r: 0, c: ci })].s = ci < 6 ? hdrS : { font: { sz: 8, color: { rgb: 'AAAAAA' } } } })
       rows.forEach((row, ri) => {
         const bg = (ri + 1) % 2 === 0 ? 'EFF6FF' : 'FFFFFF'
         row.forEach((_, ci) => {
@@ -7567,7 +7570,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           if (cell) cell.s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(ci === 4 ? { numFmt: '0.00' } : {}) }
         })
       })
-      worksheet['!cols'] = [{ wch: 14 }, { wch: 32 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 10 }]
+      worksheet['!cols'] = [{ wch: 14 }, { wch: 32 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 0, hidden: true }]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
       XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Sugerencia')
@@ -7755,8 +7758,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const oemIdx = fileHeaders.indexOf('OEM')
       const refIdx = fileHeaders.indexOf('Referencia')
       const cantSugIdx = fileHeaders.indexOf('Cantidad')
-      const precioIdx = fileHeaders.indexOf(isVerificar ? 'Precio est.' : 'Precio conf.')
-      const cantIdx = fileHeaders.indexOf(isVerificar ? 'Cant. aprox.' : 'Cant. conf.')
+      // Sugerencia: se editan "Precio" (PVP aprox.) y "Cantidad".
+      const precioIdx = fileHeaders.indexOf(isSugerencia ? 'Precio' : isVerificar ? 'Precio est.' : 'Precio conf.')
+      const cantIdx = fileHeaders.indexOf(isSugerencia ? 'Cantidad' : isVerificar ? 'Cant. aprox.' : 'Cant. conf.')
       const comentIdx = fileHeaders.indexOf('Comentario')
       if (codigoIdx === -1 || precioIdx === -1 || cantIdx === -1) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no corresponde a esta importación. Descarga el Excel desde este modal.', life: 4500 })
@@ -7800,7 +7804,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         const cantSug = parseInt(cellText(row, cantSugIdx), 10)
         const cantEdit = parseInt(cellText(row, cantIdx), 10)
         const cantidad = cantSug > 0 ? cantSug : cantEdit > 0 ? cantEdit : 0
-        if (cantidad <= 0) { sinCantidad.push(fileCode || nombre || referencia || oem); return }
+        // En la sugerencia la cantidad todavía no es obligatoria.
+        if (cantidad <= 0 && !isSugerencia) { sinCantidad.push(fileCode || nombre || referencia || oem); return }
         nuevos.push({
           codigo: fileCodeLc ? fileCode : '', row,
           item: {
@@ -7816,16 +7821,20 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         return
       }
 
-      const precioField = isVerificar ? 'precio_estimado' : 'precio_confirmado'
-      const cantField = isVerificar ? 'cantidad_aproximada' : 'cantidad_confirmada'
+      const precioField = isSugerencia || isVerificar ? 'precio_estimado' : 'precio_confirmado'
+      const cantField = isSugerencia ? 'cantidad' : isVerificar ? 'cantidad_aproximada' : 'cantidad_confirmada'
       // Lo que trae el Excel es lo que queda: una celda vacía (o que no es un
       // número) deja el campo vacío.
       const applyRow = (item, row) => {
         const precioNum = parseFloat(cellText(row, precioIdx).replace(',', '.'))
         const cantNum = parseInt(cellText(row, cantIdx), 10)
+        // La sugerencia descarga el PVP del catálogo cuando no hay PVP aprox.;
+        // si vuelve igual, no se toma como PVP aprox.
+        const esPrecioCatalogo = isSugerencia && !item.precio_estimado && item.producto?.precio != null
+          && Math.round(Number(item.producto.precio) * 100) === Math.round(precioNum * 100)
         return {
           ...item,
-          [precioField]: isNaN(precioNum) ? '' : String(Math.round(precioNum * 100)),
+          [precioField]: isNaN(precioNum) || esPrecioCatalogo ? '' : String(Math.round(precioNum * 100)),
           [cantField]: isNaN(cantNum) ? '' : String(cantNum),
           comentario: comentIdx !== -1 ? cellText(row, comentIdx) : item.comentario,
         }
@@ -7858,16 +7867,18 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const next = [
         ...delExcel.filter((item) => item.producto?.id),
         ...delExcel.filter((item) => !item.producto?.id),
-        ...ausentes.map(quitar),
+        // En la sugerencia lo que no viene en el Excel se saca del listado.
+        ...(isSugerencia ? [] : ausentes.map(quitar)),
       ]
       setDetails(next.map((item, i) => ({ ...item, orden: i + 1 })))
 
       const notes = []
       if (nuevos.length > 0) notes.push(`${nuevos.length} producto(s) nuevo(s) agregado(s)`)
+      if (isSugerencia && ausentes.length > 0) notes.push(`${ausentes.length} producto(s) que no venían en el Excel se sacaron del listado`)
       if (nuevosQuitados > 0) notes.push(`${nuevosQuitados} producto(s) que no venían en el Excel quedaron quitados (en rojo)`)
       if (repetidos.length > 0) notes.push(`se ignoraron filas repetidas: ${[...new Set(repetidos)].join(', ')}`)
       toastRef.current?.show({
-        severity: repetidos.length > 0 || nuevosQuitados > 0 ? 'warn' : 'success',
+        severity: repetidos.length > 0 || nuevosQuitados > 0 || (isSugerencia && ausentes.length > 0) ? 'warn' : 'success',
         summary: 'Datos cargados',
         detail: `Tabla actualizada desde Excel${notes.length ? ` (${notes.join('; ')})` : ''}. Recuerda guardar.`,
         life: 5000,
@@ -8786,17 +8797,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                 )}
               </div>
               <div className="user-details__footer-right">
-                {imp?.estado === 'borrador' && (
-                  <button
-                    type="button"
-                    className="users-circle users-circle--excel"
-                    title="Descargar Excel"
-                    onClick={handleDownloadSugerenciaExcel}
-                  >
-                    <i className="pi pi-file-excel" />
-                  </button>
-                )}
-                {isVerificarOrConfirmacion && (
+                {(isSugerencia || isVerificarOrConfirmacion) && (
                   <div className="imp-verificar-excel-dropdown" ref={verificarExcelDropdownRef}>
                     <button
                       type="button"
@@ -8808,10 +8809,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                     </button>
                     {showVerificarExcelDropdown && (
                       <div className="imp-verificar-excel-menu">
-                        <button type="button" onClick={() => { handleDownloadVerificarExcel(); setShowVerificarExcelDropdown(false) }}>
+                        <button type="button" onClick={() => { (isSugerencia ? handleDownloadSugerenciaExcel : handleDownloadVerificarExcel)(); setShowVerificarExcelDropdown(false) }}>
                           <i className="pi pi-download" /> Descargar Excel
                         </button>
-                        {!isImportRealizada && (
+                        {!isImportRealizada && (!isSugerencia || canEdit) && (
                           <button type="button" onClick={() => { verificarFileInputRef.current?.click(); setShowVerificarExcelDropdown(false) }}>
                             <i className="pi pi-upload" /> Subir Excel
                           </button>
