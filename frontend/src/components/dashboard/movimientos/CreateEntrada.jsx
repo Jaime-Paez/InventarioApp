@@ -8,6 +8,7 @@ import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate } from '../../../utils/dateFormat'
 import { isBulkProductPasteText, parseBulkProductPasteText, formatInvalidBulkPasteLines } from '../../../utils/bulkProductPaste'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
+import CreateProducto from '../productos/CreateProducto/CreateProducto'
 import { useCloseDropdownsOnTabSwitch } from '../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
@@ -448,6 +449,15 @@ function CreateEntrada({
     [details, productSearch]
   )
   const [detailDraft, setDetailDraft] = useState(initialDetail)
+  // Compra local: crear un producto nuevo sin salir de la entrada (el mismo
+  // modal de Inventario, encima de este).
+  const [showCreateProducto, setShowCreateProducto] = useState(false)
+  const canSeeProductCost = Boolean(
+    currentUser?.is_superuser ||
+      currentUser?.is_staff ||
+      currentUser?.es_administrador ||
+      String(currentUser?.rol || '').trim().toLowerCase() === 'administrador'
+  )
   const [detailError, setDetailError] = useState('')
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   const [showProductDropdown, setShowProductDropdown] = useState(false)
@@ -4283,6 +4293,16 @@ function CreateEntrada({
                       <p className="create-user__eyebrow">Detalle</p>
                       <h4>Listado de productos</h4>
                     </div>
+                    {isCompraEntrada && (
+                      <button
+                        type="button"
+                        className="create-user__ghost"
+                        onClick={() => setShowCreateProducto(true)}
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        + Crear producto
+                      </button>
+                    )}
                   </div>
 
                   {noProviderBranchBlocker ? (
@@ -5710,6 +5730,25 @@ function CreateEntrada({
         )}
       </div>
       {cellHoverPortal}
+      {/* En un portal: el modal de la entrada conserva el transform de su
+          animación y recortaría un hijo fijo. */}
+      {showCreateProducto && createPortal(
+        <CreateProducto
+          open={showCreateProducto}
+          onClose={() => setShowCreateProducto(false)}
+          onCreated={(producto) => {
+            setShowCreateProducto(false)
+            // El producto recién creado queda elegido en la fila para agregar.
+            if (producto?.id) handleProductSelect(producto)
+          }}
+          token={token}
+          onError={onError}
+          currentUser={currentUser}
+          showCostField={canSeeProductCost}
+          stacked
+        />,
+        getAppPortalRoot()
+      )}
     </div>
   )
 }

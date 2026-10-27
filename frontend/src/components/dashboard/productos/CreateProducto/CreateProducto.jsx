@@ -85,6 +85,9 @@ function CreateProducto({
   showCostField = true,
   initialData = null,
   lockModal = false,
+  // Abierto encima de otro modal (p. ej. compra local): igual que en
+  // Inventario, solo va por encima y no deja pasar los clics al de abajo.
+  stacked = false,
 }) {
   const [formData, setFormData] = useState(initialForm)
   const [loading, setLoading] = useState(false)
@@ -1806,6 +1809,7 @@ function CreateProducto({
 
   const overlayStyle = {
     padding: `${VIEWPORT_PADDING}px`,
+    ...(stacked && !lockModal ? { zIndex: 10030 } : {}),
     ...(lockModal
       ? {
           background: 'rgba(15, 23, 42, 0.28)',
@@ -1834,8 +1838,8 @@ function CreateProducto({
       role="dialog"
       aria-modal="true"
       style={overlayStyle}
-      onMouseDown={lockModal ? (event) => event.stopPropagation() : undefined}
-      onClick={lockModal ? (event) => event.stopPropagation() : undefined}
+      onMouseDown={lockModal || stacked ? (event) => event.stopPropagation() : undefined}
+      onClick={lockModal || stacked ? (event) => event.stopPropagation() : undefined}
     >
       {unsavedGuard.dialog}
       <div className={`create-user__modal${submitAttempted ? ' create-user__modal--submitted' : ''}${isClosing ? ' create-user__modal--closing' : ''}`} ref={modalRef} {...unsavedGuard.interactionProps} style={modalStyle}>
