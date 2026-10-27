@@ -2985,6 +2985,9 @@
 .quick-actions__urgent-message {
   position: absolute;
   z-index: 1;
+  /* El ancho que calcula QuickActions ya incluye el padding: sin esto el
+     texto media 20px mas y se salia de la pantalla. */
+  box-sizing: border-box;
   color: #fff;
   font-weight: 800;
   line-height: 1.2;

@@ -2262,8 +2262,61 @@ function QuickActions({
       : isCompactDesktop
         ? Math.round(shieldSize * 0.08)
         : Math.round(shieldSize * 0.04)
-    const centerX = shieldCenterX + vectorX * travel
-    const centerY = shieldCenterY + vectorY * travel + verticalBias
+    let centerX = shieldCenterX + vectorX * travel
+    let centerY = shieldCenterY + vectorY * travel + verticalBias
+
+    // El circulo nace en una esquina: en tablet/telefono, a medio crecer, el
+    // texto quedaba pegado a la esquina y se salia por el borde derecho
+    // ("Tienes una solicitud de traslado pendiente" cortado). El texto va
+    // siempre dentro de la pantalla, debajo de la campana (que se pinta
+    // encima del circulo) y dentro de lo naranja: primero se lo acerca a la
+    // esquina y solo si en ningun punto cabe, letra mas chica.
+    const toolbarBottom = Number(wrapRef.current?.getBoundingClientRect?.().bottom) || 0
+    const minTop = Math.max(edgePadding, toolbarBottom + 8)
+    const fitsAt = (x, y) => {
+      const cx = Math.min(Math.max(x, edgePadding + width / 2), viewportWidth - edgePadding - width / 2)
+      const cy = Math.min(Math.max(y, minTop + height / 2), viewportHeight - edgePadding - height / 2)
+      const farCorner = Math.hypot(
+        Math.max(Math.abs(cx - width / 2 - shieldCenterX), Math.abs(cx + width / 2 - shieldCenterX)),
+        Math.max(Math.abs(cy - height / 2 - shieldCenterY), Math.abs(cy + height / 2 - shieldCenterY))
+      )
+      return farCorner <= usableRadius ? { x: cx, y: cy } : null
+    }
+    const findPlacement = () => {
+      const preferred = fitsAt(centerX, centerY)
+      if (preferred) return preferred
+      for (let step = 20; step >= 0; step -= 1) {
+        const t = travel * (step / 20)
+        const candidate = fitsAt(shieldCenterX + vectorX * t, shieldCenterY + vectorY * t)
+        if (candidate) return candidate
+      }
+      return null
+    }
+    const isInsideViewport = (
+      centerX - width / 2 >= edgePadding &&
+      centerX + width / 2 <= viewportWidth - edgePadding &&
+      centerY - height / 2 >= minTop &&
+      centerY + height / 2 <= viewportHeight - edgePadding
+    )
+    if (isMobileViewport && !isInsideViewport) {
+      let placement = findPlacement()
+      let shrinkGuard = 0
+      while (!placement && fontSize > (isMobileViewport ? 9 : 10) && shrinkGuard < 40) {
+        fontSize -= 1
+        width = Math.max(absoluteMinWidth, Math.round(width * 0.97))
+        height = estimateHeight(width, fontSize)
+        placement = findPlacement()
+        shrinkGuard += 1
+      }
+      if (placement) {
+        centerX = placement.x
+        centerY = placement.y
+      } else {
+        centerX = Math.min(Math.max(centerX, edgePadding + width / 2), viewportWidth - edgePadding - width / 2)
+        centerY = Math.min(Math.max(centerY, minTop + height / 2), viewportHeight - edgePadding - height / 2)
+      }
+    }
+
     const localLeft = centerX - shieldLeft
     const localTop = centerY - shieldTop
 
