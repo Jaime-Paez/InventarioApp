@@ -7102,8 +7102,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     if (!open) { isFirstOpenRef.current = true; return }
     const availableWidth = Math.max(0, window.innerWidth - VIEWPORT_PADDING * 2)
     const availableHeight = Math.max(0, window.innerHeight - VIEWPORT_PADDING * 2)
-    // Verificacion y confirmacion abren con espacio para todas las columnas.
-    const targetWidth = imp?.estado === 'confirmacion' || imp?.estado === 'cotizacion' ? 1240 : MIN_WIDTH
+    // Verificacion y confirmacion abren en el ancho minimo donde caben todas
+    // las columnas: min-width de la tabla en ImportacionesTable.css (866 /
+    // 854) + 40 de padding del modal + 16 por si la tabla muestra scroll
+    // vertical.
+    const targetWidth = imp?.estado === 'cotizacion' ? 922 : imp?.estado === 'confirmacion' ? 910 : MIN_WIDTH
     const nextWidth = Math.min(targetWidth, availableWidth)
     const nextHeight = Math.min(MIN_HEIGHT, availableHeight)
     const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
