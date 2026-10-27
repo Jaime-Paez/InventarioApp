@@ -4092,7 +4092,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       // pantalla; CASA COMERCIAL y NOTA son extras del Excel.
       const headers = [
         'CÓDIGO', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANT.',
-        'PVP JP', 'PVP APROX', 'PVP', 'CASA DEL PVP', 'CASA COMERCIAL', 'NOTA',
+        'PVP JP', 'CASA PVP JP', 'PVP APROX', 'PVP', 'CASA DEL PVP', 'CASA COMERCIAL', 'NOTA',
       ]
       const headerStyle = {
         font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
@@ -4126,6 +4126,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           descripcion: row.descripcion || '',
           cantidad: row.cantidad ?? '',
           pvpJp: getSistemaPrecio(row) != null ? Number(getSistemaPrecio(row)) : '',
+          // Casa del producto del que sale el PVP JP (esta, otra casa con el
+          // mismo código/referencia o la del código sugerido).
+          pvpJpCasa: getSistemaPrecio(row) != null ? getSistemaCasa(row) : '',
           pvpAprox: Number(row.pvp) > 0 ? Number(row.pvp) : '',
           pvp: Number(row.precio_nuevo) > 0 ? Number(row.precio_nuevo) / 100 : '',
           pvpCasa: Number(row.precio_nuevo) > 0 ? (row.precio_casa || '') : '',
@@ -4142,7 +4145,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
         headers,
         ...rows.map((r) => [
           r.codigo, r.referencia, r.oem, r.descripcion, r.cantidad,
-          r.pvpJp, r.pvpAprox, r.pvp, r.pvpCasa, r.casa, r.nota,
+          r.pvpJp, r.pvpJpCasa, r.pvpAprox, r.pvp, r.pvpCasa, r.casa, r.nota,
         ]),
       ]
       const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
@@ -4166,7 +4169,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       })
       worksheet['!cols'] = [
         { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 8 },
-        { wch: 11 }, { wch: 12 }, { wch: 11 }, { wch: 20 }, { wch: 20 }, { wch: 34 },
+        { wch: 11 }, { wch: 20 }, { wch: 12 }, { wch: 11 }, { wch: 20 }, { wch: 20 }, { wch: 34 },
       ]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
