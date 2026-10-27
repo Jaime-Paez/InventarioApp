@@ -58,7 +58,7 @@ const importItemMatches = (item, query) => {
   return terms.every((term) => text.includes(term))
 }
 
-function ImportProductSearch({ value, onChange, shown, total }) {
+function ImportProductSearch({ value, onChange, shown, total, children }) {
   return (
     <div className="imp-product-search">
       <div className="search-input-container">
@@ -73,6 +73,7 @@ function ImportProductSearch({ value, onChange, shown, total }) {
         />
         <i className="pi pi-search search-input-icon" />
       </div>
+      {children}
       {String(value || '').trim() && (
         <span className="imp-product-search__count">
           {shown ? `${shown} de ${total} coinciden (van primero)` : 'Ninguno coincide'}
@@ -8058,6 +8059,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
               nombre: n.item.nombre || found.descripcion || '',
               oem: n.item.oem || found.oem || '',
               referencia: n.item.referencia || found.referencia || '',
+              // De dónde salió el código sugerido (se muestra bajo el código,
+              // que se puede corregir igual que en la sugerencia).
+              ...(found.codigo_sugerido && !n.item.codigo ? {
+                _sugeridoDesde: found.sugerido_desde || '',
+                _sugeridoCasa: found.sugerido_casa || found.conflicto_casa_nombre || '',
+              } : {}),
             },
           })
         })
@@ -8675,26 +8682,22 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         onChange={setProductSearch}
                         shown={details.filter((item) => importItemMatches(item, productSearch)).length}
                         total={details.length}
-                      />
-                    )}
-                    {isVerificar && (verificarConteo.nuevos > 0 || verificarConteo.eliminados > 0) && (
-                      <div className="imp-verificar__grupos" role="group" aria-label="Ir a un grupo de productos">
-                        {verificarConteo.nuevos > 0 && (
-                          <button type="button" className="imp-verificar__grupo imp-verificar__grupo--nuevos" onClick={() => jumpToVerificarGrupo('nuevos')}>
-                            Nuevos <strong>{verificarConteo.nuevos}</strong>
-                          </button>
+                      >
+                        {isVerificar && (verificarConteo.nuevos > 0 || verificarConteo.eliminados > 0) && (
+                          <div className="imp-verificar__grupos" role="group" aria-label="Ir a un grupo de productos">
+                            {verificarConteo.nuevos > 0 && (
+                              <button type="button" className="imp-verificar__grupo imp-verificar__grupo--nuevos" onClick={() => jumpToVerificarGrupo('nuevos')}>
+                                Nuevos <strong>{verificarConteo.nuevos}</strong>
+                              </button>
+                            )}
+                            {verificarConteo.eliminados > 0 && (
+                              <button type="button" className="imp-verificar__grupo imp-verificar__grupo--eliminados" onClick={() => jumpToVerificarGrupo('eliminados')}>
+                                Eliminados <strong>{verificarConteo.eliminados}</strong>
+                              </button>
+                            )}
+                          </div>
                         )}
-                        {verificarConteo.eliminados > 0 && (
-                          <button type="button" className="imp-verificar__grupo imp-verificar__grupo--eliminados" onClick={() => jumpToVerificarGrupo('eliminados')}>
-                            Eliminados <strong>{verificarConteo.eliminados}</strong>
-                          </button>
-                        )}
-                        {verificarConteo.resto > 0 && (
-                          <button type="button" className="imp-verificar__grupo" onClick={() => jumpToVerificarGrupo('resto')}>
-                            Resto <strong>{verificarConteo.resto}</strong>
-                          </button>
-                        )}
-                      </div>
+                      </ImportProductSearch>
                     )}
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`} onKeyDown={handleProductsGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head imp-sticky-head" ref={productsHeadRef}>
@@ -8895,9 +8898,30 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                               onMouseEnter={(e) => codigo && showCellHover(e, sinCatalogo ? `${codigo} (nuevo: se crea al importar)` : codigo, 'Código')}
                               onMouseLeave={hideCellHover}
                             >
-                              {/* Un producto nuevo con código (sugerido o del Excel) muestra
-                                  su código; la etiqueta queda para los que no tienen. */}
-                              {sinCatalogo && !codigo
+                              {/* Un producto nuevo (sin catálogo) se puede corregir o asignarle
+                                  código, como en la sugerencia; si el código se sugirió se ve
+                                  de qué producto salió. Los demás muestran su código o la
+                                  etiqueta "Sin catálogo". */}
+                              {sinCatalogo && !item.quitado && canEdit && (isSugerencia || isVerificar) ? (
+                                <span className="imp-codigo-editable">
+                                  <input
+                                    type="text"
+                                    className="imp-excel-review__codigo-input"
+                                    value={item.codigo || ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value.toUpperCase()
+                                      setDetails((prev) => prev.map((d) => (d._key === item._key ? { ...d, codigo: value } : d)))
+                                    }}
+                                    placeholder="Sin catálogo"
+                                    aria-label="Código del producto nuevo"
+                                  />
+                                  {item._sugeridoDesde && (
+                                    <span className="imp-codigo-editable__origen">
+                                      Sugerido de {item._sugeridoDesde}{item._sugeridoCasa ? ` (${item._sugeridoCasa})` : ''}
+                                    </span>
+                                  )}
+                                </span>
+                              ) : sinCatalogo && !codigo
                                 ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
                                 : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
                             </span>

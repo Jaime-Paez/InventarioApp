@@ -2473,6 +2473,10 @@ body.app-theme-dark .imp-receive-footer-hint {
   margin: 4px 0 8px;
 }
 
+.imp-product-search .imp-verificar__grupos {
+  margin: 0;
+}
+
 .imp-verificar__grupo {
   display: inline-flex;
   align-items: center;
@@ -2528,4 +2532,33 @@ body.app-theme-dark .imp-receive-footer-hint {
 
 .importaciones-modal__products-table .create-user__locations-remove.imp-verificar__restore i {
   font-size: 0.8rem;
+}
+
+/* Codigo editable de un producto nuevo en la sugerencia/verificacion, con el
+   producto del que salio el codigo sugerido debajo. */
+.imp-codigo-editable {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+}
+
+.importaciones-modal__products-table .imp-codigo-editable .imp-excel-review__codigo-input {
+  padding: 4px 6px;
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.imp-codigo-editable__origen {
+  white-space: normal;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: #a16207;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-shell.dark .imp-codigo-editable__origen {
+  color: #fde68a;
 }
