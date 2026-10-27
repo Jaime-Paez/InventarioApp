@@ -4296,7 +4296,7 @@ function CreateEntrada({
                     {isCompraEntrada && (
                       <button
                         type="button"
-                        className="create-user__ghost"
+                        className="create-user__ghost create-entrada__crear-producto"
                         onClick={() => setShowCreateProducto(true)}
                         style={{ whiteSpace: 'nowrap' }}
                       >

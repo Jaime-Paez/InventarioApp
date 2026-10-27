@@ -2337,3 +2337,22 @@
 .create-salida__footer-blocker {
   margin: 8px 15px;
 }
+
+/* Compra local: "Crear producto" en verde, como el boton Crear de las tablas. */
+.create-user__ghost.create-entrada__crear-producto {
+  background: #2e7d32;
+  border-color: #2e7d32;
+  color: #fff;
+}
+
+.create-user__ghost.create-entrada__crear-producto:hover {
+  background: #276b2b;
+  border-color: #276b2b;
+  color: #fff;
+}
+
+.dashboard-shell.dark .create-user__ghost.create-entrada__crear-producto {
+  background: #388e3c;
+  border-color: #388e3c;
+  color: #fff;
+}
