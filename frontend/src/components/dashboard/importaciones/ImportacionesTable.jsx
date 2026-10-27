@@ -3724,6 +3724,67 @@ const deriveSuggestedCodigo = (row, casaCodigo) => {
 // producto; si es de otra casa se sugiere el código con el sufijo de esta casa
 // (amarillo) y su precio/casa quedan como PVP JP. Si no trae descripción se
 // precarga con la de la primera coincidencia por OEM.
+// Contadores de la vista previa del Excel y de la sugerencia guardada (los
+// mismos en las dos): "N encontrados" (vinculados al catalogo, coinciden solo
+// por OEM, coinciden por referencia o codigo) y "N no encontrados" (sin
+// catalogo) con "Quitar todos". chipProps(grupo, texto) hace clicable cada
+// contador para ir a sus filas.
+function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, sinCatalogo = 0, chipProps, onQuitarTodos }) {
+  const encontrados = vinculados + oem + otraCasa
+  if (!encontrados && !sinCatalogo) return null
+  const caja = { display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }
+  const titulo = { fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }
+  const chip = { borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }
+  return (
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
+      {encontrados > 0 && (
+        <div style={{ ...caja, flex: '1 1 auto' }}>
+          <span style={titulo} title="Vinculados al catálogo + coinciden solo por OEM + coinciden por referencia o código">
+            {encontrados} encontrado{encontrados !== 1 ? 's' : ''}
+          </span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {vinculados > 0 && (
+              <span {...chipProps('vinculados', 'los vinculados al catálogo')} title="Clic: ir a los vinculados al catálogo" style={{ ...chip, background: '#dcfce7', color: '#15803d' }}>
+                {vinculados} vinculado{vinculados !== 1 ? 's' : ''} al catálogo
+              </span>
+            )}
+            {oem > 0 && (
+              <span {...chipProps('oem', 'los productos con código sugerido')} title="Clic: ir a ellos." style={{ ...chip, background: '#fef9c3', color: '#854d0e', border: '1px solid #fde047' }}>
+                {oem} coinciden solo por OEM
+              </span>
+            )}
+            {otraCasa > 0 && (
+              <span {...chipProps('otraCasa', 'los que ya existen en otra casa')} title="Clic: ir a ellos." style={{ ...chip, background: '#ffedd5', color: '#9a3412', border: '1px solid #fdba74' }}>
+                {otraCasa} coinciden por referencia o código
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      {sinCatalogo > 0 && (
+        <div style={caja}>
+          <span style={titulo}>{sinCatalogo} no encontrado{sinCatalogo !== 1 ? 's' : ''}</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span {...chipProps('sinCatalogo', 'los productos sin catálogo')} title="Clic: ir a los productos sin catálogo" style={{ ...chip, background: '#f1f5f9', color: '#64748b' }}>
+              {sinCatalogo} sin catálogo
+            </span>
+            {onQuitarTodos && (
+              <button
+                type="button"
+                className="imp-excel-review__quitar-todos"
+                onClick={onQuitarTodos}
+                title="Quita de la sugerencia todos los productos que no se encontraron en el catálogo"
+              >
+                <X size={13} /> Quitar todos
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const enrichParsedRow = (row, casaCodigo) => {
   const withFirstMatchDescripcion = (r) => {
     if (String(r.descripcion || '').trim()) return r
@@ -4515,7 +4576,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const referenciaConflictCount = validRows.filter(r => hasReferenciaConflict(r)).length
   // Los amarillos y naranjas tambien son "sin catalogo"; para que los
   // contadores sumen el total, el de sin catalogo cuenta solo el resto.
-  const coincidenTotal = matchedCount + suggestedCount + conflictoRows.length
   const sinCoincidenciaCount = validRows.filter(r => !r.matched_producto_id && !r.codigo_sugerido && !r.conflicto_casa).length
   // Grupos de los contadores de arriba. "Sin catalogo" busca primero los que
   // no son amarillos ni naranjas (esos tienen su propio contador).
@@ -4975,65 +5035,14 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                   </div>
                 ) : (
                   <>
-                    {/* Dos grupos: los encontrados en el catálogo (con su total arriba)
-                        y los no encontrados. */}
-                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
-                      {coincidenTotal > 0 && (
-                        <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }}>
-                          <span
-                            style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }}
-                            title="Vinculados al catálogo + coinciden solo por OEM + coinciden por referencia o código"
-                          >
-                            {coincidenTotal} encontrado{coincidenTotal !== 1 ? 's' : ''}
-                          </span>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {matchedCount > 0 && (
-                              <span {...reviewGroupChipProps('vinculados', 'los vinculados al catálogo')} title="Clic: ir a los vinculados al catálogo" style={{ background: '#dcfce7', color: '#15803d', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                                {matchedCount} vinculado{matchedCount !== 1 ? 's' : ''} al catálogo
-                              </span>
-                            )}
-                            {suggestedCount > 0 && (
-                              <span
-                                {...reviewGroupChipProps('sugeridos', 'los productos con código sugerido')}
-                                style={{ background: '#fef9c3', color: '#854d0e', border: '1px solid #fde047', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
-                                title="Clic: ir a ellos."
-                              >
-                                {suggestedCount} coinciden solo por OEM
-                              </span>
-                            )}
-                            {conflictoRows.length > 0 && (
-                              <span
-                                {...reviewGroupChipProps('otraCasa', 'los que ya existen en otra casa')}
-                                style={{ background: '#ffedd5', color: '#9a3412', border: '1px solid #fdba74', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}
-                                title="Clic: ir a ellos."
-                              >
-                                {conflictoRows.length} coinciden por referencia o código
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      {sinCoincidenciaCount > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }}>
-                          <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                            {sinCoincidenciaCount} no encontrado{sinCoincidenciaCount !== 1 ? 's' : ''}
-                          </span>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            <span {...reviewGroupChipProps('sinCatalogo', 'los productos sin catálogo')} title="Clic: ir a los productos sin catálogo" style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
-                              {sinCoincidenciaCount} sin catálogo
-                            </span>
-                            <button
-                              type="button"
-                              className="imp-excel-review__quitar-todos"
-                              onClick={removeNoEncontrados}
-                              title="Quita de la sugerencia todos los productos que no se encontraron en el catálogo"
-                            >
-                              <X size={13} /> Quitar todos
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <ImportGroupsSummary
+                      vinculados={matchedCount}
+                      oem={suggestedCount}
+                      otraCasa={conflictoRows.length}
+                      sinCatalogo={sinCoincidenciaCount}
+                      chipProps={(key, label) => reviewGroupChipProps(key === 'oem' ? 'sugeridos' : key, label)}
+                      onQuitarTodos={removeNoEncontrados}
+                    />
 
 
                     {referenciaConflictCount > 0 && (
@@ -7168,8 +7177,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const isConfirmacion = imp?.estado === 'confirmacion'
   const isVerificarOrConfirmacion = isVerificar || isConfirmacion
   const isImportRealizada = isConfirmacion && Boolean(imp?.numero_factura)
-  // Sin catálogo y sin coincidencia (ni por OEM ni en otra casa).
-  const noEncontradosCount = details.filter((d) => !d.producto?.id && !d.coincidencia).length
   // Verificacion: lo agregado (nota en el comentario) y lo quitado se pintan
   // y se agrupan arriba para encontrarlos rapido.
   const esAgregadoVerificacion = (item) => isVerificar && !item.quitado && String(item.comentario || '').includes(NOTA_AGREGADO_VERIFICACION)
@@ -8426,7 +8433,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const sugerenciaConteo = isSugerencia
     ? details.reduce((acc, item) => ({ ...acc, [sugerenciaGrupoDe(item)]: (acc[sugerenciaGrupoDe(item)] || 0) + 1 }), {})
     : {}
-  const sugerenciaEncontrados = (sugerenciaConteo.vinculados || 0) + (sugerenciaConteo.oem || 0) + (sugerenciaConteo.otraCasa || 0)
   // Datos que le faltan a un producto sin catalogo para pedir la cotizacion
   // (la sugerencia se puede crear y guardar sin ellos). Misma regla que el
   // backend en pedir_cotizacion.
@@ -8695,17 +8701,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                           >
                             + Agregar nuevo producto
                           </button>
-                          {isSugerencia && noEncontradosCount > 0 && (
-                            <button
-                              type="button"
-                              className="create-user__ghost"
-                              onClick={() => setDetails((prev) => prev.filter((d) => d.producto?.id || d.coincidencia))}
-                              title="Quita los productos que no se encontraron en el catálogo (ni por OEM ni en otra casa)"
-                              style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                            >
-                              Quitar no encontrados ({noEncontradosCount})
-                            </button>
-                          )}
                           {!isVerificarOrConfirmacion && (
                             <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
                               <button
@@ -8723,6 +8718,30 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                       )}
                     </div>
 
+                    {/* Mismos contadores que la vista previa del Excel. */}
+                    {isSugerencia && details.length > 0 && (
+                      <ImportGroupsSummary
+                        vinculados={sugerenciaConteo.vinculados || 0}
+                        oem={sugerenciaConteo.oem || 0}
+                        otraCasa={sugerenciaConteo.otraCasa || 0}
+                        sinCatalogo={sugerenciaConteo.sinCatalogo || 0}
+                        chipProps={(grupo, label) => ({
+                          role: 'button',
+                          tabIndex: 0,
+                          onClick: () => jumpToSugerenciaGrupo(grupo),
+                          onKeyDown: (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              jumpToSugerenciaGrupo(grupo)
+                            }
+                          },
+                          className: 'imp-excel-review__group-chip',
+                          'aria-label': `Ir a ${label}`,
+                        })}
+                        onQuitarTodos={canEdit ? () => setDetails((prev) => prev.filter((d) => d.producto?.id || d.coincidencia)) : undefined}
+                      />
+                    )}
+
                     {details.length > 0 && (
                       <ImportProductSearch
                         value={productSearch}
@@ -8730,40 +8749,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         shown={details.filter((item) => importItemMatches(item, productSearch)).length}
                         total={details.length}
                       >
-                        {isSugerencia && (
-                          <div className="imp-verificar__grupos imp-sugerencia__grupos" role="group" aria-label="Ir a un grupo de productos">
-                            {sugerenciaEncontrados > 0 && (
-                              <span className="imp-sugerencia__grupo-titulo">
-                                {sugerenciaEncontrados} encontrado{sugerenciaEncontrados !== 1 ? 's' : ''}
-                              </span>
-                            )}
-                            {sugerenciaConteo.vinculados > 0 && (
-                              <button type="button" className="imp-verificar__grupo imp-sugerencia__grupo--vinculados" onClick={() => jumpToSugerenciaGrupo('vinculados')}>
-                                {sugerenciaConteo.vinculados} vinculado{sugerenciaConteo.vinculados !== 1 ? 's' : ''} al catálogo
-                              </button>
-                            )}
-                            {sugerenciaConteo.oem > 0 && (
-                              <button type="button" className="imp-verificar__grupo imp-sugerencia__grupo--oem" onClick={() => jumpToSugerenciaGrupo('oem')}>
-                                {sugerenciaConteo.oem} coinciden solo por OEM
-                              </button>
-                            )}
-                            {sugerenciaConteo.otraCasa > 0 && (
-                              <button type="button" className="imp-verificar__grupo imp-sugerencia__grupo--otra-casa" onClick={() => jumpToSugerenciaGrupo('otraCasa')}>
-                                {sugerenciaConteo.otraCasa} coinciden por referencia o código
-                              </button>
-                            )}
-                            {sugerenciaConteo.sinCatalogo > 0 && (
-                              <>
-                                <span className="imp-sugerencia__grupo-titulo">
-                                  {sugerenciaConteo.sinCatalogo} no encontrado{sugerenciaConteo.sinCatalogo !== 1 ? 's' : ''}
-                                </span>
-                                <button type="button" className="imp-verificar__grupo" onClick={() => jumpToSugerenciaGrupo('sinCatalogo')}>
-                                  {sugerenciaConteo.sinCatalogo} sin catálogo
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        )}
                         {isVerificar && (verificarConteo.nuevos > 0 || verificarConteo.eliminados > 0) && (
                           <div className="imp-verificar__grupos" role="group" aria-label="Ir a un grupo de productos">
                             {verificarConteo.nuevos > 0 && (
