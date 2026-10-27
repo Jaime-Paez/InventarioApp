@@ -2621,6 +2621,59 @@ body.app-theme-dark .imp-receive-footer-hint {
   color: #b91c1c;
 }
 
+/* Sugerencia guardada: mismos contadores (y colores) que la vista previa
+   del Excel. */
+.imp-sugerencia__grupos {
+  align-items: center;
+}
+
+.imp-sugerencia__grupo-titulo {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.imp-sugerencia__grupo-titulo:not(:first-child) {
+  margin-left: 8px;
+}
+
+.imp-sugerencia__grupo--vinculados {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.imp-sugerencia__grupo--oem {
+  background: #fef9c3;
+  border-color: #fde047;
+  color: #854d0e;
+}
+
+.imp-sugerencia__grupo--otra-casa {
+  background: #ffedd5;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+
+.dashboard-shell.dark .imp-sugerencia__grupo-titulo {
+  color: var(--color-text-title-dark);
+}
+
+.dashboard-shell.dark .imp-sugerencia__grupo--vinculados {
+  background: color-mix(in srgb, #22c55e 22%, transparent);
+  color: #bbf7d0;
+}
+
+.dashboard-shell.dark .imp-sugerencia__grupo--oem {
+  background: color-mix(in srgb, #facc15 22%, transparent);
+  color: #fde68a;
+}
+
+.dashboard-shell.dark .imp-sugerencia__grupo--otra-casa {
+  background: color-mix(in srgb, #f97316 22%, transparent);
+  color: #fed7aa;
+}
+
 .imp-verificar__grupo.is-active {
   outline: 2px solid currentColor;
   outline-offset: 1px;

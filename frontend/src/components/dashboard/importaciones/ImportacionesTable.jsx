@@ -4425,14 +4425,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     setSubmitError('')
     setSubmitting(true)
     try {
-      // Los productos del catálogo van primero, en el orden del Excel, y los
-      // nuevos (que todavía no existen) al final.
-      const byExcelRow = (a, b) => (Number(a.row.orden) || 0) - (Number(b.row.orden) || 0)
-      const indexed = validRows.map((row, i) => ({ row, i }))
-      const ordered = [
-        ...indexed.filter(({ row }) => row.matched_producto_id).sort(byExcelRow),
-        ...indexed.filter(({ row }) => !row.matched_producto_id).sort(byExcelRow),
-      ]
+      // Mismo orden que la vista previa (validRows ya viene ordenado por
+      // rowSortRank): la sugerencia guardada sale identica. Antes los del
+      // catalogo iban primero y los grupos quedaban en otro orden.
+      const ordered = validRows.map((row, i) => ({ row, i }))
       const detalles = ordered.map(({ row, i }, pos) => {
         const precio = getPrecioGuardado(row)
         return row.matched_producto_id
@@ -8424,6 +8420,28 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     ? [...details].sort((a, b) => VERIFICAR_GRUPOS.indexOf(verificarGrupoDe(a)) - VERIFICAR_GRUPOS.indexOf(verificarGrupoDe(b)))
     : details
   const verificarConteo = VERIFICAR_GRUPOS.reduce((acc, g) => ({ ...acc, [g]: shownDetails.filter((item) => verificarGrupoDe(item) === g).length }), {})
+  // Sugerencia: los mismos grupos que la vista previa del Excel (vinculados,
+  // solo por OEM, por referencia o codigo en otra casa, sin catalogo).
+  const sugerenciaGrupoDe = (item) => (
+    item.producto?.id ? 'vinculados'
+      : item.coincidencia === 'otra_casa' ? 'otraCasa'
+        : item.coincidencia === 'oem' ? 'oem'
+          : 'sinCatalogo'
+  )
+  const sugerenciaConteo = isSugerencia
+    ? details.reduce((acc, item) => ({ ...acc, [sugerenciaGrupoDe(item)]: (acc[sugerenciaGrupoDe(item)] || 0) + 1 }), {})
+    : {}
+  const sugerenciaEncontrados = (sugerenciaConteo.vinculados || 0) + (sugerenciaConteo.oem || 0) + (sugerenciaConteo.otraCasa || 0)
+  const sugerenciaJumpRef = useRef({ grupo: '', idx: -1 })
+  const jumpToSugerenciaGrupo = (grupo) => {
+    const keys = details.filter((item) => sugerenciaGrupoDe(item) === grupo).map((item) => item._key)
+    if (!keys.length) return
+    const last = sugerenciaJumpRef.current
+    const idx = last.grupo === grupo && last.idx + 1 < keys.length ? last.idx + 1 : 0
+    sugerenciaJumpRef.current = { grupo, idx }
+    setProductSearch('')
+    jumpToDetailRow(keys[idx])
+  }
   // Cada clic en un contador lleva a la siguiente fila de ese grupo.
   const verificarJumpRef = useRef({ grupo: '', idx: -1 })
   const jumpToVerificarGrupo = (grupo) => {
@@ -8703,6 +8721,40 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         shown={details.filter((item) => importItemMatches(item, productSearch)).length}
                         total={details.length}
                       >
+                        {isSugerencia && (
+                          <div className="imp-verificar__grupos imp-sugerencia__grupos" role="group" aria-label="Ir a un grupo de productos">
+                            {sugerenciaEncontrados > 0 && (
+                              <span className="imp-sugerencia__grupo-titulo">
+                                {sugerenciaEncontrados} encontrado{sugerenciaEncontrados !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {sugerenciaConteo.vinculados > 0 && (
+                              <button type="button" className="imp-verificar__grupo imp-sugerencia__grupo--vinculados" onClick={() => jumpToSugerenciaGrupo('vinculados')}>
+                                {sugerenciaConteo.vinculados} vinculado{sugerenciaConteo.vinculados !== 1 ? 's' : ''} al catálogo
+                              </button>
+                            )}
+                            {sugerenciaConteo.oem > 0 && (
+                              <button type="button" className="imp-verificar__grupo imp-sugerencia__grupo--oem" onClick={() => jumpToSugerenciaGrupo('oem')}>
+                                {sugerenciaConteo.oem} coinciden solo por OEM
+                              </button>
+                            )}
+                            {sugerenciaConteo.otraCasa > 0 && (
+                              <button type="button" className="imp-verificar__grupo imp-sugerencia__grupo--otra-casa" onClick={() => jumpToSugerenciaGrupo('otraCasa')}>
+                                {sugerenciaConteo.otraCasa} coinciden por referencia o código
+                              </button>
+                            )}
+                            {sugerenciaConteo.sinCatalogo > 0 && (
+                              <>
+                                <span className="imp-sugerencia__grupo-titulo">
+                                  {sugerenciaConteo.sinCatalogo} no encontrado{sugerenciaConteo.sinCatalogo !== 1 ? 's' : ''}
+                                </span>
+                                <button type="button" className="imp-verificar__grupo" onClick={() => jumpToSugerenciaGrupo('sinCatalogo')}>
+                                  {sugerenciaConteo.sinCatalogo} sin catálogo
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
                         {isVerificar && (verificarConteo.nuevos > 0 || verificarConteo.eliminados > 0) && (
                           <div className="imp-verificar__grupos" role="group" aria-label="Ir a un grupo de productos">
                             {verificarConteo.nuevos > 0 && (
