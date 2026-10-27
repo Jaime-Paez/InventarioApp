@@ -28,6 +28,7 @@ import { matchesFirst } from '../common/productDetailMatches'
 import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
 import { UnsavedChangesDialog } from '../common/unsavedChanges/unsavedChanges'
 import { isPhoneViewport } from '../../../utils/viewport'
+import { REMINDERS_TRANSFER_NOTIFICATION_EVENT } from '../common/reminders/remindersStorage'
 
 const getPortalRoot = () => getAppPortalRoot()
 
@@ -598,6 +599,9 @@ const invalidateImportacionesItemsCache = () => {
   Object.keys(importacionesItemsCache).forEach((key) => delete importacionesItemsCache[key])
 }
 const IMPORTACIONES_STALE_MS = 5 * 60 * 1000
+// La tabla se recarga sola (sin spinner) cada tanto mientras se está viendo, y
+// al volver a ella si los datos tienen más de este tiempo.
+const IMPORTACIONES_AUTO_REFRESH_MS = 30 * 1000
 
 const STATUS_CONFIG = {
   borrador: { label: 'Sugerencia', empty: 'No hay importaciones en sugerencia.' },
@@ -9761,7 +9765,9 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const latestStatusRef = useRef(status)
   useEffect(() => { latestStatusRef.current = status }, [status])
 
-  const fetchItems = useCallback(async (force = false) => {
+  // silent: recarga automatica en segundo plano -- sin spinner y sin avisar
+  // si falla (la siguiente vuelta lo intenta de nuevo).
+  const fetchItems = useCallback(async (force = false, { silent = false } = {}) => {
     if (!token) return
     const requestedStatus = status
     const cached = importacionesItemsCache[requestedStatus]
@@ -9769,7 +9775,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       if (latestStatusRef.current === requestedStatus) setItems(cached.items)
       return
     }
-    if (latestStatusRef.current === requestedStatus) {
+    if (latestStatusRef.current === requestedStatus && !silent) {
       setLoading(true)
       setError('')
     }
@@ -9788,16 +9794,50 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
       if (latestStatusRef.current === requestedStatus) setItems(normalized)
     } catch (err) {
       const message = err.message || 'No se pudieron cargar las importaciones.'
-      if (latestStatusRef.current === requestedStatus) {
+      if (latestStatusRef.current === requestedStatus && !silent) {
         setError(message)
         toast.current?.show({ severity: 'error', summary: 'Error', detail: message, life: 4000 })
       }
     } finally {
-      if (latestStatusRef.current === requestedStatus) setLoading(false)
+      if (latestStatusRef.current === requestedStatus && !silent) setLoading(false)
     }
   }, [normalizeList, status, token])
 
   useEffect(() => { fetchItems() }, [fetchItems])
+
+  // Recarga automatica, como en Movimientos: mientras la pestaña está activa
+  // y la ventana visible se recarga cada IMPORTACIONES_AUTO_REFRESH_MS; al
+  // volver a la ventana/pestaña o cambiar de estado, si los datos ya tienen
+  // ese tiempo; y cuando llega un aviso de traslados.
+  useEffect(() => {
+    if (!token || isTabActive === false) return undefined
+    let inFlight = false
+    const silentRefresh = () => {
+      if (inFlight) return
+      inFlight = true
+      fetchItems(true, { silent: true }).finally(() => { inFlight = false })
+    }
+    const refreshIfOld = () => {
+      if (document.visibilityState === 'hidden') return
+      // Sin cache todavia: la primera carga ya esta en curso.
+      const cached = importacionesItemsCache[status]
+      if (!cached || Date.now() - cached.fetchedAt < IMPORTACIONES_AUTO_REFRESH_MS) return
+      silentRefresh()
+    }
+    const refreshNow = silentRefresh
+    refreshIfOld()
+    // Se revisa seguido para recargar apenas los datos cumplen el tiempo.
+    const interval = setInterval(refreshIfOld, 5000)
+    window.addEventListener('focus', refreshIfOld)
+    document.addEventListener('visibilitychange', refreshIfOld)
+    window.addEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, refreshNow)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', refreshIfOld)
+      document.removeEventListener('visibilitychange', refreshIfOld)
+      window.removeEventListener(REMINDERS_TRANSFER_NOTIFICATION_EVENT, refreshNow)
+    }
+  }, [fetchItems, isTabActive, status, token])
 
   // Flags the refresh button when this pill's cached data is more than 5 minutes old,
   // so it's obvious at a glance that what's on screen may no longer be current.
