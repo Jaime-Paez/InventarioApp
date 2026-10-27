@@ -4408,11 +4408,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   }
 
   const handleCreate = async () => {
-    if (!allConflictsResolved || !allPricesSet || !allDescripcionesSet || duplicateProductGroups.length > 0) {
+    if (!allConflictsResolved || !allDescripcionesSet || duplicateProductGroups.length > 0) {
       setSubmitAttempted(true)
       const reasons = []
       if (!allDescripcionesSet) reasons.push(`falta la descripción de ${pendingDescripcionCount} producto${pendingDescripcionCount !== 1 ? 's' : ''} nuevo${pendingDescripcionCount !== 1 ? 's' : ''}`)
-      if (!allPricesSet) reasons.push(`falta el precio de ${pendingPriceCount} producto${pendingPriceCount !== 1 ? 's' : ''} nuevo${pendingPriceCount !== 1 ? 's' : ''}`)
       if (!allConflictsResolved) reasons.push('hay conflictos de referencia sin resolver')
       if (duplicateProductGroups.length > 0) reasons.push('hay productos repetidos dentro del mismo Excel')
       toastRef.current?.show({
@@ -4561,19 +4560,14 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   )
   // PVP: el precio que se guarda en la sugerencia. Ya no se escribe a mano:
   // una promoción trae el precio en el Excel y se usa ese; una importación
-  // normal no trae precio, así que los productos del catálogo quedan sin
-  // precio y los nuevos toman el PVP JP. Elegir una coincidencia por OEM
-  // (precio_nuevo) tiene prioridad.
+  // normal no trae precio y todo queda sin precio. Elegir una coincidencia
+  // por OEM (precio_nuevo) tiene prioridad.
   const getPrecioGuardado = (row) => {
     if (parseInt(row.precio_nuevo || '0', 10) > 0) return { valor: parseInt(row.precio_nuevo, 10) / 100, casa: row.precio_casa || '' }
     if (Number(row.pvp) > 0) return { valor: Number(row.pvp), casa: selectedCasa?.nombre || '' }
-    const sistema = getSistemaPrecio(row)
-    if (!row.matched_producto_id && Number(sistema) > 0) return { valor: Number(sistema), casa: getSistemaCasa(row) }
     return null
   }
   const allConflictsResolved = validRows.every((row, i) => !hasReferenciaConflict(row) || referenciaDecisions[i] !== undefined)
-  const pendingPriceCount = validRows.filter(r => r.codigo_sugerido && !getPrecioGuardado(r)).length
-  const allPricesSet = pendingPriceCount === 0
   // Un producto con código sugerido (match por OEM) sí se crea de una vez en
   // el catálogo, así que necesita nombre. Uno realmente "sin catálogo" (sin
   // código) solo queda como detalle de la sugerencia, se completa después.
@@ -4599,6 +4593,24 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     const updates = {}
     validRows.forEach((row, i) => { if (hasReferenciaConflict(row)) updates[i] = decision })
     setReferenciaDecisions(prev => ({ ...prev, ...updates }))
+  }
+
+  // Quita un producto de la sugerencia. referenciaDecisions va por posición
+  // en validRows, así que las decisiones de las filas siguientes se corren
+  // una posición para que sigan en su producto.
+  const removeReviewRow = (filaExcel) => {
+    const idx = validRows.findIndex((r) => r.fila_excel === filaExcel)
+    if (idx === -1) return
+    setParsedRows(prev => prev.filter(r => r.fila_excel !== filaExcel))
+    setReferenciaDecisions(prev => {
+      const next = {}
+      Object.entries(prev).forEach(([k, v]) => {
+        const n = Number(k)
+        if (n < idx) next[n] = v
+        else if (n > idx) next[n - 1] = v
+      })
+      return next
+    })
   }
 
   const updateRowCodigo = (filaExcel, value) => {
@@ -5066,6 +5078,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                           <col style={{ width: 60 }} />
                           <col style={{ width: 85 }} />
                           <col style={{ width: 95 }} />
+                          <col style={{ width: 40 }} />
                         </colgroup>
                         <thead>
                           <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1, fontSize: 'var(--font-size-sm)' }}>
@@ -5075,7 +5088,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
                             <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
                             <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="Precio registrado en el sistema">PVP JP</th>
-                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="PVP que se guarda en la sugerencia: el que trae el Excel o, en un producto nuevo sin precio en el Excel, el PVP JP">PVP</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="PVP que trae el Excel (promoción). Una importación sin precios queda vacía">PVP</th>
+                            <th style={{ padding: '8px 4px' }} aria-label="Quitar" />
                           </tr>
                         </thead>
                         <tbody>
@@ -5250,11 +5264,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                 <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                                   {(() => {
                                     const precio = getPrecioGuardado(row)
-                                    if (!precio) {
-                                      return row.codigo_sugerido && submitAttempted
-                                        ? <span style={{ color: '#dc2626', fontWeight: 600 }} title="Producto nuevo sin precio: elige una coincidencia en el ícono del OEM">Falta</span>
-                                        : <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
-                                    }
+                                    if (!precio) return <span style={{ color: 'var(--color-text-secondary)' }}>—</span>
                                     const sistema = getSistemaPrecio(row)
                                     const difiere = sistema != null && Math.abs(precio.valor - Number(sistema)) >= 0.005
                                     return (
@@ -5267,12 +5277,23 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                     )
                                   })()}
                                 </td>
+                                <td style={{ padding: '4px', textAlign: 'center' }}>
+                                  <button
+                                    type="button"
+                                    className="imp-excel-review__quitar"
+                                    onClick={() => removeReviewRow(row.fila_excel)}
+                                    aria-label={`Quitar ${row.codigo || row.referencia || 'producto'} de la sugerencia`}
+                                    title="Quitar de la sugerencia"
+                                  >
+                                    <X size={15} />
+                                  </button>
+                                </td>
                               </tr>
                             )
                           })}
                           {reviewRows.length > reviewRenderCount && (
                             <tr>
-                              <td colSpan={7} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
+                              <td colSpan={8} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
                                 {`Mostrando ${reviewRenderCount} de ${reviewRows.length} productos — baja para ver más`}
                               </td>
                             </tr>
@@ -5347,7 +5368,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                         validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia'
                           : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos'
                           : !allDescripcionesSet ? `Debes ingresar la descripción para ${pendingDescripcionCount} producto${pendingDescripcionCount !== 1 ? 's' : ''} nuevo${pendingDescripcionCount !== 1 ? 's' : ''}`
-                          : !allPricesSet ? `Debes ingresar el precio para ${pendingPriceCount} producto${pendingPriceCount !== 1 ? 's' : ''} nuevo${pendingPriceCount !== 1 ? 's' : ''}`
                           : undefined
                       }
                     >

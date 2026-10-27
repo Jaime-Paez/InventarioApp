@@ -1297,6 +1297,28 @@
    (ver .create-user__field input:focus) para que se note que se está
    editando. El precio usa :focus-within porque lo que recibe foco es el
    input interno, no el contenedor con el símbolo "$". */
+/* X para quitar un producto de la sugerencia (última columna). */
+.imp-excel-review__quitar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-secondary, #64748b);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.imp-excel-review__quitar:hover,
+.imp-excel-review__quitar:focus-visible {
+  background: #fee2e2;
+  color: #dc2626;
+  outline: none;
+}
+
 .imp-excel-review__codigo-input,
 .imp-excel-review__precio-box {
   height: 30px;
