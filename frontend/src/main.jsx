@@ -4,6 +4,7 @@ import './index.css'
 import './styles/polish.css'
 import App from './App.jsx'
 import { registerSystemNotificationWorker } from './utils/systemNotifications'
+import { startNativeTooltipBlocker } from './utils/nativeTooltips'
 import { addLocale, locale } from 'primereact/api'
 
 addLocale('es', {
@@ -58,6 +59,8 @@ document.addEventListener('wheel', () => {
     document.activeElement.blur()
   }
 }, { passive: true })
+
+startNativeTooltipBlocker()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

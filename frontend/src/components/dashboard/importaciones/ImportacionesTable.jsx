@@ -3642,31 +3642,23 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     setCellHover(null)
   }
 
-  // Los `title` del modal se muestran con la misma tarjeta blanca en vez del
-  // tooltip oscuro del navegador: mientras el mouse está encima se le quita el
-  // atributo (y se devuelve al salir). Dentro de una tabla, el encabezado de la
-  // columna sirve de título de la tarjeta.
+  // Los `title` del modal se muestran con la misma tarjeta blanca (el
+  // tooltip nativo está desactivado en todo el sistema y el texto queda en
+  // data-title, ver utils/nativeTooltips). Dentro de una tabla, el encabezado
+  // de la columna sirve de título de la tarjeta.
   const titleHoverRef = useRef(null)
-  const restoreTitleHover = () => {
-    const current = titleHoverRef.current
-    if (current && !current.el.hasAttribute('title')) current.el.setAttribute('title', current.text)
-    titleHoverRef.current = null
-  }
   const handleTitleMouseOver = (event) => {
-    const el = event.target.closest?.('[title]')
-    if (!el || titleHoverRef.current?.el === el) return
-    restoreTitleHover()
-    const text = el.getAttribute('title')
-    el.removeAttribute('title')
-    titleHoverRef.current = { el, text }
+    const el = event.target.closest?.('[data-title]')
+    if (!el || titleHoverRef.current === el) return
+    titleHoverRef.current = el
     const cell = el.closest('td')
     const header = cell?.closest('table')?.tHead?.rows[0]?.cells[cell.cellIndex]
-    showCellHover({ currentTarget: el }, text, header?.textContent.trim() || '')
+    showCellHover({ currentTarget: el }, el.getAttribute('data-title'), header?.textContent.trim() || '')
   }
   const handleTitleMouseOut = (event) => {
     const current = titleHoverRef.current
-    if (!current || current.el.contains(event.relatedTarget)) return
-    restoreTitleHover()
+    if (!current || current.contains(event.relatedTarget)) return
+    titleHoverRef.current = null
     hideCellHover()
   }
 
