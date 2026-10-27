@@ -1,0 +1,16 @@
+{
+  "name": "kava-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "APK de Android (Capacitor) que abre https://kava.peugeotjpaez.com",
+  "scripts": {
+    "build:apk": "powershell -ExecutionPolicy Bypass -File build-apk.ps1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/core": "^7.6.9"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.6.9"
+  }
+}

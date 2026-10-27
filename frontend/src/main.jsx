@@ -7,6 +7,12 @@ import { registerSystemNotificationWorker } from './utils/systemNotifications'
 import { startNativeTooltipBlocker } from './utils/nativeTooltips'
 import { addLocale, locale } from 'primereact/api'
 
+// /descargar es una pagina estatica (public/descargar/) con el APK; si el
+// hosting reescribe la ruta sin barra final a la SPA, se manda alli.
+if (window.location.pathname === '/descargar') {
+  window.location.replace('/descargar/')
+}
+
 addLocale('es', {
   startsWith: 'Comienza con',
   contains: 'Contiene',

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/kava-dark.png" />
+    <meta name="theme-color" content="#004570" />
+    <title>Descargar Kava</title>
+    <style>
+      :root {
+        --bg: #e9edf1;
+        --card: #ffffff;
+        --text: #1d2a35;
+        --muted: #5b6b78;
+        --brand: #004570;
+        --brand-text: #ffffff;
+        --border: #d5dde4;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f1820;
+          --card: #17232e;
+          --text: #e6edf3;
+          --muted: #9fb0bf;
+          --brand: #2f8fd0;
+          --border: #263746;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+      }
+      main {
+        width: 100%;
+        max-width: 460px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 32px 24px;
+        text-align: center;
+      }
+      img { width: 88px; height: 88px; border-radius: 20px; }
+      h1 { margin: 16px 0 4px; font-size: 1.5rem; }
+      p.sub { margin: 0 0 24px; color: var(--muted); }
+      a.btn {
+        display: block;
+        padding: 16px;
+        border-radius: 12px;
+        background: var(--brand);
+        color: var(--brand-text);
+        font-weight: 600;
+        font-size: 1.1rem;
+        text-decoration: none;
+      }
+      ol {
+        text-align: left;
+        margin: 24px 0 0;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.6;
+        font-size: 0.95rem;
+      }
+      ol b { color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icon-192.png" alt="Kava" />
+      <h1>Kava para Android</h1>
+      <p class="sub">Tablets Amazon Fire y Android</p>
+      <a class="btn" href="/descargar/kava.apk" download="kava.apk">Descargar APK</a>
+      <ol>
+        <li>Toca <b>Descargar APK</b> y espera a que termine.</li>
+        <li>Abre el archivo desde las notificaciones o desde <b>Descargas</b>.</li>
+        <li>Si la tablet lo pide, permite <b>instalar apps de fuentes desconocidas</b> para el navegador (Silk) y vuelve atrás.</li>
+        <li>Toca <b>Instalar</b>. La app se actualiza sola con cada cambio del sistema; solo hay que volver a descargarla si se pide.</li>
+      </ol>
+    </main>
+  </body>
+</html>

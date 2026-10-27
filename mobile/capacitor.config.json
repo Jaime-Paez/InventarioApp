@@ -1,0 +1,12 @@
+{
+  "appId": "com.peugeotjpaez.kava",
+  "appName": "Kava",
+  "webDir": "www",
+  "server": {
+    "url": "https://kava.peugeotjpaez.com",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
