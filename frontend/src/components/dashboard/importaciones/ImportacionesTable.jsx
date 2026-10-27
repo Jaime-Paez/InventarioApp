@@ -1952,7 +1952,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                           onMouseEnter={(e) => showCellHover(e, row.codigo, 'Código')}
                           onMouseLeave={hideCellHover}
                         >
-                          <span className="imp-table-cell-text">{row.codigo || '-'}</span>
+                          <span className="imp-table-cell-text imp-table-cell-text--full">{row.codigo || '-'}</span>
                         </span>
                         <span
                           className="imp-table-cell-tip"
@@ -2088,7 +2088,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                                 onMouseEnter={(e) => showCellHover(e, row.codigo, 'Código')}
                                 onMouseLeave={hideCellHover}
                               >
-                                <span className="imp-table-cell-text">{row.codigo || '-'}</span>
+                                <span className="imp-table-cell-text imp-table-cell-text--full">{row.codigo || '-'}</span>
                               </span>
                               {row.productoId != null && (
                                 <Info
@@ -3137,7 +3137,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           >
                             {sinCat
                               ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
-                              : <span className="imp-table-cell-text">{codigo}</span>}
+                              : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
                           </span>
                           <span
                             className="imp-table-cell-tip"
@@ -6538,7 +6538,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                               >
                                 {sinCatalogo
                                   ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
-                                  : <span className="imp-table-cell-text">{codigo}</span>}
+                                  : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
                               </span>
                               <span
                                 className="imp-table-cell-tip"
@@ -7818,21 +7818,17 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
       const precioField = isVerificar ? 'precio_estimado' : 'precio_confirmado'
       const cantField = isVerificar ? 'cantidad_aproximada' : 'cantidad_confirmada'
+      // Lo que trae el Excel es lo que queda: una celda vacía (o que no es un
+      // número) deja el campo vacío.
       const applyRow = (item, row) => {
-        const rawPrecio = row[precioIdx]
-        const rawCant = row[cantIdx]
-        const rawComent = comentIdx !== -1 ? row[comentIdx] : ''
-        let nuevoPrecio = item[precioField]
-        if (rawPrecio !== '' && rawPrecio != null) {
-          const num = parseFloat(String(rawPrecio).replace(',', '.'))
-          if (!isNaN(num)) nuevoPrecio = Math.round(num * 100)
+        const precioNum = parseFloat(cellText(row, precioIdx).replace(',', '.'))
+        const cantNum = parseInt(cellText(row, cantIdx), 10)
+        return {
+          ...item,
+          [precioField]: isNaN(precioNum) ? '' : String(Math.round(precioNum * 100)),
+          [cantField]: isNaN(cantNum) ? '' : String(cantNum),
+          comentario: comentIdx !== -1 ? cellText(row, comentIdx) : item.comentario,
         }
-        let nuevaCant = item[cantField]
-        if (rawCant !== '' && rawCant != null) {
-          const num = parseInt(String(rawCant), 10)
-          if (!isNaN(num)) nuevaCant = num
-        }
-        return { ...item, [precioField]: nuevoPrecio, [cantField]: nuevaCant, comentario: rawComent !== '' ? String(rawComent) : item.comentario }
       }
       // Verificacion: un producto que vuelve a aparecer en el Excel se
       // restaura; uno que ya no viene se marca como quitado (en rojo, con la
@@ -7849,14 +7845,20 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const ausentes = current.filter((item) => !used.has(item._key))
       const nuevosQuitados = isVerificar ? ausentes.filter((item) => !item.quitado).length : 0
 
-      // Orden final: el orden de las filas en el Excel no importa. Los
-      // productos que ya estaban (vengan o no en el Excel) conservan su lugar
-      // y los nuevos se agregan al final, en el orden del archivo. Se
-      // renumera 1..N.
-      const updatedByKey = new Map(matched.map(({ item, row }) => [item._key, restaurar(applyRow(item, row))]))
+      // Orden final: manda el orden de las filas del Excel, con los productos
+      // del catálogo primero y los nuevos (sin producto todavía) al final.
+      // Los que no vienen en el Excel quedan quitados al fondo. Se renumera
+      // 1..N.
+      const delExcel = [
+        ...matched.map(({ item, row }) => ({ row, item: restaurar(applyRow(item, row)) })),
+        ...nuevos.map(({ item, row }) => ({ row, item: marcarAgregado(applyRow(item, row)) })),
+      ]
+        .sort((a, b) => dataRows.indexOf(a.row) - dataRows.indexOf(b.row))
+        .map(({ item }) => item)
       const next = [
-        ...current.map((item) => updatedByKey.get(item._key) || quitar(item)),
-        ...nuevos.map(({ item, row }) => marcarAgregado(applyRow(item, row))),
+        ...delExcel.filter((item) => item.producto?.id),
+        ...delExcel.filter((item) => !item.producto?.id),
+        ...ausentes.map(quitar),
       ]
       setDetails(next.map((item, i) => ({ ...item, orden: i + 1 })))
 
@@ -8587,7 +8589,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                             >
                               {sinCatalogo
                                 ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
-                                : <span className="imp-table-cell-text">{codigo}</span>}
+                                : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
                             </span>
                             <span
                               className="imp-table-cell-tip"

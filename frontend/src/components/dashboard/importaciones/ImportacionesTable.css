@@ -1527,6 +1527,13 @@
   text-align: left;
 }
 
+/* El código siempre se ve completo: si no cabe, baja de línea. */
+.imp-table-cell-text.imp-table-cell-text--full {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+}
+
 .importaciones-modal__products-table .create-user__locations-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty) > span:nth-child(-n+5) {
   justify-content: flex-start;
   padding-left: 8px;
