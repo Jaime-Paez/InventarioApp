@@ -2666,6 +2666,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const canMarcarLlegada = moduleActions?.puede_marcar_llegada === true
   const [showReceive, setShowReceive] = useState(false)
   const [showHistorial, setShowHistorial] = useState(false)
+  const [showHistorialVerificacion, setShowHistorialVerificacion] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const toastRef = useRef(null)
 
@@ -3230,6 +3231,15 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
           </div>
 
           <div className="create-user__footer">
+            {Array.isArray(imp.historial_verificacion) && imp.historial_verificacion.length > 0 && (
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={() => setShowHistorialVerificacion(true)}
+              >
+                Verificación
+              </button>
+            )}
             {(imp.estado === 'en_camino' || imp.estado === 'importada') && Array.isArray(imp.historial_confirmacion) && imp.historial_confirmacion.length > 0 && (
               <button
                 type="button"
@@ -3312,6 +3322,9 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       {showHistorial && (
         <HistorialConfirmacionModal imp={imp} onClose={() => setShowHistorial(false)} />
       )}
+      {showHistorialVerificacion && (
+        <HistorialVerificacionModal imp={imp} onClose={() => setShowHistorialVerificacion(false)} />
+      )}
       {trackerEditingField && createPortal(
         <div
           className="create-user__overlay"
@@ -3363,6 +3376,96 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
         getPortalRoot()
       )}
     </>
+  )
+}
+
+// Lo que se pidio y lo que no en la verificacion: se guarda al pedir la
+// confirmacion (historial_verificacion) porque ahi los quitados se sacan de
+// la importacion.
+const VERIFICACION_ESTADOS = {
+  pedido: { label: 'Pedido', className: '' },
+  agregado: { label: 'Agregado', className: ' imp-verificar__row--agregado' },
+  quitado: { label: 'No se pidió', className: ' imp-verificar__row--quitado' },
+}
+
+function HistorialVerificacionModal({ imp, onClose }) {
+  const [productSearch, setProductSearch] = useState('')
+  const [filtro, setFiltro] = useState('todos')
+  const historial = Array.isArray(imp.historial_verificacion) ? imp.historial_verificacion : []
+  const conteo = historial.reduce((acc, row) => ({ ...acc, [row.estado]: (acc[row.estado] || 0) + 1 }), {})
+  const visibles = historial.filter((row) => filtro === 'todos' || row.estado === filtro)
+  const gridTemplate = '120px minmax(160px, 1fr) 110px 80px 90px 100px minmax(140px, 1fr)'
+  const precio = (value) => (value != null && value !== '' ? `$${Number(value).toFixed(2)}` : '-')
+
+  return createPortal(
+    <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="imp-aceptados-popup__dialog" style={{ width: 'min(980px, calc(100vw - 32px))' }} onMouseDown={(e) => e.stopPropagation()}>
+        <header className="imp-aceptados-popup__header">
+          <div>
+            <h3>Historial de verificación</h3>
+            <p>Qué se pidió y qué no en {imp.codigo}</p>
+          </div>
+          <button type="button" className="imp-aceptados-popup__close" onClick={onClose} aria-label="Cerrar">
+            <i className="pi pi-times" />
+          </button>
+        </header>
+
+        <div className="imp-aceptados-popup__body">
+          <div className="imp-verificar__grupos" role="group" aria-label="Filtrar">
+            {[
+              ['todos', 'Todos', historial.length, ''],
+              ['pedido', 'Pedidos', conteo.pedido || 0, ''],
+              ['agregado', 'Agregados', conteo.agregado || 0, ' imp-verificar__grupo--nuevos'],
+              ['quitado', 'No se pidieron', conteo.quitado || 0, ' imp-verificar__grupo--eliminados'],
+            ].map(([key, label, n, mod]) => (
+              <button
+                key={key}
+                type="button"
+                className={`imp-verificar__grupo${mod}${filtro === key ? ' is-active' : ''}`}
+                onClick={() => setFiltro(key)}
+                aria-pressed={filtro === key}
+              >
+                {label} <strong>{n}</strong>
+              </button>
+            ))}
+          </div>
+          {historial.length > 0 && (
+            <ImportProductSearch
+              value={productSearch}
+              onChange={setProductSearch}
+              shown={visibles.filter((row) => importItemMatches(row, productSearch)).length}
+              total={visibles.length}
+            />
+          )}
+          <div className="imp-historial__table-wrap">
+            <div className="create-user__locations-table importaciones-modal__products-table imp-historial__table">
+              <div className="create-user__locations-row create-user__locations-row--head imp-historial__row" style={{ gridTemplateColumns: gridTemplate }}>
+                <span>Código</span><span>Descripción</span><span>Referencia</span><span>Cant. aprox.</span><span>PVP Aprox.</span><span>Estado</span><span>Comentario</span>
+              </div>
+              {visibles.length === 0 ? (
+                <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}>
+                  <span>{historial.length === 0 ? 'Esta importación no tiene historial de verificación.' : 'No hay productos en este grupo.'}</span>
+                </div>
+              ) : (productSearch.trim() ? matchesFirst(visibles, (row) => importItemMatches(row, productSearch)) : visibles).map((row, i) => {
+                const estado = VERIFICACION_ESTADOS[row.estado] || VERIFICACION_ESTADOS.pedido
+                return (
+                  <div key={i} className={`create-user__locations-row imp-historial__row${estado.className}`} style={{ gridTemplateColumns: gridTemplate }}>
+                    <span><span className="imp-table-cell-text imp-table-cell-text--full">{row.codigo || '-'}</span></span>
+                    <span><span className="imp-table-cell-text">{row.nombre || '-'}</span></span>
+                    <span><span className="imp-table-cell-text">{row.referencia || '-'}</span></span>
+                    <span>{row.estado === 'quitado' ? '-' : (row.cantidad_aproximada ?? '-')}</span>
+                    <span>{row.estado === 'quitado' ? '-' : precio(row.precio_estimado)}</span>
+                    <span style={{ fontWeight: 600 }}>{estado.label}</span>
+                    <span><span className="imp-table-cell-text">{row.comentario || '-'}</span></span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    getPortalRoot()
   )
 }
 
@@ -3521,6 +3624,175 @@ function HistorialConfirmacionModal({ imp, onClose }) {
     </>,
     getPortalRoot()
   )
+}
+
+// Si el OEM de una fila sin catálogo ya está registrado en un producto que
+// pertenece a la MISMA casa comercial de este import, no es un producto
+// nuevo: el backend solo no lo detectó porque el Excel no traía código ni
+// una referencia que calzara. Se usa ese producto ya existente tal cual.
+// También se revisan sus "alternos" (ProductoAlterno): si el match directo
+// por OEM es de otra casa pero uno de sus alternos ya es de la casa
+// actual, ese alterno ES el producto existente — no hay que sugerir un
+// código nuevo, hay que usar el que ya existe.
+const findExistingMatchForCasa = (row, casaCodigo) => {
+  const targetSuffix = (casaCodigo || '').trim().toUpperCase()
+  if (!targetSuffix) return null
+  const belongsToCasa = (candidate) =>
+    (candidate.casas_comerciales_codigos || []).some(
+      (c) => (c || '').trim().toUpperCase() === targetSuffix
+    )
+  for (const match of row.oem_matches || []) {
+    if (belongsToCasa(match)) return match
+    const alterno = (match.alternos || []).find(belongsToCasa)
+    if (alterno) return alterno
+  }
+  return null
+}
+
+// Los códigos JP se arman como <base><sufijo de casa comercial>. Si el OEM
+// de una fila sin catálogo ya está registrado en un producto de OTRA casa
+// comercial (y ninguno pertenece ya a la casa actual), se toma su código,
+// se le quita el sufijo de esa otra casa (buscando cuál de sus casas
+// comerciales calza como terminación) y se le pega el sufijo de la casa
+// comercial seleccionada en este import — así el producto pendiente nace
+// con el código que le correspondería en esta casa.
+// Además del match directo por OEM, también se revisan sus "alternos"
+// (ProductoAlterno): son la misma pieza física en otra casa aunque no
+// compartan el OEM en el catálogo, así que sirven igual como fuente del
+// patrón <base><sufijo>.
+// Largo fijo del "base" de un código JP (p. ej. "C1130" o "P1631": una
+// letra + 4 dígitos). Se usa como respaldo cuando el código no termina
+// limpiamente en el sufijo de casa conocido (p. ej. "C1130CL-L" no
+// termina en "CL", termina en "-L" — un calificador extra tipo lado
+// izq./der. que no es parte del sufijo de casa).
+const CODIGO_BASE_LENGTH = 5
+
+// Calificador de lado (izq./der.) que va DESPUÉS del sufijo de casa, p. ej.
+// "C1130CL-L". Se separa del código antes de buscar el sufijo de casa y se
+// vuelve a pegar al final del código sugerido ("C1130" + casa + "-L").
+const LADO_SUFFIX_RE = /\s*-\s*([LR])$/
+
+const splitLado = (codigo) => {
+  const m = codigo.match(LADO_SUFFIX_RE)
+  if (!m) return { codigo, lado: '' }
+  return { codigo: codigo.slice(0, m.index), lado: `-${m[1]}` }
+}
+
+// Devuelve { codigo, fuente } (fuente = el producto del que salió la
+// sugerencia, para mostrar su precio como PVP JP) o null.
+const deriveSuggestedCodigo = (row, casaCodigo) => {
+  const targetSuffix = (casaCodigo || '').trim().toUpperCase()
+  if (!targetSuffix) return null
+  const allCandidates = []
+  for (const match of row.oem_matches || []) {
+    allCandidates.push(match, ...(match.alternos || []))
+  }
+  for (const candidate of allCandidates) {
+    const { codigo: candidateCodigo, lado } = splitLado((candidate.codigo || '').trim().toUpperCase())
+    if (!candidateCodigo) continue
+    for (const otherSuffix of candidate.casas_comerciales_codigos || []) {
+      const suffix = (otherSuffix || '').trim().toUpperCase()
+      if (!suffix || suffix === targetSuffix) continue
+      if (candidateCodigo.endsWith(suffix)) {
+        const base = candidateCodigo.slice(0, candidateCodigo.length - suffix.length)
+        if (base) return { codigo: `${base}${targetSuffix}${lado}`, fuente: candidate }
+      }
+    }
+  }
+  // Respaldo: si ningún candidato termina limpiamente en un sufijo de
+  // casa conocido (p. ej. porque el código trae un calificador extra
+  // después del sufijo, o porque la casa del producto no tiene código
+  // registrado), se usa el largo fijo del base en vez de intentar
+  // adivinar dónde termina el sufijo.
+  for (const candidate of allCandidates) {
+    const { codigo: candidateCodigo, lado } = splitLado((candidate.codigo || '').trim().toUpperCase())
+    if (candidateCodigo.length > CODIGO_BASE_LENGTH) {
+      const base = candidateCodigo.slice(0, CODIGO_BASE_LENGTH)
+      return { codigo: `${base}${targetSuffix}${lado}`, fuente: candidate }
+    }
+  }
+  return null
+}
+
+// Completa una fila que devolvió el parser del Excel (parse-excel-*) igual que
+// en la sugerencia: si el OEM ya es de un producto de esta casa se usa ese
+// producto; si es de otra casa se sugiere el código con el sufijo de esta casa
+// (amarillo) y su precio/casa quedan como PVP JP. Si no trae descripción se
+// precarga con la de la primera coincidencia por OEM.
+const enrichParsedRow = (row, casaCodigo) => {
+  const withFirstMatchDescripcion = (r) => {
+    if (String(r.descripcion || '').trim()) return r
+    const firstMatchName = (r.oem_matches || [])[0]?.nombre || ''
+    return firstMatchName ? { ...r, descripcion: firstMatchName } : r
+  }
+  // Naranja (ya existe en otra casa) recibe codigo sugerido igual que
+  // amarillo: si el Excel no trae codigo, o si el que trae es el del
+  // producto de la otra casa (crearlo asi repetiria su codigo).
+  const codigoDeOtraCasa = Boolean(row.conflicto_casa && row.codigo) && (row.oem_matches || []).some(
+    (match) => String(match.codigo || '').trim().toUpperCase() === String(row.codigo).trim().toUpperCase()
+  )
+  if (row.matched_producto_id || (row.codigo && !codigoDeOtraCasa)) return withFirstMatchDescripcion(row)
+  const existing = findExistingMatchForCasa(row, casaCodigo)
+  if (existing) {
+    // El OEM ya está vinculado a un producto de esta misma casa: es el
+    // mismo producto, el backend solo no lo detectó porque el Excel no
+    // traía código ni una referencia que calzara.
+    return withFirstMatchDescripcion({
+      ...row,
+      codigo: existing.codigo,
+      referencia: row.referencia || existing.referencia || '',
+      descripcion: row.descripcion || existing.nombre || '',
+      matched_producto_id: existing.producto_id,
+      matched_producto_codigo: existing.codigo,
+      matched_producto_nombre: existing.nombre,
+      matched_producto_referencia: existing.referencia,
+      matched_producto_precio: existing.precio ?? null,
+    })
+  }
+  const suggested = deriveSuggestedCodigo(row, casaCodigo)
+  if (suggested) {
+    return withFirstMatchDescripcion({
+      ...row,
+      codigo: suggested.codigo,
+      codigo_sugerido: true,
+      sugerido_precio: suggested.fuente?.precio ?? null,
+      sugerido_desde: suggested.fuente?.codigo || '',
+      sugerido_casa: (suggested.fuente?.casas_comerciales_nombres || []).join(', '),
+    })
+  }
+  return withFirstMatchDescripcion(row)
+}
+
+// Manda un Excel al backend para buscar cada fila en el catálogo (por código,
+// referencia u OEM). El backend lo procesa en segundo plano y reporta el
+// progreso (0-100); se hace polling hasta que quede listo o falle. Devuelve
+// null si se cancela.
+const runParseExcelJob = async ({ file, fileName, casaId, token, onProgress, isCancelled = () => false }) => {
+  const formData = new FormData()
+  if (fileName) formData.append('file', file, fileName)
+  else formData.append('file', file)
+  formData.append('casa_comercial_id', casaId)
+  const startResp = await fetch(`${API_URL}/importaciones/importaciones/parse-excel-iniciar/`, {
+    method: 'POST',
+    headers: { Authorization: `Token ${token}` },
+    body: formData,
+  })
+  const startData = await startResp.json().catch(() => ({}))
+  if (!startResp.ok) throw new Error(startData.detail || 'Error al procesar el archivo.')
+  const jobId = startData.job_id
+  while (true) {
+    if (isCancelled()) return null
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    if (isCancelled()) return null
+    const statusResp = await fetch(`${API_URL}/importaciones/importaciones/parse-excel-estado/${jobId}/`, {
+      headers: { Authorization: `Token ${token}` },
+    })
+    const statusData = await statusResp.json().catch(() => ({}))
+    if (!statusResp.ok) throw new Error(statusData.detail || 'Error al procesar el archivo.')
+    onProgress?.(statusData.progreso || 0)
+    if (statusData.estado === 'listo') return statusData
+    if (statusData.estado === 'error') throw new Error(statusData.detail || 'Error al procesar el archivo.')
+  }
 }
 
 function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
@@ -3750,94 +4022,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       ? row.matched_producto_referencias
       : [row.matched_producto_referencia]
     return !dbRefs.some((ref) => (ref || '').trim().toLowerCase() === excelRef)
-  }
-
-  // Si el OEM de una fila sin catálogo ya está registrado en un producto que
-  // pertenece a la MISMA casa comercial de este import, no es un producto
-  // nuevo: el backend solo no lo detectó porque el Excel no traía código ni
-  // una referencia que calzara. Se usa ese producto ya existente tal cual.
-  // También se revisan sus "alternos" (ProductoAlterno): si el match directo
-  // por OEM es de otra casa pero uno de sus alternos ya es de la casa
-  // actual, ese alterno ES el producto existente — no hay que sugerir un
-  // código nuevo, hay que usar el que ya existe.
-  const findExistingMatchForCasa = (row, casaCodigo) => {
-    const targetSuffix = (casaCodigo || '').trim().toUpperCase()
-    if (!targetSuffix) return null
-    const belongsToCasa = (candidate) =>
-      (candidate.casas_comerciales_codigos || []).some(
-        (c) => (c || '').trim().toUpperCase() === targetSuffix
-      )
-    for (const match of row.oem_matches || []) {
-      if (belongsToCasa(match)) return match
-      const alterno = (match.alternos || []).find(belongsToCasa)
-      if (alterno) return alterno
-    }
-    return null
-  }
-
-  // Los códigos JP se arman como <base><sufijo de casa comercial>. Si el OEM
-  // de una fila sin catálogo ya está registrado en un producto de OTRA casa
-  // comercial (y ninguno pertenece ya a la casa actual), se toma su código,
-  // se le quita el sufijo de esa otra casa (buscando cuál de sus casas
-  // comerciales calza como terminación) y se le pega el sufijo de la casa
-  // comercial seleccionada en este import — así el producto pendiente nace
-  // con el código que le correspondería en esta casa.
-  // Además del match directo por OEM, también se revisan sus "alternos"
-  // (ProductoAlterno): son la misma pieza física en otra casa aunque no
-  // compartan el OEM en el catálogo, así que sirven igual como fuente del
-  // patrón <base><sufijo>.
-  // Largo fijo del "base" de un código JP (p. ej. "C1130" o "P1631": una
-  // letra + 4 dígitos). Se usa como respaldo cuando el código no termina
-  // limpiamente en el sufijo de casa conocido (p. ej. "C1130CL-L" no
-  // termina en "CL", termina en "-L" — un calificador extra tipo lado
-  // izq./der. que no es parte del sufijo de casa).
-  const CODIGO_BASE_LENGTH = 5
-
-  // Calificador de lado (izq./der.) que va DESPUÉS del sufijo de casa, p. ej.
-  // "C1130CL-L". Se separa del código antes de buscar el sufijo de casa y se
-  // vuelve a pegar al final del código sugerido ("C1130" + casa + "-L").
-  const LADO_SUFFIX_RE = /\s*-\s*([LR])$/
-
-  const splitLado = (codigo) => {
-    const m = codigo.match(LADO_SUFFIX_RE)
-    if (!m) return { codigo, lado: '' }
-    return { codigo: codigo.slice(0, m.index), lado: `-${m[1]}` }
-  }
-
-  // Devuelve { codigo, fuente } (fuente = el producto del que salió la
-  // sugerencia, para mostrar su precio como PVP JP) o null.
-  const deriveSuggestedCodigo = (row, casaCodigo) => {
-    const targetSuffix = (casaCodigo || '').trim().toUpperCase()
-    if (!targetSuffix) return null
-    const allCandidates = []
-    for (const match of row.oem_matches || []) {
-      allCandidates.push(match, ...(match.alternos || []))
-    }
-    for (const candidate of allCandidates) {
-      const { codigo: candidateCodigo, lado } = splitLado((candidate.codigo || '').trim().toUpperCase())
-      if (!candidateCodigo) continue
-      for (const otherSuffix of candidate.casas_comerciales_codigos || []) {
-        const suffix = (otherSuffix || '').trim().toUpperCase()
-        if (!suffix || suffix === targetSuffix) continue
-        if (candidateCodigo.endsWith(suffix)) {
-          const base = candidateCodigo.slice(0, candidateCodigo.length - suffix.length)
-          if (base) return { codigo: `${base}${targetSuffix}${lado}`, fuente: candidate }
-        }
-      }
-    }
-    // Respaldo: si ningún candidato termina limpiamente en un sufijo de
-    // casa conocido (p. ej. porque el código trae un calificador extra
-    // después del sufijo, o porque la casa del producto no tiene código
-    // registrado), se usa el largo fijo del base en vez de intentar
-    // adivinar dónde termina el sufijo.
-    for (const candidate of allCandidates) {
-      const { codigo: candidateCodigo, lado } = splitLado((candidate.codigo || '').trim().toUpperCase())
-      if (candidateCodigo.length > CODIGO_BASE_LENGTH) {
-        const base = candidateCodigo.slice(0, CODIGO_BASE_LENGTH)
-        return { codigo: `${base}${targetSuffix}${lado}`, fuente: candidate }
-      }
-    }
-    return null
   }
 
   // Solo el paso 3 (la tabla) se beneficia de maximizar — los pasos 1/2 son
@@ -4200,82 +4384,15 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     setParsingProgress(0)
     parsingCancelledRef.current = false
     try {
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      formData.append('casa_comercial_id', selectedCasa.id)
-      const startResp = await fetch(`${API_URL}/importaciones/importaciones/parse-excel-iniciar/`, {
-        method: 'POST',
-        headers: { Authorization: `Token ${token}` },
-        body: formData,
+      const data = await runParseExcelJob({
+        file: selectedFile,
+        casaId: selectedCasa.id,
+        token,
+        onProgress: setParsingProgress,
+        isCancelled: () => parsingCancelledRef.current,
       })
-      const startData = await startResp.json().catch(() => ({}))
-      if (!startResp.ok) throw new Error(startData.detail || 'Error al procesar el archivo.')
-      const jobId = startData.job_id
-
-      // El backend procesa el Excel en segundo plano y va reportando el
-      // progreso (0-100); acá se hace polling hasta que quede listo o falle.
-      let data = null
-      while (true) {
-        if (parsingCancelledRef.current) return
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        if (parsingCancelledRef.current) return
-        const statusResp = await fetch(`${API_URL}/importaciones/importaciones/parse-excel-estado/${jobId}/`, {
-          headers: { Authorization: `Token ${token}` },
-        })
-        const statusData = await statusResp.json().catch(() => ({}))
-        if (!statusResp.ok) throw new Error(statusData.detail || 'Error al procesar el archivo.')
-        setParsingProgress(statusData.progreso || 0)
-        if (statusData.estado === 'listo') { data = statusData; break }
-        if (statusData.estado === 'error') throw new Error(statusData.detail || 'Error al procesar el archivo.')
-      }
-      // Si no trae descripcion, se precarga con el nombre de la primera
-      // coincidencia por OEM (la misma lista que se ve en el hover del ícono
-      // "i"): es solo un punto de partida, el usuario puede corregirla si no
-      // encaja. Se aplica al final, sin importar por cuál rama pasó la fila
-      // (con codigo propio, conflicto de casa, sugerido, etc.), para que
-      // nunca quede sin completar por tomar un atajo antes.
-      const withFirstMatchDescripcion = (row) => {
-        if (String(row.descripcion || '').trim()) return row
-        const firstMatchName = (row.oem_matches || [])[0]?.nombre || ''
-        return firstMatchName ? { ...row, descripcion: firstMatchName } : row
-      }
-      const rowsWithSuggestions = (data.rows || []).map((row) => {
-        // Naranja (ya existe en otra casa) recibe codigo sugerido igual que
-        // amarillo: si el Excel no trae codigo, o si el que trae es el del
-        // producto de la otra casa (crearlo asi repetiria su codigo).
-        const codigoDeOtraCasa = Boolean(row.conflicto_casa && row.codigo) && (row.oem_matches || []).some(
-          (match) => String(match.codigo || '').trim().toUpperCase() === String(row.codigo).trim().toUpperCase()
-        )
-        if (row.matched_producto_id || (row.codigo && !codigoDeOtraCasa)) return withFirstMatchDescripcion(row)
-        const existing = findExistingMatchForCasa(row, selectedCasa?.codigo)
-        if (existing) {
-          // El OEM ya está vinculado a un producto de esta misma casa: es el
-          // mismo producto, el backend solo no lo detectó porque el Excel no
-          // traía código ni una referencia que calzara.
-          return withFirstMatchDescripcion({
-            ...row,
-            codigo: existing.codigo,
-            referencia: row.referencia || existing.referencia || '',
-            descripcion: row.descripcion || existing.nombre || '',
-            matched_producto_id: existing.producto_id,
-            matched_producto_codigo: existing.codigo,
-            matched_producto_nombre: existing.nombre,
-            matched_producto_referencia: existing.referencia,
-          })
-        }
-        const suggested = deriveSuggestedCodigo(row, selectedCasa?.codigo)
-        if (suggested) {
-          return withFirstMatchDescripcion({
-            ...row,
-            codigo: suggested.codigo,
-            codigo_sugerido: true,
-            sugerido_precio: suggested.fuente?.precio ?? null,
-            sugerido_desde: suggested.fuente?.codigo || '',
-            sugerido_casa: (suggested.fuente?.casas_comerciales_nombres || []).join(', '),
-          })
-        }
-        return withFirstMatchDescripcion(row)
-      })
+      if (!data) return
+      const rowsWithSuggestions = (data.rows || []).map((row) => enrichParsedRow(row, selectedCasa?.codigo))
       setParsedRows(rowsWithSuggestions)
       setReferenciaDecisions({})
       setSubmitError('')
@@ -7079,10 +7196,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
   const selectedCasa = imp?.casa_comercial || null
   const isSugerencia = imp?.estado === 'borrador'
+  const [showHistorialVerificacion, setShowHistorialVerificacion] = useState(false)
   const isVerificar = imp?.estado === 'cotizacion'
   const isConfirmacion = imp?.estado === 'confirmacion'
   const isVerificarOrConfirmacion = isVerificar || isConfirmacion
   const isImportRealizada = isConfirmacion && Boolean(imp?.numero_factura)
+  // Verificacion: lo agregado (nota en el comentario) y lo quitado se pintan
+  // y se agrupan arriba para encontrarlos rapido.
+  const esAgregadoVerificacion = (item) => isVerificar && !item.quitado && String(item.comentario || '').includes(NOTA_AGREGADO_VERIFICACION)
   const detailDraftQuantity = Number(detailDraft.cantidad)
   const canAddDetailDraft = Boolean(
     detailDraft.producto && Number.isFinite(detailDraftQuantity) && detailDraftQuantity > 0
@@ -7523,7 +7644,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     const badKeys = new Set(
       imp?.estado === 'borrador'
         ? []
-        : itemsToSubmit.filter((item) => { const n = Number(item.cantidad || 0); return !item.quitado && (!Number.isFinite(n) || n <= 0) }).map((item) => item._key)
+        : itemsToSubmit.filter((item) => {
+          // Lo agregado en la verificación puede guardarse sin cantidad: se
+          // exige al pedir la confirmación.
+          if (item.quitado || esAgregadoVerificacion(item)) return false
+          const n = Number(item.cantidad || 0)
+          return !Number.isFinite(n) || n <= 0
+        }).map((item) => item._key)
     )
     if (badKeys.size > 0) {
       setInvalidQtyKeys(badKeys)
@@ -7554,14 +7681,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       // orden: la posición del producto en el Excel de sugerencia original --
       // el backend borra y vuelve a crear todos los detalles al guardar, así
       // que si no se reenvía aquí se pierde en cada "Guardar" (quedaba null).
-      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
+      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || item.cantidad_aproximada || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
       const manualPrecio = item.precio != null && item.precio !== '' ? Number(item.precio) : undefined
       return {
         codigo: item.codigo || '',
         nombre: item.nombre || '',
         oem: item.oem || '',
         referencia: item.referencia || '',
-        cantidad: Number(item.cantidad || 0),
+        cantidad: Number(item.cantidad || item.cantidad_aproximada || 0),
         comentario: item.comentario || '',
         orden: item.orden,
         ...(manualPrecio != null && !isVerificarOrConfirmacion ? { precio_confirmado: manualPrecio } : {}),
@@ -7833,9 +7960,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       // cualquier columna) y se pueden agregar productos nuevos: cada fila se
       // empareja con su producto por _key (si el código sigue coincidiendo)
       // o, si no, por código. Las que no corresponden a ningún producto del
-      // listado se agregan como nuevas al final -- al guardar, el backend las
-      // vincula al producto del catálogo con ese código si ya existe; si no,
-      // el producto recién se crea al importar.
+      // listado se buscan en el catálogo (por código, referencia u OEM, igual
+      // que en la sugerencia) y se agregan como nuevas; si no existen, el
+      // producto recién se crea al importar.
       const current = detailsRef.current
       const codeOf = (item) => String(item.producto?.codigo || item.codigo || '').trim().toLowerCase()
       const byKey = new Map(current.map((item) => [item._key, item]))
@@ -7843,7 +7970,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const matched = []
       const nuevos = []
       const repetidos = []
-      const sinCantidad = []
       dataRows.forEach((row, rowIdx) => {
         const fileCode = cellText(row, codigoIdx)
         const fileCodeLc = fileCode.toLowerCase() === 'sin catálogo' ? '' : fileCode.toLowerCase()
@@ -7863,22 +7989,79 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         if (!fileCodeLc && !nombre && !oem && !referencia) return
         const cantSug = parseInt(cellText(row, cantSugIdx), 10)
         const cantEdit = parseInt(cellText(row, cantIdx), 10)
+        // La cantidad no es obligatoria: se completa después en la tabla.
         const cantidad = cantSug > 0 ? cantSug : cantEdit > 0 ? cantEdit : 0
-        // En la sugerencia la cantidad todavía no es obligatoria.
-        if (cantidad <= 0 && !isSugerencia) { sinCantidad.push(fileCode || nombre || referencia || oem); return }
         nuevos.push({
           codigo: fileCodeLc ? fileCode : '', row,
           item: {
             _key: 'manual_' + Date.now() + '_' + rowIdx + '_' + Math.floor(Math.random() * 10000),
             producto: null, codigo: fileCodeLc ? fileCode : '', nombre, oem, referencia,
-            cantidad: String(cantidad), comentario: '',
+            cantidad: cantidad > 0 ? String(cantidad) : '', comentario: '',
             precio_estimado: '', cantidad_aproximada: '', precio_confirmado: '', cantidad_confirmada: '',
           },
         })
       })
-      if (sinCantidad.length > 0) {
-        toastRef.current?.show({ severity: 'error', summary: 'Falta la cantidad', detail: `Los productos nuevos necesitan una cantidad mayor a 0 en "Cantidad" o "${isVerificar ? 'Cant. aprox.' : 'Cant. conf.'}": ${sinCantidad.join(', ')}. No se cargó el Excel.`, life: 6000 })
-        return
+
+      // Los nuevos se buscan en el catálogo como en la sugerencia: si ya
+      // existen se vinculan (o, si ya estaban en la lista, se toman como
+      // ese producto) y, si no, se completan con el código sugerido, la
+      // descripción y el PVP JP de la coincidencia por OEM.
+      if (nuevos.length > 0 && selectedCasa?.id) {
+        const aoa = [
+          ['CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCION', 'CANTIDAD'],
+          ...nuevos.map(({ item }) => [item.codigo, item.referencia, item.oem, item.nombre, Number(item.cantidad) || '']),
+        ]
+        const lookupBook = xlsx.utils.book_new()
+        xlsx.utils.book_append_sheet(lookupBook, xlsx.utils.aoa_to_sheet(aoa), 'Nuevos')
+        const lookupOut = xlsx.write(lookupBook, { bookType: 'xlsx', type: 'array' })
+        const lookup = await runParseExcelJob({ file: new Blob([lookupOut]), fileName: 'nuevos.xlsx', casaId: selectedCasa.id, token })
+        const byFila = new Map((lookup?.rows || []).map((r) => [r.fila_excel, enrichParsedRow(r, selectedCasa.codigo)]))
+        const resolved = []
+        nuevos.forEach((n, idx) => {
+          const found = byFila.get(idx + 2)
+          if (!found) { resolved.push(n); return }
+          if (found.matched_producto_id) {
+            const id = String(found.matched_producto_id)
+            const enLista = current.find((d) => String(d.producto?.id ?? '') === id)
+            if (enLista) {
+              if (used.has(enLista._key)) { repetidos.push(enLista.producto.codigo || id); return }
+              used.add(enLista._key)
+              matched.push({ item: enLista, row: n.row })
+              return
+            }
+            if (resolved.some((o) => String(o.item.producto?.id ?? '') === id)) { repetidos.push(found.matched_producto_codigo || id); return }
+            resolved.push({
+              ...n,
+              item: {
+                ...n.item,
+                _key: id,
+                producto: {
+                  id: found.matched_producto_id,
+                  codigo: found.matched_producto_codigo,
+                  nombre: found.matched_producto_nombre,
+                  referencia: found.matched_producto_referencia,
+                  precio: found.matched_producto_precio,
+                },
+                codigo: '', nombre: '', oem: '', referencia: '',
+              },
+            })
+            return
+          }
+          const precioJp = found.conflicto_precio ?? found.sugerido_precio ?? null
+          resolved.push({
+            ...n,
+            precioJp,
+            precioJpCasa: found.conflicto_precio != null ? (found.conflicto_casa_nombre || '') : (found.sugerido_casa || ''),
+            item: {
+              ...n.item,
+              codigo: n.item.codigo || found.codigo || '',
+              nombre: n.item.nombre || found.descripcion || '',
+              oem: n.item.oem || found.oem || '',
+              referencia: n.item.referencia || found.referencia || '',
+            },
+          })
+        })
+        nuevos.splice(0, nuevos.length, ...resolved)
       }
 
       const precioField = isSugerencia || isVerificar ? 'precio_estimado' : 'precio_confirmado'
@@ -7915,6 +8098,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const marcarAgregado = (item) => (isVerificar
         ? { ...item, comentario: withNotaVerificacion(item.comentario, NOTA_AGREGADO_VERIFICACION) }
         : item)
+      // Precio de la coincidencia (otra casa o código sugerido) para un
+      // producto nuevo sin catálogo: en la sugerencia es su PVP aprox. si el
+      // Excel no trae uno; en verificación/confirmación se muestra como PVP JP.
+      const conPrecioJp = (item, precioJp, casa) => {
+        if (precioJp == null) return item
+        if (!isSugerencia) return { ...item, precio: precioJp }
+        if (item.precio_estimado) return item
+        return { ...item, precio_estimado: String(Math.round(Number(precioJp) * 100)), precio_casa: casa || '' }
+      }
       const ausentes = current.filter((item) => !used.has(item._key))
       const nuevosQuitados = isVerificar ? ausentes.filter((item) => !item.quitado).length : 0
 
@@ -7924,7 +8116,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       // 1..N.
       const delExcel = [
         ...matched.map(({ item, row }) => ({ row, item: restaurar(applyRow(item, row)) })),
-        ...nuevos.map(({ item, row }) => ({ row, item: marcarAgregado(applyRow(item, row)) })),
+        ...nuevos.map(({ item, row, precioJp, precioJpCasa }) => ({ row, item: marcarAgregado(conPrecioJp(applyRow(item, row), precioJp, precioJpCasa)) })),
       ]
         .sort((a, b) => dataRows.indexOf(a.row) - dataRows.indexOf(b.row))
         .map(({ item }) => item)
@@ -8007,13 +8199,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
     const missingData = vigentes.filter((item) => {
       const precio = parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
-      return precio <= 0
+      const sinCantidad = Number(item.cantidad || 0) <= 0 && Number(item.cantidad_aproximada || 0) <= 0
+      return precio <= 0 || sinCantidad
     })
     if (missingData.length > 0) {
       toastRef.current?.show({
         severity: 'error',
         summary: 'Datos incompletos',
-        detail: `Completa el PVP Aprox. de todos los productos (${missingData.length} sin completar).`,
+        detail: `Completa el PVP Aprox. y la Cant. aprox. de todos los productos (${missingData.length} sin completar).`,
         life: 5000,
       })
       return
@@ -8032,8 +8225,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           precio_confirmado: precioEstimadoVal,
           cantidad_confirmada: cantAproxVal,
         }
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
+        const cantidad = Number(item.cantidad || item.cantidad_aproximada || 0)
+        if (item.producto?.id) return { producto_id: item.producto.id, cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
       })
       const saveResponse = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -8206,6 +8400,25 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     })
     window.setTimeout(() => setHighlightedDetailKey((current) => (current === String(detailKey) ? '' : current)), 2600)
   }, [])
+  // Orden en pantalla de la verificacion: nuevos, eliminados y el resto (cada
+  // grupo en su orden). Solo cambia como se muestra, no el orden guardado.
+  const VERIFICAR_GRUPOS = ['nuevos', 'eliminados', 'resto']
+  const verificarGrupoDe = (item) => (item.quitado ? 'eliminados' : esAgregadoVerificacion(item) ? 'nuevos' : 'resto')
+  const shownDetails = isVerificar
+    ? [...details].sort((a, b) => VERIFICAR_GRUPOS.indexOf(verificarGrupoDe(a)) - VERIFICAR_GRUPOS.indexOf(verificarGrupoDe(b)))
+    : details
+  const verificarConteo = VERIFICAR_GRUPOS.reduce((acc, g) => ({ ...acc, [g]: shownDetails.filter((item) => verificarGrupoDe(item) === g).length }), {})
+  // Cada clic en un contador lleva a la siguiente fila de ese grupo.
+  const verificarJumpRef = useRef({ grupo: '', idx: -1 })
+  const jumpToVerificarGrupo = (grupo) => {
+    const keys = shownDetails.filter((item) => verificarGrupoDe(item) === grupo).map((item) => item._key)
+    if (!keys.length) return
+    const last = verificarJumpRef.current
+    const idx = last.grupo === grupo && last.idx + 1 < keys.length ? last.idx + 1 : 0
+    verificarJumpRef.current = { grupo, idx }
+    setProductSearch('')
+    jumpToDetailRow(keys[idx])
+  }
   const listedMatches = useMemo(() => {
     const term = String(productQuery || '').trim().toLowerCase()
     if (term.length < 2) return []
@@ -8464,6 +8677,25 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         total={details.length}
                       />
                     )}
+                    {isVerificar && (verificarConteo.nuevos > 0 || verificarConteo.eliminados > 0) && (
+                      <div className="imp-verificar__grupos" role="group" aria-label="Ir a un grupo de productos">
+                        {verificarConteo.nuevos > 0 && (
+                          <button type="button" className="imp-verificar__grupo imp-verificar__grupo--nuevos" onClick={() => jumpToVerificarGrupo('nuevos')}>
+                            Nuevos <strong>{verificarConteo.nuevos}</strong>
+                          </button>
+                        )}
+                        {verificarConteo.eliminados > 0 && (
+                          <button type="button" className="imp-verificar__grupo imp-verificar__grupo--eliminados" onClick={() => jumpToVerificarGrupo('eliminados')}>
+                            Eliminados <strong>{verificarConteo.eliminados}</strong>
+                          </button>
+                        )}
+                        {verificarConteo.resto > 0 && (
+                          <button type="button" className="imp-verificar__grupo" onClick={() => jumpToVerificarGrupo('resto')}>
+                            Resto <strong>{verificarConteo.resto}</strong>
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`} onKeyDown={handleProductsGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head imp-sticky-head" ref={productsHeadRef}>
                         <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span>
@@ -8645,7 +8877,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
                       {!details.length ? (
                         <div className="create-user__locations-row create-user__locations-row--empty"><span>Sin productos agregados.</span></div>
-                      ) : (productSearch.trim() ? matchesFirst(details, (item) => importItemMatches(item, productSearch)) : details).map((item) => {
+                      ) : (productSearch.trim() ? matchesFirst(shownDetails, (item) => importItemMatches(item, productSearch)) : shownDetails).map((item) => {
                         const sinCatalogo = !item.producto?.id
                         const creadoAqui = !sinCatalogo && item.producto?.creado_desde_importacion === imp.id
                         const codigo = item.producto?.codigo || item.codigo || ''
@@ -8657,7 +8889,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
-                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
+                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? ' imp-verificar__row--agregado' : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
                             <span
                               className="imp-table-cell-tip"
                               onMouseEnter={(e) => !sinCatalogo && showCellHover(e, codigo, 'Código')}
@@ -8715,8 +8947,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                   const storedCentavos = pvpForDiff != null ? Math.round(Number(pvpForDiff) * 100) : null
                                   const diff = storedCentavos != null && confirmedCentavos != null ? confirmedCentavos - storedCentavos : null
                                   const diffColor = diff === null ? undefined : diff <= 0 ? '#22c55e' : diff <= 100 ? '#eab308' : '#ef4444'
+                                  // Eliminado en la verificacion: ya no se pide, asi que no lleva
+                                  // PVP Aprox. ni Cant. aprox.
+                                  const eliminado = isVerificar && item.quitado
                                   return (
                                     <>
+                                      {eliminado ? <span className="imp-table-cell-text" style={{ textAlign: 'center' }}>-</span> : (
                                       <span className="importaciones-verificar__precio-cell">
                                         <span className="importaciones-verificar__currency-sign">$</span>
                                         <input
@@ -8743,8 +8979,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                           }}
                                         />
                                       </span>
+                                      )}
                                       {(() => {
-                                        const diffText = diff !== null ? `${diff >= 0 ? '+' : '-'}$${(Math.abs(diff) / 100).toFixed(2)}` : ''
+                                        const diffText = !eliminado && diff !== null ? `${diff >= 0 ? '+' : '-'}$${(Math.abs(diff) / 100).toFixed(2)}` : ''
                                         return (
                                           <span
                                             className="imp-table-cell-tip"
@@ -8762,6 +8999,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                       >
                                         <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{item.cantidad}</span>
                                       </span>
+                                      {eliminado ? <span className="imp-table-cell-text" style={{ textAlign: 'center' }}>-</span> : (
                                       <span>
                                         <input
                                           type="number"
@@ -8774,6 +9012,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                           title={isImportRealizada ? undefined : 'Doble click: usar cantidad original'}
                                         />
                                       </span>
+                                      )}
                                       <span>
                                         <input
                                           type="text"
@@ -8788,12 +9027,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                         <span className="create-user__locations-cell create-user__locations-cell--action">
                                           <button
                                             type="button"
-                                            className={item.quitado ? 'create-user__ghost' : 'create-user__locations-remove'}
+                                            className={`create-user__locations-remove${item.quitado ? ' imp-verificar__restore' : ''}`}
                                             onClick={() => handleToggleQuitado(item._key)}
                                             disabled={!canEdit}
                                             title={item.quitado ? 'Restaurar: vuelve a la verificación' : 'Quitar de la verificación (queda en rojo, se puede restaurar)'}
+                                            aria-label={item.quitado ? 'Restaurar' : 'Quitar'}
                                           >
-                                            {item.quitado ? 'Restaurar' : 'x'}
+                                            {item.quitado ? <i className="pi pi-undo" aria-hidden="true" /> : 'x'}
                                           </button>
                                         </span>
                                       )}
@@ -8859,6 +9099,18 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                   >
                     Eliminar
                   </button>
+                )}
+                {Array.isArray(imp?.historial_verificacion) && imp.historial_verificacion.length > 0 && (
+                  <button
+                    type="button"
+                    className="create-user__action create-user__action--cancel"
+                    onClick={() => setShowHistorialVerificacion(true)}
+                  >
+                    Verificación
+                  </button>
+                )}
+                {showHistorialVerificacion && (
+                  <HistorialVerificacionModal imp={imp} onClose={() => setShowHistorialVerificacion(false)} />
                 )}
               </div>
               <div className="user-details__footer-right">

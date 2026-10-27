@@ -60,6 +60,12 @@ class Importacion(models.Model):
         default=None,
         help_text="Snapshot de los productos revisados en confirmación (check/x, comentarios, precios) al momento de importar.",
     )
+    historial_verificacion = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Snapshot de la verificación al pedir confirmación: qué se pidió, qué se agregó y qué se quitó (no se pidió).",
+    )
     borrador_llegada = models.JSONField(
         null=True,
         blank=True,

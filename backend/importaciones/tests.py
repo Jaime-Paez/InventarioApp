@@ -211,6 +211,17 @@ class SugerenciaProductosNuevosTests(TestCase):
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(importacion.detalles.get(codigo="NUEVO-CI").precio_casa, "TECNOVA")
 
+    def test_confirmar_guarda_que_se_pidio_y_que_no(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        self._pedir_cotizacion(importacion)
+        importacion.detalles.filter(codigo="NUEVO-CI").update(quitado=True)
+        response = self.client.post(f"{BASE_URL}/{importacion.id}/confirmar/")
+        self.assertEqual(response.status_code, 200, response.data)
+        importacion.refresh_from_db()
+        estados = {row["codigo"]: row["estado"] for row in importacion.historial_verificacion}
+        self.assertEqual(estados, {"EX-1": "pedido", "NUEVO-CI": "quitado"})
+        self.assertFalse(importacion.detalles.filter(codigo="NUEVO-CI").exists())
+
     def test_importar_no_crea_los_productos_negados(self):
         importacion = self._crear(cantidad_nuevo=3)
         self._pedir_cotizacion(importacion)

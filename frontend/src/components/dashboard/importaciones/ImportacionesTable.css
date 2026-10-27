@@ -2458,3 +2458,74 @@ body.app-theme-dark .imp-receive-footer-hint {
   color: var(--color-text-secondary);
   font-weight: 600;
 }
+
+/* Verificacion: lo agregado (amarillo, como los sugeridos) y los contadores
+   para ir a los nuevos, los eliminados y el resto. */
+.importaciones-modal__products-table .create-user__locations-row.imp-verificar__row--agregado {
+  background: color-mix(in srgb, #facc15 22%, transparent);
+  box-shadow: inset 3px 0 0 0 #eab308;
+}
+
+.imp-verificar__grupos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 8px;
+}
+
+.imp-verificar__grupo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  background: #f1f5f9;
+  color: #475569;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.imp-verificar__grupo--nuevos {
+  background: #fef9c3;
+  border-color: #fde047;
+  color: #a16207;
+}
+
+.imp-verificar__grupo--eliminados {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.imp-verificar__grupo.is-active {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.dashboard-shell.dark .imp-verificar__grupo {
+  background: color-mix(in srgb, #94a3b8 18%, transparent);
+  color: #cbd5e1;
+}
+
+.dashboard-shell.dark .imp-verificar__grupo--nuevos {
+  background: color-mix(in srgb, #facc15 22%, transparent);
+  color: #fde68a;
+}
+
+.dashboard-shell.dark .imp-verificar__grupo--eliminados {
+  background: color-mix(in srgb, #ef4444 22%, transparent);
+  color: #fecaca;
+}
+
+/* Restaurar un eliminado: mismo circulo que la "x", con flecha de deshacer. */
+.importaciones-modal__products-table .create-user__locations-remove.imp-verificar__restore {
+  color: #15803d;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.importaciones-modal__products-table .create-user__locations-remove.imp-verificar__restore i {
+  font-size: 0.8rem;
+}

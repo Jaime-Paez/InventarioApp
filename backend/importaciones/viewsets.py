@@ -55,6 +55,11 @@ from .serializers import ImportacionDetalleSerializer, ImportacionSerializer, ge
 
 
 
+# Nota que el frontend pone en el comentario de lo agregado durante la
+# verificacion (NOTA_AGREGADO_VERIFICACION en ImportacionesTable.jsx).
+NOTA_AGREGADO_VERIFICACION = "Agregado en la verificación"
+
+
 def get_matriz_sucursal():
     """Sucursal desde la que se reparten las importaciones (la "matriz", igual
     que en el reparto de ImportacionesTable): de ahi salen los envios."""
@@ -963,9 +968,29 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "Todos los productos están quitados: deja al menos uno para pedir confirmación."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Antes de sacar los quitados se guarda que se pidio y que no, para
+        # poder verlo siempre (los quitados ya no siguen en la importacion).
+        instance.historial_verificacion = [
+            {
+                "codigo": (detalle.producto.codigo if detalle.producto_id else detalle.codigo) or "",
+                "nombre": (detalle.producto.nombre if detalle.producto_id else detalle.nombre) or "",
+                "referencia": (detalle.producto.referencia if detalle.producto_id else detalle.referencia) or "",
+                "oem": detalle.oem or "",
+                "cantidad": detalle.cantidad,
+                "cantidad_aproximada": detalle.cantidad_aproximada,
+                "precio_estimado": str(detalle.precio_estimado) if detalle.precio_estimado is not None else None,
+                "comentario": detalle.comentario or "",
+                "estado": (
+                    "quitado" if detalle.quitado
+                    else "agregado" if NOTA_AGREGADO_VERIFICACION in (detalle.comentario or "")
+                    else "pedido"
+                ),
+            }
+            for detalle in instance.detalles.select_related("producto").order_by("orden", "id")
+        ]
         instance.detalles.filter(quitado=True).delete()
         instance.estado = Importacion.ESTADO_CONFIRMACION
-        instance.save(update_fields=["estado"])
+        instance.save(update_fields=["estado", "historial_verificacion"])
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
