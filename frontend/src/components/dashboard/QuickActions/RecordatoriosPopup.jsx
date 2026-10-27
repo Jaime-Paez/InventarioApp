@@ -907,6 +907,7 @@ function RecordatoriosPopup({
   const [verificandoDetalleId, setVerificandoDetalleId] = useState('')
   const [noEnviarModal, setNoEnviarModal] = useState(null)
   const [noEnviarError, setNoEnviarError] = useState('')
+  const [conteoError, setConteoError] = useState('')
   const [ubicacionesHover, setUbicacionesHover] = useState(null)
   const [ubicacionesHoverPos, setUbicacionesHoverPos] = useState(null)
   const ubicacionesHoverCardRef = useRef(null)
@@ -2164,14 +2165,20 @@ function RecordatoriosPopup({
             : '',
         }))
         const idsSistema = new Set(delSistema.map((row) => row.subdivision_id))
+        const opciones = Array.isArray(data?.ubicaciones_sucursal) ? data.ubicaciones_sucursal : []
         const agregadas = guardado
           .filter((entry) => !idsSistema.has(Number(entry?.subdivision_id)))
-          .map((entry) => ({
-            key: conteoRowKey(),
-            subdivision_id: Number(entry.subdivision_id),
-            fija: false,
-            cantidad: String(entry?.cantidad ?? ''),
-          }))
+          .map((entry) => {
+            const opcion = opciones.find((o) => Number(o.subdivision_id) === Number(entry.subdivision_id))
+            return {
+              key: conteoRowKey(),
+              subdivision_id: Number(entry.subdivision_id),
+              bodega_id: opcion?.bodega_id ?? '',
+              division_id: opcion?.division_id ?? '',
+              fija: false,
+              cantidad: String(entry?.cantidad ?? ''),
+            }
+          })
         return {
           ...prev,
           ubicaciones: { data },
@@ -2197,12 +2204,61 @@ function RecordatoriosPopup({
     if (motivoTipo === 'no_tengo') loadNoTengoUbicaciones(detalle)
   }
 
+  // "No tengo" abre de una vez el modal de conteo (como la revision de
+  // inventario): cada ubicacion con su check y lo que se conto.
   const handleSelectMotivoRechazo = (motivoTipo) => {
     setNoEnviarError('')
-    setNoEnviarModal((prev) => (prev ? { ...prev, motivoTipo } : prev))
+    setConteoError('')
+    setNoEnviarModal((prev) => (prev ? { ...prev, motivoTipo, contando: motivoTipo === 'no_tengo' } : prev))
     if (motivoTipo === 'no_tengo' && noEnviarModal && !noEnviarModal.ubicaciones) {
       loadNoTengoUbicaciones(noEnviarModal.detalle)
     }
+  }
+
+  const abrirConteo = () => {
+    setConteoError('')
+    setNoEnviarModal((prev) => (prev ? { ...prev, contando: true } : prev))
+  }
+
+  // Devuelve el problema del conteo, o '' si esta completo.
+  const validarConteo = (modal) => {
+    if (!modal?.ubicaciones?.data) return 'Espera a que carguen las ubicaciones para contar.'
+    const filas = modal.conteo || []
+    if (filas.some((row) => !/^\d+$/.test(String(row.cantidad).trim()))) {
+      return 'Cuenta cada ubicación: escribe cuántas hay (0 si no hay ninguna).'
+    }
+    if (filas.some((row) => !row.subdivision_id)) return 'Escoge la ubicación de cada cantidad que agregaste.'
+    return ''
+  }
+
+  const terminarConteo = () => {
+    const problema = validarConteo(noEnviarModal)
+    if (problema) {
+      setConteoError(problema)
+      return
+    }
+    setConteoError('')
+    setNoEnviarError('')
+    setNoEnviarModal((prev) => (prev ? { ...prev, contando: false } : prev))
+  }
+
+  // Cerrar el conteo sin terminarlo deja el motivo sin escoger si no hay
+  // nada contado, para que no quede "No tengo" a medias.
+  const cancelarConteo = () => {
+    setConteoError('')
+    setNoEnviarModal((prev) => {
+      if (!prev) return prev
+      const algoContado = (prev.conteo || []).some((row) => String(row.cantidad).trim() !== '')
+      return { ...prev, contando: false, motivoTipo: algoContado ? prev.motivoTipo : '' }
+    })
+  }
+
+  const agregarUbicacionConteo = () => {
+    setNoEnviarModal((prev) => (
+      prev
+        ? { ...prev, conteo: [...prev.conteo, { key: conteoRowKey(), subdivision_id: 0, bodega_id: '', division_id: '', fija: false, cantidad: '' }] }
+        : prev
+    ))
   }
 
   const updateConteoRow = (key, changes) => {
@@ -2233,20 +2289,13 @@ function RecordatoriosPopup({
     }
     let conteo = []
     if (motivoTipo === 'no_tengo') {
-      if (!noEnviarModal.ubicaciones?.data) {
-        setNoEnviarError('Espera a que carguen las ubicaciones para contar.')
+      const problema = validarConteo(noEnviarModal)
+      if (problema) {
+        setConteoError(problema)
+        setNoEnviarModal((prev) => (prev ? { ...prev, contando: true } : prev))
         return
       }
-      const filas = noEnviarModal.conteo
-      if (filas.some((row) => !/^\d+$/.test(String(row.cantidad).trim()))) {
-        setNoEnviarError('Cuenta cada ubicación: escribe cuántas hay (0 si no hay ninguna).')
-        return
-      }
-      if (filas.some((row) => !row.subdivision_id)) {
-        setNoEnviarError('Escoge la ubicación de cada cantidad que agregaste.')
-        return
-      }
-      conteo = filas.map((row) => ({ subdivision_id: row.subdivision_id, cantidad: Number(row.cantidad) }))
+      conteo = noEnviarModal.conteo.map((row) => ({ subdivision_id: row.subdivision_id, cantidad: Number(row.cantidad) }))
     }
     const saved = await saveDetalleEstado(noEnviarModal.detalle, 'no_enviar', { motivoTipo, nota, conteo })
     if (saved) {
@@ -4278,7 +4327,7 @@ function RecordatoriosPopup({
 
               {noEnviarModal && (() => {
                 const guardando = Boolean(verificandoDetalleId)
-                const cerrar = () => { if (!guardando) { setNoEnviarModal(null); setNoEnviarError('') } }
+                const cerrar = () => { if (!guardando) { setNoEnviarModal(null); setNoEnviarError(''); setConteoError('') } }
                 const ubicacionesState = noEnviarModal.ubicaciones
                 const opcionesSucursal = Array.isArray(ubicacionesState?.data?.ubicaciones_sucursal)
                   ? ubicacionesState.data.ubicaciones_sucursal
@@ -4288,6 +4337,7 @@ function RecordatoriosPopup({
                   0
                 )
                 return (
+                  <>
                   <div className="recordatorios-popup__reject-overlay" onMouseDown={cerrar}>
                     <div className="recordatorios-popup__reject-card" onMouseDown={(event) => event.stopPropagation()}>
                       <header className="recordatorios-popup__reject-head">
@@ -4333,101 +4383,29 @@ function RecordatoriosPopup({
                           ))}
                         </div>
 
+                        {/* "No tengo": el conteo se hace en su propio modal; aqui solo
+                            el resumen y el boton para volver a abrirlo. */}
                         {noEnviarModal.motivoTipo === 'no_tengo' && (
-                          <div className="recordatorios-popup__conteo">
-                            <p className="recordatorios-popup__conteo-ayuda">
-                              Cuenta cuántas hay en cada ubicación (0 si no hay ninguna). Queda como una revisión de inventario a tu nombre.
-                            </p>
-                            {ubicacionesState?.loading ? (
-                              <p className="recordatorios-popup__decision-muted">
-                                <Loader2 />
-                                Cargando ubicaciones...
-                              </p>
-                            ) : ubicacionesState?.error ? (
-                              <p className="recordatorios-popup__error">
-                                {ubicacionesState.error}{' '}
-                                <button
-                                  type="button"
-                                  className="recordatorios-popup__decision-motivo-edit"
-                                  onClick={() => loadNoTengoUbicaciones(noEnviarModal.detalle)}
-                                >
-                                  Reintentar
-                                </button>
-                              </p>
-                            ) : ubicacionesState?.data ? (
-                              <>
-                                {noEnviarModal.conteo.length === 0 && (
-                                  <p className="recordatorios-popup__conteo-ayuda">
-                                    El sistema no tiene este producto en ninguna ubicación. Si encontraste alguna, agrégala; si no, se registra que hay 0.
-                                  </p>
-                                )}
+                          <div className="recordatorios-popup__conteo-resumen">
+                            {validarConteo(noEnviarModal) ? (
+                              <p className="recordatorios-popup__conteo-ayuda">Falta contar este producto en sus ubicaciones.</p>
+                            ) : (
+                              <ul>
                                 {noEnviarModal.conteo.map((row) => (
-                                  <div key={row.key} className="recordatorios-popup__conteo-row">
-                                    {row.fija ? (
-                                      <span className="recordatorios-popup__conteo-ubicacion">{row.label}</span>
-                                    ) : (
-                                      <select
-                                        className="recordatorios-popup__conteo-ubicacion"
-                                        value={row.subdivision_id || ''}
-                                        onChange={(event) => updateConteoRow(row.key, { subdivision_id: Number(event.target.value) || 0 })}
-                                        disabled={guardando}
-                                        aria-label="Ubicación"
-                                      >
-                                        <option value="">Escoge la ubicación</option>
-                                        {opcionesSucursal
-                                          .filter((opcion) => (
-                                            opcion.subdivision_id === row.subdivision_id
-                                            || !noEnviarModal.conteo.some((other) => other.subdivision_id === opcion.subdivision_id)
-                                          ))
-                                          .map((opcion) => (
-                                            <option key={opcion.subdivision_id} value={opcion.subdivision_id}>{opcion.label}</option>
-                                          ))}
-                                      </select>
-                                    )}
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      step="1"
-                                      inputMode="numeric"
-                                      className="recordatorios-popup__conteo-cantidad"
-                                      value={row.cantidad}
-                                      onChange={(event) => updateConteoRow(row.key, { cantidad: event.target.value })}
-                                      placeholder="Cant."
-                                      disabled={guardando}
-                                      aria-label={`Cantidad en ${row.label || 'la ubicación'}`}
-                                    />
-                                    {!row.fija && (
-                                      <button
-                                        type="button"
-                                        className="recordatorios-popup__close"
-                                        onClick={() => setNoEnviarModal((prev) => (
-                                          prev ? { ...prev, conteo: prev.conteo.filter((other) => other.key !== row.key) } : prev
-                                        ))}
-                                        disabled={guardando}
-                                        aria-label="Quitar ubicación"
-                                      >
-                                        <X />
-                                      </button>
-                                    )}
-                                  </div>
+                                  <li key={row.key}>
+                                    <span>{row.label || opcionesSucursal.find((o) => o.subdivision_id === row.subdivision_id)?.label || '-'}</span>
+                                    <strong>{row.cantidad}</strong>
+                                  </li>
                                 ))}
-                                <div className="recordatorios-popup__conteo-pie">
-                                  <button
-                                    type="button"
-                                    className="recordatorios-popup__decision-motivo-edit"
-                                    onClick={() => setNoEnviarModal((prev) => (
-                                      prev
-                                        ? { ...prev, conteo: [...prev.conteo, { key: conteoRowKey(), subdivision_id: 0, fija: false, cantidad: '' }] }
-                                        : prev
-                                    ))}
-                                    disabled={guardando || opcionesSucursal.length === 0}
-                                  >
-                                    + Agregar otra ubicación
-                                  </button>
-                                  <span>Total contado: <strong>{totalContado}</strong></span>
-                                </div>
-                              </>
-                            ) : null}
+                                {noEnviarModal.conteo.length === 0 && <li><span>Sin ubicaciones: se registra que hay 0</span><strong>0</strong></li>}
+                              </ul>
+                            )}
+                            <div className="recordatorios-popup__conteo-pie">
+                              <button type="button" className="recordatorios-popup__decision-motivo-edit" onClick={abrirConteo} disabled={guardando}>
+                                {validarConteo(noEnviarModal) ? 'Contar ahora' : 'Editar conteo'}
+                              </button>
+                              <span>Total contado: <strong>{totalContado}</strong></span>
+                            </div>
                           </div>
                         )}
 
@@ -4470,6 +4448,194 @@ function RecordatoriosPopup({
                       </div>
                     </div>
                   </div>
+
+                  {noEnviarModal.contando && (() => {
+                    const filas = noEnviarModal.conteo
+                    const contadas = filas.filter((row) => /^\d+$/.test(String(row.cantidad).trim())).length
+                    const unicos = (lista, idKey, nombreKey) => {
+                      const vistos = new Map()
+                      lista.forEach((o) => { if (!vistos.has(o[idKey])) vistos.set(o[idKey], o[nombreKey]) })
+                      return [...vistos.entries()].map(([id, nombre]) => ({ id, nombre }))
+                    }
+                    const bodegas = unicos(opcionesSucursal, 'bodega_id', 'bodega')
+                    // Enter pasa al siguiente campo de conteo, como en la inspeccion.
+                    const irAlSiguiente = (event) => {
+                      if (event.key !== 'Enter') return
+                      event.preventDefault()
+                      const inputs = [...document.querySelectorAll('[data-conteo-input]')]
+                      const next = inputs[inputs.indexOf(event.currentTarget) + 1]
+                      if (next) next.focus()
+                      else terminarConteo()
+                    }
+                    return (
+                      <div className="recordatorios-popup__reject-overlay recordatorios-popup__conteo-overlay" onMouseDown={cancelarConteo}>
+                        <div className="recordatorios-popup__reject-card recordatorios-popup__conteo-card" onMouseDown={(event) => event.stopPropagation()}>
+                          <header className="recordatorios-popup__reject-head">
+                            <div>
+                              <h5>Contar {noEnviarModal.detalle?.producto_codigo || 'producto'}</h5>
+                              <p className="recordatorios-popup__conteo-sub">
+                                {noEnviarModal.detalle?.producto_nombre || '-'} · Pedido: {noEnviarModal.detalle?.cantidad ?? '-'}
+                              </p>
+                            </div>
+                            <button type="button" className="recordatorios-popup__close" onClick={cancelarConteo} aria-label="Cerrar conteo">
+                              <X />
+                            </button>
+                          </header>
+
+                          <div className="recordatorios-popup__reject-body recordatorios-popup__reject-body--scroll">
+                            <p className="recordatorios-popup__conteo-ayuda">
+                              Cuenta lo que hay en cada ubicación y escribe la cantidad (0 si no hay ninguna). Queda como una revisión de inventario a tu nombre.
+                            </p>
+
+                            {ubicacionesState?.loading ? (
+                              <p className="recordatorios-popup__decision-muted"><Loader2 />Cargando ubicaciones...</p>
+                            ) : ubicacionesState?.error ? (
+                              <p className="recordatorios-popup__error">
+                                {ubicacionesState.error}{' '}
+                                <button type="button" className="recordatorios-popup__decision-motivo-edit" onClick={() => loadNoTengoUbicaciones(noEnviarModal.detalle)}>
+                                  Reintentar
+                                </button>
+                              </p>
+                            ) : ubicacionesState?.data ? (
+                              <>
+                                {filas.length > 0 && (
+                                  <div className="recordatorios-popup__conteo-progreso" aria-label={`${contadas} de ${filas.length} ubicaciones contadas`}>
+                                    <div style={{ width: `${(contadas / filas.length) * 100}%` }} />
+                                  </div>
+                                )}
+                                <div className="recordatorios-popup__conteo-tabla" role="table">
+                                  <div className="recordatorios-popup__conteo-fila recordatorios-popup__conteo-fila--head" role="row">
+                                    <span aria-label="Contada" />
+                                    <span>Ubicación</span>
+                                    <span>Contado</span>
+                                  </div>
+                                  {filas.length === 0 && (
+                                    <div className="recordatorios-popup__conteo-vacio">
+                                      El sistema no tiene este producto en ninguna ubicación. Si lo encontraste en alguna, agrégala abajo; si no, se registra que hay 0.
+                                    </div>
+                                  )}
+                                  {filas.map((row) => {
+                                    const contada = /^\d+$/.test(String(row.cantidad).trim())
+                                    const [bodegaNombre, ...resto] = String(row.label || '').split(' / ')
+                                    const divisiones = unicos(opcionesSucursal.filter((o) => String(o.bodega_id) === String(row.bodega_id)), 'division_id', 'division')
+                                    const subdivisiones = opcionesSucursal.filter((o) => (
+                                      String(o.division_id) === String(row.division_id)
+                                      && (o.subdivision_id === row.subdivision_id || !filas.some((other) => other.subdivision_id === o.subdivision_id))
+                                    ))
+                                    return (
+                                      <div key={row.key} className={`recordatorios-popup__conteo-fila${contada ? ' is-contada' : ''}`} role="row">
+                                        {/* Marcarla sin cantidad = no hay ninguna (0). */}
+                                        <span>
+                                          <input
+                                            type="checkbox"
+                                            className="recordatorios-popup__decision-checkbox"
+                                            checked={contada}
+                                            onChange={(event) => updateConteoRow(row.key, { cantidad: event.target.checked ? '0' : '' })}
+                                            aria-label={contada ? 'Desmarcar ubicación' : 'Marcar: no hay ninguna'}
+                                            title={contada ? 'Contada' : 'Marcar: no hay ninguna (0)'}
+                                          />
+                                        </span>
+                                        <span className="recordatorios-popup__conteo-ubicacion-celda">
+                                          {row.fija ? (
+                                            <>
+                                              <small>{bodegaNombre}</small>
+                                              <strong>{resto.join(' · ') || '-'}</strong>
+                                            </>
+                                          ) : (
+                                            <span className="recordatorios-popup__conteo-selects">
+                                              <select
+                                                value={row.bodega_id || ''}
+                                                onChange={(event) => updateConteoRow(row.key, { bodega_id: event.target.value, division_id: '', subdivision_id: 0 })}
+                                                aria-label="Bodega"
+                                              >
+                                                <option value="">Bodega</option>
+                                                {bodegas.map((b) => <option key={b.id} value={b.id}>{b.nombre}</option>)}
+                                              </select>
+                                              <select
+                                                value={row.division_id || ''}
+                                                onChange={(event) => updateConteoRow(row.key, { division_id: event.target.value, subdivision_id: 0 })}
+                                                disabled={!row.bodega_id}
+                                                aria-label="División"
+                                              >
+                                                <option value="">División</option>
+                                                {divisiones.map((d) => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+                                              </select>
+                                              <select
+                                                value={row.subdivision_id || ''}
+                                                onChange={(event) => updateConteoRow(row.key, { subdivision_id: Number(event.target.value) || 0 })}
+                                                disabled={!row.division_id}
+                                                aria-label="Subdivisión"
+                                              >
+                                                <option value="">Subdivisión</option>
+                                                {subdivisiones.map((s) => <option key={s.subdivision_id} value={s.subdivision_id}>{s.subdivision}</option>)}
+                                              </select>
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span className="recordatorios-popup__conteo-contado">
+                                          <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={5}
+                                            data-conteo-input
+                                            value={row.cantidad}
+                                            onChange={(event) => updateConteoRow(row.key, { cantidad: event.target.value.replace(/\D/g, '') })}
+                                            onKeyDown={irAlSiguiente}
+                                            placeholder="-"
+                                            aria-label={`Cantidad en ${row.label || 'la ubicación'}`}
+                                          />
+                                          {!row.fija && (
+                                            <button
+                                              type="button"
+                                              className="recordatorios-popup__conteo-quitar"
+                                              onClick={() => setNoEnviarModal((prev) => (
+                                                prev ? { ...prev, conteo: prev.conteo.filter((other) => other.key !== row.key) } : prev
+                                              ))}
+                                              aria-label="Quitar ubicación"
+                                              title="Quitar ubicación"
+                                            >
+                                              <X size={15} />
+                                            </button>
+                                          )}
+                                        </span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__conteo-agregar"
+                                  onClick={agregarUbicacionConteo}
+                                  disabled={opcionesSucursal.length === 0}
+                                >
+                                  + Agregar una ubicación donde lo encontraste
+                                </button>
+                                <p className="recordatorios-popup__conteo-total">
+                                  {contadas} de {filas.length} ubicaciones contadas · Total: <strong>{totalContado}</strong>
+                                </p>
+                              </>
+                            ) : null}
+                            {conteoError && <p className="recordatorios-popup__error">{conteoError}</p>}
+                          </div>
+
+                          <div className="recordatorios-popup__reject-actions">
+                            <button type="button" className="recordatorios-popup__button recordatorios-popup__button--ghost" onClick={cancelarConteo}>
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--accept"
+                              onClick={terminarConteo}
+                              disabled={!ubicacionesState?.data}
+                            >
+                              Listo
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                  </>
                 )
               })()}
 

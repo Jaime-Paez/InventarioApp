@@ -166,3 +166,6 @@ class RechazoPorProductoTrasladoTests(APITestCase):
         self.assertEqual(
             {u["subdivision_id"] for u in response.data["ubicaciones_sucursal"]}, {self.sub_a.id, self.sub_b.id}
         )
+        opcion = next(u for u in response.data["ubicaciones_sucursal"] if u["subdivision_id"] == self.sub_a.id)
+        self.assertEqual(opcion["division_id"], self.sub_a.division_id)
+        self.assertEqual(opcion["bodega_id"], self.sub_a.division.bodega_id)

@@ -4642,9 +4642,16 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         {key: value for key, value in item.items() if key != "cantidad"}
                         for item in ubicaciones
                     ],
+                    # Bodega y division por separado: el conteo las escoge en
+                    # cascada (Bodega -> Division -> Subdivision).
                     "ubicaciones_sucursal": [
                         {
                             "subdivision_id": subdivision.id,
+                            "bodega_id": subdivision.division.bodega_id,
+                            "bodega": subdivision.division.bodega.nombre,
+                            "division_id": subdivision.division_id,
+                            "division": subdivision.division.nombre,
+                            "subdivision": subdivision.nombre,
                             "label": " / ".join(
                                 part
                                 for part in (
