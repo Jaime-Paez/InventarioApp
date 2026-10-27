@@ -1,3 +1,4 @@
+import logging
 import re
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
@@ -43,6 +44,7 @@ from app.views import (
     _normalize_reminder_list,
     _purge_reminders_for_context,
     _sanitize_transfer_history,
+    registrar_conteo_por_traslado,
 )
 from inventario.models import Inventario, SubDivision, Sucursal
 from inventario.por_ubicar import (
@@ -99,8 +101,11 @@ ALLOWED_STOCK_MODULES = {
     RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
     RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
 }
+logger = logging.getLogger(__name__)
 TRANSFER_ISSUE_REMINDER_KIND = "solicitud_traslado_inconveniente"
 TRANSFER_ISSUE_REMINDER_CONTEXT_TYPE = "traslado_inconveniente"
+# Motivos para rechazar un producto de una solicitud de traslado.
+TRANSFER_REJECT_REASONS = {"no_tengo", "vendido", "otro"}
 
 
 # La descripcion de una venta empieza con "Cliente: <nombre>" (ver
@@ -2298,6 +2303,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     if rejection_reason
                     else f"Su solicitud de traslado {transfer_reference} fue cancelada."
                 )
+            elif rejection_reason:
+                # Aceptacion parcial: rejection_reason lista lo que no se envia.
+                description = (
+                    f"Su solicitud de traslado {transfer_reference} fue aceptada parcialmente. "
+                    f"Rechazados: {rejection_reason}"
+                )
             else:
                 description = f"Su solicitud de traslado {transfer_reference} fue aceptada."
 
@@ -3853,17 +3864,26 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         decision = str(request.data.get("decision") or "").strip().lower()
         if decision in {"aceptar", "aprobar", "aprobada", "approve", "approved"}:
-            pendientes = solicitud.detalles.filter(verificado=False).count()
+            pendientes = solicitud.detalles.filter(verificado=False, no_enviar=False).count()
             if pendientes:
                 return Response(
                     {
                         "detail": (
-                            "Debes marcar como ubicados todos los productos antes de aceptar "
-                            "la solicitud."
+                            "Debes marcar cada producto como separado o como rechazado "
+                            "antes de aceptar la solicitud."
                         )
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            if solicitud.detalles.filter(no_enviar=True, motivo_no_envio="").exists():
+                return Response(
+                    {"detail": "Cada producto rechazado debe tener un motivo."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not solicitud.detalles.filter(no_enviar=False).exists():
+                # Todos los productos rechazados: se rechaza la solicitud con
+                # el motivo de cada uno.
+                return self._reject_transfer_by_products(request, solicitud)
             with transaction.atomic():
                 solicitud_locked = (
                     SolicitudTraslado.objects.select_for_update(of=("self",))
@@ -3891,7 +3911,16 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                detalles = list(solicitud_locked.detalles.select_related("producto").all())
+                todos_detalles = list(solicitud_locked.detalles.select_related("producto").all())
+                if any(
+                    not detalle.verificado and not detalle.no_enviar for detalle in todos_detalles
+                ) or all(detalle.no_enviar for detalle in todos_detalles):
+                    return Response(
+                        {"detail": "La solicitud cambio mientras se aceptaba. Vuelve a revisarla."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                detalles = [detalle for detalle in todos_detalles if not detalle.no_enviar]
+                no_enviados = [detalle for detalle in todos_detalles if detalle.no_enviar]
                 product_ids = sorted(
                     {
                         int(getattr(detalle, "producto_id", 0) or 0)
@@ -3974,6 +4003,29 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_200_OK,
                     )
 
+                # Aceptacion parcial: lo no enviado sale de la solicitud (asi la
+                # salida, la entrada y la recepcion solo ven lo que si viaja) y
+                # queda registrado con su motivo en detalles_no_enviados.
+                if no_enviados:
+                    solicitud_locked.detalles_no_enviados = [
+                        *(solicitud_locked.detalles_no_enviados or []),
+                        *[
+                            {
+                                "producto_id": int(detalle.producto_id),
+                                "producto_codigo": str(getattr(detalle.producto, "codigo", "") or ""),
+                                "producto_nombre": str(getattr(detalle.producto, "nombre", "") or ""),
+                                "cantidad": int(detalle.cantidad or 0),
+                                "motivo": detalle.motivo_no_envio,
+                                "motivo_tipo": detalle.motivo_no_envio_tipo,
+                                "conteo": detalle.conteo_no_envio or [],
+                            }
+                            for detalle in no_enviados
+                        ],
+                    ]
+                    SolicitudTrasladoDetalle.objects.filter(
+                        id__in=[detalle.id for detalle in no_enviados]
+                    ).delete()
+
                 solicitud_locked.estado = SolicitudTraslado.Estados.APROBADA
                 solicitud_locked.motivo_rechazo = ""
                 solicitud_locked.rechazada_por = None
@@ -3986,16 +4038,29 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                         "rechazada_por",
                         "rechazada_en",
                         "enviado_por",
+                        "detalles_no_enviados",
                         "updated_at",
                     ]
                 )
 
+            self._register_transfer_reject_counts(request.user, solicitud_locked, no_enviados)
+            no_enviados_texto = "; ".join(
+                f"{item.get('producto_codigo') or item.get('producto_nombre')} "
+                f"x{item.get('cantidad')} ({item.get('motivo')})"
+                for item in (
+                    solicitud_locked.detalles_no_enviados[-len(no_enviados):] if no_enviados else []
+                )
+            )
             self._append_transfer_decision_result_reminder(
                 solicitud=solicitud_locked,
                 actor_user=request.user,
                 decision_status="aceptada",
+                rejection_reason=no_enviados_texto,
             )
-            output = SolicitudTrasladoSerializer(instance=solicitud_locked)
+            # Recarga: el prefetch de solicitud_locked aun trae los detalles borrados.
+            output = SolicitudTrasladoSerializer(
+                instance=self._get_solicitud_traslado(solicitud_locked.id) or solicitud_locked
+            )
             return Response(
                 {
                     "detail": "Solicitud aceptada correctamente.",
@@ -4234,6 +4299,154 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         return Response({"detail": "Destinatario reasignado correctamente."}, status=status.HTTP_200_OK)
 
+    def _register_transfer_reject_counts(self, user, solicitud, detalles):
+        """Cada producto rechazado con "No tengo" deja su conteo como revision
+        de inventario de la sucursal proveedora. Va despues de la decision y
+        fuera de su transaccion: un fallo aqui no deshace la decision."""
+        transfer_doc = str(getattr(solicitud, "no_documento", "") or "").strip()
+        transfer_reference = f"#{transfer_doc}" if transfer_doc else f"#{int(solicitud.id)}"
+        for detalle in detalles:
+            if detalle.motivo_no_envio_tipo != "no_tengo":
+                continue
+            try:
+                registrar_conteo_por_traslado(
+                    user=user,
+                    sucursal_id=solicitud.sucursal_proveedora_id,
+                    producto_id=detalle.producto_id,
+                    conteo=detalle.conteo_no_envio or [],
+                    observacion=f"Traslado {transfer_reference}: {detalle.motivo_no_envio}",
+                    origen=f"traslado {transfer_reference}",
+                )
+            except Exception:
+                logger.exception(
+                    "No se pudo registrar el conteo del producto %s rechazado en el traslado %s",
+                    detalle.producto_id,
+                    solicitud.id,
+                )
+
+    def _reject_transfer_by_products(self, request, solicitud):
+        with transaction.atomic():
+            solicitud_locked = (
+                SolicitudTraslado.objects.select_for_update(of=("self",))
+                .prefetch_related("detalles__producto")
+                .filter(pk=solicitud.id)
+                .first()
+            )
+            detalles = list(solicitud_locked.detalles.all()) if solicitud_locked else []
+            if (
+                solicitud_locked is None
+                or solicitud_locked.estado != SolicitudTraslado.Estados.PENDIENTE
+                or not detalles
+                or not all(detalle.no_enviar and detalle.motivo_no_envio for detalle in detalles)
+            ):
+                return Response(
+                    {"detail": "La solicitud cambio mientras se rechazaba. Vuelve a revisarla."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            motivo = "; ".join(
+                f"{getattr(detalle.producto, 'codigo', '') or getattr(detalle.producto, 'nombre', '')} "
+                f"x{int(detalle.cantidad or 0)} ({detalle.motivo_no_envio})"
+                for detalle in detalles
+            )
+            solicitud_locked.estado = SolicitudTraslado.Estados.CANCELADA
+            solicitud_locked.motivo_rechazo = motivo
+            solicitud_locked.rechazada_por = request.user
+            solicitud_locked.rechazada_en = timezone.now()
+            solicitud_locked.save(
+                update_fields=[
+                    "estado",
+                    "motivo_rechazo",
+                    "rechazada_por",
+                    "rechazada_en",
+                    "updated_at",
+                ]
+            )
+
+        self._register_transfer_reject_counts(request.user, solicitud_locked, detalles)
+        self._append_transfer_decision_result_reminder(
+            solicitud=solicitud_locked,
+            actor_user=request.user,
+            decision_status="rechazada",
+            rejection_reason=motivo,
+        )
+        output = SolicitudTrasladoSerializer(instance=solicitud_locked)
+        return Response(
+            {
+                "detail": "Solicitud rechazada correctamente.",
+                "decision": "rechazada",
+                "solicitud": output.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def _parse_transfer_reject_count(self, raw_value, sucursal_id):
+        """Conteo de "No tengo": [{subdivision_id, cantidad}] de la sucursal
+        proveedora. Vacio = no hay nada (cuenta 0 en todas las ubicaciones)."""
+        if raw_value in (None, ""):
+            raw_value = []
+        if not isinstance(raw_value, list):
+            return [], "El conteo debe ser una lista de ubicaciones con su cantidad."
+        cantidades = {}
+        for entry in raw_value[:100]:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                subdivision_id = int(entry.get("subdivision_id") or 0)
+                cantidad = int(str(entry.get("cantidad") if entry.get("cantidad") is not None else "").strip() or 0)
+            except (TypeError, ValueError):
+                return [], "Cada ubicacion debe tener una cantidad valida."
+            if subdivision_id <= 0:
+                return [], "Escoge la ubicacion de cada cantidad."
+            if cantidad < 0:
+                return [], "Las cantidades no pueden ser negativas."
+            cantidades[subdivision_id] = cantidades.get(subdivision_id, 0) + cantidad
+        if not cantidades:
+            return [], None
+        subdivisiones = {
+            int(subdivision.id): subdivision
+            for subdivision in SubDivision.objects.select_related("division__bodega").filter(
+                id__in=list(cantidades),
+                division__bodega__sucursal_id=sucursal_id,
+            )
+        }
+        if len(subdivisiones) != len(cantidades):
+            return [], "Alguna ubicacion no pertenece a la sucursal proveedora."
+        conteo = []
+        for subdivision_id, cantidad in cantidades.items():
+            subdivision = subdivisiones[subdivision_id]
+            conteo.append(
+                {
+                    "subdivision_id": subdivision_id,
+                    "cantidad": cantidad,
+                    "ubicacion": " / ".join(
+                        part
+                        for part in (
+                            subdivision.division.bodega.nombre,
+                            subdivision.division.nombre,
+                            subdivision.nombre,
+                        )
+                        if part
+                    ),
+                }
+            )
+        return conteo, None
+
+    def _build_transfer_reject_reason(self, motivo_tipo, nota, conteo):
+        """Texto del motivo que ve quien pidio el traslado."""
+        if motivo_tipo == "no_tengo":
+            total = sum(int(entry.get("cantidad") or 0) for entry in conteo)
+            donde = ", ".join(
+                f"{entry.get('cantidad')} en {entry.get('ubicacion')}"
+                for entry in conteo
+                if int(entry.get("cantidad") or 0) > 0
+            )
+            texto = f"No tengo: hay {total}" + (f" ({donde})" if donde else "")
+        elif motivo_tipo == "vendido":
+            texto = "Ya lo vendí (por facturar)"
+        else:
+            return nota
+        return f"{texto}. {nota}" if nota else texto
+
     @action(
         detail=False,
         methods=["patch"],
@@ -4281,12 +4494,191 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        verificado = bool(request.data.get("verificado"))
-        if detalle.verificado != verificado:
-            detalle.verificado = verificado
-            detalle.save(update_fields=["verificado"])
+        # `estado`: "separado" | "no_enviar" | "" (sin marcar). Son excluyentes:
+        # un producto se separa para enviarlo o se marca que no se envia, con
+        # motivo obligatorio. Se mantiene `verificado` por compatibilidad.
+        if "estado" in request.data:
+            estado = str(request.data.get("estado") or "").strip().lower()
+            if estado not in {"", "separado", "no_enviar"}:
+                return Response(
+                    {"detail": "Estado invalido. Usa separado, no_enviar o vacio."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            estado = "separado" if bool(request.data.get("verificado")) else ""
 
-        return Response({"id": detalle.id, "verificado": detalle.verificado}, status=status.HTTP_200_OK)
+        motivo_tipo = ""
+        nota = str(request.data.get("motivo") or "").strip()
+        conteo = []
+        motivo = ""
+        if estado == "no_enviar":
+            motivo_tipo = str(request.data.get("motivo_tipo") or "").strip().lower()
+            if motivo_tipo not in TRANSFER_REJECT_REASONS:
+                return Response(
+                    {"motivo": "Escoge por que se rechaza: No tengo, Ya lo vendí u Otro."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if motivo_tipo == "otro" and not nota:
+                return Response(
+                    {"motivo": "Escribe por que se rechaza este producto."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if motivo_tipo == "no_tengo":
+                conteo, error = self._parse_transfer_reject_count(
+                    request.data.get("conteo"), solicitud.sucursal_proveedora_id
+                )
+                if error:
+                    return Response({"conteo": error}, status=status.HTTP_400_BAD_REQUEST)
+            motivo = self._build_transfer_reject_reason(motivo_tipo, nota, conteo)
+
+        detalle.verificado = estado == "separado"
+        detalle.no_enviar = estado == "no_enviar"
+        detalle.motivo_no_envio = motivo
+        detalle.motivo_no_envio_tipo = motivo_tipo
+        detalle.conteo_no_envio = conteo
+        detalle.save(
+            update_fields=[
+                "verificado",
+                "no_enviar",
+                "motivo_no_envio",
+                "motivo_no_envio_tipo",
+                "conteo_no_envio",
+            ]
+        )
+
+        return Response(
+            {
+                "id": detalle.id,
+                "verificado": detalle.verificado,
+                "no_enviar": detalle.no_enviar,
+                "motivo_no_envio_tipo": detalle.motivo_no_envio_tipo,
+                "conteo_no_envio": detalle.conteo_no_envio,
+                "motivo_no_envio": detalle.motivo_no_envio,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"solicitudes-traslado/(?P<solicitud_id>\d+)/detalles/(?P<detalle_id>\d+)/ubicaciones",
+    )
+    def ubicaciones_detalle_solicitud_traslado(self, request, solicitud_id=None, detalle_id=None):
+        # Todas las ubicaciones del producto en la sucursal proveedora (la
+        # tabla de decision solo muestra la de mayor cantidad), para que quien
+        # separa pueda buscarlo en las demas antes de rechazarlo. Con
+        # `?conteo=1` (el "No tengo") no van las cantidades del sistema: quien
+        # rechaza cuenta a ciegas; van todas las ubicaciones de la sucursal
+        # para que diga donde esta lo que si hay.
+        solicitud = self._get_solicitud_traslado(solicitud_id)
+        if solicitud is None:
+            return Response(
+                {"detail": "No se encontro la solicitud de traslado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        ensure_sucursal_allowed_for_modules(
+            request.user,
+            [RolPermiso.Modulos.MOVIMIENTOS_SALIDAS],
+            solicitud.sucursal_proveedora_id,
+            field_label="sucursal proveedora",
+            action_key="puede_leer",
+        )
+
+        detalle = solicitud.detalles.select_related("producto").filter(pk=detalle_id).first()
+        if detalle is None:
+            return Response(
+                {"detail": "No se encontro el detalle indicado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        rows = (
+            Inventario.objects.filter(
+                producto_id=detalle.producto_id,
+                cantidad__gt=0,
+                subdivision__division__bodega__sucursal_id=solicitud.sucursal_proveedora_id,
+            )
+            .select_related("subdivision__division__bodega")
+            .order_by("-cantidad", "subdivision__division__bodega__nombre", "subdivision__division__nombre", "subdivision__nombre")
+        )
+        ubicaciones = []
+        for inventario in rows:
+            subdivision = inventario.subdivision
+            division = subdivision.division
+            bodega = division.bodega
+            ubicaciones.append(
+                {
+                    "id": inventario.id,
+                    "subdivision_id": subdivision.id,
+                    "bodega": bodega.nombre,
+                    "division": division.nombre,
+                    "subdivision": subdivision.nombre,
+                    "cantidad": int(inventario.cantidad or 0),
+                    "bodega_layout": {
+                        "id": bodega.id,
+                        "nombre": bodega.nombre,
+                        "ancho_metros": bodega.ancho_metros,
+                        "alto_metros": bodega.alto_metros,
+                        "ubicaciones": bodega.ubicaciones,
+                    },
+                }
+            )
+
+        if str(request.query_params.get("conteo") or "").strip() in {"1", "true"}:
+            subdivisiones = (
+                SubDivision.objects.filter(
+                    division__bodega__sucursal_id=solicitud.sucursal_proveedora_id
+                )
+                .select_related("division__bodega")
+                .order_by("division__bodega__nombre", "division__nombre", "nombre", "id")
+            )
+            return Response(
+                {
+                    "producto_id": detalle.producto_id,
+                    "producto_codigo": detalle.producto.codigo,
+                    "producto_nombre": detalle.producto.nombre,
+                    "sucursal_proveedora": str(solicitud.sucursal_proveedora),
+                    "ubicaciones": [
+                        {key: value for key, value in item.items() if key != "cantidad"}
+                        for item in ubicaciones
+                    ],
+                    "ubicaciones_sucursal": [
+                        {
+                            "subdivision_id": subdivision.id,
+                            "label": " / ".join(
+                                part
+                                for part in (
+                                    subdivision.division.bodega.nombre,
+                                    subdivision.division.nombre,
+                                    subdivision.nombre,
+                                )
+                                if part
+                            ),
+                        }
+                        for subdivision in subdivisiones
+                    ],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        disponible = get_available_transfer_quantities_by_product(
+            sucursal_id=solicitud.sucursal_proveedora_id,
+            product_ids=[detalle.producto_id],
+            exclude_solicitud_id=solicitud.id,
+        ).get(detalle.producto_id, 0)
+
+        return Response(
+            {
+                "producto_id": detalle.producto_id,
+                "producto_codigo": detalle.producto.codigo,
+                "producto_nombre": detalle.producto.nombre,
+                "sucursal_proveedora": str(solicitud.sucursal_proveedora),
+                "total": sum(item["cantidad"] for item in ubicaciones),
+                "disponible": int(disponible or 0),
+                "ubicaciones": ubicaciones,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(
         detail=False,

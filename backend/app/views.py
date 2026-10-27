@@ -2196,7 +2196,9 @@ def _build_random_inspection_admin_summary_reminder(today, user_summaries, admin
     }
 
 
-def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=None, reminder_date=None):
+def _upsert_random_inspection_admin_summary_reminder(
+    store, today, *, time_str=None, reminder_date=None, override_time=False
+):
     inspections_today = list(
         InspeccionAleatoriaDiaria.objects
         .filter(fecha_programada=today)
@@ -2287,9 +2289,16 @@ def _upsert_random_inspection_admin_summary_reminder(store, today, *, time_str=N
                 break
 
     if target_index is not None:
-        merged = _merge_reminder(existing_payload[target_index], reminder)
+        existing_reminder = existing_payload[target_index]
+        merged = _merge_reminder(existing_reminder, reminder)
         if merged is None:
             return False
+        # Solo un envio del admin le cambia la hora. El refresco periodico (cada
+        # consulta del admin) o un conteo terminado le ponian la de la
+        # inspeccion automatica o las 09:00, y un envio de las 12:15 salia a
+        # las 11:46, como si fuera de antes.
+        if not override_time and isinstance(existing_reminder, dict) and existing_reminder.get("time"):
+            merged["time"] = existing_reminder["time"]
         admin_ids = sorted(r["id"] for r in admin_recipients)
         merged["completedBy"] = sorted(set(admin_ids)) if all_completed else []
         existing_payload[target_index] = merged
@@ -3365,6 +3374,126 @@ def _random_inspection_completed_response():
         },
         status=status.HTTP_409_CONFLICT,
     )
+
+
+def registrar_conteo_por_traslado(*, user, sucursal_id, producto_id, conteo, observacion="", origen=""):
+    """Conteo de revision de inventario que deja quien rechaza un producto de
+    un traslado con "No tengo": cuanto hay y en que ubicacion.
+
+    Queda como una revision por lista ya respondida, de un solo producto. Las
+    ubicaciones con stock en el sistema que no vienen en el conteo cuentan 0.
+    Si no coincide con el sistema, administracion la verifica como cualquier
+    otra revision (aprobar ajusta el inventario).
+    """
+    sucursal_id = int(sucursal_id)
+    producto_id = int(producto_id)
+    reported_by_subdivision = {}
+    for entry in conteo or []:
+        if not isinstance(entry, dict):
+            continue
+        subdivision_id = _normalize_int(entry.get("subdivision_id"), 0)
+        if subdivision_id <= 0:
+            continue
+        quantity = max(0, _normalize_int(entry.get("cantidad"), 0))
+        reported_by_subdivision[subdivision_id] = reported_by_subdivision.get(subdivision_id, 0) + quantity
+
+    with transaction.atomic():
+        # Mismo orden de bloqueo que al responder una revision: primero el
+        # ReminderState, despues el stock.
+        store = ReminderState.get_global(for_update=True)
+        stock_rows = list(
+            Inventario.objects.select_for_update()
+            .filter(producto_id=producto_id, subdivision__division__bodega__sucursal_id=sucursal_id)
+            .values_list("subdivision_id", "cantidad")
+        )
+        system_by_subdivision = {}
+        for subdivision_id, quantity in stock_rows:
+            system_by_subdivision[int(subdivision_id)] = (
+                system_by_subdivision.get(int(subdivision_id), 0) + max(0, int(quantity or 0))
+            )
+        system_qty = sum(system_by_subdivision.values())
+        reported = sum(reported_by_subdivision.values())
+
+        subdivision_ids = [
+            subdivision_id for subdivision_id, quantity in system_by_subdivision.items() if quantity > 0
+        ]
+        subdivision_ids += [
+            subdivision_id for subdivision_id in reported_by_subdivision if subdivision_id not in subdivision_ids
+        ]
+        location_counts = [
+            {
+                "key": "",
+                "subdivision_id": subdivision_id,
+                "cantidad_contada": reported_by_subdivision.get(subdivision_id, 0),
+                "cantidad_sistema": system_by_subdivision.get(subdivision_id, 0),
+            }
+            for subdivision_id in subdivision_ids
+        ]
+        location_change = bool(
+            reported == system_qty
+            and len(location_counts) >= 2
+            and any(entry["cantidad_contada"] != entry["cantidad_sistema"] for entry in location_counts)
+        )
+        if reported == system_qty and not location_change:
+            estado_revision = InspeccionAleatoriaItem.EstadosRevision.COINCIDE
+            verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.SIN_NOVEDAD
+        else:
+            estado_revision = InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE
+            verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
+
+        observacion = _normalize_text(observacion)
+        warranty_qty = _pending_warranty_quantities({(sucursal_id, producto_id)}).get((sucursal_id, producto_id), 0)
+        if estado_revision == InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE and reported < system_qty and warranty_qty:
+            note = (
+                f"[Sistema] Hay {warranty_qty} unidad(es) en salidas de garantia "
+                "pendientes de aprobacion que aun no descuentan stock."
+            )
+            observacion = f"{observacion}\n{note}".strip() if observacion else note
+
+        now = timezone.now()
+        today = timezone.localdate()
+        inspection = InspeccionAleatoriaDiaria.objects.create(
+            usuario=user,
+            sucursal_id=sucursal_id,
+            es_por_lista=True,
+            fecha_programada=today,
+            estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA,
+            total_items=1,
+            completada_en=now,
+            conteo_revelado=True,
+            nota_general=_normalize_text(origen),
+        )
+        InspeccionAleatoriaItem.objects.create(
+            inspeccion=inspection,
+            sucursal_id=sucursal_id,
+            producto_id=producto_id,
+            cantidad_esperada=system_qty,
+            cantidad_esperada_inicial=system_qty,
+            cantidad_primer_conteo=reported,
+            cantidad_reportada=reported,
+            conteo_ubicaciones=location_counts,
+            estado_revision=estado_revision,
+            cambio_ubicacion=location_change,
+            no_encontrado=reported == 0,
+            observacion=observacion,
+            revisado_en=now,
+            verificacion_estado=verificacion_estado,
+        )
+
+        from inventario.models import Sucursal  # Import tardio para evitar ciclos
+
+        sucursal = Sucursal.objects.filter(pk=sucursal_id).only("nombre").first()
+        branch_nombre = getattr(sucursal, "nombre", "") or "la sucursal"
+        if origen:
+            branch_nombre = f"{branch_nombre} ({_normalize_text(origen)})"
+        _upsert_random_inspection_reminder(
+            store, inspection, user, mark_completed=True, branch_nombre=branch_nombre
+        )
+        if verificacion_estado == InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE:
+            _upsert_random_inspection_verify_reminder(store, inspection, 1, user)
+        _upsert_random_inspection_admin_summary_reminder(store, today)
+        store.save()
+    return inspection
 
 
 class RandomInspectionRespondAPIView(APIView):
@@ -5329,7 +5458,9 @@ class RandomInspectionSendNowAPIView(APIView):
                         "productos": product_count,
                     })
 
-            _upsert_random_inspection_admin_summary_reminder(store, scheduled_date, time_str=time_str)
+            _upsert_random_inspection_admin_summary_reminder(
+                store, scheduled_date, time_str=time_str, override_time=True
+            )
             store.save()
 
         return Response(
@@ -5523,7 +5654,9 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 branch_nombre=f"{scope_label} - {sucursal_nombre}",
                 time_str=time_str,
             )
-            _upsert_random_inspection_admin_summary_reminder(store, scheduled_date, time_str=time_str)
+            _upsert_random_inspection_admin_summary_reminder(
+                store, scheduled_date, time_str=time_str, override_time=True
+            )
             store.save()
 
         return Response(
@@ -5743,7 +5876,9 @@ class RandomInspectionSendListAPIView(APIView):
                 branch_nombre=f"{sucursal.nombre} (lista especifica)",
                 time_str=time_str,
             )
-            _upsert_random_inspection_admin_summary_reminder(store, scheduled_date, time_str=time_str)
+            _upsert_random_inspection_admin_summary_reminder(
+                store, scheduled_date, time_str=time_str, override_time=True
+            )
             store.save()
 
         return Response(

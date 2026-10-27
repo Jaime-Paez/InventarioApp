@@ -240,6 +240,13 @@ class SolicitudTraslado(models.Model):
         blank=True,
         db_default=models.Value({}, output_field=models.JSONField()),
     )
+    # Productos que la proveedora decidio no enviar al aceptar parcialmente:
+    # [{"producto_id", "producto_codigo", "producto_nombre", "cantidad", "motivo"}].
+    detalles_no_enviados = models.JSONField(
+        default=list,
+        blank=True,
+        db_default=models.Value([], output_field=models.JSONField()),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -276,6 +283,21 @@ class SolicitudTrasladoDetalle(models.Model):
     verificado = models.BooleanField(
         default=False,
         help_text="Indica si la persona que recibe ya ubico fisicamente este producto.",
+    )
+    # Aceptacion parcial: la proveedora marca que este producto no se envia
+    # (excluyente con `verificado`). Al aceptar, estos detalles se mueven a
+    # SolicitudTraslado.detalles_no_enviados y se borran de la solicitud.
+    no_enviar = models.BooleanField(default=False, db_default=False)
+    motivo_no_envio = models.TextField(blank=True, default="", db_default="")
+    # Por que se rechaza: "no_tengo" (con el conteo de cuanto hay y donde,
+    # que al decidir se registra como revision de inventario), "vendido"
+    # (vendido, aun sin descontar del inventario) u "otro" (nota libre).
+    motivo_no_envio_tipo = models.CharField(max_length=20, blank=True, default="", db_default="")
+    # Solo con "no_tengo": [{"subdivision_id", "cantidad"}].
+    conteo_no_envio = models.JSONField(
+        default=list,
+        blank=True,
+        db_default=models.Value([], output_field=models.JSONField()),
     )
 
     class Meta:

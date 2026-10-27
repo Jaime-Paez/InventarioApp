@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Info, Loader2, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
 import BodegaLocationPreview from '../inventario/InventarioEditor/BodegaLocationPreview'
 import { API_URL, authFetch } from '../../../utils/api'
@@ -34,6 +34,74 @@ import {
 import './RecordatoriosPopup.css'
 
 const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
+
+// Motivos para rechazar un producto de una solicitud de traslado.
+const RECHAZO_MOTIVOS = [
+  {
+    value: 'no_tengo',
+    label: 'No tengo',
+    info: 'El producto no está o no alcanza. Cuentas cuánto hay y en qué ubicación: ese conteo queda como una revisión de inventario a tu nombre y, si no coincide con el sistema, administración lo verifica y corrige el stock.',
+  },
+  {
+    value: 'vendido',
+    label: 'Ya lo vendí',
+    info: 'El producto ya está vendido pero todavía no se factura, por eso el sistema aún lo muestra. No se cuenta ni cambia el inventario.',
+  },
+  {
+    value: 'otro',
+    label: 'Otro',
+    info: 'Cualquier otra razón (dañado, reservado, etc.). Escribes una nota libre que verá quien pidió el traslado.',
+  },
+]
+const RECHAZO_MOTIVO_LABELS = Object.fromEntries(RECHAZO_MOTIVOS.map((item) => [item.value, item.label]))
+
+// Icono "i" con una tarjeta de ayuda al pasar el mouse (o al tocarlo). La
+// tarjeta va en un portal para que no la corte el scroll del dialogo.
+function InfoHint({ label, darkMode, children }) {
+  const buttonRef = useRef(null)
+  const [position, setPosition] = useState(null)
+
+  const show = () => {
+    const rect = buttonRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const width = Math.min(320, window.innerWidth - 16)
+    const left = Math.max(8, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 8))
+    const below = rect.bottom + 6
+    setPosition(below + 200 > window.innerHeight
+      ? { left, width, bottom: window.innerHeight - rect.top + 6 }
+      : { left, width, top: below })
+  }
+  const hide = () => setPosition(null)
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        className={`recordatorios-popup__info-hint${position ? ' is-active' : ''}`}
+        aria-label={label}
+        aria-expanded={Boolean(position)}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        onClick={() => (position ? hide() : show())}
+      >
+        <Info size={14} />
+      </button>
+      {position && createPortal(
+        <div
+          role="tooltip"
+          className={`recordatorios-popup__info-hint-card${darkMode ? ' is-dark' : ''}`}
+          style={position}
+        >
+          {children}
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
 
 const getNowDateParts = () => {
   const now = new Date()
@@ -823,6 +891,9 @@ function RecordatoriosPopup({
   const [decisionSubmittingAction, setDecisionSubmittingAction] = useState('')
   const [decisionError, setDecisionError] = useState('')
   const [verificandoDetalleId, setVerificandoDetalleId] = useState('')
+  const [noEnviarModal, setNoEnviarModal] = useState(null)
+  const [noEnviarError, setNoEnviarError] = useState('')
+  const [ubicacionesAbiertas, setUbicacionesAbiertas] = useState({})
   const [rejectionReason, setRejectionReason] = useState('')
   const [isRejectReasonModalOpen, setIsRejectReasonModalOpen] = useState(false)
   const [rejectReasonError, setRejectReasonError] = useState('')
@@ -1144,11 +1215,14 @@ function RecordatoriosPopup({
       status.className === 'pending' &&
       (
         isRandomInspectionDailyReminder(reminder) ||
-        isRandomInspectionVerifyReminder(reminder) ||
-        isRandomInspectionAdminSummaryReminder(reminder)
+        isRandomInspectionVerifyReminder(reminder)
       )
     )
-    const isInspectionInProgress = isPendingInspectionAlert && !isRandomInspectionAdminSummaryReminder(reminder) && hasRandomInspectionDraft(reminder)
+    const isInspectionInProgress = isPendingInspectionAlert && hasRandomInspectionDraft(reminder)
+    // El resumen del admin pendiente solo espera a los revisores: amarillo.
+    const isPendingAdminSummary = (
+      status.className === 'pending' && isRandomInspectionAdminSummaryReminder(reminder)
+    )
 
     if (
       displayStatus.className === 'rejected' ||
@@ -1158,7 +1232,7 @@ function RecordatoriosPopup({
       return 'critical'
     }
 
-    if (isInspectionInProgress) {
+    if (isInspectionInProgress || isPendingAdminSummary) {
       return 'warning'
     }
 
@@ -1599,6 +1673,9 @@ function RecordatoriosPopup({
     setEditDetalles([])
     setEditSubmitting(false)
     setEditError('')
+    setNoEnviarModal(null)
+    setNoEnviarError('')
+    setUbicacionesAbiertas({})
   }, [])
 
   const loadDecisionDetail = useCallback(
@@ -1767,10 +1844,13 @@ function RecordatoriosPopup({
         throw new Error(detail)
       }
 
-      const resolvedDecision = decision === 'rechazar' ? 'rechazada' : 'aceptada'
+      // Aceptar con todos los productos rechazados rechaza la solicitud.
+      const resolvedDecision = data?.decision === 'rechazada' || decision === 'rechazar' ? 'rechazada' : 'aceptada'
       const resolutionDate = new Date().toISOString()
       const context = reminder?.context || null
-      const rejectionReasonValue = String(rejectionReason || '').trim()
+      const rejectionReasonValue = String(
+        (decision === 'rechazar' ? rejectionReason : data?.solicitud?.motivo_rechazo) || ''
+      ).trim()
       const creatorRecipient = sanitizeRecipient(reminder?.creator)
       const nowParts = getNowDateParts()
       const requesterLabel = String(reminder?.context?.label || `Solicitud de traslado #${solicitudId}`).trim()
@@ -1929,15 +2009,34 @@ function RecordatoriosPopup({
     }))
   })()
 
-  const allDetallesVerificados =
-    activeDecisionIsGarantia || decisionDetalles.every((detalle) => Boolean(detalle?.verificado))
+  // Cada producto queda "separado" (se envia) o "rechazado" (con su motivo).
+  // Con alguno separado se acepta (parcialmente si hay rechazados); con todos
+  // rechazados, la solicitud se rechaza con el motivo de cada uno.
+  const detallesNoEnviadosCount = activeDecisionIsGarantia
+    ? 0
+    : decisionDetalles.filter((detalle) => Boolean(detalle?.no_enviar)).length
+  const allDetallesResueltos =
+    activeDecisionIsGarantia ||
+    decisionDetalles.every((detalle) => Boolean(detalle?.verificado) || Boolean(detalle?.no_enviar))
+  const todosNoEnviados =
+    !activeDecisionIsGarantia && decisionDetalles.length > 0 && detallesNoEnviadosCount === decisionDetalles.length
+  const canAcceptDecision = allDetallesResueltos && (activeDecisionIsGarantia || decisionDetalles.length > 0)
+  const acceptBlockedReason = !allDetallesResueltos
+    ? 'Marca cada producto como separado o como rechazado.'
+    : undefined
 
-  const handleToggleDetalleVerificado = async (detalle) => {
+  const saveDetalleEstado = async (detalle, estado, rechazo = null) => {
     const solicitudId = normalizeId(activeDecisionReminder?.context?.id)
     const detalleId = normalizeId(detalle?.id)
-    if (!solicitudId || !detalleId || !token || decisionSubmitting) return
+    if (!solicitudId || !detalleId || !token || decisionSubmitting) return false
 
-    const nextValue = !detalle?.verificado
+    const previous = {
+      verificado: Boolean(detalle?.verificado),
+      no_enviar: Boolean(detalle?.no_enviar),
+      motivo_no_envio: String(detalle?.motivo_no_envio || ''),
+      motivo_no_envio_tipo: String(detalle?.motivo_no_envio_tipo || ''),
+      conteo_no_envio: Array.isArray(detalle?.conteo_no_envio) ? detalle.conteo_no_envio : [],
+    }
     setVerificandoDetalleId(detalleId)
     setDecisionError('')
 
@@ -1947,31 +2046,228 @@ function RecordatoriosPopup({
         return {
           ...prev,
           detalles: (Array.isArray(prev.detalles) ? prev.detalles : []).map((d) =>
-            normalizeId(d.id) === detalleId ? { ...d, verificado: value } : d
+            normalizeId(d.id) === detalleId ? { ...d, ...value } : d
           ),
         }
       })
     }
 
-    applyValue(nextValue)
+    // El separado se marca al instante; el rechazo espera al servidor, que
+    // arma el texto del motivo.
+    if (estado !== 'no_enviar') {
+      applyValue({
+        verificado: estado === 'separado',
+        no_enviar: false,
+        motivo_no_envio: '',
+        motivo_no_envio_tipo: '',
+        conteo_no_envio: [],
+      })
+    }
     try {
       const response = await authFetch(
         `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/detalles/${encodeURIComponent(detalleId)}/verificar/`,
         {
           method: 'PATCH',
-          body: JSON.stringify({ verificado: nextValue }),
+          body: JSON.stringify({
+            estado,
+            motivo_tipo: rechazo?.motivoTipo || '',
+            motivo: rechazo?.nota || '',
+            conteo: rechazo?.conteo || [],
+          }),
         },
         token
       )
+      const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}))
-        throw new Error(String(data?.detail || '').trim() || 'No se pudo actualizar el producto.')
+        throw new Error(
+          String(data?.detail || data?.motivo || data?.conteo || '').trim() || 'No se pudo actualizar el producto.'
+        )
       }
+      applyValue({
+        verificado: Boolean(data?.verificado),
+        no_enviar: Boolean(data?.no_enviar),
+        motivo_no_envio: String(data?.motivo_no_envio || ''),
+        motivo_no_envio_tipo: String(data?.motivo_no_envio_tipo || ''),
+        conteo_no_envio: Array.isArray(data?.conteo_no_envio) ? data.conteo_no_envio : [],
+      })
+      return true
     } catch (error) {
-      applyValue(!nextValue)
-      setDecisionError(error?.message || 'No se pudo actualizar el producto.')
+      applyValue(previous)
+      if (estado === 'no_enviar') {
+        setNoEnviarError(error?.message || 'No se pudo rechazar el producto.')
+      } else {
+        setDecisionError(error?.message || 'No se pudo actualizar el producto.')
+      }
+      return false
     } finally {
       setVerificandoDetalleId('')
+    }
+  }
+
+  const handleToggleDetalleVerificado = (detalle) => {
+    saveDetalleEstado(detalle, detalle?.verificado ? '' : 'separado')
+  }
+
+  const conteoRowKey = () => `conteo-${Math.random().toString(36).slice(2)}`
+
+  // "No tengo": quien rechaza cuenta a ciegas (sin ver las cantidades del
+  // sistema) en las ubicaciones donde el sistema tiene el producto, y puede
+  // agregar otras donde lo encontro.
+  const loadNoTengoUbicaciones = async (detalle) => {
+    const solicitudId = normalizeId(activeDecisionReminder?.context?.id)
+    const detalleId = normalizeId(detalle?.id)
+    if (!solicitudId || !detalleId || !token) return
+    setNoEnviarModal((prev) => (prev ? { ...prev, ubicaciones: { loading: true } } : prev))
+    try {
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/detalles/${encodeURIComponent(detalleId)}/ubicaciones/?conteo=1`,
+        {},
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(String(data?.detail || '').trim() || 'No se pudieron cargar las ubicaciones.')
+      }
+      setNoEnviarModal((prev) => {
+        if (!prev || normalizeId(prev.detalle?.id) !== detalleId) return prev
+        const guardado = Array.isArray(prev.detalle?.conteo_no_envio) ? prev.detalle.conteo_no_envio : []
+        const guardadoPorUbicacion = new Map(
+          guardado.map((entry) => [Number(entry?.subdivision_id), entry?.cantidad])
+        )
+        const delSistema = (Array.isArray(data?.ubicaciones) ? data.ubicaciones : []).map((ubicacion) => ({
+          key: conteoRowKey(),
+          subdivision_id: Number(ubicacion.subdivision_id),
+          label: [ubicacion.bodega, ubicacion.division, ubicacion.subdivision].filter(Boolean).join(' / '),
+          fija: true,
+          cantidad: guardadoPorUbicacion.has(Number(ubicacion.subdivision_id))
+            ? String(guardadoPorUbicacion.get(Number(ubicacion.subdivision_id)))
+            : '',
+        }))
+        const idsSistema = new Set(delSistema.map((row) => row.subdivision_id))
+        const agregadas = guardado
+          .filter((entry) => !idsSistema.has(Number(entry?.subdivision_id)))
+          .map((entry) => ({
+            key: conteoRowKey(),
+            subdivision_id: Number(entry.subdivision_id),
+            fija: false,
+            cantidad: String(entry?.cantidad ?? ''),
+          }))
+        return {
+          ...prev,
+          ubicaciones: { data },
+          conteo: prev.conteo.length ? prev.conteo : [...delSistema, ...agregadas],
+        }
+      })
+    } catch (error) {
+      setNoEnviarModal((prev) => (
+        prev ? { ...prev, ubicaciones: { error: error?.message || 'No se pudieron cargar las ubicaciones.' } } : prev
+      ))
+    }
+  }
+
+  const openNoEnviarModal = (detalle) => {
+    const motivoTipo = String(detalle?.motivo_no_envio_tipo || '')
+    const motivoActual = String(detalle?.motivo_no_envio || '').trim()
+    // La nota libre va despues del texto que arma el servidor ("... . nota").
+    const nota = motivoTipo === 'otro'
+      ? motivoActual
+      : (motivoActual.match(/^(?:No tengo: hay \d+(?: \([^)]*\))?|Ya lo vendí \(por facturar\))\. (.*)$/s) || [])[1] || ''
+    setNoEnviarError('')
+    setNoEnviarModal({ detalle, motivoTipo, nota, conteo: [], ubicaciones: null })
+    if (motivoTipo === 'no_tengo') loadNoTengoUbicaciones(detalle)
+  }
+
+  const handleSelectMotivoRechazo = (motivoTipo) => {
+    setNoEnviarError('')
+    setNoEnviarModal((prev) => (prev ? { ...prev, motivoTipo } : prev))
+    if (motivoTipo === 'no_tengo' && noEnviarModal && !noEnviarModal.ubicaciones) {
+      loadNoTengoUbicaciones(noEnviarModal.detalle)
+    }
+  }
+
+  const updateConteoRow = (key, changes) => {
+    setNoEnviarModal((prev) => (
+      prev ? { ...prev, conteo: prev.conteo.map((row) => (row.key === key ? { ...row, ...changes } : row)) } : prev
+    ))
+  }
+
+  const handleToggleDetalleNoEnviar = (detalle) => {
+    if (detalle?.no_enviar) {
+      saveDetalleEstado(detalle, '')
+      return
+    }
+    openNoEnviarModal(detalle)
+  }
+
+  const handleConfirmNoEnviar = async () => {
+    if (!noEnviarModal) return
+    const motivoTipo = String(noEnviarModal.motivoTipo || '')
+    const nota = String(noEnviarModal.nota || '').trim()
+    if (!motivoTipo) {
+      setNoEnviarError('Escoge por qué rechazas este producto.')
+      return
+    }
+    if (motivoTipo === 'otro' && !nota) {
+      setNoEnviarError('Escribe por qué rechazas este producto.')
+      return
+    }
+    let conteo = []
+    if (motivoTipo === 'no_tengo') {
+      if (!noEnviarModal.ubicaciones?.data) {
+        setNoEnviarError('Espera a que carguen las ubicaciones para contar.')
+        return
+      }
+      const filas = noEnviarModal.conteo
+      if (filas.some((row) => !/^\d+$/.test(String(row.cantidad).trim()))) {
+        setNoEnviarError('Cuenta cada ubicación: escribe cuántas hay (0 si no hay ninguna).')
+        return
+      }
+      if (filas.some((row) => !row.subdivision_id)) {
+        setNoEnviarError('Escoge la ubicación de cada cantidad que agregaste.')
+        return
+      }
+      conteo = filas.map((row) => ({ subdivision_id: row.subdivision_id, cantidad: Number(row.cantidad) }))
+    }
+    const saved = await saveDetalleEstado(noEnviarModal.detalle, 'no_enviar', { motivoTipo, nota, conteo })
+    if (saved) {
+      setNoEnviarModal(null)
+      setNoEnviarError('')
+    }
+  }
+
+  const toggleUbicacionesDetalle = async (detalle) => {
+    const solicitudId = normalizeId(activeDecisionReminder?.context?.id)
+    const detalleId = normalizeId(detalle?.id)
+    if (!solicitudId || !detalleId || !token) return
+
+    const current = ubicacionesAbiertas[detalleId]
+    if (current) {
+      setUbicacionesAbiertas((prev) => {
+        const nextState = { ...prev }
+        delete nextState[detalleId]
+        return nextState
+      })
+      return
+    }
+
+    setUbicacionesAbiertas((prev) => ({ ...prev, [detalleId]: { loading: true } }))
+    try {
+      const response = await authFetch(
+        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/detalles/${encodeURIComponent(detalleId)}/ubicaciones/`,
+        {},
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(String(data?.detail || '').trim() || 'No se pudieron cargar las ubicaciones.')
+      }
+      setUbicacionesAbiertas((prev) => (prev[detalleId] ? { ...prev, [detalleId]: { data } } : prev))
+    } catch (error) {
+      setUbicacionesAbiertas((prev) => (
+        prev[detalleId]
+          ? { ...prev, [detalleId]: { error: error?.message || 'No se pudieron cargar las ubicaciones.' } }
+          : prev
+      ))
     }
   }
 
@@ -3156,7 +3452,7 @@ function RecordatoriosPopup({
                             }${
                               displayStatus.className === 'issue' ? ' recordatorios-popup__timeline-item--issue' : ''
                             }${
-                              (isPendingInspectionAlert && !isInspectionInProgress) ? ' recordatorios-popup__timeline-item--inspection-alert' : ''
+                              (isPendingInspectionAlert && !isInspectionInProgress && !isAdminSummaryReminder) ? ' recordatorios-popup__timeline-item--inspection-alert' : ''
                             }${
                               (isGarantiaApprovalReminder(reminder) && decisionStatus === 'pendiente') ? ' recordatorios-popup__timeline-item--garantia-alert' : ''
                             }${
@@ -3606,6 +3902,19 @@ function RecordatoriosPopup({
                                 <th className="recordatorios-popup__decision-cell--center">Subdivisión</th>
                                 <th className="recordatorios-popup__decision-cell--center">Mapa</th>
                                 <th className="recordatorios-popup__decision-cell--center">Separado</th>
+                                <th className="recordatorios-popup__decision-cell--center">
+                                  <span className="recordatorios-popup__decision-th-info">
+                                    Rechazar
+                                    <InfoHint label="Qué significa rechazar un producto" darkMode={darkMode}>
+                                      <p>Rechaza solo este producto; lo demás se acepta. Escoge el motivo:</p>
+                                      <ul>
+                                        {RECHAZO_MOTIVOS.map((item) => (
+                                          <li key={item.value}><strong>{item.label}:</strong> {item.info}</li>
+                                        ))}
+                                      </ul>
+                                    </InfoHint>
+                                  </span>
+                                </th>
                               </>
                             )}
                             {isEditingSolicitud && <th className="recordatorios-popup__decision-cell--center">Quitar</th>}
@@ -3651,52 +3960,181 @@ function RecordatoriosPopup({
                             <>
                               {!decisionDetalles.length && (
                                 <tr>
-                                  <td colSpan={activeDecisionIsGarantia ? 3 : 8}>Sin productos en esta solicitud.</td>
+                                  <td colSpan={activeDecisionIsGarantia ? 3 : 9}>Sin productos en esta solicitud.</td>
                                 </tr>
                               )}
-                              {decisionDetalles.map((detalle) => (
-                                <tr key={detalle.id || `${detalle.producto_id}-${detalle.cantidad}`}>
-                                  <td>{detalle?.producto_codigo || '-'}</td>
-                                  <td>{detalle?.producto_nombre || '-'}</td>
-                                  <td className="recordatorios-popup__decision-cell--center">
-                                    <strong>{detalle?.cantidad || '-'}</strong>
-                                  </td>
-                                  {!activeDecisionIsGarantia && (
-                                    <>
-                                      <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_bodega || '-'}</td>
-                                      <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_division || '-'}</td>
-                                      <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_subdivision || '-'}</td>
-                                      <td className="recordatorios-popup__decision-cell--center">
-                                        {detalle?.ubicacion_bodega_layout ? (
-                                          <BodegaLocationPreview
-                                            bodega={detalle.ubicacion_bodega_layout}
-                                            divisionName={detalle.ubicacion_division}
-                                            subdivisionName={detalle.ubicacion_subdivision}
-                                            darkMode={darkMode}
-                                          />
-                                        ) : (
-                                          '-'
+                              {decisionDetalles.map((detalle) => {
+                                const detalleId = normalizeId(detalle?.id)
+                                const ubicacionesState = detalleId ? ubicacionesAbiertas[detalleId] : null
+                                const estadoBloqueado = !canSubmitDecision || decisionSubmitting || verificandoDetalleId === detalleId
+                                return (
+                                  <React.Fragment key={detalle.id || `${detalle.producto_id}-${detalle.cantidad}`}>
+                                    <tr className={detalle?.no_enviar ? 'recordatorios-popup__decision-row--no-enviar' : undefined}>
+                                      <td>
+                                        <span className="recordatorios-popup__decision-codigo">
+                                          <span>{detalle?.producto_codigo || '-'}</span>
+                                          {!activeDecisionIsGarantia && detalleId && (
+                                            <button
+                                              type="button"
+                                              className={`recordatorios-popup__decision-info${ubicacionesState ? ' is-active' : ''}`}
+                                              onClick={() => toggleUbicacionesDetalle(detalle)}
+                                              aria-expanded={Boolean(ubicacionesState)}
+                                              aria-label={`Ver todas las ubicaciones de ${detalle?.producto_codigo || 'este producto'}`}
+                                              title="Ver todas las ubicaciones y cantidades"
+                                            >
+                                              <Info size={15} />
+                                            </button>
+                                          )}
+                                        </span>
+                                      </td>
+                                      <td>
+                                        {detalle?.producto_nombre || '-'}
+                                        {detalle?.no_enviar && (
+                                          <span className="recordatorios-popup__decision-motivo">
+                                            Rechazado{RECHAZO_MOTIVO_LABELS[detalle?.motivo_no_envio_tipo] && detalle?.motivo_no_envio_tipo !== 'otro' ? '' : ` (${RECHAZO_MOTIVO_LABELS.otro})`}: {detalle?.motivo_no_envio || 'sin motivo'}
+                                            {canSubmitDecision && (
+                                              <button
+                                                type="button"
+                                                className="recordatorios-popup__decision-motivo-edit"
+                                                onClick={() => openNoEnviarModal(detalle)}
+                                                disabled={estadoBloqueado}
+                                              >
+                                                Cambiar
+                                              </button>
+                                            )}
+                                          </span>
                                         )}
                                       </td>
                                       <td className="recordatorios-popup__decision-cell--center">
-                                        <input
-                                          type="checkbox"
-                                          className="recordatorios-popup__decision-checkbox"
-                                          checked={Boolean(detalle?.verificado)}
-                                          disabled={!canSubmitDecision || decisionSubmitting || verificandoDetalleId === normalizeId(detalle?.id)}
-                                          onChange={() => handleToggleDetalleVerificado(detalle)}
-                                          aria-label={`Marcar ${detalle?.producto_codigo || 'producto'} como separado`}
-                                        />
+                                        <strong>{detalle?.cantidad || '-'}</strong>
                                       </td>
-                                    </>
-                                  )}
-                                </tr>
-                              ))}
+                                      {!activeDecisionIsGarantia && (
+                                        <>
+                                          <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_bodega || '-'}</td>
+                                          <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_division || '-'}</td>
+                                          <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_subdivision || '-'}</td>
+                                          <td className="recordatorios-popup__decision-cell--center">
+                                            {detalle?.ubicacion_bodega_layout ? (
+                                              <BodegaLocationPreview
+                                                bodega={detalle.ubicacion_bodega_layout}
+                                                divisionName={detalle.ubicacion_division}
+                                                subdivisionName={detalle.ubicacion_subdivision}
+                                                darkMode={darkMode}
+                                              />
+                                            ) : (
+                                              '-'
+                                            )}
+                                          </td>
+                                          <td className="recordatorios-popup__decision-cell--center">
+                                            <input
+                                              type="checkbox"
+                                              className="recordatorios-popup__decision-checkbox"
+                                              checked={Boolean(detalle?.verificado)}
+                                              disabled={estadoBloqueado}
+                                              onChange={() => handleToggleDetalleVerificado(detalle)}
+                                              aria-label={`Marcar ${detalle?.producto_codigo || 'producto'} como separado`}
+                                            />
+                                          </td>
+                                          <td className="recordatorios-popup__decision-cell--center">
+                                            <button
+                                              type="button"
+                                              role="checkbox"
+                                              aria-checked={Boolean(detalle?.no_enviar)}
+                                              className={`recordatorios-popup__decision-x${detalle?.no_enviar ? ' is-checked' : ''}`}
+                                              disabled={estadoBloqueado}
+                                              onClick={() => handleToggleDetalleNoEnviar(detalle)}
+                                              aria-label={`Rechazar ${detalle?.producto_codigo || 'producto'}`}
+                                              title={detalle?.no_enviar ? 'Quitar el rechazo' : 'Rechazar este producto (pide el motivo)'}
+                                            >
+                                              {detalle?.no_enviar && <X size={14} strokeWidth={3} />}
+                                            </button>
+                                          </td>
+                                        </>
+                                      )}
+                                    </tr>
+                                    {ubicacionesState && (
+                                      <tr className="recordatorios-popup__decision-ubicaciones-row">
+                                        <td colSpan={9}>
+                                          {ubicacionesState.loading ? (
+                                            <p className="recordatorios-popup__decision-muted">
+                                              <Loader2 />
+                                              Cargando ubicaciones...
+                                            </p>
+                                          ) : ubicacionesState.error ? (
+                                            <p className="recordatorios-popup__error">{ubicacionesState.error}</p>
+                                          ) : !ubicacionesState.data?.ubicaciones?.length ? (
+                                            <p className="recordatorios-popup__decision-ubicaciones-empty">
+                                              Sin stock de {detalle?.producto_codigo || 'este producto'} en ninguna ubicación de {ubicacionesState.data?.sucursal_proveedora || decisionDetail?.sucursal_proveedora || 'la sucursal proveedora'}.
+                                            </p>
+                                          ) : (
+                                            <div className="recordatorios-popup__decision-ubicaciones">
+                                              <p className="recordatorios-popup__decision-ubicaciones-title">
+                                                Ubicaciones de {detalle?.producto_codigo} en {ubicacionesState.data.sucursal_proveedora || decisionDetail?.sucursal_proveedora}
+                                                {' · '}Total: <strong>{ubicacionesState.data.total}</strong>
+                                                {' · '}Disponible para traslado: <strong>{ubicacionesState.data.disponible}</strong>
+                                              </p>
+                                              <table>
+                                                <thead>
+                                                  <tr>
+                                                    <th>Bodega</th>
+                                                    <th>División</th>
+                                                    <th>Subdivisión</th>
+                                                    <th className="recordatorios-popup__decision-cell--center">Cantidad</th>
+                                                    <th className="recordatorios-popup__decision-cell--center">Mapa</th>
+                                                  </tr>
+                                                </thead>
+                                                <tbody>
+                                                  {ubicacionesState.data.ubicaciones.map((ubicacion) => (
+                                                    <tr key={ubicacion.id}>
+                                                      <td>{ubicacion.bodega || '-'}</td>
+                                                      <td>{ubicacion.division || '-'}</td>
+                                                      <td>{ubicacion.subdivision || '-'}</td>
+                                                      <td className="recordatorios-popup__decision-cell--center"><strong>{ubicacion.cantidad}</strong></td>
+                                                      <td className="recordatorios-popup__decision-cell--center">
+                                                        {ubicacion.bodega_layout ? (
+                                                          <BodegaLocationPreview
+                                                            bodega={ubicacion.bodega_layout}
+                                                            divisionName={ubicacion.division}
+                                                            subdivisionName={ubicacion.subdivision}
+                                                            darkMode={darkMode}
+                                                          />
+                                                        ) : (
+                                                          '-'
+                                                        )}
+                                                      </td>
+                                                    </tr>
+                                                  ))}
+                                                </tbody>
+                                              </table>
+                                            </div>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </React.Fragment>
+                                )
+                              })}
                             </>
                           )}
                         </tbody>
                       </table>
                     </div>
+
+                    {!activeDecisionIsGarantia && Array.isArray(decisionDetail?.detalles_no_enviados) && decisionDetail.detalles_no_enviados.length > 0 && (
+                      <div className="recordatorios-popup__decision-no-enviados">
+                        <span>Rechazados</span>
+                        <ul>
+                          {decisionDetail.detalles_no_enviados.map((item, index) => (
+                            <li key={`${item?.producto_id || 'x'}-${index}`}>
+                              <strong>{item?.producto_codigo || item?.producto_nombre || '-'}</strong>
+                              {item?.producto_nombre && item?.producto_codigo ? ` ${item.producto_nombre}` : ''}
+                              {` · x${item?.cantidad ?? 0}`}
+                              {' — '}{item?.motivo || 'sin motivo'}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
 
                     <label className="recordatorios-popup__decision-description">
                       <span>Nota</span>
@@ -3731,21 +4169,30 @@ function RecordatoriosPopup({
                   </div>
                 ) : (
                   <>
-                    {canSubmitDecision && !activeDecisionIsGarantia && !allDetallesVerificados && (
+                    {canSubmitDecision && !activeDecisionIsGarantia && acceptBlockedReason && (
+                      <p className="recordatorios-popup__decision-hint">*{acceptBlockedReason}</p>
+                    )}
+                    {canSubmitDecision && !activeDecisionIsGarantia && canAcceptDecision && detallesNoEnviadosCount > 0 && (
                       <p className="recordatorios-popup__decision-hint">
-                        *Marca todos los productos como separados para poder aceptar la solicitud.
+                        {todosNoEnviados
+                          ? '*Todos los productos están rechazados: se rechazará la solicitud con el motivo de cada uno.'
+                          : `*Se aceptará parcialmente: ${detallesNoEnviadosCount} producto${detallesNoEnviadosCount === 1 ? '' : 's'} rechazado${detallesNoEnviadosCount === 1 ? '' : 's'}.`}
                       </p>
                     )}
                     {canSubmitDecision && (
                       <div className="recordatorios-popup__decision-actions-row">
-                        <button
-                          type="button"
-                          className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--reject"
-                          onClick={handleRejectButtonClick}
-                          disabled={decisionSubmitting || decisionLoading}
-                        >
-                          {decisionSubmittingAction === 'rechazar' ? 'Rechazando...' : 'Rechazar'}
-                        </button>
+                        {/* Un traslado se rechaza por producto (columna Rechazar); el
+                            boton de rechazo general queda solo para garantias. */}
+                        {activeDecisionIsGarantia && (
+                          <button
+                            type="button"
+                            className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--reject"
+                            onClick={handleRejectButtonClick}
+                            disabled={decisionSubmitting || decisionLoading}
+                          >
+                            {decisionSubmittingAction === 'rechazar' ? 'Rechazando...' : 'Rechazar'}
+                          </button>
+                        )}
                         {isCurrentUserAdmin && !activeDecisionIsGarantia && (
                           <button
                             type="button"
@@ -3758,18 +4205,222 @@ function RecordatoriosPopup({
                         )}
                         <button
                           type="button"
-                          className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--accept"
+                          className={`recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--${todosNoEnviados ? 'reject' : 'accept'}`}
                           onClick={() => activeDecisionIsGarantia ? handleGarantiaDecision('aceptar') : handleTransferDecision('aceptar')}
-                          disabled={decisionSubmitting || decisionLoading || !allDetallesVerificados}
-                          title={allDetallesVerificados ? undefined : 'Marca todos los productos como separados antes de aceptar.'}
+                          disabled={decisionSubmitting || decisionLoading || !canAcceptDecision}
+                          title={acceptBlockedReason}
                         >
-                          {decisionSubmittingAction === 'aceptar' ? 'Aceptando...' : 'Aceptar'}
+                          {decisionSubmittingAction === 'aceptar'
+                            ? (todosNoEnviados ? 'Rechazando...' : 'Aceptando...')
+                            : todosNoEnviados
+                              ? 'Rechazar solicitud'
+                              : detallesNoEnviadosCount > 0 ? 'Aceptar parcialmente' : 'Aceptar'}
                         </button>
                       </div>
                     )}
                   </>
                 )}
               </div>
+
+              {noEnviarModal && (() => {
+                const guardando = Boolean(verificandoDetalleId)
+                const cerrar = () => { if (!guardando) { setNoEnviarModal(null); setNoEnviarError('') } }
+                const ubicacionesState = noEnviarModal.ubicaciones
+                const opcionesSucursal = Array.isArray(ubicacionesState?.data?.ubicaciones_sucursal)
+                  ? ubicacionesState.data.ubicaciones_sucursal
+                  : []
+                const totalContado = noEnviarModal.conteo.reduce(
+                  (sum, row) => sum + (/^\d+$/.test(String(row.cantidad).trim()) ? Number(row.cantidad) : 0),
+                  0
+                )
+                return (
+                  <div className="recordatorios-popup__reject-overlay" onMouseDown={cerrar}>
+                    <div className="recordatorios-popup__reject-card" onMouseDown={(event) => event.stopPropagation()}>
+                      <header className="recordatorios-popup__reject-head">
+                        <h5>Rechazar {noEnviarModal.detalle?.producto_codigo || 'producto'}</h5>
+                        <button
+                          type="button"
+                          className="recordatorios-popup__close"
+                          onClick={cerrar}
+                          disabled={guardando}
+                          aria-label="Cerrar rechazo del producto"
+                        >
+                          <X />
+                        </button>
+                      </header>
+
+                      <div className="recordatorios-popup__reject-body recordatorios-popup__reject-body--scroll">
+                        <p className="recordatorios-popup__no-enviar-producto">
+                          {noEnviarModal.detalle?.producto_nombre || '-'} · Pedido: {noEnviarModal.detalle?.cantidad ?? '-'}
+                        </p>
+                        <div className="recordatorios-popup__no-enviar-titulo">
+                          <span>¿Por qué lo rechazas?</span>
+                          <InfoHint label="Diferencia entre los motivos de rechazo" darkMode={darkMode}>
+                            <ul>
+                              {RECHAZO_MOTIVOS.map((item) => (
+                                <li key={item.value}><strong>{item.label}:</strong> {item.info}</li>
+                              ))}
+                            </ul>
+                          </InfoHint>
+                        </div>
+                        <div className="recordatorios-popup__no-enviar-motivos" role="radiogroup" aria-label="Motivo del rechazo">
+                          {RECHAZO_MOTIVOS.map((opcion) => (
+                            <label
+                              key={opcion.value}
+                              className={`recordatorios-popup__no-enviar-motivo${noEnviarModal.motivoTipo === opcion.value ? ' is-selected' : ''}`}
+                            >
+                              <input
+                                type="radio"
+                                name="rechazo-motivo"
+                                value={opcion.value}
+                                checked={noEnviarModal.motivoTipo === opcion.value}
+                                onChange={() => handleSelectMotivoRechazo(opcion.value)}
+                                disabled={guardando}
+                              />
+                              {opcion.label}
+                            </label>
+                          ))}
+                        </div>
+
+                        {noEnviarModal.motivoTipo === 'no_tengo' && (
+                          <div className="recordatorios-popup__conteo">
+                            <p className="recordatorios-popup__conteo-ayuda">
+                              Cuenta cuántas hay en cada ubicación (0 si no hay ninguna). Queda como una revisión de inventario a tu nombre.
+                            </p>
+                            {ubicacionesState?.loading ? (
+                              <p className="recordatorios-popup__decision-muted">
+                                <Loader2 />
+                                Cargando ubicaciones...
+                              </p>
+                            ) : ubicacionesState?.error ? (
+                              <p className="recordatorios-popup__error">
+                                {ubicacionesState.error}{' '}
+                                <button
+                                  type="button"
+                                  className="recordatorios-popup__decision-motivo-edit"
+                                  onClick={() => loadNoTengoUbicaciones(noEnviarModal.detalle)}
+                                >
+                                  Reintentar
+                                </button>
+                              </p>
+                            ) : ubicacionesState?.data ? (
+                              <>
+                                {noEnviarModal.conteo.length === 0 && (
+                                  <p className="recordatorios-popup__conteo-ayuda">
+                                    El sistema no tiene este producto en ninguna ubicación. Si encontraste alguna, agrégala; si no, se registra que hay 0.
+                                  </p>
+                                )}
+                                {noEnviarModal.conteo.map((row) => (
+                                  <div key={row.key} className="recordatorios-popup__conteo-row">
+                                    {row.fija ? (
+                                      <span className="recordatorios-popup__conteo-ubicacion">{row.label}</span>
+                                    ) : (
+                                      <select
+                                        className="recordatorios-popup__conteo-ubicacion"
+                                        value={row.subdivision_id || ''}
+                                        onChange={(event) => updateConteoRow(row.key, { subdivision_id: Number(event.target.value) || 0 })}
+                                        disabled={guardando}
+                                        aria-label="Ubicación"
+                                      >
+                                        <option value="">Escoge la ubicación</option>
+                                        {opcionesSucursal
+                                          .filter((opcion) => (
+                                            opcion.subdivision_id === row.subdivision_id
+                                            || !noEnviarModal.conteo.some((other) => other.subdivision_id === opcion.subdivision_id)
+                                          ))
+                                          .map((opcion) => (
+                                            <option key={opcion.subdivision_id} value={opcion.subdivision_id}>{opcion.label}</option>
+                                          ))}
+                                      </select>
+                                    )}
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      inputMode="numeric"
+                                      className="recordatorios-popup__conteo-cantidad"
+                                      value={row.cantidad}
+                                      onChange={(event) => updateConteoRow(row.key, { cantidad: event.target.value })}
+                                      placeholder="Cant."
+                                      disabled={guardando}
+                                      aria-label={`Cantidad en ${row.label || 'la ubicación'}`}
+                                    />
+                                    {!row.fija && (
+                                      <button
+                                        type="button"
+                                        className="recordatorios-popup__close"
+                                        onClick={() => setNoEnviarModal((prev) => (
+                                          prev ? { ...prev, conteo: prev.conteo.filter((other) => other.key !== row.key) } : prev
+                                        ))}
+                                        disabled={guardando}
+                                        aria-label="Quitar ubicación"
+                                      >
+                                        <X />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                                <div className="recordatorios-popup__conteo-pie">
+                                  <button
+                                    type="button"
+                                    className="recordatorios-popup__decision-motivo-edit"
+                                    onClick={() => setNoEnviarModal((prev) => (
+                                      prev
+                                        ? { ...prev, conteo: [...prev.conteo, { key: conteoRowKey(), subdivision_id: 0, fija: false, cantidad: '' }] }
+                                        : prev
+                                    ))}
+                                    disabled={guardando || opcionesSucursal.length === 0}
+                                  >
+                                    + Agregar otra ubicación
+                                  </button>
+                                  <span>Total contado: <strong>{totalContado}</strong></span>
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                        )}
+
+                        {noEnviarModal.motivoTipo && (
+                          <label className="recordatorios-popup__field recordatorios-popup__field--full">
+                            <span>{noEnviarModal.motivoTipo === 'otro' ? 'Nota (obligatoria)' : 'Nota (opcional)'}</span>
+                            <textarea
+                              value={noEnviarModal.nota}
+                              onChange={(event) => {
+                                const value = event.target.value
+                                setNoEnviarModal((prev) => (prev ? { ...prev, nota: value } : prev))
+                              }}
+                              placeholder={noEnviarModal.motivoTipo === 'otro'
+                                ? 'Explica por qué rechazas este producto'
+                                : 'Algo más que deba saber quien pidió el traslado'}
+                              disabled={guardando}
+                            />
+                          </label>
+                        )}
+                        {noEnviarError && <p className="recordatorios-popup__error">{noEnviarError}</p>}
+                      </div>
+
+                      <div className="recordatorios-popup__reject-actions">
+                        <button
+                          type="button"
+                          className="recordatorios-popup__button recordatorios-popup__button--ghost"
+                          onClick={cerrar}
+                          disabled={guardando}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          className="recordatorios-popup__button recordatorios-popup__decision-button recordatorios-popup__decision-button--reject"
+                          onClick={handleConfirmNoEnviar}
+                          disabled={guardando || Boolean(noEnviarModal.motivoTipo === 'no_tengo' && !ubicacionesState?.data)}
+                        >
+                          {guardando ? 'Guardando...' : 'Rechazar producto'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
 
               {isRejectReasonModalOpen && (
                 <div className="recordatorios-popup__reject-overlay" onMouseDown={handleCloseRejectReasonModal}>
