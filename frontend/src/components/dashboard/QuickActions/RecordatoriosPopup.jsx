@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Info, Loader2, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
 import BodegaLocationPreview from '../inventario/InventarioEditor/BodegaLocationPreview'
 import { API_URL, authFetch } from '../../../utils/api'
+import { getAppPortalRoot } from '../../../utils/portalRoot'
 import { formatDate, formatDateTime } from '../../../utils/dateFormat'
 import {
   buildTransferHistoryEntry,
@@ -73,6 +74,18 @@ function InfoHint({ label, darkMode, children }) {
   }
   const hide = () => setPosition(null)
 
+  // La tarjeta es fija en pantalla: al hacer scroll se cierra para no quedar
+  // flotando lejos del icono.
+  useEffect(() => {
+    if (!position) return undefined
+    window.addEventListener('scroll', hide, true)
+    window.addEventListener('resize', hide)
+    return () => {
+      window.removeEventListener('scroll', hide, true)
+      window.removeEventListener('resize', hide)
+    }
+  }, [position])
+
   return (
     <>
       <button
@@ -81,9 +94,10 @@ function InfoHint({ label, darkMode, children }) {
         className={`recordatorios-popup__info-hint${position ? ' is-active' : ''}`}
         aria-label={label}
         aria-expanded={Boolean(position)}
-        onMouseEnter={show}
-        onMouseLeave={hide}
-        onFocus={show}
+        // Hover solo con mouse; en tablet se abre y cierra tocando el icono
+        // (con foco + click, el mismo toque la abria y la volvia a cerrar).
+        onPointerEnter={(event) => { if (event.pointerType === 'mouse') show() }}
+        onPointerLeave={(event) => { if (event.pointerType === 'mouse') hide() }}
         onBlur={hide}
         onClick={() => (position ? hide() : show())}
       >
@@ -893,7 +907,12 @@ function RecordatoriosPopup({
   const [verificandoDetalleId, setVerificandoDetalleId] = useState('')
   const [noEnviarModal, setNoEnviarModal] = useState(null)
   const [noEnviarError, setNoEnviarError] = useState('')
-  const [ubicacionesAbiertas, setUbicacionesAbiertas] = useState({})
+  const [ubicacionesHover, setUbicacionesHover] = useState(null)
+  const [ubicacionesHoverPos, setUbicacionesHoverPos] = useState(null)
+  const ubicacionesHoverCardRef = useRef(null)
+  const ubicacionesHoverTimerRef = useRef(null)
+  const ubicacionesCacheRef = useRef({})
+  const ubicacionesPointerRef = useRef('mouse')
   const [rejectionReason, setRejectionReason] = useState('')
   const [isRejectReasonModalOpen, setIsRejectReasonModalOpen] = useState(false)
   const [rejectReasonError, setRejectReasonError] = useState('')
@@ -1675,7 +1694,8 @@ function RecordatoriosPopup({
     setEditError('')
     setNoEnviarModal(null)
     setNoEnviarError('')
-    setUbicacionesAbiertas({})
+    setUbicacionesHover(null)
+    ubicacionesCacheRef.current = {}
   }, [])
 
   const loadDecisionDetail = useCallback(
@@ -2235,41 +2255,77 @@ function RecordatoriosPopup({
     }
   }
 
-  const toggleUbicacionesDetalle = async (detalle) => {
+  // "i" junto al codigo: tarjeta con todas las ubicaciones y cantidades del
+  // producto en la sucursal proveedora. Con mouse sale al pasar por encima
+  // (como las sugerencias del Excel de importaciones); en tablet, al tocarla.
+  const showUbicacionesHover = (event, detalle, { immediate = false } = {}) => {
     const solicitudId = normalizeId(activeDecisionReminder?.context?.id)
     const detalleId = normalizeId(detalle?.id)
     if (!solicitudId || !detalleId || !token) return
-
-    const current = ubicacionesAbiertas[detalleId]
-    if (current) {
-      setUbicacionesAbiertas((prev) => {
-        const nextState = { ...prev }
-        delete nextState[detalleId]
-        return nextState
-      })
-      return
-    }
-
-    setUbicacionesAbiertas((prev) => ({ ...prev, [detalleId]: { loading: true } }))
-    try {
-      const response = await authFetch(
-        `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/detalles/${encodeURIComponent(detalleId)}/ubicaciones/`,
-        {},
-        token
-      )
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        throw new Error(String(data?.detail || '').trim() || 'No se pudieron cargar las ubicaciones.')
+    if (ubicacionesHoverTimerRef.current) clearTimeout(ubicacionesHoverTimerRef.current)
+    const rect = event.currentTarget.getBoundingClientRect()
+    const trigger = { detalleId, triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left }
+    const open = async () => {
+      ubicacionesHoverTimerRef.current = null
+      const cached = ubicacionesCacheRef.current[detalleId]
+      if (cached) {
+        setUbicacionesHover({ ...trigger, data: cached })
+        return
       }
-      setUbicacionesAbiertas((prev) => (prev[detalleId] ? { ...prev, [detalleId]: { data } } : prev))
-    } catch (error) {
-      setUbicacionesAbiertas((prev) => (
-        prev[detalleId]
-          ? { ...prev, [detalleId]: { error: error?.message || 'No se pudieron cargar las ubicaciones.' } }
-          : prev
-      ))
+      setUbicacionesHover({ ...trigger, data: 'loading' })
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/${encodeURIComponent(solicitudId)}/detalles/${encodeURIComponent(detalleId)}/ubicaciones/`,
+          {},
+          token
+        )
+        const data = response.ok ? await response.json() : null
+        if (data) ubicacionesCacheRef.current[detalleId] = data
+        setUbicacionesHover((prev) => (prev?.detalleId === detalleId ? { ...prev, data } : prev))
+      } catch {
+        setUbicacionesHover((prev) => (prev?.detalleId === detalleId ? { ...prev, data: null } : prev))
+      }
     }
+    if (immediate) open()
+    else ubicacionesHoverTimerRef.current = setTimeout(open, 300)
   }
+
+  const hideUbicacionesHover = useCallback(() => {
+    if (ubicacionesHoverTimerRef.current) {
+      clearTimeout(ubicacionesHoverTimerRef.current)
+      ubicacionesHoverTimerRef.current = null
+    }
+    setUbicacionesHover(null)
+    setUbicacionesHoverPos(null)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!ubicacionesHover || !ubicacionesHoverCardRef.current) return
+    const margin = 8
+    const cardRect = ubicacionesHoverCardRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - ubicacionesHover.triggerBottom
+    const spaceAbove = ubicacionesHover.triggerTop
+    const top = cardRect.height + margin > spaceBelow && spaceAbove > spaceBelow
+      ? Math.max(margin, ubicacionesHover.triggerTop - cardRect.height - 4)
+      : ubicacionesHover.triggerBottom + 4
+    const maxLeft = Math.max(margin, window.innerWidth - cardRect.width - margin)
+    setUbicacionesHoverPos({ top, left: Math.min(Math.max(margin, ubicacionesHover.triggerLeft), maxLeft) })
+  }, [ubicacionesHover])
+
+  // Abierta con el dedo: se cierra al hacer scroll o al tocar en otro lado.
+  useEffect(() => {
+    if (!ubicacionesHover) return undefined
+    const handlePointerDown = (event) => {
+      if (event.target?.closest?.('.recordatorios-popup__decision-info')) return
+      hideUbicacionesHover()
+    }
+    window.addEventListener('scroll', hideUbicacionesHover, true)
+    window.addEventListener('pointerdown', handlePointerDown, true)
+    return () => {
+      window.removeEventListener('scroll', hideUbicacionesHover, true)
+      window.removeEventListener('pointerdown', handlePointerDown, true)
+    }
+  }, [ubicacionesHover, hideUbicacionesHover])
 
   const handleRejectButtonClick = () => {
     if (!canSubmitDecision || decisionSubmitting || decisionLoading) return
@@ -3888,7 +3944,8 @@ function RecordatoriosPopup({
                       )}
                     </div>
 
-                    <div className="recordatorios-popup__decision-table-wrap">
+                    {/* Scroll propio para que los titulos de las columnas queden fijos. */}
+                    <div className="recordatorios-popup__decision-table-wrap recordatorios-popup__decision-table-wrap--sticky">
                       <table className="recordatorios-popup__decision-table">
                         <thead>
                           <tr>
@@ -3897,24 +3954,10 @@ function RecordatoriosPopup({
                             <th className="recordatorios-popup__decision-cell--center">Cantidad</th>
                             {!activeDecisionIsGarantia && !isEditingSolicitud && (
                               <>
-                                <th className="recordatorios-popup__decision-cell--center">Bodega</th>
-                                <th className="recordatorios-popup__decision-cell--center">División</th>
-                                <th className="recordatorios-popup__decision-cell--center">Subdivisión</th>
+                                <th>Ubicación</th>
                                 <th className="recordatorios-popup__decision-cell--center">Mapa</th>
                                 <th className="recordatorios-popup__decision-cell--center">Separado</th>
-                                <th className="recordatorios-popup__decision-cell--center">
-                                  <span className="recordatorios-popup__decision-th-info">
-                                    Rechazar
-                                    <InfoHint label="Qué significa rechazar un producto" darkMode={darkMode}>
-                                      <p>Rechaza solo este producto; lo demás se acepta. Escoge el motivo:</p>
-                                      <ul>
-                                        {RECHAZO_MOTIVOS.map((item) => (
-                                          <li key={item.value}><strong>{item.label}:</strong> {item.info}</li>
-                                        ))}
-                                      </ul>
-                                    </InfoHint>
-                                  </span>
-                                </th>
+                                <th className="recordatorios-popup__decision-cell--center">Rechazar</th>
                               </>
                             )}
                             {isEditingSolicitud && <th className="recordatorios-popup__decision-cell--center">Quitar</th>}
@@ -3960,12 +4003,12 @@ function RecordatoriosPopup({
                             <>
                               {!decisionDetalles.length && (
                                 <tr>
-                                  <td colSpan={activeDecisionIsGarantia ? 3 : 9}>Sin productos en esta solicitud.</td>
+                                  <td colSpan={activeDecisionIsGarantia ? 3 : 7}>Sin productos en esta solicitud.</td>
                                 </tr>
                               )}
                               {decisionDetalles.map((detalle) => {
                                 const detalleId = normalizeId(detalle?.id)
-                                const ubicacionesState = detalleId ? ubicacionesAbiertas[detalleId] : null
+                                const ubicacionesAbierta = Boolean(detalleId) && ubicacionesHover?.detalleId === detalleId
                                 const estadoBloqueado = !canSubmitDecision || decisionSubmitting || verificandoDetalleId === detalleId
                                 return (
                                   <React.Fragment key={detalle.id || `${detalle.producto_id}-${detalle.cantidad}`}>
@@ -3976,11 +4019,17 @@ function RecordatoriosPopup({
                                           {!activeDecisionIsGarantia && detalleId && (
                                             <button
                                               type="button"
-                                              className={`recordatorios-popup__decision-info${ubicacionesState ? ' is-active' : ''}`}
-                                              onClick={() => toggleUbicacionesDetalle(detalle)}
-                                              aria-expanded={Boolean(ubicacionesState)}
+                                              className={`recordatorios-popup__decision-info${ubicacionesAbierta ? ' is-active' : ''}`}
+                                              onPointerDown={(event) => { ubicacionesPointerRef.current = event.pointerType }}
+                                              onPointerEnter={(event) => { if (event.pointerType === 'mouse') showUbicacionesHover(event, detalle) }}
+                                              onPointerLeave={(event) => { if (event.pointerType === 'mouse') hideUbicacionesHover() }}
+                                              onClick={(event) => {
+                                                if (ubicacionesPointerRef.current === 'mouse') return
+                                                if (ubicacionesAbierta) hideUbicacionesHover()
+                                                else showUbicacionesHover(event, detalle, { immediate: true })
+                                              }}
+                                              aria-expanded={ubicacionesAbierta}
                                               aria-label={`Ver todas las ubicaciones de ${detalle?.producto_codigo || 'este producto'}`}
-                                              title="Ver todas las ubicaciones y cantidades"
                                             >
                                               <Info size={15} />
                                             </button>
@@ -4010,9 +4059,14 @@ function RecordatoriosPopup({
                                       </td>
                                       {!activeDecisionIsGarantia && (
                                         <>
-                                          <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_bodega || '-'}</td>
-                                          <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_division || '-'}</td>
-                                          <td className="recordatorios-popup__decision-cell--center">{detalle?.ubicacion_subdivision || '-'}</td>
+                                          <td className="recordatorios-popup__decision-ubicacion">
+                                            {detalle?.ubicacion_bodega || detalle?.ubicacion_division || detalle?.ubicacion_subdivision ? (
+                                              <>
+                                                <span>{detalle?.ubicacion_bodega || '-'}</span>
+                                                <strong>{[detalle?.ubicacion_division, detalle?.ubicacion_subdivision].filter(Boolean).join(' · ') || '-'}</strong>
+                                              </>
+                                            ) : '-'}
+                                          </td>
                                           <td className="recordatorios-popup__decision-cell--center">
                                             {detalle?.ubicacion_bodega_layout ? (
                                               <BodegaLocationPreview
@@ -4046,71 +4100,12 @@ function RecordatoriosPopup({
                                               aria-label={`Rechazar ${detalle?.producto_codigo || 'producto'}`}
                                               title={detalle?.no_enviar ? 'Quitar el rechazo' : 'Rechazar este producto (pide el motivo)'}
                                             >
-                                              {detalle?.no_enviar && <X size={14} strokeWidth={3} />}
+                                              {detalle?.no_enviar && <X strokeWidth={3} />}
                                             </button>
                                           </td>
                                         </>
                                       )}
                                     </tr>
-                                    {ubicacionesState && (
-                                      <tr className="recordatorios-popup__decision-ubicaciones-row">
-                                        <td colSpan={9}>
-                                          {ubicacionesState.loading ? (
-                                            <p className="recordatorios-popup__decision-muted">
-                                              <Loader2 />
-                                              Cargando ubicaciones...
-                                            </p>
-                                          ) : ubicacionesState.error ? (
-                                            <p className="recordatorios-popup__error">{ubicacionesState.error}</p>
-                                          ) : !ubicacionesState.data?.ubicaciones?.length ? (
-                                            <p className="recordatorios-popup__decision-ubicaciones-empty">
-                                              Sin stock de {detalle?.producto_codigo || 'este producto'} en ninguna ubicación de {ubicacionesState.data?.sucursal_proveedora || decisionDetail?.sucursal_proveedora || 'la sucursal proveedora'}.
-                                            </p>
-                                          ) : (
-                                            <div className="recordatorios-popup__decision-ubicaciones">
-                                              <p className="recordatorios-popup__decision-ubicaciones-title">
-                                                Ubicaciones de {detalle?.producto_codigo} en {ubicacionesState.data.sucursal_proveedora || decisionDetail?.sucursal_proveedora}
-                                                {' · '}Total: <strong>{ubicacionesState.data.total}</strong>
-                                                {' · '}Disponible para traslado: <strong>{ubicacionesState.data.disponible}</strong>
-                                              </p>
-                                              <table>
-                                                <thead>
-                                                  <tr>
-                                                    <th>Bodega</th>
-                                                    <th>División</th>
-                                                    <th>Subdivisión</th>
-                                                    <th className="recordatorios-popup__decision-cell--center">Cantidad</th>
-                                                    <th className="recordatorios-popup__decision-cell--center">Mapa</th>
-                                                  </tr>
-                                                </thead>
-                                                <tbody>
-                                                  {ubicacionesState.data.ubicaciones.map((ubicacion) => (
-                                                    <tr key={ubicacion.id}>
-                                                      <td>{ubicacion.bodega || '-'}</td>
-                                                      <td>{ubicacion.division || '-'}</td>
-                                                      <td>{ubicacion.subdivision || '-'}</td>
-                                                      <td className="recordatorios-popup__decision-cell--center"><strong>{ubicacion.cantidad}</strong></td>
-                                                      <td className="recordatorios-popup__decision-cell--center">
-                                                        {ubicacion.bodega_layout ? (
-                                                          <BodegaLocationPreview
-                                                            bodega={ubicacion.bodega_layout}
-                                                            divisionName={ubicacion.division}
-                                                            subdivisionName={ubicacion.subdivision}
-                                                            darkMode={darkMode}
-                                                          />
-                                                        ) : (
-                                                          '-'
-                                                        )}
-                                                      </td>
-                                                    </tr>
-                                                  ))}
-                                                </tbody>
-                                              </table>
-                                            </div>
-                                          )}
-                                        </td>
-                                      </tr>
-                                    )}
                                   </React.Fragment>
                                 )
                               })}
@@ -4222,6 +4217,59 @@ function RecordatoriosPopup({
                 )}
               </div>
 
+              {ubicacionesHover && createPortal(
+                <div
+                  ref={ubicacionesHoverCardRef}
+                  className={`recordatorios-popup__ubicaciones-card${darkMode ? ' is-dark' : ''}`}
+                  style={{
+                    top: ubicacionesHoverPos?.top ?? ubicacionesHover.triggerBottom + 4,
+                    left: ubicacionesHoverPos?.left ?? ubicacionesHover.triggerLeft,
+                    visibility: ubicacionesHoverPos ? 'visible' : 'hidden',
+                  }}
+                >
+                  {ubicacionesHover.data === 'loading' ? (
+                    <div className="recordatorios-popup__ubicaciones-card-message">Cargando ubicaciones...</div>
+                  ) : !ubicacionesHover.data ? (
+                    <div className="recordatorios-popup__ubicaciones-card-message">No se pudo cargar la información.</div>
+                  ) : (
+                    <>
+                      <div className="recordatorios-popup__ubicaciones-card-title">
+                        {ubicacionesHover.data.producto_codigo} en {ubicacionesHover.data.sucursal_proveedora}
+                      </div>
+                      {!ubicacionesHover.data.ubicaciones?.length ? (
+                        <div className="recordatorios-popup__ubicaciones-card-message">Sin stock en ninguna ubicación.</div>
+                      ) : (
+                        <table className="recordatorios-popup__ubicaciones-card-table">
+                          <thead>
+                            <tr>
+                              <th>Bodega</th>
+                              <th>División</th>
+                              <th>Subdivisión</th>
+                              <th>Cant.</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ubicacionesHover.data.ubicaciones.map((ubicacion) => (
+                              <tr key={ubicacion.id}>
+                                <td>{ubicacion.bodega || '-'}</td>
+                                <td>{ubicacion.division || '-'}</td>
+                                <td>{ubicacion.subdivision || '-'}</td>
+                                <td>{ubicacion.cantidad}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                      <div className="recordatorios-popup__ubicaciones-card-foot">
+                        <span>Total: <strong>{ubicacionesHover.data.total}</strong></span>
+                        <span>Disponible para traslado: <strong>{ubicacionesHover.data.disponible}</strong></span>
+                      </div>
+                    </>
+                  )}
+                </div>,
+                getAppPortalRoot()
+              )}
+
               {noEnviarModal && (() => {
                 const guardando = Boolean(verificandoDetalleId)
                 const cerrar = () => { if (!guardando) { setNoEnviarModal(null); setNoEnviarError('') } }
@@ -4253,32 +4301,29 @@ function RecordatoriosPopup({
                         <p className="recordatorios-popup__no-enviar-producto">
                           {noEnviarModal.detalle?.producto_nombre || '-'} · Pedido: {noEnviarModal.detalle?.cantidad ?? '-'}
                         </p>
-                        <div className="recordatorios-popup__no-enviar-titulo">
-                          <span>¿Por qué lo rechazas?</span>
-                          <InfoHint label="Diferencia entre los motivos de rechazo" darkMode={darkMode}>
-                            <ul>
-                              {RECHAZO_MOTIVOS.map((item) => (
-                                <li key={item.value}><strong>{item.label}:</strong> {item.info}</li>
-                              ))}
-                            </ul>
-                          </InfoHint>
-                        </div>
+                        <p className="recordatorios-popup__no-enviar-titulo">¿Por qué lo rechazas?</p>
                         <div className="recordatorios-popup__no-enviar-motivos" role="radiogroup" aria-label="Motivo del rechazo">
                           {RECHAZO_MOTIVOS.map((opcion) => (
-                            <label
+                            <div
                               key={opcion.value}
                               className={`recordatorios-popup__no-enviar-motivo${noEnviarModal.motivoTipo === opcion.value ? ' is-selected' : ''}`}
                             >
-                              <input
-                                type="radio"
-                                name="rechazo-motivo"
-                                value={opcion.value}
-                                checked={noEnviarModal.motivoTipo === opcion.value}
-                                onChange={() => handleSelectMotivoRechazo(opcion.value)}
-                                disabled={guardando}
-                              />
-                              {opcion.label}
-                            </label>
+                              <label>
+                                <input
+                                  type="radio"
+                                  name="rechazo-motivo"
+                                  value={opcion.value}
+                                  checked={noEnviarModal.motivoTipo === opcion.value}
+                                  onChange={() => handleSelectMotivoRechazo(opcion.value)}
+                                  disabled={guardando}
+                                />
+                                <span>{opcion.label}</span>
+                              </label>
+                              <InfoHint label={`Qué significa ${opcion.label}`} darkMode={darkMode}>
+                                <p><strong>{opcion.label}</strong></p>
+                                <p>{opcion.info}</p>
+                              </InfoHint>
+                            </div>
                           ))}
                         </div>
 
