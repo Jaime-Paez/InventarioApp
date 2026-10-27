@@ -795,6 +795,10 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
             envio__compra_local_id__in=ids
         ).values_list("envio__compra_local_id", "producto_id", "cantidad"):
             enviado[int(mov_id)][int(producto_id)] += int(cantidad or 0)
+        for mov_id, producto_id, cantidad in SolicitudTrasladoDetalle.objects.filter(
+            solicitud__compra_local_id__in=ids
+        ).values_list("solicitud__compra_local_id", "producto_id", "cantidad"):
+            enviado[int(mov_id)][int(producto_id)] += int(cantidad or 0)
         producto_ids = {pid for items in comprado.values() for pid in items}
         sucursal_ids = {int(obj.sucursal_id) for obj in compras}
         en_sucursal = defaultdict(int)
@@ -1859,7 +1863,7 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
 
         # Compra local ya repartida a otras sucursales: lo enviado salio de su
         # stock, asi que sus cantidades y su sucursal ya no se pueden cambiar.
-        if instance.pk and instance.envios_compra.exists():
+        if instance.pk and (instance.envios_compra.exists() or instance.traslados_compra.exists()):
             nueva_sucursal = validated_data.get("sucursal", instance.sucursal)
             cambia_cantidades = detalles_data is not None and quantities_by_product(
                 detalles_data

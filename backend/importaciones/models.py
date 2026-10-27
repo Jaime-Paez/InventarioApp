@@ -72,6 +72,16 @@ class Importacion(models.Model):
         default=None,
         help_text="Progreso guardado del asistente de llegada (paso, revisados, cantidades recibidas, distribución, destinatarios) para poder continuar al reabrirlo.",
     )
+    # Entrada (subtipo Importacion) en la matriz por todo lo repartido: ahi
+    # entra todo; lo que va a otras sucursales sale como traslado (ver
+    # ImportacionEnvio.movimiento_salida/movimiento_entrada).
+    movimiento_entrada = models.OneToOneField(
+        "movimientos.MovimientoInventario",
+        on_delete=models.PROTECT,
+        related_name="importacion_entrada",
+        null=True,
+        blank=True,
+    )
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -179,6 +189,23 @@ class ImportacionEnvio(models.Model):
     # No. Documento del envio (obligatorio al repartir una compra local; cada
     # sucursal destino lleva el suyo). Vacio en los envios de importacion.
     no_documento = models.CharField(max_length=100, blank=True, default="")
+    # Envio de una importacion a otra sucursal: salida por traslado en la
+    # matriz y entrada por traslado en la destino (solo registro: el stock lo
+    # mueve la recepcion del envio). Vacias en el envio a la propia matriz.
+    movimiento_salida = models.OneToOneField(
+        "movimientos.MovimientoInventario",
+        on_delete=models.PROTECT,
+        related_name="envio_importacion_salida",
+        null=True,
+        blank=True,
+    )
+    movimiento_entrada = models.OneToOneField(
+        "movimientos.MovimientoInventario",
+        on_delete=models.PROTECT,
+        related_name="envio_importacion_entrada",
+        null=True,
+        blank=True,
+    )
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=ESTADO_PENDIENTE)
     fecha = models.DateField(default=timezone.localdate)
     fecha_recepcion = models.DateField(null=True, blank=True)

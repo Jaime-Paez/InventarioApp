@@ -1598,15 +1598,11 @@ class InventarioViewSet(viewsets.ModelViewSet):
         )
 
     def _por_guardar_branch_ids(self, request):
-        """Sucursales donde el usuario puede guardar lo de POR UBICAR: las de
-        inventario y las de entradas (quien recibe). None = todas."""
-        readable = None
-        for module_key in (RolPermiso.Modulos.INVENTARIO, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS):
-            ids = get_readable_sucursal_ids(request.user, module_key)
-            if ids is None:
-                return None
-            readable = (readable or set()) | {int(branch_id) for branch_id in ids}
-        return readable or set()
+        """Sucursales donde el usuario guarda lo de POR UBICAR: las de entradas
+        (donde recibe), igual que Envios pendientes. Inventario no sirve: no
+        tiene alcance por sucursal y a todos les salia lo de todas. None = todas."""
+        ids = get_readable_sucursal_ids(request.user, RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS)
+        return None if ids is None else {int(branch_id) for branch_id in ids}
 
     def _close_finished_shipments(self, shipments, *, actor=None):
         """Un envio que ya llego y no tiene nada por contar (todo se vendio o

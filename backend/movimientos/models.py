@@ -222,6 +222,15 @@ class SolicitudTraslado(models.Model):
         null=True,
         blank=True,
     )
+    # Traslado que sale del reparto de una compra local a otras sucursales: se
+    # recibe como cualquier traslado (con checkboxes, sin POR UBICAR).
+    compra_local = models.ForeignKey(
+        "movimientos.MovimientoInventario",
+        on_delete=models.PROTECT,
+        related_name="traslados_compra",
+        null=True,
+        blank=True,
+    )
     historial_transfer = models.JSONField(default=list, blank=True)
     borrador_recepcion = models.JSONField(default=dict, blank=True)
     # Recepcion por partes: {"<producto_id>": {"recibido", "por_ubicar"}} (ver

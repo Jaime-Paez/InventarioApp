@@ -254,6 +254,19 @@ def _compra_local_events(movimiento):
                 )
             )
 
+    for traslado in movimiento.traslados_compra.select_related("sucursal_solicitante", "enviado_por"):
+        sucursal = str(getattr(traslado.sucursal_solicitante, "nombre", "") or "").strip() or "otra sucursal"
+        documento = str(traslado.no_documento or "").strip()
+        events.append(
+            _event(
+                traslado.fecha,
+                "envio",
+                f"Enviado a {sucursal}",
+                f"Traslado: {documento}" if documento else "",
+                format_actor_display_name(traslado.enviado_por),
+            )
+        )
+
     for inconveniente in ImportacionInconveniente.objects.filter(compra_local=movimiento).prefetch_related(
         "historial__actor"
     ).select_related("producto"):

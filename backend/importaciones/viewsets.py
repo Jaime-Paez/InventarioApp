@@ -42,6 +42,11 @@ from inventario.por_ubicar import (
 from movimientos.inconveniente_borrador import parse_borrador_items
 from productos.models import OEMProducto, Producto, ProductoAlterno, ProductoReferencia, add_producto_referencia
 
+from .importacion_movimientos import (
+    MovimientosImportacionError,
+    cerrar_movimientos_envio,
+    crear_movimientos_importacion,
+)
 from .models import (
     Importacion,
     ImportacionDetalle,
@@ -211,6 +216,7 @@ def finish_envio_count(envio, *, actor=None):
     envio.fecha_recepcion = timezone.localdate()
     envio.recibido_por = actor
     envio.save(update_fields=["recepcion_progreso", "estado", "fecha_recepcion", "recibido_por"])
+    cerrar_movimientos_envio(envio, recibido_final)
     return create_envio_shortage_issues(envio, recibido_final, actor=actor, novedades=novedades)
 
 
@@ -1268,6 +1274,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             except Exception:
                 continue
 
+        envios_creados = []
         for sucursal_id, items in envios_by_sucursal.items():
             envio = ImportacionEnvio.objects.create(
                 importacion=instance,
@@ -1281,6 +1288,14 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 )
                 for item in items
             ])
+            envios_creados.append(envio)
+
+        # Todo entra a la matriz y lo de otras sucursales sale como traslado.
+        try:
+            crear_movimientos_importacion(instance, envios_creados, actor=request.user)
+        except MovimientosImportacionError as exc:
+            transaction.set_rollback(True)
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         # El precio se aplica al catalogo justo aqui -- el mismo momento en que
         # se reparten las cantidades a las sucursales -- no antes (al aceptar,
@@ -2241,6 +2256,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             envio_locked.fecha_recepcion = timezone.localdate()
             envio_locked.recibido_por = request.user
             envio_locked.save(update_fields=["estado", "fecha_recepcion", "recibido_por"])
+            cerrar_movimientos_envio(envio_locked, recibido_total_por_producto)
 
             # Lo que llego de menos a la sucursal queda como inconveniente
             # (antes solo se sumaba al stock y el faltante no aparecia en

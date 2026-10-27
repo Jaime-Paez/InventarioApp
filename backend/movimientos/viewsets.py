@@ -1308,6 +1308,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 {"detail": "Este registro fue migrado del sistema anterior y no se puede editar."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if self._is_importacion_movement(instance):
+            return Response(
+                {"detail": "Este movimiento es de una importacion y se actualiza solo al recibirla; no se puede editar."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
@@ -1317,6 +1322,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         if serializer.context.get(REMINDERS_SYNC_FLAG):
             response_data[REMINDERS_SYNC_FLAG] = True
         return Response(response_data)
+
+    @staticmethod
+    def _is_importacion_movement(instance):
+        from importaciones.models import Importacion, ImportacionEnvio
+
+        return (
+            Importacion.objects.filter(movimiento_entrada=instance).exists()
+            or ImportacionEnvio.objects.filter(
+                Q(movimiento_salida=instance) | Q(movimiento_entrada=instance)
+            ).exists()
+        )
 
     def perform_create(self, serializer):
         module_keys = self._resolve_target_modules()
@@ -1481,7 +1497,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 {"detail": "Este registro fue migrado del sistema anterior y no se puede eliminar."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if instance.envios_compra.exists():
+        if self._is_importacion_movement(instance):
+            return Response(
+                {"detail": "Este movimiento es de una importacion, asi que no se puede eliminar."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if instance.envios_compra.exists() or instance.traslados_compra.exists():
             return Response(
                 {
                     "detail": (
@@ -2708,6 +2729,31 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "detalles": items,
                 }
             )
+        # Desde que el reparto se hace con traslados (los envios de arriba son
+        # los de antes).
+        for traslado in instance.traslados_compra.select_related(
+            "sucursal_solicitante", "movimiento_entrada__estado_movimiento"
+        ).prefetch_related("detalles"):
+            items = []
+            for detalle in traslado.detalles.all():
+                pid = int(detalle.producto_id)
+                enviado[pid] = enviado.get(pid, 0) + int(detalle.cantidad or 0)
+                items.append({"producto_id": pid, "cantidad": int(detalle.cantidad or 0)})
+            estado_entrada = self._normalize_state_name(
+                getattr(getattr(traslado.movimiento_entrada, "estado_movimiento", None), "nombre", "")
+            )
+            envios.append(
+                {
+                    "id": int(traslado.id),
+                    "solicitud_traslado_id": int(traslado.id),
+                    "sucursal_id": int(traslado.sucursal_solicitante_id),
+                    "sucursal_nombre": str(traslado.sucursal_solicitante.nombre or "").strip(),
+                    "estado": "recibido" if "recib" in estado_entrada else "pendiente",
+                    "llegada_confirmada": "recib" in estado_entrada,
+                    "fecha": traslado.fecha,
+                    "detalles": items,
+                }
+            )
         comprado = {}
         productos = {}
         for detalle in instance.detalles.select_related("producto"):
@@ -2734,6 +2780,68 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "borrador": instance.borrador_distribucion or {},
         }
 
+    def _crear_traslado_compra(self, helper, compra, destino, items, *, no_documento, tipo_salida, subtipo_salida):
+        """Traslado ya aprobado de la sucursal de la compra a `destino`, igual
+        que un traslado directo: salida (Enviado), entrada (Enviado) y la
+        solicitud que los une. El stock del origen ya se desconto; el destino
+        lo suma al recibirlo."""
+        from productos.models import Producto
+
+        valores = {}
+        for detalle in compra.detalles.all():
+            if detalle.producto_id:
+                valores.setdefault(int(detalle.producto_id), detalle.valor or Decimal("0"))
+        productos = Producto.objects.in_bulk(list(items))
+        estado_producto = helper._resolve_default_estado_producto()
+        detalles_data = [
+            {
+                "producto": productos[producto_id],
+                "cantidad": cantidad,
+                "estado_producto": estado_producto,
+                "valor": valores.get(producto_id, Decimal("0")),
+                "valor_total": valores.get(producto_id, Decimal("0")) * cantidad,
+            }
+            for producto_id, cantidad in items.items()
+        ]
+        descripcion = f"Envio de la compra local {str(compra.no_documento or '').strip()}"
+        salida = MovimientoInventario.objects.create(
+            sucursal=compra.sucursal,
+            tipo_movimiento=tipo_salida,
+            sub_tipo_movimiento=subtipo_salida,
+            descripcion=descripcion,
+            sucursal_objetivo=destino,
+            estado_movimiento=self._resolve_estado_movimiento("enviado"),
+            iva_rate=compra.iva_rate,
+            fecha=timezone.localdate(),
+            no_documento=no_documento,
+            tipo_envio=MovimientoInventario.TipoEnvio.TRASLADO_NORMAL,
+            creado_por=self.request.user,
+        )
+        helper._replace_detalles(salida, detalles_data)
+        entrada = helper._create_transfer_entry_from_salida(salida, detalles_data, None)
+        traslado = SolicitudTraslado.objects.create(
+            sucursal_solicitante=destino,
+            sucursal_proveedora=compra.sucursal,
+            descripcion=descripcion,
+            fecha=salida.fecha,
+            no_documento=no_documento,
+            estado=SolicitudTraslado.Estados.APROBADA,
+            creado_por=self.request.user,
+            enviado_por=self.request.user,
+            movimiento_salida=salida,
+            movimiento_entrada=entrada,
+            compra_local=compra,
+        )
+        SolicitudTrasladoDetalle.objects.bulk_create(
+            [
+                SolicitudTrasladoDetalle(
+                    solicitud=traslado, producto=d["producto"], cantidad=d["cantidad"], valor=d["valor"]
+                )
+                for d in detalles_data
+            ]
+        )
+        return traslado
+
     @action(detail=True, methods=["get"], url_path="historial")
     def historial(self, request, pk=None):
         """Historial del movimiento: creacion, ediciones, estados, etapas del
@@ -2743,19 +2851,18 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get", "post", "patch"], url_path="distribucion-compra")
     def distribucion_compra(self, request, pk=None):
-        """Reparte una compra local a otras sucursales, como el paso de
-        distribucion de una importacion: lo enviado sale del stock de la
-        sucursal de la compra y llega a cada sucursal como un envio que se
-        recibe igual que el de una importacion (Envios pendientes -> confirmar
-        llegada -> Por ubicar -> terminar conteo).
+        """Reparte una compra local a otras sucursales: lo enviado sale del
+        stock de la sucursal de la compra y a cada sucursal le llega como un
+        traslado (salida en el origen, entrada en el destino) que se recibe
+        igual que cualquier traslado, con checkboxes y sin POR UBICAR. Solo
+        las importaciones usan POR UBICAR.
 
         POST body: {distribuciones: [{producto_id, sucursal_id, cantidad}],
         destinatarios_por_sucursal: [{sucursal_id, user_ids}],
         documentos_por_sucursal: [{sucursal_id, no_documento}]}.
         PATCH body: {borrador: {...}}: guarda el reparto a medio hacer.
         """
-        from importaciones.models import ImportacionEnvio, ImportacionEnvioDetalle
-        from importaciones.viewsets import create_envio_reminder
+        from importaciones.models import ImportacionEnvio
 
         from .serializers import MovimientoInventarioSerializer
 
@@ -2860,6 +2967,21 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        tipo_salida = TipoMovimiento.objects.filter(nombre__istartswith="sal").order_by("id").first()
+        subtipo_salida = (
+            SubTipoMovimiento.objects.filter(tipo_movimiento=tipo_salida, nombre__icontains="trasl")
+            .order_by("id")
+            .first()
+            if tipo_salida is not None
+            else None
+        )
+        if subtipo_salida is None:
+            return Response(
+                {"detail": "No existe el subtipo de salida por traslado para enviar a otras sucursales."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        traslados = {}
         with transaction.atomic():
             # Bloquea la compra: dos repartos a la vez no pueden pasarse de lo comprado.
             MovimientoInventario.objects.select_for_update().filter(pk=instance.pk).first()
@@ -2901,22 +3023,27 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             for producto_id, cantidad in a_enviar.items():
                 helper._adjust_stock(instance.sucursal, producto_id, -cantidad)
                 stock_reductions.setdefault(int(instance.sucursal_id), set()).add(producto_id)
-            for sucursal_id, items in por_sucursal.items():
-                envio = ImportacionEnvio.objects.create(
-                    compra_local=instance, sucursal_id=sucursal_id, no_documento=documentos[sucursal_id]
-                )
-                ImportacionEnvioDetalle.objects.bulk_create(
-                    [
-                        ImportacionEnvioDetalle(envio=envio, producto_id=producto_id, cantidad=cantidad)
-                        for producto_id, cantidad in items.items()
-                    ]
+            try:
+                for sucursal_id, items in por_sucursal.items():
+                    traslados[sucursal_id] = self._crear_traslado_compra(
+                        helper,
+                        instance,
+                        sucursales[sucursal_id],
+                        items,
+                        no_documento=documentos[sucursal_id],
+                        tipo_salida=tipo_salida,
+                        subtipo_salida=subtipo_salida,
+                    )
+            except drf_serializers.ValidationError as exc:
+                transaction.set_rollback(True)
+                return Response(
+                    {"detail": self._extract_validation_message(exc.detail) or "No se pudo crear el traslado."},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
             helper._reject_pending_transfers_due_to_stock_changes(stock_reductions)
             instance.borrador_distribucion = {}
             instance.save(update_fields=["borrador_distribucion"])
 
-        label = f"Compra local {str(instance.no_documento or '').strip()}".strip()
-        User = get_user_model()
         for dest in request.data.get("destinatarios_por_sucursal") or []:
             if not isinstance(dest, dict):
                 continue
@@ -2925,20 +3052,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 continue
             user_ids = [uid for uid in (dest.get("user_ids") or []) if uid]
-            if sucursal_id not in por_sucursal or not user_ids:
+            if sucursal_id not in traslados or not user_ids:
                 continue
-            recipients = [
-                {"id": str(u.pk), "name": f"{u.first_name} {u.last_name}".strip() or u.username}
-                for u in User.objects.filter(id__in=user_ids, is_active=True)
-            ]
-            create_envio_reminder(
-                recipients=recipients,
+            self._append_direct_transfer_shipment_reminder(
+                movement=traslados[sucursal_id].movimiento_salida,
+                solicitud_id=traslados[sucursal_id].id,
                 actor_user=request.user,
-                description=f"Hay un envío en camino de {label} hacia tu sucursal.",
-                context_type="entrada",
-                context_id=instance.pk,
-                label=label,
-                sucursal_id=sucursal_id,
+                recipient_ids=user_ids,
             )
 
         instance.refresh_from_db()

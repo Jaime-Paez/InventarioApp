@@ -1,4 +1,4 @@
-"""Compra local repartida a otras sucursales, como una importacion."""
+"""Compra local repartida a otras sucursales: cada envio es un traslado."""
 
 from decimal import Decimal
 
@@ -6,12 +6,11 @@ from django.contrib.auth import get_user_model
 from django.db.models import Sum
 from rest_framework.test import APITestCase
 
-from importaciones.models import ImportacionEnvio, ImportacionInconveniente
 from inventario.models import Bodega, Division, Inventario, SubDivision, Sucursal
-from inventario.por_ubicar import POR_UBICAR_NOMBRE
 from productos.models import Producto
 from tipos.models import EstadoMovimiento, EstadoProducto, SubTipoMovimiento, TipoDivision, TipoMovimiento
 
+from .models import SolicitudTraslado, TrasladoInconveniente
 from .serializers import MovimientoInventarioSerializer
 
 BASE = "/movimientos/movimiento_inventario"
@@ -45,6 +44,11 @@ class DistribucionCompraLocalTests(APITestCase):
         self.tipo_entrada, _ = TipoMovimiento.objects.get_or_create(nombre="Entrada")
         self.subtipo, _ = SubTipoMovimiento.objects.get_or_create(tipo_movimiento=self.tipo_entrada, nombre="Compra Local")
         self.recibido, _ = EstadoMovimiento.objects.get_or_create(nombre="Recibido")
+        EstadoMovimiento.objects.get_or_create(nombre="Enviado")
+        EstadoMovimiento.objects.get_or_create(nombre="Parcialmente recibido")
+        tipo_salida, _ = TipoMovimiento.objects.get_or_create(nombre="Salida")
+        SubTipoMovimiento.objects.get_or_create(tipo_movimiento=tipo_salida, nombre="Traslado")
+        SubTipoMovimiento.objects.get_or_create(tipo_movimiento=self.tipo_entrada, nombre="Traslado")
         self.estado_producto, _ = EstadoProducto.objects.get_or_create(nombre="Disponible")
         self.producto = Producto.objects.create(codigo="CL-1", nombre="Filtro", precio=Decimal("10"))
         Inventario.objects.create(producto=self.producto, subdivision=self.sub, referencia="", cantidad=0)
@@ -110,7 +114,7 @@ class DistribucionCompraLocalTests(APITestCase):
         self.assertIn("No. Documento", response.data["detail"])
         self.assertEqual(self._stock(self.matriz), 10)
 
-    def test_reparte_y_cada_sucursal_lo_recibe_como_envio(self):
+    def test_reparte_y_cada_sucursal_lo_recibe_como_traslado(self):
         response = self._repartir((self.norte, 4), (self.sur, 2))
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["productos"][0]["enviado"], 6)
@@ -118,21 +122,25 @@ class DistribucionCompraLocalTests(APITestCase):
         self.assertEqual(self._stock(self.matriz), 4)
         self.assertEqual(self._stock(self.norte), 0)
 
-        pendientes = self.client.get("/importaciones/importaciones/envios-pendientes/").data
-        envio_norte = next(row for row in pendientes if row["sucursal_solicitante_id"] == self.norte.id)
-        self.assertEqual(envio_norte["no_documento"], f"ENV-{self.norte.id}")
-        self.assertEqual(envio_norte["sucursal_proveedora"], "Compra local")
-        self.assertEqual(envio_norte["detalles"][0]["cantidad_enviada"], 4)
+        # Cada envio es un traslado aprobado con su salida y su entrada.
+        traslado = SolicitudTraslado.objects.get(compra_local=self.compra, sucursal_solicitante=self.norte)
+        self.assertEqual(traslado.estado, SolicitudTraslado.Estados.APROBADA)
+        self.assertEqual(traslado.no_documento, f"ENV-{self.norte.id}")
+        salida, entrada = traslado.movimiento_salida, traslado.movimiento_entrada
+        self.assertEqual((salida.sucursal_id, salida.sucursal_objetivo_id), (self.matriz.id, self.norte.id))
+        self.assertEqual((entrada.sucursal_id, entrada.sucursal_objetivo_id), (self.norte.id, self.matriz.id))
+        for movimiento in (salida, entrada):
+            self.assertEqual(movimiento.sub_tipo_movimiento.nombre, "Traslado")
+            self.assertEqual(movimiento.estado_movimiento.nombre, "Enviado")
+            self.assertEqual([(d.producto_id, d.cantidad) for d in movimiento.detalles.all()], [(self.producto.id, 4)])
 
-        envio_url = f"/importaciones/importaciones/envios/{envio_norte['id']}"
-        self.assertEqual(self.client.post(f"{envio_url}/confirmar-llegada/").status_code, 200)
-        self.assertEqual(self._stock(self.norte), 4)
-        self.assertEqual(
-            Inventario.objects.get(producto=self.producto, subdivision__nombre=POR_UBICAR_NOMBRE).cantidad, 4
-        )
+        # Sale en "envios en camino" de la sucursal destino, como un traslado.
+        en_camino = self.client.get(
+            f"{BASE}/envios-en-camino/", {"sucursal_solicitante_id": self.norte.id}
+        ).data
+        self.assertEqual([row["id"] for row in en_camino], [traslado.id])
 
-        # Al contar solo aparecen 3: el faltante va a Inconvenientes, con la
-        # sucursal de la compra como origen.
+        # Se recibe con checkboxes: llegan 3 de 4, directo a su ubicacion.
         nivel = SubDivision.objects.create(
             division=Division.objects.create(
                 bodega=Bodega.objects.get(sucursal=self.norte),
@@ -141,33 +149,28 @@ class DistribucionCompraLocalTests(APITestCase):
             ),
             nombre="01",
         )
-        self.client.post(
-            f"{envio_url}/guardar-ubicaciones/",
-            {"items": [{"producto_id": self.producto.id, "subdivision_id": nivel.id, "cantidad": 3}]},
-            format="json",
-        )
-        response = self.client.post(f"{envio_url}/terminar-conteo/")
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(response.data["faltantes"], 1)
-        issue = ImportacionInconveniente.objects.get(envio_id=envio_norte["id"])
-        self.assertIsNone(issue.importacion_id)
-        self.assertEqual(issue.compra_local_id, self.compra.id)
-
-        issues = self.client.get(
-            f"/importaciones/importaciones/inconvenientes/?compra_local_id={self.compra.id}"
-        ).data
-        self.assertEqual(len(issues), 1)
-        self.assertEqual(issues[0]["importacion_codigo"], self.compra.no_documento)
-        self.assertEqual(issues[0]["sucursal_origen_id"], self.matriz.id)
-
-        # "Nunca salieron": se suman en la sucursal de la compra, no en otra matriz.
         response = self.client.post(
-            f"/importaciones/importaciones/inconvenientes/{issue.id}/resolver/",
-            {"decision": "sumar_origen", "subdivision_id": self.sub.id},
+            f"{BASE}/solicitudes-traslado/{traslado.id}/confirmar-recepcion/",
+            {
+                "resultado": "incompleto",
+                "items": [
+                    {
+                        "producto_id": self.producto.id,
+                        "cantidad_recibida": 3,
+                        "ubicaciones": [{"subdivision_id": nivel.id, "cantidad": 3}],
+                        "novedad": "Falto uno",
+                    }
+                ],
+            },
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(self._stock(self.matriz), 5)
+        self.assertEqual(self._stock(self.norte), 3)
+        entrada.refresh_from_db()
+        self.assertEqual(entrada.estado_movimiento.nombre, "Parcialmente recibido")
+        self.assertEqual(
+            TrasladoInconveniente.objects.get(solicitud=traslado).cantidad_faltante, 1
+        )
 
     def test_no_se_reparte_mas_de_lo_comprado_ni_de_lo_que_hay(self):
         response = self._repartir((self.norte, 11))
@@ -182,7 +185,7 @@ class DistribucionCompraLocalTests(APITestCase):
         response = self._repartir((self.sur, 2))
         self.assertEqual(response.status_code, 400)
         self.assertIn("hay 1", response.data["detail"])
-        self.assertEqual(ImportacionEnvio.objects.filter(compra_local=self.compra).count(), 1)
+        self.assertEqual(SolicitudTraslado.objects.filter(compra_local=self.compra).count(), 1)
 
     def test_a_la_misma_sucursal_de_la_compra_no_se_envia(self):
         response = self._repartir((self.matriz, 3))
