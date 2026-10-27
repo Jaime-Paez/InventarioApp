@@ -1359,7 +1359,14 @@ export const getReminderActionSeverity = (reminder, {
     normalizeText(reminder?.context?.type).replace(/[\s-]+/g, '_') === 'solicitud_traslado'
   const decisionStatus = getReminderDecisionStatus(reminder)
   const transferReceiptOutcome = getTransferReceiptOutcome(reminder)
-  const solicitudId = normalizeId(reminder?.context?.id)
+  // Solo los recordatorios de traslados toman la etapa del traslado: una
+  // revision de inventario con el mismo numero que un traslado ya recibido
+  // salia como cumplida y no prendia la campana del revisor.
+  const solicitudId = (
+    isTransferContextReminder || isTransferIssue || isSpecialTransferDecisionReminder(reminder)
+  )
+    ? normalizeId(reminder?.context?.id)
+    : ''
 
   const transferLifecycle = transferLifecycleBySolicitudId?.[solicitudId] || null
   const latestTransferProgress = solicitudId ? (transferLatestProgressBySolicitudId?.[solicitudId] || null) : null
@@ -1404,14 +1411,17 @@ export const getReminderActionSeverity = (reminder, {
     status.className === 'pending' &&
     (
       isRandomInspectionDailyReminder(reminder) ||
-      isRandomInspectionVerifyReminder(reminder) ||
-      isRandomInspectionAdminSummaryReminder(reminder)
+      isRandomInspectionVerifyReminder(reminder)
     )
   )
   const isInspectionInProgress = (
     isPendingInspectionAlert &&
-    !isRandomInspectionAdminSummaryReminder(reminder) &&
     hasRandomInspectionDraft(reminder)
+  )
+  // El resumen del admin pendiente solo espera a que los revisores cuenten:
+  // amarillo, no rojo como la inspeccion que le toca hacer al revisor.
+  const isPendingAdminSummary = (
+    status.className === 'pending' && isRandomInspectionAdminSummaryReminder(reminder)
   )
 
   if (
@@ -1422,7 +1432,7 @@ export const getReminderActionSeverity = (reminder, {
     return 'critical'
   }
 
-  if (isInspectionInProgress) return 'warning'
+  if (isInspectionInProgress || isPendingAdminSummary) return 'warning'
 
   if (isTransferContextReminder && visualDecisionStatus === 'rechazada' && !isReminderOwnedByCurrentUser) {
     return 'critical'
