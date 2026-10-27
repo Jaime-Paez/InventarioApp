@@ -34,9 +34,6 @@ def _normalize_product_ids(product_ids):
 
 def _find_stock_shortage(solicitud, available_map):
     for detalle in solicitud.detalles.all():
-        # Ya marcado como "no se envia": no compite por el stock.
-        if getattr(detalle, "no_enviar", False):
-            continue
         producto_id = int(getattr(detalle, "producto_id", 0) or 0)
         if producto_id <= 0 or producto_id not in available_map:
             continue
