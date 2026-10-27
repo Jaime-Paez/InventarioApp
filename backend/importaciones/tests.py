@@ -107,8 +107,9 @@ class BorradorRecepcionEnvioTests(TestCase):
 
 class SugerenciaProductosNuevosTests(TestCase):
     """En la sugerencia (borrador) los productos nuevos no entran al catalogo
-    ni se exige cantidad; al pedir la cotizacion se exige la cantidad y los
-    productos nuevos se crean con su PVP aprox."""
+    ni se exige cantidad; al pedir la cotizacion se exige la cantidad. Los
+    productos nuevos se crean con su PVP aprox. recien al importar, y solo
+    los que si se importan."""
 
     def setUp(self):
         User = get_user_model()
@@ -156,11 +157,55 @@ class SugerenciaProductosNuevosTests(TestCase):
         self.assertEqual(importacion.estado, Importacion.ESTADO_BORRADOR)
         self.assertFalse(Producto.objects.filter(codigo="NUEVO-CI").exists())
 
-    def test_pedir_cotizacion_crea_los_productos_nuevos(self):
-        importacion = self._crear(cantidad_nuevo=3)
+    def _pedir_cotizacion(self, importacion):
         importacion.detalles.filter(producto=self.existente).update(cantidad=2)
         response = self.client.post(f"{BASE_URL}/{importacion.id}/pedir-cotizacion/")
         self.assertEqual(response.status_code, 200, response.data)
+
+    def _importar(self, importacion, seleccionados):
+        response = self.client.post(
+            f"{BASE_URL}/{importacion.id}/importar/",
+            {"numero_factura": "F-1", "detalles_seleccionados": seleccionados},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_pedir_cotizacion_no_crea_los_productos_nuevos(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        self._pedir_cotizacion(importacion)
+        self.assertFalse(Producto.objects.filter(codigo="NUEVO-CI").exists())
+        self.assertIsNone(importacion.detalles.get(codigo="NUEVO-CI").producto_id)
+
+    def test_guardar_en_verificacion_no_crea_productos(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        self._pedir_cotizacion(importacion)
+        response = self.client.patch(
+            f"{BASE_URL}/{importacion.id}/",
+            {
+                "detalles": [
+                    {"producto_id": self.existente.id, "cantidad": 2},
+                    {"codigo": "NUEVO-CI", "nombre": "Filtro nuevo", "cantidad": 3},
+                    {"codigo": "ex-1", "nombre": "Faro", "cantidad": 1},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(Producto.objects.filter(codigo="NUEVO-CI").exists())
+        # Un código que ya existe en el catálogo sí se vincula.
+        self.assertEqual(importacion.detalles.get(codigo="ex-1").producto_id, self.existente.id)
+
+    def test_importar_no_crea_los_productos_negados(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        self._pedir_cotizacion(importacion)
+        self._importar(importacion, [str(self.existente.id)])
+        self.assertFalse(Producto.objects.filter(codigo="NUEVO-CI").exists())
+
+    def test_importar_crea_solo_los_productos_nuevos_importados(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        self._pedir_cotizacion(importacion)
+        detalle_nuevo = importacion.detalles.get(codigo="NUEVO-CI")
+        self._importar(importacion, [f"sc_{detalle_nuevo.id}"])
         producto = Producto.objects.get(codigo="NUEVO-CI")
         self.assertEqual(producto.precio, Decimal("12.30"))
         self.assertEqual(producto.creado_desde_importacion_id, importacion.id)

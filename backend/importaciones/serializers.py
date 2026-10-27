@@ -264,10 +264,9 @@ class ImportacionSerializer(serializers.ModelSerializer):
         """Si el detalle trae un código (sugerido por OEM o escrito a mano)
         pero no está vinculado a un producto existente, se crea el producto
         real en el catálogo (con stock en 0) en lugar de dejarlo pendiente —
-        así futuras importaciones lo reconocen por OEM/código. Mientras la
-        importación es una sugerencia (borrador) no se crea nada: queda como
-        detalle pendiente y se crea al pedir la cotización
-        (crear_productos_pendientes).
+        así futuras importaciones lo reconocen por OEM/código. Solo se usa al
+        importar (crear_productos_pendientes): antes de eso queda como
+        detalle pendiente, así lo que la casa niega nunca entra al catálogo.
         """
         if item.get("producto") is not None:
             return
@@ -279,6 +278,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
         nombre = str(item.get("nombre") or "").strip() or codigo
         referencia = str(item.get("referencia") or "").strip()
         precio_estimado = item.get("precio_estimado")
+        if precio_estimado is None:
+            precio_estimado = item.get("precio_confirmado")
 
         producto = Producto.objects.filter(codigo__iexact=codigo).first()
         if producto is None:
@@ -310,10 +311,20 @@ class ImportacionSerializer(serializers.ModelSerializer):
 
         item["producto"] = producto
 
+    @staticmethod
+    def _vincular_producto_existente(item):
+        """Antes de importar solo se vincula el detalle a un producto que ya
+        existe en el catálogo con ese código; no se crea ni se modifica nada."""
+        if item.get("producto") is not None:
+            return
+        codigo = str(item.get("codigo") or "").strip()
+        if codigo:
+            item["producto"] = Producto.objects.filter(codigo__iexact=codigo).first()
+
     def crear_productos_pendientes(self, importacion):
-        """Al pasar la sugerencia a cotizacion: los detalles con codigo que
-        todavia no tienen producto se crean en el catalogo (con su PVP aprox.
-        como precio) y quedan vinculados."""
+        """Al importar: los detalles con codigo que todavia no tienen producto
+        se crean en el catalogo (con su PVP aprox. como precio) y quedan
+        vinculados."""
         for detalle in importacion.detalles.filter(producto__isnull=True).exclude(codigo=""):
             item = {
                 "producto": None,
@@ -322,6 +333,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
                 "referencia": detalle.referencia,
                 "oem": detalle.oem,
                 "precio_estimado": detalle.precio_estimado,
+                "precio_confirmado": detalle.precio_confirmado,
             }
             self._resolve_producto_for_detalle(item, importacion.casa_comercial, importacion)
             detalle.producto = item["producto"]
@@ -334,10 +346,9 @@ class ImportacionSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         if detalles_data is not None:
-            casa_comercial = validated_data.get("casa_comercial") or instance.casa_comercial
             if instance.estado != Importacion.ESTADO_BORRADOR:
                 for item in detalles_data:
-                    self._resolve_producto_for_detalle(item, casa_comercial, instance)
+                    self._vincular_producto_existente(item)
             instance.detalles.all().delete()
             ImportacionDetalle.objects.bulk_create([
                 ImportacionDetalle(

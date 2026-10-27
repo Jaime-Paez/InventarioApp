@@ -293,11 +293,6 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
         # Known columns can appear in any order; anything left over (after the
         # known ones) is treated as a per-sucursal quantity column.
         known_aliases = {
-            # Si el Excel ya trae una columna "Orden" (por ejemplo, porque es
-            # el mismo archivo descargado antes y se vuelve a subir), esa
-            # columna define el orden real de cada producto sin importar en
-            # qué fila haya quedado dentro del archivo -- ver más abajo.
-            "orden": ["ORDEN"],
             "codigo": ["CODIGO JP", "CODIGO"],
             "referencia": ["REFERENCIA"],
             "oem": ["OEM"],
@@ -469,19 +464,8 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
             descripcion = safe_str(cell(row, "descripcion"))
             cantidad = safe_int(cell(row, "cantidad"))
             pvp = safe_float(cell(row, "pvp"))
-            # Si el Excel ya traía su propia columna "Orden" (se descargó antes
-            # y se vuelve a subir), se respeta ese valor tal cual -- así el
-            # producto conserva su orden real aunque el usuario haya
-            # reordenado las filas en el archivo antes de volver a subirlo.
-            # Si no hay columna Orden (Excel nuevo), se usa la fila en la que
-            # cayó dentro de este archivo, como antes.
-            orden_cell = cell(row, "orden")
-            try:
-                orden = int(float(orden_cell)) if orden_cell not in (None, "") else 0
-            except (TypeError, ValueError):
-                orden = 0
-            if orden <= 0:
-                orden = i
+            # Fila en la que cayó el producto dentro de este archivo.
+            orden = i
             if not codigo and not referencia and not oem and not descripcion and cantidad <= 0 and pvp <= 0:
                 if i % 10 == 0 or i == total_data_rows:
                     set_progress(20 + (i / total_data_rows) * 75)
@@ -950,8 +934,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "Antes de pedir la cotización, todas las cantidades deben ser mayores a cero."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # Los productos nuevos de la sugerencia entran recien ahora al catalogo.
-        self.get_serializer(instance).crear_productos_pendientes(instance)
+        # Los productos nuevos todavia no entran al catalogo: se crean al importar.
         instance.estado = Importacion.ESTADO_COTIZACION
         instance.save(update_fields=["estado"])
         serializer = self.get_serializer(instance)
@@ -1093,6 +1076,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # shipment; their review data already lives in historial_confirmacion.
         if detalles_to_delete:
             ImportacionDetalle.objects.filter(id__in=detalles_to_delete).delete()
+
+        # Fin del proceso: recien ahora los productos nuevos que si se importan
+        # entran al catalogo (los negados ya se borraron arriba).
+        self.get_serializer(instance).crear_productos_pendientes(instance)
 
         # El precio se actualiza al marcar llegada (ver marcar_llegada), que es
         # cuando se reparten las cantidades a las sucursales -- no aqui.
