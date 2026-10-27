@@ -192,6 +192,8 @@ class ImportacionEnvio(models.Model):
     # Envio de una importacion a otra sucursal: salida por traslado en la
     # matriz y entrada por traslado en la destino (solo registro: el stock lo
     # mueve la recepcion del envio). Vacias en el envio a la propia matriz.
+    # Los envios de compras locales recibidos antes de que el reparto se
+    # hiciera con traslados tambien las usan.
     movimiento_salida = models.OneToOneField(
         "movimientos.MovimientoInventario",
         on_delete=models.PROTECT,
