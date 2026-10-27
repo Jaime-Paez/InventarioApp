@@ -4047,7 +4047,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
     // esto evita que el modal se recentre con una medida vieja y se vea
     // saltar de lugar al pasar de un paso a otro). Solo el paso 3 es más
     // ancho, porque necesita espacio real para la tabla de revisión.
-    const preferredWidth = step === 3 ? EXCEL_STEP3_WIDTH : EXCEL_STEP_WIDTH
+    // El paso 3 abre al mismo ancho que la sugerencia guardada (1240), para
+    // que la tabla de revision se vea igual (EXCEL_STEP3_WIDTH queda de minimo).
+    const preferredWidth = step === 3 ? 1240 : EXCEL_STEP_WIDTH
     const measuredWidth = Math.min(preferredWidth, availableWidth)
     const nextWidth = measuredWidth
     const measuredHeight = modalRef.current?.offsetHeight || (isCasaStep ? (casaDraft ? 380 : 200) : 300)
@@ -5092,15 +5094,17 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
 
                     <div ref={reviewTableWrapRef} onScroll={handleReviewTableScroll} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: isCompactHeight ? 'min(360px, 45dvh)' : 'none' }}>
                       <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 880 }}>
+                        {/* Mismas proporciones que la tabla de la sugerencia guardada;
+                            "Eliminar" con sus 88px (con 40 el titulo quedaba cortado). */}
                         <colgroup>
-                          <col style={{ width: 100 }} />
+                          <col style={{ width: 130 }} />
                           <col style={{ width: 120 }} />
                           <col style={{ width: 130 }} />
-                          <col style={{ width: 220 }} />
-                          <col style={{ width: 60 }} />
-                          <col style={{ width: 85 }} />
-                          <col style={{ width: 95 }} />
-                          <col style={{ width: 40 }} />
+                          <col />
+                          <col style={{ width: 70 }} />
+                          <col style={{ width: 90 }} />
+                          <col style={{ width: 100 }} />
+                          <col style={{ width: 88 }} />
                         </colgroup>
                         <thead>
                           <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1, fontSize: 'var(--font-size-sm)' }}>
