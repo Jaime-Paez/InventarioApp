@@ -3899,6 +3899,15 @@ function RecordatoriosPopup({
                       <span className="recordatorios-popup__urgente-dot recordatorios-popup__urgente-dot--decision" aria-hidden="true">!</span>
                     )}
                   </h4>
+                  {/* Traslado: los datos van en una linea bajo el titulo, como
+                      "Fecha:" en la inspeccion, en vez de tres bloques apilados. */}
+                  {!activeDecisionIsGarantia && !decisionLoading && (
+                    <p className="recordatorios-popup__decision-meta">
+                      <span>Fecha: <strong>{decisionDetail?.fecha ? formatDate(decisionDetail.fecha) : '-'}</strong></span>
+                      <span>Solicita: <strong>{decisionDetail?.sucursal_solicitante || '-'}</strong></span>
+                      <span>Envía: <strong>{decisionDetail?.sucursal_proveedora || '-'}</strong></span>
+                    </p>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -3920,33 +3929,22 @@ function RecordatoriosPopup({
 
                 {!decisionLoading && (
                   <>
-                    <div className={`recordatorios-popup__decision-grid${activeDecisionIsGarantia ? '' : ' recordatorios-popup__decision-grid--3col'}`}>
-                      <label>
-                        <span>Fecha</span>
-                        <strong>{decisionDetail?.fecha ? formatDate(decisionDetail.fecha) : '-'}</strong>
-                      </label>
-                      {activeDecisionIsGarantia ? (
+                    {activeDecisionIsGarantia && (
+                      <div className="recordatorios-popup__decision-grid">
+                        <label>
+                          <span>Fecha</span>
+                          <strong>{decisionDetail?.fecha ? formatDate(decisionDetail.fecha) : '-'}</strong>
+                        </label>
                         <label>
                           <span>Sucursal</span>
                           <strong>{decisionDetail?.sucursal || '-'}</strong>
                         </label>
-                      ) : (
-                        <>
-                          <label>
-                            <span>Sucursal solicitante</span>
-                            <strong>{decisionDetail?.sucursal_solicitante || '-'}</strong>
-                          </label>
-                          <label>
-                            <span>Sucursal proveedora</span>
-                            <strong>{decisionDetail?.sucursal_proveedora || '-'}</strong>
-                          </label>
-                        </>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     {/* Scroll propio para que los titulos de las columnas queden fijos. */}
                     <div className="recordatorios-popup__decision-table-wrap recordatorios-popup__decision-table-wrap--sticky">
-                      <table className="recordatorios-popup__decision-table">
+                      <table className={`recordatorios-popup__decision-table${!activeDecisionIsGarantia && !isEditingSolicitud ? ' recordatorios-popup__decision-table--traslado' : ''}`}>
                         <thead>
                           <tr>
                             <th>Código</th>
@@ -4079,29 +4077,37 @@ function RecordatoriosPopup({
                                               '-'
                                             )}
                                           </td>
-                                          <td className="recordatorios-popup__decision-cell--center">
-                                            <input
-                                              type="checkbox"
-                                              className="recordatorios-popup__decision-checkbox"
-                                              checked={Boolean(detalle?.verificado)}
-                                              disabled={estadoBloqueado}
-                                              onChange={() => handleToggleDetalleVerificado(detalle)}
-                                              aria-label={`Marcar ${detalle?.producto_codigo || 'producto'} como separado`}
-                                            />
+                                          {/* El texto de cada control solo se ve en la
+                                              tarjeta de tablet (ahi no hay titulos de columna). */}
+                                          <td className="recordatorios-popup__decision-cell--center recordatorios-popup__decision-cell--separado">
+                                            <label className={`recordatorios-popup__decision-toggle recordatorios-popup__decision-toggle--separado${detalle?.verificado ? ' is-checked' : ''}${estadoBloqueado ? ' is-disabled' : ''}`}>
+                                              <input
+                                                type="checkbox"
+                                                className="recordatorios-popup__decision-checkbox"
+                                                checked={Boolean(detalle?.verificado)}
+                                                disabled={estadoBloqueado}
+                                                onChange={() => handleToggleDetalleVerificado(detalle)}
+                                                aria-label={`Marcar ${detalle?.producto_codigo || 'producto'} como separado`}
+                                              />
+                                              <span className="recordatorios-popup__decision-toggle-text" aria-hidden="true">Separado</span>
+                                            </label>
                                           </td>
-                                          <td className="recordatorios-popup__decision-cell--center">
-                                            <button
-                                              type="button"
-                                              role="checkbox"
-                                              aria-checked={Boolean(detalle?.no_enviar)}
-                                              className={`recordatorios-popup__decision-x${detalle?.no_enviar ? ' is-checked' : ''}`}
-                                              disabled={estadoBloqueado}
-                                              onClick={() => handleToggleDetalleNoEnviar(detalle)}
-                                              aria-label={`Rechazar ${detalle?.producto_codigo || 'producto'}`}
-                                              title={detalle?.no_enviar ? 'Quitar el rechazo' : 'Rechazar este producto (pide el motivo)'}
-                                            >
-                                              {detalle?.no_enviar && <X strokeWidth={3} />}
-                                            </button>
+                                          <td className="recordatorios-popup__decision-cell--center recordatorios-popup__decision-cell--rechazar">
+                                            <label className={`recordatorios-popup__decision-toggle recordatorios-popup__decision-toggle--rechazar${detalle?.no_enviar ? ' is-checked' : ''}${estadoBloqueado ? ' is-disabled' : ''}`}>
+                                              <button
+                                                type="button"
+                                                role="checkbox"
+                                                aria-checked={Boolean(detalle?.no_enviar)}
+                                                className={`recordatorios-popup__decision-x${detalle?.no_enviar ? ' is-checked' : ''}`}
+                                                disabled={estadoBloqueado}
+                                                onClick={() => handleToggleDetalleNoEnviar(detalle)}
+                                                aria-label={`Rechazar ${detalle?.producto_codigo || 'producto'}`}
+                                                title={detalle?.no_enviar ? 'Quitar el rechazo' : 'Rechazar este producto (pide el motivo)'}
+                                              >
+                                                {detalle?.no_enviar && <X strokeWidth={3} />}
+                                              </button>
+                                              <span className="recordatorios-popup__decision-toggle-text" aria-hidden="true">Rechazar</span>
+                                            </label>
                                           </td>
                                         </>
                                       )}

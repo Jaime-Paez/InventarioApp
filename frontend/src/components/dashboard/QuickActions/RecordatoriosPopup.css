@@ -2005,12 +2005,26 @@
   text-align: center;
 }
 
+/* Separado: dibujado a mano (no el checkbox nativo) para que tenga
+   exactamente la misma forma que el de Rechazar en todos los navegadores. */
 .recordatorios-popup__decision-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
   width: 18px;
   height: 18px;
-  accent-color: var(--color-primary);
+  flex-shrink: 0;
+  border: 1.5px solid #9ca3af;
+  border-radius: 4px;
+  background: #fff center / 80% no-repeat;
   cursor: pointer;
   vertical-align: middle;
+}
+
+.recordatorios-popup__decision-checkbox:checked {
+  background-color: #16a34a;
+  border-color: #15803d;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
 }
 
 .recordatorios-popup__decision-checkbox:disabled {
@@ -2018,21 +2032,23 @@
   opacity: 0.6;
 }
 
-.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-checkbox {
-  accent-color: var(--color-primary-dark);
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-checkbox:not(:checked) {
+  background-color: #1f242b;
+  border-color: #6b7280;
 }
 
 /* Checkbox "No enviar": misma medida que el de Separado, con X roja. */
 .recordatorios-popup__decision-x {
   width: 18px;
   height: 18px;
+  flex-shrink: 0;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   vertical-align: middle;
   border: 1.5px solid #9ca3af;
-  border-radius: 3px;
+  border-radius: 4px;
   background: #fff;
   color: #fff;
   cursor: pointer;
@@ -3563,14 +3579,14 @@ select.recordatorios-popup__conteo-ubicacion,
 
   .recordatorios-popup__decision-checkbox,
   .recordatorios-popup__decision-x {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
   }
 
   .recordatorios-popup__decision-x svg {
-    width: 20px;
-    height: 20px;
+    width: 15px;
+    height: 15px;
   }
 
   .recordatorios-popup__decision-info,
@@ -3590,8 +3606,8 @@ select.recordatorios-popup__conteo-ubicacion,
   }
 
   .recordatorios-popup__decision-button {
-    min-height: 48px;
-    font-size: 15px;
+    min-height: 42px;
+    font-size: 14px;
   }
 
   .recordatorios-popup__no-enviar-motivo {
@@ -3641,4 +3657,207 @@ select.recordatorios-popup__conteo-ubicacion,
 
 .recordatorios-popup__decision-codigo > span {
   white-space: nowrap;
+}
+
+/* Datos del traslado en una linea bajo el titulo (como "Fecha:" en la
+   inspeccion). */
+.recordatorios-popup__decision-head p.recordatorios-popup__decision-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.recordatorios-popup__decision-meta strong {
+  font-weight: 600;
+  color: var(--color-text, #111827);
+}
+
+.recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-meta strong {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* Separado / Rechazar: en escritorio solo el cuadro (el titulo de la
+   columna dice que es); el texto aparece en la tarjeta de tablet. */
+.recordatorios-popup__decision-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.recordatorios-popup__decision-toggle.is-disabled {
+  cursor: not-allowed;
+}
+
+.recordatorios-popup__decision-toggle-text {
+  display: none;
+}
+
+/* TABLET/TELEFONO: cada producto es una tarjeta, como en la inspeccion.
+   Codigo, descripcion, ubicacion y los botones Separado / Rechazar a la
+   izquierda; la cantidad y el mapa a la derecha. Antes la tabla de 7
+   columnas no entraba y habia que deslizarla de lado. */
+@media (max-width: 900px) {
+  .recordatorios-popup__decision-table--traslado {
+    display: block;
+    min-width: 0;
+  }
+
+  .recordatorios-popup__decision-table--traslado thead {
+    display: none;
+  }
+
+  .recordatorios-popup__decision-table--traslado tbody {
+    display: block;
+  }
+
+  .recordatorios-popup__decision-table--traslado tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 84px;
+    grid-template-areas:
+      "code code qty"
+      "name name qty"
+      "ubic ubic map"
+      "sep  rej  map";
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  }
+
+  .recordatorios-popup__decision-table--traslado tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .recordatorios-popup__decision-table--traslado td {
+    border: none;
+    padding: 4px 12px;
+    text-align: left;
+  }
+
+  .recordatorios-popup__decision-table--traslado td[colspan] {
+    grid-column: 1 / -1;
+    padding: 12px;
+  }
+
+  .recordatorios-popup__decision-table--traslado td:nth-child(1) {
+    grid-area: code;
+    padding-top: 12px;
+    font-weight: 700;
+  }
+
+  .recordatorios-popup__decision-table--traslado td:nth-child(2) {
+    grid-area: name;
+    padding-top: 0;
+  }
+
+  .recordatorios-popup__decision-table--traslado td:nth-child(3) {
+    grid-area: qty;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding-top: 12px;
+    border-left: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  }
+
+  .recordatorios-popup__decision-table--traslado td:nth-child(3)::before {
+    content: "Cantidad";
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, currentColor 60%, transparent);
+  }
+
+  .recordatorios-popup__decision-table--traslado td:nth-child(3) strong {
+    font-size: 20px;
+  }
+
+  .recordatorios-popup__decision-table--traslado td:nth-child(4) {
+    grid-area: ubic;
+  }
+
+  .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-ubicacion span,
+  .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-ubicacion strong {
+    display: inline;
+  }
+
+  .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-ubicacion span::after {
+    content: " · ";
+  }
+
+  .recordatorios-popup__decision-table--traslado td:nth-child(5) {
+    grid-area: map;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 12px;
+    border-left: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  }
+
+  .recordatorios-popup__decision-table--traslado td:nth-child(6) {
+    grid-area: sep;
+    padding: 6px 0 12px 12px;
+    text-align: left;
+  }
+
+  .recordatorios-popup__decision-table--traslado td:nth-child(7) {
+    grid-area: rej;
+    padding: 6px 12px 12px 8px;
+    text-align: left;
+  }
+
+  .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table--traslado tr {
+    border-bottom-color: #2f353d;
+  }
+
+  .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table--traslado td:nth-child(3),
+  .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table--traslado td:nth-child(5) {
+    border-left-color: #2f353d;
+  }
+
+  /* Botones tipo pastilla, como "No lo encontré" de la inspeccion. */
+  .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-toggle {
+    min-height: 38px;
+    padding: 4px 14px 4px 8px;
+    border: 1px solid color-mix(in srgb, var(--color-border) 90%, transparent);
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-toggle-text {
+    display: inline;
+  }
+
+  .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-toggle--separado.is-checked {
+    border-color: #16a34a;
+    background: color-mix(in srgb, #22c55e 12%, transparent);
+    color: #15803d;
+  }
+
+  .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-toggle--rechazar.is-checked {
+    border-color: #dc2626;
+    background: color-mix(in srgb, #dc2626 10%, transparent);
+    color: #b91c1c;
+  }
+
+  .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-toggle.is-disabled {
+    opacity: 0.6;
+  }
+
+  .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-toggle {
+    border-color: #3a434d;
+  }
+
+  .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-toggle--separado.is-checked {
+    border-color: #22c55e;
+    color: #4ade80;
+  }
+
+  .recordatorios-popup__dialog.is-dark .recordatorios-popup__decision-table--traslado .recordatorios-popup__decision-toggle--rechazar.is-checked {
+    border-color: #ef4444;
+    color: #f87171;
+  }
 }
