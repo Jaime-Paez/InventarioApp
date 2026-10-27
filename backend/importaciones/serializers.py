@@ -55,7 +55,7 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ImportacionDetalle
-        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "referencia", "cantidad", "comentario", "precio_estimado", "precio_casa", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "precio_pvp_snapshot", "cantidad_recibida", "seleccionado", "quitado", "solicitud_id", "orden"]
+        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "referencia", "cantidad", "comentario", "precio_estimado", "precio_casa", "coincidencia", "coincidencia_codigo", "coincidencia_casa", "coincidencia_precio", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "precio_pvp_snapshot", "cantidad_recibida", "seleccionado", "quitado", "solicitud_id", "orden"]
 
     def validate(self, data):
         producto = data.get("producto")
@@ -354,23 +354,35 @@ class ImportacionSerializer(serializers.ModelSerializer):
             # Los guardados que no mandan precio_casa (casi todos) conservan
             # la que ya tenía cada producto -- aquí se borra y se vuelve a
             # crear todo el listado.
+            # Lo mismo con la coincidencia (amarillo/naranja de la sugerencia).
             casa_previa = {}
+            coincidencia_previa = {}
             for detalle in instance.detalles.all():
-                if detalle.precio_casa:
-                    if detalle.producto_id:
-                        casa_previa[("p", detalle.producto_id)] = detalle.precio_casa
-                    if detalle.codigo:
-                        casa_previa[("c", detalle.codigo.strip().lower())] = detalle.precio_casa
+                claves = []
+                if detalle.producto_id:
+                    claves.append(("p", detalle.producto_id))
+                if detalle.codigo:
+                    claves.append(("c", detalle.codigo.strip().lower()))
+                for clave in claves:
+                    if detalle.precio_casa:
+                        casa_previa[clave] = detalle.precio_casa
+                    if detalle.coincidencia:
+                        coincidencia_previa[clave] = {
+                            "coincidencia": detalle.coincidencia,
+                            "coincidencia_codigo": detalle.coincidencia_codigo,
+                            "coincidencia_casa": detalle.coincidencia_casa,
+                            "coincidencia_precio": detalle.coincidencia_precio,
+                        }
             for item in detalles_data:
-                if "precio_casa" in item:
-                    continue
                 producto = item.get("producto")
                 codigo = str(item.get("codigo") or (producto.codigo if producto else "")).strip().lower()
-                item["precio_casa"] = (
-                    (casa_previa.get(("p", producto.id)) if producto else None)
-                    or casa_previa.get(("c", codigo))
-                    or ""
-                )
+                claves = ([("p", producto.id)] if producto else []) + [("c", codigo)]
+                if "precio_casa" not in item:
+                    item["precio_casa"] = next((casa_previa[c] for c in claves if c in casa_previa), "")
+                if "coincidencia" not in item:
+                    previa = next((coincidencia_previa[c] for c in claves if c in coincidencia_previa), None)
+                    if previa:
+                        item.update(previa)
             instance.detalles.all().delete()
             ImportacionDetalle.objects.bulk_create([
                 ImportacionDetalle(
@@ -384,6 +396,10 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     comentario=str(item.get("comentario") or ""),
                     precio_estimado=item.get("precio_estimado"),
                     precio_casa=str(item.get("precio_casa") or ""),
+                    coincidencia=str(item.get("coincidencia") or ""),
+                    coincidencia_codigo=str(item.get("coincidencia_codigo") or ""),
+                    coincidencia_casa=str(item.get("coincidencia_casa") or ""),
+                    coincidencia_precio=item.get("coincidencia_precio"),
                     cantidad_aproximada=item.get("cantidad_aproximada"),
                     precio_confirmado=item.get("precio_confirmado"),
                     cantidad_confirmada=item.get("cantidad_confirmada"),
@@ -428,6 +444,10 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     comentario=str(item.get("comentario") or ""),
                     precio_estimado=item.get("precio_estimado"),
                     precio_casa=str(item.get("precio_casa") or ""),
+                    coincidencia=str(item.get("coincidencia") or ""),
+                    coincidencia_codigo=str(item.get("coincidencia_codigo") or ""),
+                    coincidencia_casa=str(item.get("coincidencia_casa") or ""),
+                    coincidencia_precio=item.get("coincidencia_precio"),
                     precio_confirmado=item.get("precio_confirmado"),
                     cantidad_confirmada=item.get("cantidad_confirmada"),
                     solicitud=item.get("solicitud"),

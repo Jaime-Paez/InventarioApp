@@ -201,3 +201,28 @@ input[type='number'] {
     display: none !important;
   }
 }
+
+/* Encabezado de las tablas de los modals: el mismo azul noche con letra
+   blanca que la tabla de la vista previa del Excel de importaciones, para
+   que todo el sistema se vea igual. Va aqui (global) y con !important porque
+   cada tabla tenia su propio gris (#f3f4f6, #dbe1e8...) con selectores mas
+   especificos. */
+:root {
+  --modal-table-head-bg: #1A1A2E;
+  --modal-table-head-color: #fff;
+  --modal-table-head-divider: rgba(255, 255, 255, 0.14);
+}
+
+.create-user__locations-row.create-user__locations-row--head,
+.create-user__locations-row.create-user__locations-row--head > span,
+.recordatorios-popup__decision-table thead th,
+.recordatorios-popup__inspection-detail-table thead th {
+  background: var(--modal-table-head-bg) !important;
+  color: var(--modal-table-head-color) !important;
+}
+
+.create-user__locations-row.create-user__locations-row--head > span + span,
+.recordatorios-popup__decision-table thead th,
+.recordatorios-popup__inspection-detail-table thead th {
+  border-color: var(--modal-table-head-divider) !important;
+}

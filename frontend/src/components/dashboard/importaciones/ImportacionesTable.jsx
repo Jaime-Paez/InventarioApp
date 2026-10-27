@@ -4450,7 +4450,15 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
           // catálogo): se crea como pendiente, sin vincular todavía a un
           // Producto real, pero con la cantidad que trae el Excel — el
           // producto recién se crea en el catálogo al importar.
-          : { codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad, precio_estimado: (precio?.valor ?? 0).toFixed(2), precio_casa: precio?.casa || '', orden: pos + 1 }
+          : {
+              codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad, precio_estimado: (precio?.valor ?? 0).toFixed(2), precio_casa: precio?.casa || '', orden: pos + 1,
+              // Amarillo/naranja de esta vista previa, para que la sugerencia
+              // guardada se vea igual. Solo referencia: no crea el producto.
+              coincidencia: row.conflicto_casa ? 'otra_casa' : row.codigo_sugerido ? 'oem' : '',
+              coincidencia_codigo: row.conflicto_casa ? '' : (row.sugerido_desde || ''),
+              coincidencia_casa: row.conflicto_casa ? (row.conflicto_casa_nombre || '') : (row.sugerido_casa || ''),
+              coincidencia_precio: getSistemaPrecio(row) != null ? Number(getSistemaPrecio(row)).toFixed(2) : null,
+            }
       })
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/`,
@@ -4611,6 +4619,13 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
       })
       return next
     })
+  }
+
+  // Quita de una vez todos los no encontrados (ni vinculados, ni sugeridos
+  // por OEM, ni de otra casa). Van al final de validRows (rowSortRank 3), así
+  // que las decisiones de referencia de las demás filas no se corren.
+  const removeNoEncontrados = () => {
+    setParsedRows(prev => prev.filter(r => r.matched_producto_id || r.codigo_sugerido || r.conflicto_casa || (r.faltan_datos || []).length > 0))
   }
 
   const updateRowCodigo = (filaExcel, value) => {
@@ -5029,6 +5044,14 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             <span {...reviewGroupChipProps('sinCatalogo', 'los productos sin catálogo')} title="Clic: ir a los productos sin catálogo" style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }}>
                               {sinCoincidenciaCount} sin catálogo
                             </span>
+                            <button
+                              type="button"
+                              className="imp-excel-review__quitar-todos"
+                              onClick={removeNoEncontrados}
+                              title="Quita de la sugerencia todos los productos que no se encontraron en el catálogo"
+                            >
+                              <X size={13} /> Quitar todos
+                            </button>
                           </div>
                         </div>
                       )}
@@ -7167,6 +7190,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const isConfirmacion = imp?.estado === 'confirmacion'
   const isVerificarOrConfirmacion = isVerificar || isConfirmacion
   const isImportRealizada = isConfirmacion && Boolean(imp?.numero_factura)
+  // Sin catálogo y sin coincidencia (ni por OEM ni en otra casa).
+  const noEncontradosCount = details.filter((d) => !d.producto?.id && !d.coincidencia).length
   // Verificacion: lo agregado (nota en el comentario) y lo quitado se pintan
   // y se agrupan arriba para encontrarlos rapido.
   const esAgregadoVerificacion = (item) => isVerificar && !item.quitado && String(item.comentario || '').includes(NOTA_AGREGADO_VERIFICACION)
@@ -7327,6 +7352,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const confirmed = {
         precio_estimado: toCentavos(d.precio_estimado), cantidad_aproximada: d.cantidad_aproximada != null ? String(d.cantidad_aproximada) : '',
         precio_confirmado: toCentavos(d.precio_confirmado), cantidad_confirmada: d.cantidad_confirmada != null ? String(d.cantidad_confirmada) : '',
+        // Amarillo (oem) / naranja (otra_casa) de la vista previa del Excel.
+        coincidencia: d.coincidencia || '',
+        coincidencia_precio: d.coincidencia_precio ?? null,
+        ...(d.coincidencia_codigo || d.coincidencia_casa ? { _sugeridoDesde: d.coincidencia_codigo || '', _sugeridoCasa: d.coincidencia_casa || '' } : {}),
       }
       if (d.producto?.id) {
         return { _key: String(d.producto.id), _detalleId: d.id ?? null, orden: d.orden, producto: d.producto, cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, quitado: Boolean(d.quitado), precio_pvp_snapshot: d.precio_pvp_snapshot, precio_casa: d.precio_casa || '', ...confirmed }
@@ -7599,6 +7628,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     setShowNuevoProductoView(false)
   }
 
+  // El backend borra y vuelve a crear los detalles al guardar: la
+  // coincidencia (amarillo/naranja) se reenvía para no perderla.
+  const coincidenciaPayload = (item) => ({
+    coincidencia: item.coincidencia || '',
+    coincidencia_codigo: item._sugeridoDesde || '',
+    coincidencia_casa: item._sugeridoCasa || '',
+    coincidencia_precio: item.coincidencia_precio != null && item.coincidencia_precio !== '' ? Number(item.coincidencia_precio).toFixed(2) : null,
+  })
+
   const handleSubmit = async () => {
     const itemsToSubmit = details
     if (!itemsToSubmit.length) {
@@ -7624,7 +7662,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       return
     }
     const normalizedDetails = itemsToSubmit.map((item) => {
-      const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
+      const solId = { ...(item._solId ? { solicitud_id: Number(item._solId) } : {}), ...coincidenciaPayload(item) }
       const confirmedFields = isVerificarOrConfirmacion ? {
         precio_estimado: item.precio_estimado
           ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
@@ -8029,6 +8067,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
               ...(found.codigo_sugerido && !n.item.codigo ? {
                 _sugeridoDesde: found.sugerido_desde || '',
                 _sugeridoCasa: found.sugerido_casa || found.conflicto_casa_nombre || '',
+                coincidencia: found.conflicto_casa ? 'otra_casa' : 'oem',
+                coincidencia_precio: precioJp,
               } : {}),
             },
           })
@@ -8624,6 +8664,17 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                           >
                             + Agregar nuevo producto
                           </button>
+                          {isSugerencia && noEncontradosCount > 0 && (
+                            <button
+                              type="button"
+                              className="create-user__ghost"
+                              onClick={() => setDetails((prev) => prev.filter((d) => d.producto?.id || d.coincidencia))}
+                              title="Quita los productos que no se encontraron en el catálogo (ni por OEM ni en otra casa)"
+                              style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                            >
+                              Quitar no encontrados ({noEncontradosCount})
+                            </button>
+                          )}
                           {!isVerificarOrConfirmacion && (
                             <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
                               <button
@@ -8664,11 +8715,16 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         )}
                       </ImportProductSearch>
                     )}
-                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}`} onKeyDown={handleProductsGridKeyDown}>
+                    <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}${isSugerencia ? ' importaciones-modal__products-table--sugerencia' : ''}`} onKeyDown={handleProductsGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head imp-sticky-head" ref={productsHeadRef}>
-                        <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span>
-                        {!isVerificarOrConfirmacion && <span>Cantidad</span>}
-                        {isVerificar ? (
+                        {/* Sugerencia: mismas columnas que la vista previa del Excel. */}
+                        {isSugerencia ? (
+                          <><span>Código</span><span>Referencia</span><span>OEM</span><span>Descripción</span><span>Cant.</span><span>PVP JP</span><span>PVP</span><span>Comentario</span><span aria-label="Quitar" /></>
+                        ) : (
+                          <><span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span></>
+                        )}
+                        {!isVerificarOrConfirmacion && !isSugerencia && <span>Cantidad</span>}
+                        {isSugerencia ? null : isVerificar ? (
                           <>
                             <span onDoubleClick={() => setDetails((prev) => prev.map((d) => ({ ...d, precio_estimado: d.producto?.precio != null ? Math.round(Number(d.producto.precio) * 100) : d.precio_estimado })))} title="Doble click: llenar todas con precio original" style={{ cursor: 'pointer' }}>PVP Aprox.</span>
                             <span>Diferencia</span>
@@ -8794,32 +8850,53 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                             )}
                           </div>
                         </span>
-                        <span className="create-salida__product-name-cell">
-                          <span className="create-salida__table-static-value create-salida__table-static-value--name">
-                            {detailDraft.producto ? String(detailDraft.producto.nombre || '').trim() : '-'}
-                          </span>
-                        </span>
-                        <span className="create-salida__table-static-value">
-                          {detailDraft.producto ? getProductoOem(detailDraft.producto) || '-' : '-'}
-                        </span>
-                        <span className="create-salida__table-static-value">
-                          {detailDraft.producto ? String(detailDraft.producto.referencia || '').trim() || '-' : '-'}
-                        </span>
-                        <span className="create-salida__table-static-value">
-                          {detailDraft.producto?.precio != null ? `$${Number(detailDraft.producto.precio).toFixed(2)}` : '-'}
-                        </span>
-                        {isVerificar && <><span className="create-salida__table-static-value">-</span><span className="create-salida__table-static-value">-</span></>}
-                        <span>
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={detailDraft.cantidad}
-                            onChange={(e) => setDetailDraft((prev) => ({ ...prev, cantidad: e.target.value }))}
-                            disabled={!detailDraft.producto}
-                            placeholder={isVerificar ? 'Cant.' : undefined}
-                          />
-                        </span>
+                        {(() => {
+                          const draftNombre = (
+                            <span className="create-salida__product-name-cell">
+                              <span className="create-salida__table-static-value create-salida__table-static-value--name">
+                                {detailDraft.producto ? String(detailDraft.producto.nombre || '').trim() : '-'}
+                              </span>
+                            </span>
+                          )
+                          const draftOem = (
+                            <span className="create-salida__table-static-value">
+                              {detailDraft.producto ? getProductoOem(detailDraft.producto) || '-' : '-'}
+                            </span>
+                          )
+                          const draftReferencia = (
+                            <span className="create-salida__table-static-value">
+                              {detailDraft.producto ? String(detailDraft.producto.referencia || '').trim() || '-' : '-'}
+                            </span>
+                          )
+                          const draftPrecio = (
+                            <span className="create-salida__table-static-value">
+                              {detailDraft.producto?.precio != null ? `$${Number(detailDraft.producto.precio).toFixed(2)}` : '-'}
+                            </span>
+                          )
+                          const draftCantidad = (
+                            <span>
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={detailDraft.cantidad}
+                                onChange={(e) => setDetailDraft((prev) => ({ ...prev, cantidad: e.target.value }))}
+                                disabled={!detailDraft.producto}
+                                placeholder={isVerificar ? 'Cant.' : undefined}
+                              />
+                            </span>
+                          )
+                          // Sugerencia: Referencia, OEM, Descripción, Cant., PVP JP, PVP.
+                          return isSugerencia ? (
+                            <>{draftReferencia}{draftOem}{draftNombre}{draftCantidad}{draftPrecio}<span className="create-salida__table-static-value">-</span></>
+                          ) : (
+                            <>
+                              {draftNombre}{draftOem}{draftReferencia}{draftPrecio}
+                              {isVerificar && <><span className="create-salida__table-static-value">-</span><span className="create-salida__table-static-value">-</span></>}
+                              {draftCantidad}
+                            </>
+                          )
+                        })()}
                         {isVerificar && <span className="create-salida__table-static-value">-</span>}
                         <span>
                           <input
@@ -8856,6 +8933,105 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const precioEstimadoValue = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
                         const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
+                        if (isSugerencia) {
+                          // Igual que la vista previa del Excel: naranja = ya existe en
+                          // otra casa, amarillo = código sugerido por OEM.
+                          const otraCasa = sinCatalogo && item.coincidencia === 'otra_casa'
+                          const porOem = sinCatalogo && item.coincidencia === 'oem'
+                          const pvpJp = item.producto?.precio ?? item.coincidencia_precio
+                          const pvp = precioEstimadoValue > 0 ? precioEstimadoValue : null
+                          const pvpDifiere = pvp != null && pvpJp != null && Math.abs(pvp - Number(pvpJp)) >= 0.005
+                          return (
+                            <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${otraCasa ? ' imp-sugerencia__row--otra-casa' : porOem ? ' imp-sugerencia__row--oem' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`}>
+                              <span
+                                className="imp-table-cell-tip"
+                                onMouseEnter={(e) => codigo && showCellHover(e, sinCatalogo ? `${codigo} (nuevo: se crea al importar)` : codigo, 'Código')}
+                                onMouseLeave={hideCellHover}
+                              >
+                                {sinCatalogo && canEdit ? (
+                                  <span className="imp-codigo-editable">
+                                    <span className="imp-codigo-editable__fila">
+                                      <input
+                                        type="text"
+                                        className="imp-excel-review__codigo-input"
+                                        value={item.codigo || ''}
+                                        onChange={(e) => {
+                                          const value = e.target.value.toUpperCase()
+                                          setDetails((prev) => prev.map((d) => (d._key === item._key ? { ...d, codigo: value } : d)))
+                                        }}
+                                        placeholder="Sin catálogo"
+                                        aria-label="Código del producto nuevo"
+                                      />
+                                      {otraCasa && (
+                                        <Info
+                                          size={14}
+                                          style={{ flexShrink: 0, color: '#c2410c' }}
+                                          onMouseEnter={(e) => { e.stopPropagation(); showCellHover(e, `Coincide por referencia o código con un producto de ${item._sugeridoCasa || 'otra casa comercial'}. Se creará un producto nuevo para ${selectedCasa?.nombre || 'esta casa'} al importar.`, 'Ya existe en otra casa') }}
+                                          onMouseLeave={hideCellHover}
+                                        />
+                                      )}
+                                    </span>
+                                    {porOem && item._sugeridoDesde && (
+                                      <span className="imp-codigo-editable__origen">
+                                        Sugerido de {item._sugeridoDesde}{item._sugeridoCasa ? ` (${item._sugeridoCasa})` : ''}
+                                      </span>
+                                    )}
+                                  </span>
+                                ) : sinCatalogo && !codigo
+                                  ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
+                                  : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
+                              </span>
+                              <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')} onMouseLeave={hideCellHover}>
+                                <span className="imp-table-cell-text">{referencia}</span>
+                              </span>
+                              <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, oemList, 'OEM')} onMouseLeave={hideCellHover}>
+                                <span className="imp-table-cell-text">{oem}</span>
+                              </span>
+                              <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, nombre, 'Descripción')} onMouseLeave={hideCellHover}>
+                                <span className="imp-table-cell-text">{nombre}</span>
+                              </span>
+                              <span>
+                                <input
+                                  type="number"
+                                  value={item.cantidad}
+                                  onChange={(e) => handleQuantityChange(item._key, e.target.value)}
+                                  style={invalidQtyKeys.has(item._key) ? { borderColor: '#ef4444' } : undefined}
+                                />
+                              </span>
+                              <span className="imp-sugerencia__precio" style={{ color: otraCasa ? '#c2410c' : porOem ? '#a16207' : undefined }}>
+                                {pvpJp != null ? `$${Number(pvpJp).toFixed(2)}` : '—'}
+                              </span>
+                              <span
+                                className="imp-sugerencia__precio"
+                                style={{ color: pvpDifiere ? '#b45309' : pvp == null ? 'var(--color-text-secondary)' : undefined }}
+                                onMouseEnter={(e) => pvpDifiere && showCellHover(e, `Distinto al PVP JP ($${Number(pvpJp).toFixed(2)})`, 'PVP')}
+                                onMouseLeave={hideCellHover}
+                              >
+                                {pvp != null ? `$${pvp.toFixed(2)}` : '—'}
+                              </span>
+                              <span>
+                                <input
+                                  type="text"
+                                  value={item.comentario || ''}
+                                  onChange={(e) => handleComentarioChange(item._key, e.target.value)}
+                                  placeholder="Comentario"
+                                  autoComplete="off"
+                                />
+                              </span>
+                              <span className="create-user__locations-cell create-user__locations-cell--action">
+                                <button
+                                  type="button"
+                                  className="imp-excel-review__quitar"
+                                  onClick={() => setDetails((prev) => prev.filter((d) => d._key !== item._key))}
+                                  aria-label={`Quitar ${codigo || 'producto'} de la sugerencia`}
+                                  title="Quitar de la sugerencia"
+                                >
+                                  <X size={15} />
+                                </button>
+                              </span>
+                            </div>
+                          )
+                        }
                         return (
                           <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? ' imp-verificar__row--agregado' : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
                             <span

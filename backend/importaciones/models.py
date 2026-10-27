@@ -128,6 +128,14 @@ class ImportacionDetalle(models.Model):
     # Casa comercial de la que salió el precio estimado (p. ej. el producto de
     # otra casa del que se tomó el PVP); vacío si se escribió a mano.
     precio_casa = models.CharField(max_length=255, blank=True, default="")
+    # Con qué se encontró en el catálogo un producto nuevo al subir el Excel
+    # de la sugerencia, para verlo igual que en la vista previa: "oem"
+    # (amarillo, código sugerido) u "otra_casa" (naranja, misma referencia o
+    # código en otra casa). Solo es referencia: no crea ni vincula nada.
+    coincidencia = models.CharField(max_length=20, blank=True, default="")
+    coincidencia_codigo = models.CharField(max_length=150, blank=True, default="")
+    coincidencia_casa = models.CharField(max_length=255, blank=True, default="")
+    coincidencia_precio = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     cantidad_aproximada = models.PositiveIntegerField(null=True, blank=True)
     precio_confirmado = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     cantidad_confirmada = models.PositiveIntegerField(null=True, blank=True)

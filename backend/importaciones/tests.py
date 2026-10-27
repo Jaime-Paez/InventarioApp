@@ -149,6 +149,38 @@ class SugerenciaProductosNuevosTests(TestCase):
         self.assertEqual(detalle.precio_estimado, Decimal("12.30"))
         self.assertEqual(importacion.detalles.get(producto=self.existente).precio_estimado, Decimal("18.50"))
 
+    def test_coincidencia_se_guarda_y_se_conserva_al_guardar(self):
+        """El amarillo/naranja de la vista previa queda en la sugerencia solo
+        como referencia (no crea el producto) y un guardado que no la manda
+        no la borra."""
+        response = self.client.post(
+            f"{BASE_URL}/",
+            {
+                "casa_comercial_id": self.casa.id,
+                "detalles": [{
+                    "codigo": "SUG-CI", "nombre": "Copela", "oem": "516533", "cantidad": 0,
+                    "coincidencia": "oem", "coincidencia_codigo": "C0583CL",
+                    "coincidencia_casa": "Otra", "coincidencia_precio": "30.00",
+                }],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        importacion = Importacion.objects.get(pk=response.data["id"])
+        self.assertFalse(Producto.objects.filter(codigo="SUG-CI").exists())
+
+        response = self.client.patch(
+            f"{BASE_URL}/{importacion.id}/",
+            {"detalles": [{"codigo": "SUG-CI", "nombre": "Copela", "cantidad": 2}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        detalle = importacion.detalles.get(codigo="SUG-CI")
+        self.assertEqual(detalle.coincidencia, "oem")
+        self.assertEqual(detalle.coincidencia_codigo, "C0583CL")
+        self.assertEqual(detalle.coincidencia_casa, "Otra")
+        self.assertEqual(detalle.coincidencia_precio, Decimal("30.00"))
+
     def test_pedir_cotizacion_exige_cantidad(self):
         importacion = self._crear()
         response = self.client.post(f"{BASE_URL}/{importacion.id}/pedir-cotizacion/")
