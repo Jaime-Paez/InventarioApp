@@ -943,9 +943,28 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "Solo se puede pedir cotización desde estado borrador."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if instance.detalles.filter(cantidad__lte=0).exists():
+        # La cantidad puede quedar en 0: se completa en la verificacion (Cant.
+        # aprox.) y se exige al pedir la confirmacion.
+        # La sugerencia se puede crear con productos incompletos; antes de
+        # pedir la cotizacion cada producto sin catalogo debe tener codigo
+        # (aunque sea sugerido), referencia, OEM y descripcion.
+        faltan = []
+        for campo, etiqueta in (
+            ("codigo", "código"),
+            ("referencia", "referencia"),
+            ("oem", "OEM"),
+            ("nombre", "descripción"),
+        ):
+            cuantos = sum(
+                1
+                for valor in instance.detalles.filter(producto__isnull=True).values_list(campo, flat=True)
+                if not str(valor or "").strip()
+            )
+            if cuantos:
+                faltan.append(f"{cuantos} sin {etiqueta}")
+        if faltan:
             return Response(
-                {"detail": "Antes de pedir la cotización, todas las cantidades deben ser mayores a cero."},
+                {"detail": f"Antes de pedir la cotización, completa los productos: {', '.join(faltan)}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # Los productos nuevos todavia no entran al catalogo: se crean al importar.

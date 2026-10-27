@@ -143,7 +143,7 @@ class RechazoPorProductoTrasladoTests(APITestCase):
     def test_crear_la_salida_no_rechaza_el_propio_traslado_por_cambio_de_stock(self):
         """Con el stock justo (lo pedido = lo que hay), descontarlo al crear
         la salida no debe "rechazar" el mismo traslado por cambio de stock."""
-        from tipos.models import EstadoMovimiento, SubTipoMovimiento, TipoMovimiento
+        from tipos.models import EstadoMovimiento, EstadoProducto, SubTipoMovimiento, TipoMovimiento
 
         Inventario.objects.filter(producto=self.producto_1).update(cantidad=2)
         Inventario.objects.filter(producto=self.producto_2).update(cantidad=4)
@@ -154,6 +154,7 @@ class RechazoPorProductoTrasladoTests(APITestCase):
         tipo_salida, _ = TipoMovimiento.objects.get_or_create(nombre="Salida")
         subtipo_traslado, _ = SubTipoMovimiento.objects.get_or_create(tipo_movimiento=tipo_salida, nombre="Traslado")
         estado_enviado, _ = EstadoMovimiento.objects.get_or_create(nombre="Enviado")
+        estado_producto, _ = EstadoProducto.objects.get_or_create(nombre="Disponible")
         response = self.client.post(
             reverse("movimientos-movimiento-inventario-list"),
             {
@@ -163,12 +164,14 @@ class RechazoPorProductoTrasladoTests(APITestCase):
                 "sub_tipo_movimiento_id": subtipo_traslado.id,
                 "estado_movimiento_id": estado_enviado.id,
                 "solicitud_traslado_id": self.solicitud.id,
+                # Se reemplaza por el numero de la solicitud.
+                "no_documento": "IGNORADO",
                 "tipo_envio": "envio_provincia",
                 "descripcion": "Salida del traslado",
                 "fecha": "2026-10-27",
                 "detalles": [
-                    {"producto_id": self.producto_1.id, "cantidad": 2, "valor": "10.00"},
-                    {"producto_id": self.producto_2.id, "cantidad": 4, "valor": "10.00"},
+                    {"producto_id": self.producto_1.id, "estado_producto_id": estado_producto.id, "cantidad": 2, "valor": "10.00", "valor_total": "20.00"},
+                    {"producto_id": self.producto_2.id, "estado_producto_id": estado_producto.id, "cantidad": 4, "valor": "10.00", "valor_total": "40.00"},
                 ],
             },
             format="json",

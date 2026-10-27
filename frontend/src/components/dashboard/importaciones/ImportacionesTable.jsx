@@ -3928,7 +3928,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const [referenciaDecisions, setReferenciaDecisions] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
-  const [submitAttempted, setSubmitAttempted] = useState(false)
 
   // Tooltip simple para valores truncados con "...", como el código dentro
   // de los botones "Actual"/"Excel" del conflicto de referencia.
@@ -4408,10 +4407,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   }
 
   const handleCreate = async () => {
-    if (!allConflictsResolved || !allDescripcionesSet || duplicateProductGroups.length > 0) {
-      setSubmitAttempted(true)
+    // La descripcion o la referencia/OEM que falten no impiden crear la
+    // sugerencia: se completan en ella antes de pedir la cotizacion.
+    if (!allConflictsResolved || duplicateProductGroups.length > 0) {
       const reasons = []
-      if (!allDescripcionesSet) reasons.push(`falta la descripción de ${pendingDescripcionCount} producto${pendingDescripcionCount !== 1 ? 's' : ''} nuevo${pendingDescripcionCount !== 1 ? 's' : ''}`)
       if (!allConflictsResolved) reasons.push('hay conflictos de referencia sin resolver')
       if (duplicateProductGroups.length > 0) reasons.push('hay productos repetidos dentro del mismo Excel')
       toastRef.current?.show({
@@ -4490,7 +4489,16 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // (como producto nuevo para la casa actual) mostrando una advertencia en
   // vez de bloquearla. conflictoRows queda solo para el contador del aviso.
   const conflictoRows = parsedRows.filter(r => r.conflicto_casa)
-  const incompleteRows = parsedRows.filter(r => !r.conflicto_casa && (r.faltan_datos || []).length > 0)
+  // Lo que le falta a un producto sin catalogo para pedir la cotizacion
+  // (misma regla que la sugerencia guardada y el backend). No impide crear
+  // la sugerencia; la cantidad puede quedar en 0.
+  const faltantesFila = (row) => (row.matched_producto_id ? [] : [
+    ['codigo', 'Código'],
+    ['referencia', 'Referencia'],
+    ['oem', 'OEM'],
+    ['descripcion', 'Descripción'],
+  ].filter(([field]) => !String(row[field] || '').trim()).map(([, label]) => label))
+  const incompleteRows = parsedRows.filter(r => faltantesFila(r).length > 0)
   // Orden: 1) código/referencia en otra casa (necesitan revisión), 2) código
   // sugerido (amarillo, necesitan confirmar el código nuevo), 3) ya
   // vinculados al catálogo, 4) el resto (sin catálogo). sort es estable, así
@@ -4498,9 +4506,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // orden en pantalla, en el Excel descargado y en la sugerencia creada, ya
   // que todos esos consumidores iteran validRows.
   const rowSortRank = (row) => (row.conflicto_casa ? 0 : row.codigo_sugerido ? 1 : row.matched_producto_id ? 2 : 3)
-  const validRows = parsedRows
-    .filter(r => (r.faltan_datos || []).length === 0)
-    .sort((a, b) => rowSortRank(a) - rowSortRank(b))
+  // Los incompletos (sin referencia ni OEM) tambien entran: la sugerencia se
+  // puede crear asi y se completan antes de pedir la cotizacion.
+  const validRows = [...parsedRows].sort((a, b) => rowSortRank(a) - rowSortRank(b))
   const reviewMatches = (row) => importItemMatches(
     { codigo: row.codigo, nombre: row.descripcion, oem: row.oem, referencia: row.referencia, producto_busqueda: row.matched_producto_codigo },
     reviewQuery
@@ -4575,8 +4583,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // Un producto con código sugerido (match por OEM) sí se crea de una vez en
   // el catálogo, así que necesita nombre. Uno realmente "sin catálogo" (sin
   // código) solo queda como detalle de la sugerencia, se completa después.
-  const pendingDescripcionCount = validRows.filter(r => r.codigo_sugerido && !String(r.descripcion || '').trim()).length
-  const allDescripcionesSet = pendingDescripcionCount === 0
   // El backend rechaza toda la importacion si el mismo producto del catalogo
   // aparece en mas de una fila (validate_detalles), pero recien al crear —
   // despues de que el usuario ya resolvio conflictos de referencia y precios.
@@ -4621,12 +4627,15 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   // por OEM, ni de otra casa). Van al final de validRows (rowSortRank 3), así
   // que las decisiones de referencia de las demás filas no se corren.
   const removeNoEncontrados = () => {
-    setParsedRows(prev => prev.filter(r => r.matched_producto_id || r.codigo_sugerido || r.conflicto_casa || (r.faltan_datos || []).length > 0))
+    setParsedRows(prev => prev.filter(r => r.matched_producto_id || r.codigo_sugerido || r.conflicto_casa))
   }
 
+  // Editar el codigo de un sugerido no le quita la marca: antes, con la
+  // primera letra la fila dejaba de ser amarilla, saltaba al final (sin
+  // catalogo) y el input perdia el foco, asi que no se podia corregir.
   const updateRowCodigo = (filaExcel, value) => {
     setParsedRows(prev => prev.map(r => (
-      r.fila_excel === filaExcel ? { ...r, codigo: value, codigo_sugerido: false } : r
+      r.fila_excel === filaExcel ? { ...r, codigo: value } : r
     )))
   }
 
@@ -4946,28 +4955,22 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
             {/* ── PASO 3: Revisar productos ── */}
             {step === 3 && (
               <>
-                {incompleteRows.length > 0 ? (
-                  <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {/* Datos incompletos: no impiden crear la sugerencia, solo
+                    pedir la cotizacion (se completan dentro de la sugerencia). */}
+                {incompleteRows.length > 0 && !duplicateProductGroups.length && (
+                  <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <i className="pi pi-exclamation-triangle" style={{ color: '#c2410c', fontSize: 'var(--font-size-base)' }} />
-                      <strong style={{ fontSize: 'var(--font-size-sm)', color: '#c2410c' }}>
-                        {incompleteRows.length} producto{incompleteRows.length !== 1 ? 's' : ''} con datos incompletos en el Excel
+                      <i className="pi pi-exclamation-triangle" style={{ color: '#b45309', fontSize: 'var(--font-size-base)' }} />
+                      <strong style={{ fontSize: 'var(--font-size-sm)', color: '#92400e' }}>
+                        {incompleteRows.length} producto{incompleteRows.length !== 1 ? 's' : ''} con datos incompletos
                       </strong>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {incompleteRows.map((row, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)', padding: '4px 6px', background: '#ffedd5', borderRadius: 4 }}>
-                          <span style={{ color: '#9a3412', fontWeight: 700, whiteSpace: 'nowrap' }}>Fila {row.fila_excel}</span>
-                          <span style={{ color: '#9a3412', minWidth: 160 }}>{row.descripcion || row.referencia || row.codigo || '—'}</span>
-                          <span style={{ marginLeft: 'auto', color: '#9a3412', fontStyle: 'italic', whiteSpace: 'nowrap' }}>Falta: {row.faltan_datos.join(', ')}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#9a3412' }}>
-                      Todo producto debe tener referencia u OEM. La cantidad no es obligatoria en la sugerencia: se completa antes de pedir la cotización. La descripción y el PVP de un producto nuevo se pueden completar en el siguiente paso. Corrige esos datos en el Excel y vuelve a subirlo.
+                    <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#92400e' }}>
+                      Puedes crear la sugerencia igual; lo que falta está marcado en rojo. Antes de pedir la cotización cada producto debe tener código, referencia, OEM y descripción (la cantidad puede quedar en 0).
                     </p>
                   </div>
-                ) : duplicateProductGroups.length > 0 ? (
+                )}
+                {duplicateProductGroups.length > 0 ? (
                   <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <i className="pi pi-exclamation-triangle" style={{ color: '#dc2626', fontSize: 'var(--font-size-base)' }} />
@@ -5107,8 +5110,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
                             <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
                             <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="Precio registrado en el sistema">PVP JP</th>
-                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="PVP que trae el Excel (promoción). Una importación sin precios queda vacía">PVP</th>
-                            <th style={{ padding: '8px 4px' }} aria-label="Quitar" />
+                            <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="PVP que trae el Excel (promoción). Una importación sin precios queda vacía">PVP Aprox.</th>
+                            <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600 }}>Eliminar</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -5144,7 +5147,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                     {isEditableCodigo ? (
                                       <input
                                         type="text"
-                                        className="imp-excel-review__codigo-input"
+                                        className={`imp-excel-review__codigo-input${faltantesFila(row).includes('Código') ? ' imp-excel-review__codigo-input--invalid' : ''}`}
                                         value={row.codigo || ''}
                                         onChange={(e) => updateRowCodigo(row.fila_excel, e.target.value.toUpperCase())}
                                         placeholder="Sin catálogo"
@@ -5213,6 +5216,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                         </button>
                                       </div>
                                     </div>
+                                  ) : faltantesFila(row).includes('Referencia') ? (
+                                    <span className="imp-falta-dato">Falta</span>
                                   ) : (
                                     <span
                                       title={row.referencia || ''}
@@ -5239,13 +5244,15 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                         onMouseLeave={hideOemMatchesHover}
                                       />
                                     </div>
-                                  ) : '—'}
+                                  ) : faltantesFila(row).includes('OEM')
+                                    ? <span className="imp-falta-dato">Falta</span>
+                                    : '—'}
                                 </td>
                                 <td style={{ padding: row.matched_producto_id ? '7px 12px' : '4px 8px' }}>
                                   {row.matched_producto_id ? (
                                     row.descripcion || '—'
                                   ) : (() => {
-                                    const showInvalid = row.codigo_sugerido && submitAttempted && !String(row.descripcion || '').trim()
+                                    const showInvalid = faltantesFila(row).includes('Descripción')
                                     return (
                                       <input
                                         type="text"
@@ -5273,7 +5280,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                     return (
                                       <span
                                         style={{ fontWeight: 600, color: otraCasa ? '#c2410c' : desdeSugerido ? '#a16207' : undefined }}
-                                        title={otraCasa ? `Precio en ${row.conflicto_casa_nombre || 'otra casa'}` : desdeSugerido ? `Precio de ${row.sugerido_desde} (de donde salió el código sugerido)` : 'Precio registrado en el sistema'}
+                                        title={`${(otraCasa ? row.conflicto_casa_nombre : desdeSugerido ? row.sugerido_casa : selectedCasa?.nombre) || 'Casa comercial'}: $${Number(sistema).toFixed(2)}`}
                                       >
                                         ${Number(sistema).toFixed(2)}
                                       </span>
@@ -5289,7 +5296,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                                     return (
                                       <span
                                         style={{ fontWeight: 600, color: difiere ? '#b45309' : undefined }}
-                                        title={difiere ? `Distinto al PVP JP ($${Number(sistema).toFixed(2)})` : 'PVP que se guarda en la sugerencia'}
+                                        title={`${parseInt(row.precio_nuevo || '0', 10) > 0 ? 'Precio ingresado' : 'Precio subido desde el Excel'}: $${precio.valor.toFixed(2)}`}
                                       >
                                         ${precio.valor.toFixed(2)}
                                       </span>
@@ -5344,7 +5351,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
               {step === 2 && (
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setStep(1)} disabled={parsing}>Atrás</button>
               )}
-              {step === 3 && !incompleteRows.length && !duplicateProductGroups.length && (
+              {step === 3 && !duplicateProductGroups.length && (
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setStep(2)} disabled={submitting}>Atrás</button>
               )}
             </div>
@@ -5363,7 +5370,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                 </button>
               )}
               {step === 3 && (
-                incompleteRows.length > 0 || duplicateProductGroups.length > 0 ? (
+                duplicateProductGroups.length > 0 ? (
                   <button type="button" className="create-user__action create-user__action--primary" onClick={handleRetry}>Volver a intentar</button>
                 ) : (
                   <>
@@ -5386,7 +5393,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
                       title={
                         validRows.length === 0 ? 'No hay productos válidos para crear la sugerencia'
                           : !allConflictsResolved ? 'Debes seleccionar la referencia a guardar para todos los conflictos'
-                          : !allDescripcionesSet ? `Debes ingresar la descripción para ${pendingDescripcionCount} producto${pendingDescripcionCount !== 1 ? 's' : ''} nuevo${pendingDescripcionCount !== 1 ? 's' : ''}`
                           : undefined
                       }
                     >
@@ -8158,12 +8164,25 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   }
 
   const handlePedirCotizacion = async () => {
+    if (incompletos.length > 0) {
+      toastRef.current?.show({
+        severity: 'warn',
+        summary: 'Datos incompletos',
+        detail: `Completa ${incompletos.length} producto${incompletos.length !== 1 ? 's' : ''} antes de pedir la cotización (están marcados en la tabla).`,
+        life: 5000,
+      })
+      setProductSearch('')
+      jumpToDetailRow(incompletos[0]._key)
+      return
+    }
+    // La cantidad puede quedar en 0 al pedir la cotizacion: se completa en la
+    // verificacion (Cant. aprox.) y se exige al pedir la confirmacion.
     const badKeys = new Set(
-      details.filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n <= 0 }).map((item) => item._key)
+      details.filter((item) => { const n = Number(item.cantidad || 0); return !Number.isFinite(n) || n < 0 }).map((item) => item._key)
     )
     if (badKeys.size > 0) {
       setInvalidQtyKeys(badKeys)
-      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Todas las cantidades deben ser mayores a cero.', life: 4000 })
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Las cantidades no pueden ser negativas.', life: 4000 })
       return
     }
     setImportarSubmitting(true)
@@ -8432,6 +8451,20 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     ? details.reduce((acc, item) => ({ ...acc, [sugerenciaGrupoDe(item)]: (acc[sugerenciaGrupoDe(item)] || 0) + 1 }), {})
     : {}
   const sugerenciaEncontrados = (sugerenciaConteo.vinculados || 0) + (sugerenciaConteo.oem || 0) + (sugerenciaConteo.otraCasa || 0)
+  // Datos que le faltan a un producto sin catalogo para pedir la cotizacion
+  // (la sugerencia se puede crear y guardar sin ellos). Misma regla que el
+  // backend en pedir_cotizacion.
+  // La cantidad puede quedar en 0.
+  const faltantesDe = (item) => {
+    if (item.producto?.id) return []
+    return [
+      ['codigo', 'Código'],
+      ['referencia', 'Referencia'],
+      ['oem', 'OEM'],
+      ['nombre', 'Descripción'],
+    ].filter(([field]) => !String(item[field] || '').trim()).map(([, label]) => label)
+  }
+  const incompletos = isSugerencia ? details.filter((item) => faltantesDe(item).length > 0) : []
   const sugerenciaJumpRef = useRef({ grupo: '', idx: -1 })
   const jumpToSugerenciaGrupo = (grupo) => {
     const keys = details.filter((item) => sugerenciaGrupoDe(item) === grupo).map((item) => item._key)
@@ -8771,11 +8804,29 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         )}
                       </ImportProductSearch>
                     )}
+                    {incompletos.length > 0 && (
+                      <div className="imp-incompletos-aviso" role="status">
+                        <i className="pi pi-exclamation-triangle" aria-hidden="true" />
+                        <span>
+                          <strong>
+                            {incompletos.length} producto{incompletos.length !== 1 ? 's' : ''} con datos incompletos.
+                          </strong>{' '}
+                          Completa el código, la referencia, el OEM y la descripción (marcados en rojo) para poder pedir la cotización. La cantidad puede quedar en 0.
+                        </span>
+                        <button
+                          type="button"
+                          className="imp-incompletos-aviso__ir"
+                          onClick={() => { setProductSearch(''); jumpToDetailRow(incompletos[0]._key) }}
+                        >
+                          Ir al primero
+                        </button>
+                      </div>
+                    )}
                     <div className={`create-user__locations-table create-salida__products-table create-salida__products-table--with-actions importaciones-modal__products-table${isVerificarOrConfirmacion ? ' importaciones-modal__products-table--verificar' : ''}${isConfirmacion ? ' importaciones-modal__products-table--confirmacion' : ''}${isSugerencia ? ' importaciones-modal__products-table--sugerencia' : ''}`} onKeyDown={handleProductsGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head imp-sticky-head" ref={productsHeadRef}>
                         {/* Sugerencia: mismas columnas que la vista previa del Excel. */}
                         {isSugerencia ? (
-                          <><span>Código</span><span>Referencia</span><span>OEM</span><span>Descripción</span><span>Cant.</span><span>PVP JP</span><span>PVP</span><span>Comentario</span><span aria-label="Quitar" /></>
+                          <><span>Código</span><span>Referencia</span><span>OEM</span><span>Descripción</span><span>Cant.</span><span>PVP JP</span><span>PVP Aprox.</span><span>Comentario</span><span>Eliminar</span></>
                         ) : (
                           <><span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>{isVerificarOrConfirmacion ? 'PVP JP' : 'Precio'}</span></>
                         )}
@@ -8997,6 +9048,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                           const pvpJp = item.producto?.precio ?? item.coincidencia_precio
                           const pvp = precioEstimadoValue > 0 ? precioEstimadoValue : null
                           const pvpDifiere = pvp != null && pvpJp != null && Math.abs(pvp - Number(pvpJp)) >= 0.005
+                          const faltantes = faltantesDe(item)
                           return (
                             <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${otraCasa ? ' imp-sugerencia__row--otra-casa' : porOem ? ' imp-sugerencia__row--oem' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`}>
                               <span
@@ -9009,7 +9061,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                     <span className="imp-codigo-editable__fila">
                                       <input
                                         type="text"
-                                        className="imp-excel-review__codigo-input"
+                                        className={`imp-excel-review__codigo-input${faltantes.includes('Código') ? ' imp-excel-review__codigo-input--invalid' : ''}`}
                                         value={item.codigo || ''}
                                         onChange={(e) => {
                                           const value = e.target.value.toUpperCase()
@@ -9037,15 +9089,44 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                   ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
                                   : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
                               </span>
-                              <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')} onMouseLeave={hideCellHover}>
-                                <span className="imp-table-cell-text">{referencia}</span>
-                              </span>
-                              <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, oemList, 'OEM')} onMouseLeave={hideCellHover}>
-                                <span className="imp-table-cell-text">{oem}</span>
-                              </span>
-                              <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, nombre, 'Descripción')} onMouseLeave={hideCellHover}>
-                                <span className="imp-table-cell-text">{nombre}</span>
-                              </span>
+                              {/* Sin catalogo: referencia, OEM y descripcion se
+                                  completan aqui (hacen falta para pedir la cotizacion). */}
+                              {sinCatalogo && canEdit ? (
+                                <>
+                                  {[
+                                    { field: 'referencia', label: 'Referencia', falta: faltantes.includes('Referencia') },
+                                    { field: 'oem', label: 'OEM', falta: faltantes.includes('OEM') },
+                                    { field: 'nombre', label: 'Descripción', falta: faltantes.includes('Descripción') },
+                                  ].map(({ field, label, falta }) => (
+                                    <span key={field}>
+                                      <input
+                                        type="text"
+                                        className={`imp-excel-review__codigo-input${falta ? ' imp-excel-review__codigo-input--invalid' : ''}`}
+                                        value={item[field] || ''}
+                                        onChange={(e) => {
+                                          const value = e.target.value
+                                          setDetails((prev) => prev.map((d) => (d._key === item._key ? { ...d, [field]: value } : d)))
+                                        }}
+                                        placeholder={falta ? `Falta ${label.toLowerCase()}` : label}
+                                        aria-label={`${label} del producto nuevo`}
+                                        autoComplete="off"
+                                      />
+                                    </span>
+                                  ))}
+                                </>
+                              ) : (
+                                <>
+                                  <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')} onMouseLeave={hideCellHover}>
+                                    <span className="imp-table-cell-text">{referencia}</span>
+                                  </span>
+                                  <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, oemList, 'OEM')} onMouseLeave={hideCellHover}>
+                                    <span className="imp-table-cell-text">{oem}</span>
+                                  </span>
+                                  <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, nombre, 'Descripción')} onMouseLeave={hideCellHover}>
+                                    <span className="imp-table-cell-text">{nombre}</span>
+                                  </span>
+                                </>
+                              )}
                               <span>
                                 <input
                                   type="number"
@@ -9054,13 +9135,20 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                   style={invalidQtyKeys.has(item._key) ? { borderColor: '#ef4444' } : undefined}
                                 />
                               </span>
-                              <span className="imp-sugerencia__precio" style={{ color: otraCasa ? '#c2410c' : porOem ? '#a16207' : undefined }}>
+                              {/* Hover: de que casa es el PVP JP, y que el PVP Aprox.
+                                  es el que se subio en el Excel. */}
+                              <span
+                                className="imp-sugerencia__precio"
+                                style={{ color: otraCasa ? '#c2410c' : porOem ? '#a16207' : undefined }}
+                                onMouseEnter={(e) => pvpJp != null && showCellHover(e, `${((otraCasa || porOem) ? item.coincidencia_casa : imp?.casa_comercial?.nombre) || 'Casa comercial'}: $${Number(pvpJp).toFixed(2)}`, 'PVP JP')}
+                                onMouseLeave={hideCellHover}
+                              >
                                 {pvpJp != null ? `$${Number(pvpJp).toFixed(2)}` : '—'}
                               </span>
                               <span
                                 className="imp-sugerencia__precio"
                                 style={{ color: pvpDifiere ? '#b45309' : pvp == null ? 'var(--color-text-secondary)' : undefined }}
-                                onMouseEnter={(e) => pvpDifiere && showCellHover(e, `Distinto al PVP JP ($${Number(pvpJp).toFixed(2)})`, 'PVP')}
+                                onMouseEnter={(e) => pvp != null && showCellHover(e, `Precio subido desde el Excel: $${pvp.toFixed(2)}`, 'PVP Aprox.')}
                                 onMouseLeave={hideCellHover}
                               >
                                 {pvp != null ? `$${pvp.toFixed(2)}` : '—'}

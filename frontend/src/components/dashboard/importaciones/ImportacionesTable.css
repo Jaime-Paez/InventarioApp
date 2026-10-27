@@ -1457,6 +1457,70 @@
    intenso) en vez de cambiar a azul — igual que .create-user__field--invalid
    input:focus. */
 .imp-excel-review__precio-box--invalid:focus-within,
+/* Vista previa del Excel: dato que falta (se completa en la sugerencia). */
+.imp-falta-dato {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Sugerencia guardada con productos incompletos: no se puede pedir la
+   cotizacion hasta completarlos. */
+.imp-incompletos-aviso {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: var(--font-size-sm);
+}
+
+.imp-incompletos-aviso > i {
+  color: #b45309;
+}
+
+.imp-incompletos-aviso > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.imp-incompletos-aviso__ir {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border: 1px solid #f59e0b;
+  border-radius: 999px;
+  background: #fff;
+  color: #92400e;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dashboard-shell.dark .imp-incompletos-aviso {
+  border-color: color-mix(in srgb, #f59e0b 45%, transparent);
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  color: #fde68a;
+}
+
+.dashboard-shell.dark .imp-incompletos-aviso__ir {
+  background: transparent;
+  color: #fde68a;
+}
+
+.dashboard-shell.dark .imp-falta-dato {
+  background: color-mix(in srgb, #ef4444 22%, transparent);
+  color: #fecaca;
+}
+
 .imp-excel-review__codigo-input--invalid:focus {
   border-color: #ef4444;
   box-shadow: 0 0 8px 0 color-mix(in srgb, #ef4444 45%, transparent);
