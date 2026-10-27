@@ -3631,16 +3631,17 @@
   min-width: 0;
 }
 
-.create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-code,
-.create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-name,
-.create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(-n + 2) {
+.quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-code,
+.quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-name,
+.quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(-n + 2) {
   justify-content: flex-start;
   text-align: left;
 }
 
-.create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-name {
+.quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-name {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: flex-start;
   gap: 2px;
   white-space: normal;
@@ -3711,19 +3712,69 @@
   color: var(--color-text-dark);
 }
 
+/* Tablet/telefono: cada producto es una tarjeta con codigo, descripcion y
+   "No lo encontre" apilados a la izquierda y el conteo a la derecha. Antes
+   cada parte quedaba en su propia fila a todo el ancho, centrada, y el
+   campo de conteo flotaba suelto arriba. */
 @media (max-width: 640px) {
   .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row {
-    grid-template-columns: minmax(0, 1fr) 78px;
+    grid-template-columns: minmax(0, 1fr) 88px;
+    grid-template-areas:
+      "code count"
+      "name count"
+      "action count";
   }
 
-  .create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-name {
-    grid-column: 1 / -1;
-    grid-row: 2;
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head {
+    grid-template-areas: "code count";
+  }
+
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(1) {
+    grid-area: code;
+  }
+
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(2) {
+    grid-area: name;
+  }
+
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(3) {
+    grid-area: count;
+  }
+
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(4) {
+    grid-area: action;
   }
 
   .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(2),
   .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(4) {
     display: none;
+  }
+
+  /* Sin la raya vertical entre lo apilado; solo la que separa el conteo. */
+  .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span + span {
+    border-left: 0;
+  }
+
+  .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(3) {
+    border-left: 1px solid var(--color-border);
+  }
+
+  .quick-actions__inspection-overlay.dark .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(3) {
+    border-left-color: var(--color-border-dark);
+  }
+
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(1) {
+    padding-bottom: 0;
+  }
+
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(2) {
+    padding-top: 2px;
+    padding-bottom: 4px;
+  }
+
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(4) {
+    justify-content: flex-start;
+    padding-top: 0;
   }
 }
 
