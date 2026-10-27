@@ -195,6 +195,22 @@ class SugerenciaProductosNuevosTests(TestCase):
         # Un código que ya existe en el catálogo sí se vincula.
         self.assertEqual(importacion.detalles.get(codigo="ex-1").producto_id, self.existente.id)
 
+    def test_guardar_sin_precio_casa_conserva_la_casa_del_precio(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        importacion.detalles.filter(codigo="NUEVO-CI").update(precio_casa="TECNOVA")
+        response = self.client.patch(
+            f"{BASE_URL}/{importacion.id}/",
+            {
+                "detalles": [
+                    {"producto_id": self.existente.id, "cantidad": 2},
+                    {"codigo": "NUEVO-CI", "nombre": "Filtro nuevo", "cantidad": 3, "precio_estimado": "12.30"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(importacion.detalles.get(codigo="NUEVO-CI").precio_casa, "TECNOVA")
+
     def test_importar_no_crea_los_productos_negados(self):
         importacion = self._crear(cantidad_nuevo=3)
         self._pedir_cotizacion(importacion)

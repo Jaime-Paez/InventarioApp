@@ -392,6 +392,9 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                     "casas_comerciales_codigos": [
                         c.codigo for c in alt.casas_comerciales.all() if c.codigo
                     ],
+                    "casas_comerciales_nombres": [
+                        c.nombre for c in alt.casas_comerciales.all() if c.nombre
+                    ],
                     "precio": alt_precio,
                     "precio_con_iva": with_iva(alt_precio),
                 })

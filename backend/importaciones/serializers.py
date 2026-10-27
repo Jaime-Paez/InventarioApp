@@ -55,7 +55,7 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ImportacionDetalle
-        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "referencia", "cantidad", "comentario", "precio_estimado", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "precio_pvp_snapshot", "cantidad_recibida", "seleccionado", "quitado", "solicitud_id", "orden"]
+        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "referencia", "cantidad", "comentario", "precio_estimado", "precio_casa", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "precio_pvp_snapshot", "cantidad_recibida", "seleccionado", "quitado", "solicitud_id", "orden"]
 
     def validate(self, data):
         producto = data.get("producto")
@@ -349,6 +349,26 @@ class ImportacionSerializer(serializers.ModelSerializer):
             if instance.estado != Importacion.ESTADO_BORRADOR:
                 for item in detalles_data:
                     self._vincular_producto_existente(item)
+            # Los guardados que no mandan precio_casa (casi todos) conservan
+            # la que ya tenía cada producto -- aquí se borra y se vuelve a
+            # crear todo el listado.
+            casa_previa = {}
+            for detalle in instance.detalles.all():
+                if detalle.precio_casa:
+                    if detalle.producto_id:
+                        casa_previa[("p", detalle.producto_id)] = detalle.precio_casa
+                    if detalle.codigo:
+                        casa_previa[("c", detalle.codigo.strip().lower())] = detalle.precio_casa
+            for item in detalles_data:
+                if "precio_casa" in item:
+                    continue
+                producto = item.get("producto")
+                codigo = str(item.get("codigo") or (producto.codigo if producto else "")).strip().lower()
+                item["precio_casa"] = (
+                    (casa_previa.get(("p", producto.id)) if producto else None)
+                    or casa_previa.get(("c", codigo))
+                    or ""
+                )
             instance.detalles.all().delete()
             ImportacionDetalle.objects.bulk_create([
                 ImportacionDetalle(
@@ -361,6 +381,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     cantidad=item["cantidad"],
                     comentario=str(item.get("comentario") or ""),
                     precio_estimado=item.get("precio_estimado"),
+                    precio_casa=str(item.get("precio_casa") or ""),
                     cantidad_aproximada=item.get("cantidad_aproximada"),
                     precio_confirmado=item.get("precio_confirmado"),
                     cantidad_confirmada=item.get("cantidad_confirmada"),
@@ -404,6 +425,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     cantidad=item["cantidad"],
                     comentario=str(item.get("comentario") or ""),
                     precio_estimado=item.get("precio_estimado"),
+                    precio_casa=str(item.get("precio_casa") or ""),
                     precio_confirmado=item.get("precio_confirmado"),
                     cantidad_confirmada=item.get("cantidad_confirmada"),
                     solicitud=item.get("solicitud"),

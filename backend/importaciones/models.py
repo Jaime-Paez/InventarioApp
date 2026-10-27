@@ -109,6 +109,9 @@ class ImportacionDetalle(models.Model):
         help_text="Fila del Excel original (subido) en la que estaba este producto -- solo para exportarlo de vuelta, no se muestra en ninguna tabla de la app.",
     )
     precio_estimado = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    # Casa comercial de la que salió el precio estimado (p. ej. el producto de
+    # otra casa del que se tomó el PVP); vacío si se escribió a mano.
+    precio_casa = models.CharField(max_length=255, blank=True, default="")
     cantidad_aproximada = models.PositiveIntegerField(null=True, blank=True)
     precio_confirmado = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     cantidad_confirmada = models.PositiveIntegerField(null=True, blank=True)
