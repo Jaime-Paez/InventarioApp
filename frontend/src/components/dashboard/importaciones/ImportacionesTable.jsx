@@ -8892,10 +8892,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                           <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? ' imp-verificar__row--agregado' : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
                             <span
                               className="imp-table-cell-tip"
-                              onMouseEnter={(e) => !sinCatalogo && showCellHover(e, codigo, 'Código')}
+                              onMouseEnter={(e) => codigo && showCellHover(e, sinCatalogo ? `${codigo} (nuevo: se crea al importar)` : codigo, 'Código')}
                               onMouseLeave={hideCellHover}
                             >
-                              {sinCatalogo
+                              {/* Un producto nuevo con código (sugerido o del Excel) muestra
+                                  su código; la etiqueta queda para los que no tienen. */}
+                              {sinCatalogo && !codigo
                                 ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
                                 : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
                             </span>
