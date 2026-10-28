@@ -3841,6 +3841,79 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, sinCatalog
   )
 }
 
+// Excel de revision de una sugerencia: el mismo del Paso 3 de "Sugerencia
+// desde Excel" y el que se descarga desde una sugerencia guardada. Cada fila:
+// { codigo, referencia, oem, descripcion, cantidad, pvpJp, pvpJpCasa, pvp,
+// pvpCasa, nota, isConflict, isSuggested, key? }. Si las filas traen key se
+// agrega una columna _key oculta al final (para emparejar al subirlo).
+const SUGERENCIA_EXCEL_HEADERS = [
+  'CÓDIGO', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANT.',
+  'PVP JP', 'CASA PVP JP', 'PVP', 'CASA PVP', 'NOTA',
+]
+
+const downloadSugerenciaExcel = async (rows, fileName) => {
+  const XLSXStyle = (await import('xlsx-js-style')).default
+  const withKey = rows.some((r) => r.key != null)
+  const headers = withKey ? [...SUGERENCIA_EXCEL_HEADERS, '_key'] : SUGERENCIA_EXCEL_HEADERS
+  const headerStyle = {
+    font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
+    fill: { fgColor: { rgb: '1A1A2E' }, patternType: 'solid' },
+    alignment: { horizontal: 'center', vertical: 'center' },
+    border: {
+      top: { style: 'thin', color: { rgb: '2563EB' } },
+      bottom: { style: 'medium', color: { rgb: '2563EB' } },
+      left: { style: 'thin', color: { rgb: '2563EB' } },
+      right: { style: 'thin', color: { rgb: '2563EB' } },
+    },
+  }
+  const borderStyle = { style: 'thin', color: { rgb: 'DBEAFE' } }
+  const border = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
+  const yellowFill = { fgColor: { rgb: 'FEF08A' }, patternType: 'solid' }
+  const orangeFill = { fgColor: { rgb: 'FFEDD5' }, patternType: 'solid' }
+  const aoa = [
+    headers,
+    ...rows.map((r) => [
+      r.codigo, r.referencia, r.oem, r.descripcion, r.cantidad,
+      r.pvpJp, r.pvpJpCasa, r.pvp, r.pvpCasa, r.nota,
+      ...(withKey ? [r.key ?? ''] : []),
+    ]),
+  ]
+  const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
+  headers.forEach((_, ci) => {
+    const ref = XLSXStyle.utils.encode_cell({ r: 0, c: ci })
+    if (worksheet[ref]) worksheet[ref].s = ci < SUGERENCIA_EXCEL_HEADERS.length ? headerStyle : { font: { sz: 8, color: { rgb: 'AAAAAA' } } }
+  })
+  rows.forEach((r, i) => {
+    const ri = i + 1
+    for (let ci = 0; ci < SUGERENCIA_EXCEL_HEADERS.length; ci++) {
+      const ref = XLSXStyle.utils.encode_cell({ r: ri, c: ci })
+      if (!worksheet[ref]) worksheet[ref] = { t: 's', v: '' }
+      worksheet[ref].s = {
+        border,
+        alignment: { vertical: 'center' },
+        // Mismos colores de fila que en pantalla: naranja = otra casa,
+        // amarillo = código sugerido por OEM.
+        ...(r.isConflict ? { fill: orangeFill } : r.isSuggested ? { fill: yellowFill } : {}),
+      }
+    }
+  })
+  worksheet['!cols'] = [
+    { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 8 },
+    { wch: 11 }, { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 34 },
+    ...(withKey ? [{ wch: 0, hidden: true }] : []),
+  ]
+  worksheet['!rows'] = [{ hpt: 22 }]
+  const workbook = XLSXStyle.utils.book_new()
+  XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Revisión')
+  const out = XLSXStyle.write(workbook, { bookType: 'xlsx', type: 'array' })
+  const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = fileName
+  document.body.appendChild(link); link.click(); document.body.removeChild(link)
+  URL.revokeObjectURL(link.href)
+}
+
 // Popup "Aceptados de solicitudes": un aceptado ya esta en la lista si su
 // producto (o, sin catalogo, su solicitud) ya esta en los detalles.
 const isAceptadoAgregado = (item, addedIds, addedSolIds) => (item.producto_id
@@ -4428,100 +4501,38 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive }) {
   const handleDownloadReviewExcel = async () => {
     setDownloadingReview(true)
     try {
-      const XLSXStyle = (await import('xlsx-js-style')).default
       // Mismas columnas (y en el mismo orden) que la tabla de revisión en
       // pantalla: PVP JP (sistema) y su casa, y PVP (el que se guarda) y su
       // casa. NOTA es extra del Excel; la casa de la sugerencia va en el
       // nombre del archivo.
-      const headers = [
-        'CÓDIGO', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANT.',
-        'PVP JP', 'CASA PVP JP', 'PVP', 'CASA PVP', 'NOTA',
-      ]
-      const headerStyle = {
-        font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 11 },
-        fill: { fgColor: { rgb: '1A1A2E' }, patternType: 'solid' },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: {
-          top: { style: 'thin', color: { rgb: '2563EB' } },
-          bottom: { style: 'medium', color: { rgb: '2563EB' } },
-          left: { style: 'thin', color: { rgb: '2563EB' } },
-          right: { style: 'thin', color: { rgb: '2563EB' } },
-        },
-      }
-      const borderStyle = { style: 'thin', color: { rgb: 'DBEAFE' } }
-      const border = { top: borderStyle, bottom: borderStyle, left: borderStyle, right: borderStyle }
-      const yellowFill = { fgColor: { rgb: 'FEF08A' }, patternType: 'solid' }
-      const orangeFill = { fgColor: { rgb: 'FFEDD5' }, patternType: 'solid' }
-
       // Se ordena por la fila que tenia cada producto en el Excel ORIGINAL
       // subido (row.orden), no por el orden en que se muestran en pantalla
       // (que agrupa por revisión pendiente/sugeridos/vinculados/sin-catalogo)
       // -- asi el Excel descargado sale en el mismo orden en que se subio.
       const rows = [...validRows]
-        .slice()
         .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
         .map((row) => {
-        const isConflict = Boolean(row.conflicto_casa)
-        return {
-          codigo: row.codigo || '',
-          referencia: row.referencia || '',
-          oem: row.oem || '',
-          descripcion: row.descripcion || '',
-          cantidad: row.cantidad ?? '',
-          pvpJp: getSistemaPrecio(row) != null ? Number(getSistemaPrecio(row)) : '',
-          // Casa del producto del que sale el PVP JP (esta, otra casa con el
-          // mismo código/referencia o la del código sugerido).
-          pvpJpCasa: getSistemaPrecio(row) != null ? getSistemaCasa(row) : '',
-          pvp: getPrecioGuardado(row)?.valor ?? '',
-          pvpCasa: getPrecioGuardado(row)?.casa ?? '',
-          nota: isConflict
-            ? `Ya existe en ${row.conflicto_casa_nombre || 'otra casa'} — se creará como nuevo`
-            : (row.codigo_sugerido ? 'Sugerido (nuevo)' : ''),
-          isConflict,
-          isSuggested: Boolean(row.codigo_sugerido),
-        }
-      })
-
-      const aoa = [
-        headers,
-        ...rows.map((r) => [
-          r.codigo, r.referencia, r.oem, r.descripcion, r.cantidad,
-          r.pvpJp, r.pvpJpCasa, r.pvp, r.pvpCasa, r.nota,
-        ]),
-      ]
-      const worksheet = XLSXStyle.utils.aoa_to_sheet(aoa)
-      headers.forEach((_, ci) => {
-        const ref = XLSXStyle.utils.encode_cell({ r: 0, c: ci })
-        if (worksheet[ref]) worksheet[ref].s = headerStyle
-      })
-      rows.forEach((r, i) => {
-        const ri = i + 1
-        for (let ci = 0; ci < headers.length; ci++) {
-          const ref = XLSXStyle.utils.encode_cell({ r: ri, c: ci })
-          if (!worksheet[ref]) worksheet[ref] = { t: 's', v: '' }
-          worksheet[ref].s = {
-            border,
-            alignment: { vertical: 'center' },
-            // Mismos colores de fila que en pantalla: naranja = otra casa,
-            // amarillo = código sugerido por OEM.
-            ...(r.isConflict ? { fill: orangeFill } : r.isSuggested ? { fill: yellowFill } : {}),
+          const isConflict = Boolean(row.conflicto_casa)
+          return {
+            codigo: row.codigo || '',
+            referencia: row.referencia || '',
+            oem: row.oem || '',
+            descripcion: row.descripcion || '',
+            cantidad: row.cantidad ?? '',
+            pvpJp: getSistemaPrecio(row) != null ? Number(getSistemaPrecio(row)) : '',
+            // Casa del producto del que sale el PVP JP (esta, otra casa con el
+            // mismo código/referencia o la del código sugerido).
+            pvpJpCasa: getSistemaPrecio(row) != null ? getSistemaCasa(row) : '',
+            pvp: getPrecioGuardado(row)?.valor ?? '',
+            pvpCasa: getPrecioGuardado(row)?.casa ?? '',
+            nota: isConflict
+              ? `Ya existe en ${row.conflicto_casa_nombre || 'otra casa'} — se creará como nuevo`
+              : (row.codigo_sugerido ? 'Sugerido (nuevo)' : ''),
+            isConflict,
+            isSuggested: Boolean(row.codigo_sugerido),
           }
-        }
-      })
-      worksheet['!cols'] = [
-        { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 8 },
-        { wch: 11 }, { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 34 },
-      ]
-      worksheet['!rows'] = [{ hpt: 22 }]
-      const workbook = XLSXStyle.utils.book_new()
-      XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Revisión')
-      const out = XLSXStyle.write(workbook, { bookType: 'xlsx', type: 'array' })
-      const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(blob)
-      link.download = `revision-sugerencia-${selectedCasa?.nombre || 'excel'}.xlsx`
-      document.body.appendChild(link); link.click(); document.body.removeChild(link)
-      URL.revokeObjectURL(link.href)
+        })
+      await downloadSugerenciaExcel(rows, `revision-sugerencia-${selectedCasa?.nombre || 'excel'}.xlsx`)
     } catch (e) { console.error(e) }
     setDownloadingReview(false)
   }
@@ -7796,54 +7807,38 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
   }
 
-  // Sugerencia: lista simple de productos, sin columnas de verificacion.
+  // Sugerencia: el mismo Excel del Paso 3 de "Sugerencia desde Excel"
+  // (columnas, colores y nota), con el _key oculto para emparejar al subirlo.
   const handleDownloadSugerenciaExcel = async () => {
     try {
-      const XLSXStyle = (await import('xlsx-js-style')).default
-      const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
-      const border = { top: bt, bottom: bt, left: bt, right: bt }
-      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'Precio', 'Casa del precio', 'Cantidad', '_key']
-      const hdrS = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: '1e3a5f' }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { ...border, bottom: { style: 'medium', color: { rgb: '2563EB' } } } }
-      const sortedDetails = [...details].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
-      // Precio: el PVP puesto en la sugerencia (a mano o con doble click,
-      // guardado en centavos); si no tiene, el del catalogo.
-      const precioSugerencia = (item) => {
-        const centavos = parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
-        if (centavos > 0) return centavos / 100
-        return item.producto?.precio != null ? +Number(item.producto.precio).toFixed(2) : ''
-      }
-      // Casa comercial de ese precio: la guardada al tomar el PVP aprox. o,
-      // si se usa el del catalogo, las casas del producto.
-      const casaPrecioSugerencia = (item) => {
-        const centavos = parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
-        if (centavos > 0) return item.precio_casa || ''
-        if (item.producto?.precio == null) return ''
-        return (item.producto.casas_comerciales || []).map((c) => c.nombre).filter(Boolean).join(', ')
-      }
-      const rows = sortedDetails.map((item) => [
-        item.producto?.codigo || item.codigo || 'SIN CATÁLOGO',
-        item.producto?.nombre || item.nombre || '',
-        getProductoOem(item.producto) || item.oem || '',
-        item.producto?.referencia || item.referencia || '',
-        precioSugerencia(item),
-        casaPrecioSugerencia(item),
-        +Number(item.cantidad || 0),
-        item._key,
-      ])
-      const worksheet = XLSXStyle.utils.aoa_to_sheet([headers, ...rows])
-      headers.forEach((_, ci) => { worksheet[XLSXStyle.utils.encode_cell({ r: 0, c: ci })].s = ci < 7 ? hdrS : { font: { sz: 8, color: { rgb: 'AAAAAA' } } } })
-      rows.forEach((row, ri) => {
-        const bg = (ri + 1) % 2 === 0 ? 'EFF6FF' : 'FFFFFF'
-        row.forEach((_, ci) => {
-          const cell = worksheet[XLSXStyle.utils.encode_cell({ r: ri + 1, c: ci })]
-          if (cell) cell.s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(ci === 4 ? { numFmt: '0.00' } : {}) }
+      const casaSugerencia = imp?.casa_comercial?.nombre || selectedCasa?.nombre || ''
+      const rows = [...details]
+        .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
+        .map((item) => {
+          const sinCatalogo = !item.producto?.id
+          const isConflict = sinCatalogo && item.coincidencia === 'otra_casa'
+          const isSuggested = sinCatalogo && item.coincidencia === 'oem'
+          const pvpJp = item.producto?.precio ?? item.coincidencia_precio
+          const centavos = parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
+          return {
+            codigo: item.producto?.codigo || item.codigo || '',
+            referencia: item.producto?.referencia || item.referencia || '',
+            oem: getProductoOem(item.producto) || item.oem || '',
+            descripcion: item.producto?.nombre || item.nombre || '',
+            cantidad: Number(item.cantidad) > 0 ? Number(item.cantidad) : '',
+            pvpJp: pvpJp != null ? Number(pvpJp) : '',
+            pvpJpCasa: pvpJp != null ? ((isConflict || isSuggested) ? (item._sugeridoCasa || '') : casaSugerencia) : '',
+            pvp: centavos > 0 ? centavos / 100 : '',
+            pvpCasa: centavos > 0 ? (item.precio_casa || casaSugerencia) : '',
+            nota: isConflict
+              ? `Ya existe en ${item._sugeridoCasa || 'otra casa'} — se creará como nuevo`
+              : (isSuggested ? 'Sugerido (nuevo)' : ''),
+            isConflict,
+            isSuggested,
+            key: item._key,
+          }
         })
-      })
-      worksheet['!cols'] = [{ wch: 14 }, { wch: 32 }, { wch: 14 }, { wch: 16 }, { wch: 10 }, { wch: 20 }, { wch: 10 }, { wch: 0, hidden: true }]
-      worksheet['!rows'] = [{ hpt: 22 }]
-      const workbook = XLSXStyle.utils.book_new()
-      XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Sugerencia')
-      XLSXStyle.writeFile(workbook, `sugerencia-${imp?.codigo || imp?.estado}.xlsx`)
+      await downloadSugerenciaExcel(rows, `sugerencia-${imp?.codigo || imp?.estado}.xlsx`)
     } catch (e) {
       console.error(e)
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo generar el Excel.', life: 3500 })
@@ -8020,17 +8015,29 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no contiene datos.', life: 3500 })
         return
       }
-      const fileHeaders = rawRows[0].map((h) => String(h || '').trim())
-      const keyIdx = fileHeaders.indexOf('_key')
-      const codigoIdx = fileHeaders.indexOf('Código')
-      const nombreIdx = fileHeaders.indexOf('Descripción')
-      const oemIdx = fileHeaders.indexOf('OEM')
-      const refIdx = fileHeaders.indexOf('Referencia')
-      const cantSugIdx = fileHeaders.indexOf('Cantidad')
-      // Sugerencia: se editan "Precio" (PVP aprox.) y "Cantidad".
-      const precioIdx = fileHeaders.indexOf(isSugerencia ? 'Precio' : isVerificar ? 'Precio est.' : 'Precio conf.')
-      const cantIdx = fileHeaders.indexOf(isSugerencia ? 'Cantidad' : isVerificar ? 'Cant. aprox.' : 'Cant. conf.')
-      const comentIdx = fileHeaders.indexOf('Comentario')
+      // Encabezados sin importar mayúsculas ni tildes: la sugerencia acepta
+      // el Excel del Paso 3 (CÓDIGO, CANT., PVP, CASA PVP...) y el anterior
+      // (Código, Cantidad, Precio).
+      const normHeader = (h) => String(h || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      const fileHeaders = rawRows[0].map(normHeader)
+      const headerIdx = (...names) => {
+        for (const name of names) {
+          const idx = fileHeaders.indexOf(normHeader(name))
+          if (idx !== -1) return idx
+        }
+        return -1
+      }
+      const keyIdx = headerIdx('_key')
+      const codigoIdx = headerIdx('Código', 'Codigo JP')
+      const nombreIdx = headerIdx('Descripción')
+      const oemIdx = headerIdx('OEM')
+      const refIdx = headerIdx('Referencia')
+      const cantSugIdx = headerIdx('Cantidad', 'Cant.')
+      // Sugerencia: se editan "PVP" (PVP aprox.) y la cantidad.
+      const precioIdx = isSugerencia ? headerIdx('PVP', 'Precio') : headerIdx(isVerificar ? 'Precio est.' : 'Precio conf.')
+      const cantIdx = isSugerencia ? cantSugIdx : headerIdx(isVerificar ? 'Cant. aprox.' : 'Cant. conf.')
+      const casaPrecioIdx = isSugerencia ? headerIdx('Casa PVP', 'Casa del precio') : -1
+      const comentIdx = headerIdx('Comentario')
       if (codigoIdx === -1 || precioIdx === -1 || cantIdx === -1) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no corresponde a esta importación. Descarga el Excel desde este modal.', life: 4500 })
         return
@@ -8168,9 +8175,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         const nuevoPrecio = isNaN(precioNum) || esPrecioCatalogo ? '' : String(Math.round(precioNum * 100))
         // Si el precio se cambió en el Excel ya no es el de esa casa.
         const precioCambio = isSugerencia && nuevoPrecio !== String(item.precio_estimado || '').replace(/\D/g, '')
+        // Si el Excel trae "CASA PVP", esa es la casa del precio.
+        const casaPrecio = casaPrecioIdx !== -1 && nuevoPrecio ? cellText(row, casaPrecioIdx) : null
         return {
           ...item,
-          ...(precioCambio ? { precio_casa: '' } : {}),
+          ...(casaPrecio != null ? { precio_casa: casaPrecio } : precioCambio ? { precio_casa: '' } : {}),
           [precioField]: nuevoPrecio,
           [cantField]: isNaN(cantNum) ? '' : String(cantNum),
           comentario: comentIdx !== -1 ? cellText(row, comentIdx) : item.comentario,
