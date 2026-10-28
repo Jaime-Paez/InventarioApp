@@ -7744,12 +7744,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     })
     window.setTimeout(() => setHighlightedDetailKey((current) => (current === String(detailKey) ? '' : current)), 2600)
   }, [])
-  // Orden en pantalla de la verificacion: nuevos, eliminados y el resto (cada
-  // grupo en su orden). Solo cambia como se muestra, no el orden guardado.
-  const VERIFICAR_GRUPOS = ['nuevos', 'eliminados', 'resto']
-  const verificarGrupoDe = (item) => (item.quitado ? 'eliminados' : esAgregadoVerificacion(item) ? 'nuevos' : 'resto')
+  // Orden en pantalla de la verificacion: lo agregado en esta etapa va arriba
+  // (el ultimo primero) y el resto en su orden; un producto quitado se queda
+  // en su lugar, tachado. Solo cambia como se muestra, no el orden guardado.
+  const esAgregadoAqui = (item) => String(item.comentario || '').includes(NOTA_AGREGADO_VERIFICACION)
   const shownDetails = isVerificar
-    ? [...details].sort((a, b) => VERIFICAR_GRUPOS.indexOf(verificarGrupoDe(a)) - VERIFICAR_GRUPOS.indexOf(verificarGrupoDe(b)))
+    ? [...details.filter(esAgregadoAqui).reverse(), ...details.filter((item) => !esAgregadoAqui(item))]
     : details
   // Mismos grupos (y colores) que las filas de la verificacion.
   const verificarColorDe = (item) => (
