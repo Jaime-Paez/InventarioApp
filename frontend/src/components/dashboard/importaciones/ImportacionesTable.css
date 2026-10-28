@@ -309,6 +309,13 @@
   min-width: 0;
 }
 
+/* Selector de codigo de la fila "Agregar" de la sugerencia: su z-index (40)
+   lo dejaba por encima del encabezado fijo al bajar. Su panel va en un
+   portal con z-index propio, asi que aqui no lo necesita. */
+.imp-excel-review-table .create-salida__product-dropdown {
+  z-index: auto;
+}
+
 /* Cantidad editable en la tabla de la sugerencia: centrada y en negrita,
    como el numero del Paso 3. */
 .imp-excel-review__codigo-input.imp-sugerencia__cant-input {
