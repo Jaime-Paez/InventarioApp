@@ -9011,8 +9011,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                             <col style={{ width: 140 }} />
                             <col style={{ width: 88 }} />
                           </colgroup>
-                          <thead>
-                            <tr style={{ background: '#1A1A2E', color: '#fff', position: 'sticky', top: 0, zIndex: 1, fontSize: 'var(--font-size-sm)' }}>
+                          <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+                            <tr style={{ background: '#1A1A2E', color: '#fff', fontSize: 'var(--font-size-sm)' }}>
                               <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Código</th>
                               <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Referencia</th>
                               <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>OEM</th>
@@ -9023,8 +9023,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                               <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Comentario</th>
                               <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600 }}>Eliminar</th>
                             </tr>
-                          </thead>
-                          <tbody>
+                            {/* La fila "Agregar" va en el encabezado: se queda fija arriba
+                                con los titulos al desplazar la tabla. */}
                             {canEdit && (
                               <tr style={{ borderBottom: '2px solid var(--color-border, #e2e8f0)', background: 'var(--color-surface, #f8fafc)' }}>
                                 <td style={{ padding: '4px 8px' }}>
@@ -9070,6 +9070,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                 </td>
                               </tr>
                             )}
+                          </thead>
+                          <tbody>
                             {!details.length && (
                               <tr>
                                 <td colSpan={9} style={{ padding: '12px', textAlign: 'center', color: 'var(--color-text-secondary)' }}>Sin productos agregados.</td>
