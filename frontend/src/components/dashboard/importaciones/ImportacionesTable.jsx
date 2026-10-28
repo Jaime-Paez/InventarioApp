@@ -3887,9 +3887,10 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, sinCatalog
 // { codigo, referencia, oem, descripcion, cantidad, pvpJp, pvpJpCasa, pvp,
 // pvpCasa, nota, isConflict, isSuggested, key? }. Si las filas traen key se
 // agrega una columna _key oculta al final (para emparejar al subirlo).
+// Encabezados con los mismos nombres (y orden) que el Excel de Verificacion.
 const SUGERENCIA_EXCEL_HEADERS = [
-  'CÓDIGO', 'REFERENCIA', 'OEM', 'DESCRIPCIÓN', 'CANT.',
-  'PVP JP', 'CASA PVP JP', 'PVP', 'CASA PVP', 'NOTA',
+  'Código', 'Descripción', 'OEM', 'Referencia', 'PVP JP', 'Cantidad',
+  'PVP APROX.', 'Casa PVP JP', 'Casa PVP APROX.', 'Nota',
 ]
 
 const downloadSugerenciaExcel = async (rows, fileName) => {
@@ -3914,8 +3915,8 @@ const downloadSugerenciaExcel = async (rows, fileName) => {
   const aoa = [
     headers,
     ...rows.map((r) => [
-      r.codigo, r.referencia, r.oem, r.descripcion, r.cantidad,
-      r.pvpJp, r.pvpJpCasa, r.pvp, r.pvpCasa, r.nota,
+      r.codigo, r.descripcion, r.oem, r.referencia, r.pvpJp, r.cantidad,
+      r.pvp, r.pvpJpCasa, r.pvpCasa, r.nota,
       ...(withKey ? [r.key ?? ''] : []),
     ]),
   ]
@@ -3939,8 +3940,8 @@ const downloadSugerenciaExcel = async (rows, fileName) => {
     }
   })
   worksheet['!cols'] = [
-    { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 32 }, { wch: 8 },
-    { wch: 11 }, { wch: 20 }, { wch: 11 }, { wch: 20 }, { wch: 34 },
+    { wch: 14 }, { wch: 32 }, { wch: 16 }, { wch: 16 }, { wch: 11 }, { wch: 10 },
+    { wch: 12 }, { wch: 20 }, { wch: 20 }, { wch: 34 },
     ...(withKey ? [{ wch: 0, hidden: true }] : []),
   ]
   worksheet['!rows'] = [{ hpt: 22 }]
@@ -4689,7 +4690,7 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
 
   // Productos agregados a mano (fila "Agregar", "+ Agregar nuevo producto" y
   // "+ Aceptados de solicitudes").
-  const [addDraft, setAddDraft] = useState({ producto: null, cantidad: '', comentario: '' })
+  const [addDraft, setAddDraft] = useState({ producto: null, cantidad: '' })
   const [showNuevoProducto, setShowNuevoProducto] = useState(false)
   const [showAceptados, setShowAceptados] = useState(false)
   const manualFilaRef = useRef(0)
@@ -4832,8 +4833,8 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
   const canAddDraft = Boolean(addDraft.producto && Number.isFinite(addDraftQty) && addDraftQty > 0)
   const handleAddDraft = () => {
     if (!canAddDraft) return
-    appendRows([catalogRow(addDraft.producto, { cantidad: String(addDraftQty), comentario: String(addDraft.comentario || '').trim() })])
-    setAddDraft({ producto: null, cantidad: '', comentario: '' })
+    appendRows([catalogRow(addDraft.producto, { cantidad: String(addDraftQty) })])
+    setAddDraft({ producto: null, cantidad: '' })
   }
 
   // "+ Agregar nuevo producto": se busca en el catalogo igual que una fila
@@ -4978,32 +4979,29 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
 
                     <div ref={reviewTableWrapRef} onScroll={handleReviewTableScroll} className={`imp-excel-review-table-wrap ${wrapClassName}`.trim()} style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: compact ? 'min(360px, 45dvh)' : 'none', ...wrapStyle }}>
                       <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-                      <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 1000 }}>
-                        {/* Mismas columnas (y orden) que la sugerencia guardada y la
-                            creacion manual; "Eliminar" con sus 88px (con 40 el
-                            titulo quedaba cortado). */}
+                      <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 880 }}>
+                        {/* "Eliminar" con sus 88px (con 40 el titulo quedaba cortado). */}
                         <colgroup>
-                          <col style={{ width: 150 }} />
-                          <col />
                           <col style={{ width: 130 }} />
                           <col style={{ width: 120 }} />
-                          <col style={{ width: 90 }} />
+                          <col style={{ width: 130 }} />
+                          <col />
                           <col style={{ width: 80 }} />
+                          <col style={{ width: 90 }} />
                           <col style={{ width: 100 }} />
-                          <col style={{ width: 140 }} />
                           <col style={{ width: 88 }} />
                         </colgroup>
                         <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                           <tr style={{ background: '#1A1A2E', color: '#fff', fontSize: 'var(--font-size-sm)' }}>
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Código</th>
-                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
-                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>OEM</th>
                             <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Referencia</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>OEM</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Descripción</th>
+                            <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cant.</th>
                             <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="Precio registrado en el sistema">PVP JP</th>
-                            <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600 }}>Cantidad</th>
                             <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }} title="PVP que trae el Excel (promoción). Una importación sin precios queda vacía">PVP Aprox.</th>
-                            <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 600 }}>Comentario</th>
                             <th style={{ padding: '8px 8px', textAlign: 'center', fontWeight: 600 }}>Eliminar</th>
+
 
                           </tr>
                           {/* Fila "Agregar" (como en la sugerencia guardada): fija
@@ -5029,10 +5027,9 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                 />
                               </span>
                             </td>
-                            <td style={{ padding: '7px 12px', color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addDraft.producto ? String(addDraft.producto.nombre || '').trim() : '—'}</td>
-                            <td style={{ padding: '7px 12px', color: 'var(--color-text-secondary)' }}>{addDraft.producto ? getProductoOem(addDraft.producto) || '—' : '—'}</td>
                             <td style={{ padding: '7px 12px', color: 'var(--color-text-secondary)' }}>{addDraft.producto ? String(addDraft.producto.referencia || '').trim() || '—' : '—'}</td>
-                            <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600 }}>{addDraft.producto?.precio != null ? `$${Number(addDraft.producto.precio).toFixed(2)}` : '—'}</td>
+                            <td style={{ padding: '7px 12px', color: 'var(--color-text-secondary)' }}>{addDraft.producto ? getProductoOem(addDraft.producto) || '—' : '—'}</td>
+                            <td style={{ padding: '7px 12px', color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{addDraft.producto ? String(addDraft.producto.nombre || '').trim() : '—'}</td>
                             <td style={{ padding: '4px 8px' }}>
                               <input
                                 type="number"
@@ -5046,21 +5043,12 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                 aria-label="Cantidad del producto a agregar"
                               />
                             </td>
+                            <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 600 }}>{addDraft.producto?.precio != null ? `$${Number(addDraft.producto.precio).toFixed(2)}` : '—'}</td>
                             <td style={{ padding: '7px 12px', textAlign: 'right', color: 'var(--color-text-secondary)' }}>—</td>
-                            <td style={{ padding: '4px 8px' }}>
-                              <input
-                                type="text"
-                                className="imp-excel-review__codigo-input"
-                                value={addDraft.comentario || ''}
-                                onChange={(e) => setAddDraft((prev) => ({ ...prev, comentario: e.target.value }))}
-                                disabled={!addDraft.producto}
-                                placeholder="Opcional"
-                                autoComplete="off"
-                              />
-                            </td>
                             <td style={{ padding: '4px', textAlign: 'center' }}>
                               <button type="button" className="create-user__ghost" disabled={!canAddDraft} onClick={handleAddDraft}>Agregar</button>
                             </td>
+
 
                           </tr>
                           )}
@@ -5068,7 +5056,7 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                         <tbody>
                           {!validRows.length && (
                             <tr>
-                              <td colSpan={9} style={{ padding: '12px', textAlign: 'center', color: 'var(--color-text-secondary)' }}>Sin productos agregados.</td>
+                              <td colSpan={8} style={{ padding: '12px', textAlign: 'center', color: 'var(--color-text-secondary)' }}>Sin productos agregados.</td>
                             </tr>
                           )}
                           {reviewRows.slice(0, reviewRenderCount).map(({ row, i }, pos) => {
@@ -5129,49 +5117,6 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                       />
                                     )}
                                   </div>
-                                </td>
-                                <td style={{ padding: row.matched_producto_id ? '7px 12px' : '4px 8px' }}>
-                                  {row.matched_producto_id ? (
-                                    row.descripcion || '—'
-                                  ) : (() => {
-                                    return (
-                                      <input
-                                        type="text"
-                                        className={claseInput('Descripción')}
-                                        value={row.descripcion || ''}
-                                        onChange={(e) => updateRowDescripcion(row.fila_excel, e.target.value)}
-                                        placeholder={row.codigo_sugerido ? 'Descripción' : 'Descripción (opcional)'}
-                                        title={
-                                          row.codigo_sugerido
-                                            ? 'Nombre del producto nuevo. Escríbelo o pasa el mouse sobre el ícono del OEM y haz clic en una de las coincidencias.'
-                                            : 'Opcional: este producto no tiene código asignado, se creará como pendiente y se puede completar más tarde al vincularlo con el catálogo.'
-                                        }
-                                        style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
-                                      />
-                                    )
-                                  })()}
-                                </td>
-                                <td style={{ padding: '7px 12px' }}>
-                                  {/* Sin OEM igual va el ícono si hay coincidencias (por
-                                      referencia, p. ej. un producto agregado a mano), para
-                                      ver sus descripciones y precios. */}
-                                  {row.oem || (row.oem_matches || []).length ? (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                                      <span
-                                        title={row.oem || undefined}
-                                        style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                      >
-                                        {row.oem || '—'}
-                                      </span>
-                                      <Info
-                                        size={13}
-                                        style={{ flexShrink: 0 }}
-                                        className={`imp-distribucion__info-icon${(row.oem_matches || []).length ? '' : ' imp-distribucion__info-icon--empty'}`}
-                                        onMouseEnter={(e) => showOemMatchesHover(e, row.oem_matches || [], row.fila_excel)}
-                                        onMouseLeave={hideOemMatchesHover}
-                                      />
-                                    </div>
-                                  ) : '—'}
                                 </td>
                                 <td style={{ padding: '7px 12px' }}>
                                   {conflict ? (
@@ -5239,6 +5184,60 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                     </span>
                                   )}
                                 </td>
+                                <td style={{ padding: '7px 12px' }}>
+                                  {/* Sin OEM igual va el ícono si hay coincidencias (por
+                                      referencia, p. ej. un producto agregado a mano), para
+                                      ver sus descripciones y precios. */}
+                                  {row.oem || (row.oem_matches || []).length ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                      <span
+                                        title={row.oem || undefined}
+                                        style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                      >
+                                        {row.oem || '—'}
+                                      </span>
+                                      <Info
+                                        size={13}
+                                        style={{ flexShrink: 0 }}
+                                        className={`imp-distribucion__info-icon${(row.oem_matches || []).length ? '' : ' imp-distribucion__info-icon--empty'}`}
+                                        onMouseEnter={(e) => showOemMatchesHover(e, row.oem_matches || [], row.fila_excel)}
+                                        onMouseLeave={hideOemMatchesHover}
+                                      />
+                                    </div>
+                                  ) : '—'}
+                                </td>
+                                <td style={{ padding: row.matched_producto_id ? '7px 12px' : '4px 8px' }}>
+                                  {row.matched_producto_id ? (
+                                    row.descripcion || '—'
+                                  ) : (() => {
+                                    return (
+                                      <input
+                                        type="text"
+                                        className={claseInput('Descripción')}
+                                        value={row.descripcion || ''}
+                                        onChange={(e) => updateRowDescripcion(row.fila_excel, e.target.value)}
+                                        placeholder={row.codigo_sugerido ? 'Descripción' : 'Descripción (opcional)'}
+                                        title={
+                                          row.codigo_sugerido
+                                            ? 'Nombre del producto nuevo. Escríbelo o pasa el mouse sobre el ícono del OEM y haz clic en una de las coincidencias.'
+                                            : 'Opcional: este producto no tiene código asignado, se creará como pendiente y se puede completar más tarde al vincularlo con el catálogo.'
+                                        }
+                                        style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
+                                      />
+                                    )
+                                  })()}
+                                </td>
+                                <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    className="imp-excel-review__codigo-input imp-sugerencia__cant-input"
+                                    value={row.cantidad ?? ''}
+                                    onChange={(e) => updateRowCampo(row.fila_excel, 'cantidad', e.target.value.replace(/[^\d]/g, ''))}
+                                    aria-label={`Cantidad de ${row.codigo || 'producto'}`}
+                                  />
+                                </td>
                                 <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                                   {(() => {
                                     const sistema = getSistemaPrecio(row)
@@ -5254,17 +5253,6 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                       </span>
                                     )
                                   })()}
-                                </td>
-                                <td style={{ padding: '4px 8px', textAlign: 'center' }}>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    className="imp-excel-review__codigo-input imp-sugerencia__cant-input"
-                                    value={row.cantidad ?? ''}
-                                    onChange={(e) => updateRowCampo(row.fila_excel, 'cantidad', e.target.value.replace(/[^\d]/g, ''))}
-                                    aria-label={`Cantidad de ${row.codigo || 'producto'}`}
-                                  />
                                 </td>
                                 <td style={{ padding: '7px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                                   {(() => {
@@ -5282,17 +5270,6 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                     )
                                   })()}
                                 </td>
-                                <td style={{ padding: '4px 8px' }}>
-                                  <input
-                                    type="text"
-                                    className="imp-excel-review__codigo-input"
-                                    value={row.comentario || ''}
-                                    onChange={(e) => updateRowCampo(row.fila_excel, 'comentario', e.target.value)}
-                                    placeholder="Comentario"
-                                    autoComplete="off"
-                                    style={{ fontSize: 'inherit', fontFamily: 'inherit' }}
-                                  />
-                                </td>
                                 <td style={{ padding: '4px', textAlign: 'center' }}>
                                   <button
                                     type="button"
@@ -5305,12 +5282,13 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                   </button>
                                 </td>
 
+
                               </tr>
                             )
                           })}
                           {reviewRows.length > reviewRenderCount && (
                             <tr>
-                              <td colSpan={9} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
+                              <td colSpan={8} style={{ padding: '10px 12px', textAlign: 'center', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
                                 {`Mostrando ${reviewRenderCount} de ${reviewRows.length} productos — baja para ver más`}
                               </td>
                             </tr>
@@ -7064,9 +7042,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
       const border = { top: bt, bottom: bt, left: bt, right: bt }
       const RO = 6; const ED = 3; const DIFF_CI = RO + ED
-      const precioEditLabel = isVerificar ? 'Precio est.' : 'Precio conf.'
+      const precioEditLabel = isVerificar ? 'PVP APROX.' : 'Precio conf.'
       const cantEditLabel = isVerificar ? 'Cant. aprox.' : 'Cant. conf.'
-      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'Precio', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', '_key']
+      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'PVP JP', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', '_key']
       const mkH = (fill, bot) => ({ font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: fill }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: bot } }, left: bt, right: bt } })
       const hdrS = headers.map((_, ci) => ci < RO ? mkH('1e3a5f', '2563EB') : ci < RO + ED ? mkH('15803d', '166534') : ci === DIFF_CI ? mkH('374151', '374151') : null)
 
@@ -7228,9 +7206,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no contiene datos.', life: 3500 })
         return
       }
-      // Encabezados sin importar mayúsculas ni tildes: la sugerencia acepta
-      // el Excel del Paso 3 (CÓDIGO, CANT., PVP, CASA PVP...) y el anterior
-      // (Código, Cantidad, Precio).
+      // Encabezados sin importar mayúsculas ni tildes: se acepta el Excel
+      // actual (PVP APROX., Casa PVP APROX....) y los anteriores (PVP, CANT.,
+      // Precio, Precio est.).
       const normHeader = (h) => String(h || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
       const fileHeaders = rawRows[0].map(normHeader)
       const headerIdx = (...names) => {
@@ -7247,9 +7225,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const refIdx = headerIdx('Referencia')
       const cantSugIdx = headerIdx('Cantidad', 'Cant.')
       // Sugerencia: se editan "PVP" (PVP aprox.) y la cantidad.
-      const precioIdx = isSugerencia ? headerIdx('PVP', 'Precio') : headerIdx(isVerificar ? 'Precio est.' : 'Precio conf.')
+      const precioIdx = isSugerencia ? headerIdx('PVP APROX.', 'PVP', 'Precio') : headerIdx(...(isVerificar ? ['PVP APROX.', 'Precio est.'] : ['Precio conf.']))
       const cantIdx = isSugerencia ? cantSugIdx : headerIdx(isVerificar ? 'Cant. aprox.' : 'Cant. conf.')
-      const casaPrecioIdx = isSugerencia ? headerIdx('Casa PVP', 'Casa del precio') : -1
+      const casaPrecioIdx = isSugerencia ? headerIdx('Casa PVP APROX.', 'Casa PVP', 'Casa del precio') : -1
       const comentIdx = headerIdx('Comentario')
       if (codigoIdx === -1 || precioIdx === -1 || cantIdx === -1) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no corresponde a esta importación. Descarga el Excel desde este modal.', life: 4500 })
