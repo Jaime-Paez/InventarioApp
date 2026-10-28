@@ -443,12 +443,12 @@ class ProductoSerializer(serializers.ModelSerializer):
         elif (
             "casas_comerciales" in attrs
             and len(casas_comerciales) > 1
-            and not any(casa.tipo == CasaComercial.TIPO_LOCAL for casa in casas_comerciales)
+            and not all(casa.tipo == CasaComercial.TIPO_LOCAL for casa in casas_comerciales)
         ):
-            # Varias casas solo para productos de compra local (p. ej.
-            # COMPRA LOCAL + TECNOVA); uno de importacion lleva una sola.
+            # Varias casas solo para productos de compra local, todas locales
+            # (p. ej. COMPRA LOCAL + TECNOVA); uno de importacion lleva una sola.
             errors["casas_comerciales_ids"] = [
-                "Solo los productos de compra local pueden tener varias casas comerciales."
+                "Solo se pueden combinar casas comerciales locales; una de importación va sola."
             ]
 
         if errors:
