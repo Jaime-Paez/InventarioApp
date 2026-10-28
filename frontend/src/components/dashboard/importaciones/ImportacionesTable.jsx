@@ -7329,6 +7329,85 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
   }
 
+  // "3, 5 y 7"
+  const unirFilas = (filas) => (filas.length > 1 ? `${filas.slice(0, -1).join(', ')} y ${filas[filas.length - 1]}` : String(filas[0] ?? ''))
+
+  // Filas repetidas en el Excel subido: no se aplica nada y se dice cuales.
+  // grupos = [[{ fila, etiqueta }, ...], ...]
+  const avisarRepetidos = (grupos) => {
+    const detalle = grupos
+      .map((grupo) => `${unirFilas(grupo.map((x) => x.fila))}${grupo[0]?.etiqueta ? ` (${grupo[0].etiqueta})` : ''}`)
+      .join('; ')
+    toastRef.current?.show({
+      severity: 'error',
+      summary: 'Filas repetidas',
+      detail: `Subiste repetido en las filas ${detalle}. Corrige el Excel y vuelve a subirlo; no se cambió nada.`,
+      life: 9000,
+    })
+  }
+
+  // Verificacion: Excel de la fabrica, de 4 columnas (Codigo, Referencia, OEM
+  // y Precio). Cada fila se busca en la lista por codigo, referencia u OEM (lo
+  // primero que traiga) y solo llena el PVP Aprox.; no agrega ni quita
+  // productos.
+  const aplicarExcelFabrica = ({ rawRows, codigoIdx, refIdx, oemIdx, precioIdx }) => {
+    const texto = (row, idx) => (idx === -1 ? '' : String(row[idx] ?? '').trim())
+    const norm = (v) => String(v || '').trim().toLowerCase().replace(/^0+(?=.)/, '')
+    const lista = (v) => String(v || '').split(',').map(norm).filter(Boolean)
+    const current = detailsRef.current
+    const codigoDe = (item) => norm(item.producto?.codigo || item.codigo)
+    const refsDe = (item) => [item.producto?.referencia, ...(item.producto?.referencias || []).map((r) => r?.valor), item.referencia].map(norm).filter(Boolean)
+    const oemsDe = (item) => lista(getProductoOem(item.producto) || item.oem)
+    const filas = rawRows.slice(1)
+      .map((row, i) => ({ row, fila: i + 2 }))
+      .filter(({ row }) => row.some((c) => String(c ?? '').trim() !== ''))
+    const noEncontradas = []
+    const ambiguas = []
+    const porProducto = new Map()
+    const porValor = new Map()
+    filas.forEach(({ row, fila }) => {
+      const codigo = texto(row, codigoIdx)
+      const ref = texto(row, refIdx)
+      const oem = texto(row, oemIdx)
+      const etiqueta = codigo || ref || oem
+      if (!etiqueta) return
+      const clave = norm(codigo) ? `c:${norm(codigo)}` : norm(ref) ? `r:${norm(ref)}` : `o:${lista(oem).join(',')}`
+      porValor.set(clave, [...(porValor.get(clave) || []), { fila, etiqueta }])
+      let candidatos = []
+      if (norm(codigo)) candidatos = current.filter((d) => codigoDe(d) === norm(codigo))
+      if (!candidatos.length && norm(ref)) candidatos = current.filter((d) => refsDe(d).includes(norm(ref)))
+      if (!candidatos.length && lista(oem).length) candidatos = current.filter((d) => oemsDe(d).some((o) => lista(oem).includes(o)))
+      if (!candidatos.length) { noEncontradas.push({ fila, etiqueta }); return }
+      if (candidatos.length > 1) { ambiguas.push({ fila, etiqueta }); return }
+      const key = candidatos[0]._key
+      porProducto.set(key, [...(porProducto.get(key) || []), { fila, row, etiqueta }])
+    })
+    // Repetido: el mismo codigo/referencia/OEM en varias filas, o varias
+    // filas que caen en el mismo producto de la lista.
+    const repetidos = [...porValor.values()].filter((grupo) => grupo.length > 1)
+    porProducto.forEach((grupo) => {
+      if (grupo.length < 2) return
+      const yaAvisado = repetidos.some((g) => g.some((x) => grupo.some((y) => y.fila === x.fila)))
+      if (!yaAvisado) repetidos.push(grupo)
+    })
+    if (repetidos.length) { avisarRepetidos(repetidos); return }
+    const precios = new Map()
+    porProducto.forEach(([{ row }], key) => {
+      const precio = parseFloat(texto(row, precioIdx).replace(',', '.'))
+      if (!isNaN(precio) && precio >= 0) precios.set(key, String(Math.round(precio * 100)))
+    })
+    setDetails((prev) => prev.map((item) => (precios.has(item._key) ? { ...item, precio_estimado: precios.get(item._key) } : item)))
+    const notas = [`${precios.size} precio${precios.size !== 1 ? 's' : ''} actualizado${precios.size !== 1 ? 's' : ''}`]
+    if (noEncontradas.length) notas.push(`no están en la lista: filas ${unirFilas(noEncontradas.map((x) => `${x.fila} (${x.etiqueta})`))}`)
+    if (ambiguas.length) notas.push(`coinciden con varios productos: filas ${unirFilas(ambiguas.map((x) => `${x.fila} (${x.etiqueta})`))}`)
+    toastRef.current?.show({
+      severity: noEncontradas.length || ambiguas.length ? 'warn' : 'success',
+      summary: 'Precios cargados',
+      detail: `${notas.join('; ')}. Recuerda guardar.`,
+      life: noEncontradas.length || ambiguas.length ? 9000 : 5000,
+    })
+  }
+
   const handleUploadVerificarExcel = async (file) => {
     if (!file) return
     if (!file.name.toLowerCase().endsWith('.xlsx')) {
@@ -7369,12 +7448,33 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const cantIdx = isSugerencia ? cantSugIdx : headerIdx(isVerificar ? 'Cant. aprox.' : 'Cant. conf.')
       const casaPrecioIdx = isSugerencia ? headerIdx('Casa PVP APROX.', 'Casa PVP', 'Casa del precio') : -1
       const comentIdx = headerIdx('Comentario')
+      if (isVerificar && cantIdx === -1) {
+        const precioFabIdx = headerIdx('Precio', 'PVP APROX.', 'PVP', 'Precio est.')
+        if (precioFabIdx === -1 || (codigoIdx === -1 && refIdx === -1 && oemIdx === -1)) {
+          toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El Excel debe ser el descargado de esta verificación o traer las columnas Código, Referencia u OEM, y Precio.', life: 6000 })
+          return
+        }
+        aplicarExcelFabrica({ rawRows, codigoIdx, refIdx, oemIdx, precioIdx: precioFabIdx })
+        return
+      }
       if (codigoIdx === -1 || precioIdx === -1 || cantIdx === -1) {
         toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El archivo no corresponde a esta importación. Descarga el Excel desde este modal.', life: 4500 })
         return
       }
       const cellText = (row, idx) => (idx === -1 ? '' : String(row[idx] ?? '').trim())
       const dataRows = rawRows.slice(1).filter((row) => row.some((c) => String(c ?? '').trim() !== ''))
+      // Numero de fila en el Excel (la 1 es el encabezado).
+      const filaDe = new Map(rawRows.slice(1).map((row, i) => [row, i + 2]))
+      const porCodigo = new Map()
+      dataRows.forEach((row) => {
+        const codigo = cellText(row, codigoIdx)
+        const codigoLc = codigo.toLowerCase() === 'sin catálogo' ? '' : codigo.toLowerCase()
+        const clave = codigoLc ? `c:${codigoLc}` : cellText(row, keyIdx) ? `k:${cellText(row, keyIdx)}` : ''
+        if (!clave) return
+        porCodigo.set(clave, [...(porCodigo.get(clave) || []), { fila: filaDe.get(row), etiqueta: codigo || cellText(row, refIdx) || cellText(row, oemIdx) }])
+      })
+      const repetidosExcel = [...porCodigo.values()].filter((grupo) => grupo.length > 1)
+      if (repetidosExcel.length) { avisarRepetidos(repetidosExcel); return }
 
       // Las filas del Excel se pueden reordenar (o filtrar/ordenar por
       // cualquier columna) y se pueden agregar productos nuevos: cada fila se
@@ -7401,8 +7501,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           matched.push({ item, row })
           return
         }
-        if (fileCodeLc && current.some((d) => codeOf(d) === fileCodeLc)) { repetidos.push(fileCode); return }
-        if (fileCodeLc && nuevos.some((n) => n.codigo.toLowerCase() === fileCodeLc)) { repetidos.push(fileCode); return }
+        if (fileCodeLc && (current.some((d) => codeOf(d) === fileCodeLc) || nuevos.some((n) => n.codigo.toLowerCase() === fileCodeLc))) {
+          repetidos.push([{ fila: filaDe.get(row), etiqueta: fileCode }])
+          return
+        }
         const nombre = cellText(row, nombreIdx)
         const oem = cellText(row, oemIdx)
         const referencia = cellText(row, refIdx)
@@ -7444,12 +7546,20 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
             const id = String(found.matched_producto_id)
             const enLista = current.find((d) => String(d.producto?.id ?? '') === id)
             if (enLista) {
-              if (used.has(enLista._key)) { repetidos.push(enLista.producto.codigo || id); return }
+              if (used.has(enLista._key)) {
+                const otra = matched.find((m) => m.item._key === enLista._key)
+                repetidos.push([{ fila: filaDe.get(otra?.row), etiqueta: enLista.producto?.codigo || id }, { fila: filaDe.get(n.row), etiqueta: enLista.producto?.codigo || id }])
+                return
+              }
               used.add(enLista._key)
               matched.push({ item: enLista, row: n.row })
               return
             }
-            if (resolved.some((o) => String(o.item.producto?.id ?? '') === id)) { repetidos.push(found.matched_producto_codigo || id); return }
+            const otraNueva = resolved.find((o) => String(o.item.producto?.id ?? '') === id)
+            if (otraNueva) {
+              repetidos.push([{ fila: filaDe.get(otraNueva.row), etiqueta: found.matched_producto_codigo || id }, { fila: filaDe.get(n.row), etiqueta: found.matched_producto_codigo || id }])
+              return
+            }
             resolved.push({
               ...n,
               item: {
@@ -7537,6 +7647,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         if (item.precio_estimado) return item
         return { ...item, precio_estimado: String(Math.round(Number(precioJp) * 100)), precio_casa: casa || '' }
       }
+      if (repetidos.length) { avisarRepetidos(repetidos); return }
       const ausentes = current.filter((item) => !used.has(item._key))
       const nuevosQuitados = isVerificar ? ausentes.filter((item) => !item.quitado).length : 0
 
@@ -7562,9 +7673,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       if (nuevos.length > 0) notes.push(`${nuevos.length} producto(s) nuevo(s) agregado(s)`)
       if (isSugerencia && ausentes.length > 0) notes.push(`${ausentes.length} producto(s) que no venían en el Excel se sacaron del listado`)
       if (nuevosQuitados > 0) notes.push(`${nuevosQuitados} producto(s) que no venían en el Excel quedaron quitados (en rojo)`)
-      if (repetidos.length > 0) notes.push(`se ignoraron filas repetidas: ${[...new Set(repetidos)].join(', ')}`)
       toastRef.current?.show({
-        severity: repetidos.length > 0 || nuevosQuitados > 0 || (isSugerencia && ausentes.length > 0) ? 'warn' : 'success',
+        severity: nuevosQuitados > 0 || (isSugerencia && ausentes.length > 0) ? 'warn' : 'success',
         summary: 'Datos cargados',
         detail: `Tabla actualizada desde Excel${notes.length ? ` (${notes.join('; ')})` : ''}. Recuerda guardar.`,
         life: 5000,
