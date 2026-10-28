@@ -995,14 +995,17 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             )
         # Los códigos nuevos se revisan aquí porque es el último paso donde
         # todavía se pueden cambiar (al importar se vuelven a revisar).
+        vigentes = instance.detalles.filter(quitado=False)
         invalidos = ImportacionSerializer.validar_codigos_nuevos(
-            instance.detalles.filter(quitado=False, producto__isnull=True).values_list("codigo", "nombre")
+            vigentes.filter(producto__isnull=True).values_list("codigo", "nombre"),
+            vigentes.filter(producto__isnull=False).values_list("producto__codigo", flat=True),
         )
         if invalidos:
             return Response(
                 ImportacionSerializer.codigos_invalidos_response_data(invalidos),
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        ImportacionSerializer.vincular_codigos_existentes(vigentes.filter(producto__isnull=True))
         # Antes de sacar los quitados se guarda que se pidio y que no, para
         # poder verlo siempre (los quitados ya no siguen en la importacion).
         instance.historial_verificacion = [
@@ -1092,9 +1095,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             if not detalle.producto_id and confirmed and confirmed.get("codigo") is not None:
                 detalle.codigo = str(confirmed["codigo"]).strip()
         invalidos = ImportacionSerializer.validar_codigos_nuevos(
-            (detalle.codigo, detalle.nombre)
-            for detalle in detalles
-            if not detalle.producto_id and f"sc_{detalle.id}" in selected_keys
+            [
+                (detalle.codigo, detalle.nombre)
+                for detalle in detalles
+                if not detalle.producto_id and f"sc_{detalle.id}" in selected_keys
+            ],
+            [
+                detalle.producto.codigo
+                for detalle in detalles
+                if detalle.producto_id and str(detalle.producto_id) in selected_keys
+            ],
         )
         if invalidos:
             return Response(

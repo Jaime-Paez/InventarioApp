@@ -252,36 +252,64 @@ class SugerenciaProductosNuevosTests(TestCase):
                 "detalles": [
                     {"producto_id": self.existente.id, "cantidad": 2},
                     {"codigo": "NUEVO-CI", "nombre": "Filtro nuevo", "cantidad": 3},
-                    {"codigo": "ex-1", "nombre": "Faro", "cantidad": 1},
                 ],
             },
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)
         self.assertFalse(Producto.objects.filter(codigo="NUEVO-CI").exists())
-        # Un código nuevo que ya existe en el catálogo no se vincula solo: al
-        # pedir la confirmación se avisa para cambiarlo.
-        self.assertIsNone(importacion.detalles.get(codigo="ex-1").producto_id)
-        response = self.client.post(f"{BASE_URL}/{importacion.id}/confirmar/")
+
+    def test_codigo_existente_se_vincula_a_ese_producto(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        self._pedir_cotizacion(importacion)
+        otro = Producto.objects.create(codigo="OT-1", nombre="Bomba", precio=Decimal("9"))
+        response = self.client.patch(
+            f"{BASE_URL}/{importacion.id}/",
+            {
+                "detalles": [
+                    {"producto_id": self.existente.id, "cantidad": 2},
+                    {"codigo": "ot-1", "nombre": "Bomba", "cantidad": 1},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(importacion.detalles.get(codigo="ot-1").producto_id, otro.id)
+        self.assertEqual(Producto.objects.filter(codigo__iexact="OT-1").count(), 1)
+
+    def test_codigo_de_un_producto_que_ya_esta_en_la_lista_no_se_duplica(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        self._pedir_cotizacion(importacion)
+        response = self.client.patch(
+            f"{BASE_URL}/{importacion.id}/",
+            {
+                "detalles": [
+                    {"producto_id": self.existente.id, "cantidad": 2},
+                    {"codigo": "ex-1", "nombre": "Faro", "cantidad": 1},
+                ],
+            },
+            format="json",
+        )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual([row["codigo"] for row in response.data["codigos_invalidos"]], ["ex-1"])
-        self.assertIn("ya existe en el catálogo (Faro)", response.data["codigos_invalidos"][0]["motivo"])
-        importacion.refresh_from_db()
-        self.assertEqual(importacion.estado, Importacion.ESTADO_COTIZACION)
+        self.assertIn("EX-1", str(response.data))
+        self.assertEqual(importacion.detalles.filter(producto=self.existente).count(), 1)
 
     def test_confirmar_avisa_todos_los_codigos_nuevos_con_problema(self):
         importacion = self._crear(cantidad_nuevo=3)
         self._pedir_cotizacion(importacion)
         importacion.detalles.create(codigo="nuevo-ci", nombre="Otro", referencia="R2", cantidad=1)
         importacion.detalles.create(codigo="X" * 81, nombre="Largo", referencia="R3", cantidad=1)
+        # Mismo código que un producto del catálogo que ya está en la lista.
+        importacion.detalles.create(codigo="ex-1", nombre="Faro", referencia="R5", cantidad=1)
         # Los quitados no se revisan: no se van a crear.
         importacion.detalles.create(codigo="EX-1", nombre="Faro", referencia="R4", cantidad=1, quitado=True)
         response = self.client.post(f"{BASE_URL}/{importacion.id}/confirmar/")
         self.assertEqual(response.status_code, 400)
         motivos = {row["codigo"]: row["motivo"] for row in response.data["codigos_invalidos"]}
-        self.assertEqual(set(motivos), {"NUEVO-CI", "X" * 81})
+        self.assertEqual(set(motivos), {"NUEVO-CI", "X" * 81, "ex-1"})
         self.assertIn("repetido 2 veces", motivos["NUEVO-CI"])
         self.assertIn("más de 80 caracteres", motivos["X" * 81])
+        self.assertIn("ya está en esta importación", motivos["ex-1"])
         self.assertFalse(Producto.objects.filter(codigo__iexact="NUEVO-CI").exists())
 
     def test_confirmar_guarda_los_quitados_que_manda_el_guardado(self):
@@ -350,14 +378,13 @@ class SugerenciaProductosNuevosTests(TestCase):
         self.assertTrue(producto.casas_comerciales.filter(pk=self.casa.pk).exists())
         self.assertEqual(importacion.detalles.get(codigo="NUEVO-CI").producto_id, producto.id)
 
-    def test_importar_no_crea_ninguno_si_un_codigo_ya_existe(self):
+    def test_importar_no_crea_ninguno_si_un_codigo_esta_repetido(self):
         importacion = self._crear(cantidad_nuevo=3)
         self._pedir_cotizacion(importacion)
         otro = importacion.detalles.create(codigo="OTRO-CI", nombre="Otro", referencia="R2", cantidad=1)
+        repetido = importacion.detalles.create(codigo="nuevo-ci", nombre="Repetido", referencia="R3", cantidad=1)
         detalle_nuevo = importacion.detalles.get(codigo="NUEVO-CI")
-        # Alguien crea ese código en el catálogo mientras tanto.
-        Producto.objects.create(codigo="NUEVO-CI", nombre="Creado aparte", precio=Decimal("5"))
-        seleccionados = [f"sc_{detalle_nuevo.id}", f"sc_{otro.id}"]
+        seleccionados = [f"sc_{detalle_nuevo.id}", f"sc_{otro.id}", f"sc_{repetido.id}"]
         response = self.client.post(
             f"{BASE_URL}/{importacion.id}/importar/",
             {"numero_factura": "F-1", "detalles_seleccionados": seleccionados},
@@ -368,7 +395,7 @@ class SugerenciaProductosNuevosTests(TestCase):
         self.assertFalse(Producto.objects.filter(codigo="OTRO-CI").exists())
         importacion.refresh_from_db()
         self.assertEqual(importacion.numero_factura, "")
-        self.assertEqual(importacion.detalles.count(), 3)
+        self.assertEqual(importacion.detalles.count(), 4)
 
         # Corregido en la confirmación, se importa con el código nuevo.
         response = self.client.post(
@@ -376,13 +403,22 @@ class SugerenciaProductosNuevosTests(TestCase):
             {
                 "numero_factura": "F-1",
                 "detalles_seleccionados": seleccionados,
-                "detalles": [{"detalle_id": detalle_nuevo.id, "codigo": "NUEVO-CI-2"}],
+                "detalles": [{"detalle_id": repetido.id, "codigo": "NUEVO-CI-2"}],
             },
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertTrue(Producto.objects.filter(codigo="NUEVO-CI-2").exists())
-        self.assertTrue(Producto.objects.filter(codigo="OTRO-CI").exists())
+        for codigo in ("NUEVO-CI", "NUEVO-CI-2", "OTRO-CI"):
+            self.assertTrue(Producto.objects.filter(codigo=codigo).exists(), codigo)
+
+    def test_importar_vincula_un_codigo_creado_mientras_tanto(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        self._pedir_cotizacion(importacion)
+        detalle_nuevo = importacion.detalles.get(codigo="NUEVO-CI")
+        creado = Producto.objects.create(codigo="NUEVO-CI", nombre="Creado aparte", precio=Decimal("5"))
+        self._importar(importacion, [f"sc_{detalle_nuevo.id}"])
+        self.assertEqual(Producto.objects.filter(codigo__iexact="NUEVO-CI").count(), 1)
+        self.assertEqual(importacion.detalles.get(codigo="NUEVO-CI").producto_id, creado.id)
 
 
 class ExcelRecomendacionesPorReferenciaTests(TestCase):

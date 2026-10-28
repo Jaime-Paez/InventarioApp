@@ -8305,7 +8305,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     toastRef.current?.show({
       severity: 'warn',
       summary: 'Códigos nuevos repetidos',
-      detail: `${invalidos.length} código${invalidos.length !== 1 ? 's' : ''} nuevo${invalidos.length !== 1 ? 's' : ''} no se ${invalidos.length !== 1 ? 'pueden' : 'puede'} crear: cámbialos por otro código (están marcados en la tabla).`,
+      detail: `${invalidos.length} código${invalidos.length !== 1 ? 's' : ''} nuevo${invalidos.length !== 1 ? 's' : ''} no se ${invalidos.length !== 1 ? 'pueden' : 'puede'} crear: cambia el código o quita la fila (están marcados en la tabla).`,
       life: 6000,
     })
     const motivos = new Set(invalidos.map((row) => String(row.codigo || '').trim().toUpperCase()))
@@ -9034,7 +9034,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                           <strong>
                             {avisoCodigosInvalidos.length} código{avisoCodigosInvalidos.length !== 1 ? 's' : ''} nuevo{avisoCodigosInvalidos.length !== 1 ? 's' : ''} no se {avisoCodigosInvalidos.length !== 1 ? 'pueden' : 'puede'} crear.
                           </strong>{' '}
-                          No puede haber códigos repetidos: cámbialos por otro código (marcados en rojo).
+                          Un producto no puede ir dos veces en la importación: cambia el código o quita la fila (marcados en rojo).
                           <span className="imp-codigos-invalidos__lista">
                             {avisoCodigosInvalidos.map((row) => (
                               <span key={row.codigo}><strong>{row.codigo}</strong>: {row.motivo}</span>

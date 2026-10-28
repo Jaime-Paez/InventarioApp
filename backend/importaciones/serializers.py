@@ -1,7 +1,6 @@
 import re
 
 from django.db import transaction
-from django.db.models.functions import Upper
 
 from rest_framework import serializers
 
@@ -241,7 +240,13 @@ class ImportacionSerializer(serializers.ModelSerializer):
     def validate_detalles(self, value):
         if not value:
             raise serializers.ValidationError("Agrega al menos un producto a la importacion.")
-        productos = [item["producto"] for item in value if item.get("producto")]
+        # Fuera de la sugerencia, un código escrito que ya existe es ese mismo
+        # producto: se vincula aquí para que el chequeo de repetidos de abajo
+        # lo vea si ese producto ya está en la lista.
+        if self.instance is not None and self.instance.estado != Importacion.ESTADO_BORRADOR:
+            for item in value:
+                self._vincular_producto_existente(item)
+        productos =[item["producto"] for item in value if item.get("producto")]
         codigo_by_id = {producto.id: producto.codigo for producto in productos}
         conteo_by_id = {}
         for producto in productos:
@@ -315,26 +320,23 @@ class ImportacionSerializer(serializers.ModelSerializer):
         item["producto"] = producto
 
     @staticmethod
-    def validar_codigos_nuevos(nuevos):
-        """Los códigos nuevos no pueden repetirse: antes de crear (o de pedir
-        la confirmación) se revisan todos de una vez y se devuelve cada uno
-        con su motivo, para no crear ninguno si alguno está mal. `nuevos` son
-        los (codigo, nombre) de los detalles sin producto que se van a crear.
-        Un código que ya existe en el catálogo no se vincula solo: se avisa
-        para cambiarlo."""
+    def validar_codigos_nuevos(nuevos, codigos_en_importacion=()):
+        """Un producto no puede quedar dos veces en la importación: antes de
+        crear (o de pedir la confirmación) se revisan todos los códigos nuevos
+        de una vez y se devuelve cada uno con su motivo, para no crear ninguno
+        si alguno está mal. `nuevos` son los (codigo, nombre) de los detalles
+        sin producto que se van a crear; `codigos_en_importacion`, los códigos
+        de los productos del catálogo que ya están en ella. Un código que ya
+        existe en el catálogo es ese mismo producto y se vincula (no es error)
+        salvo que ese producto ya esté en la importación."""
         max_codigo = Producto._meta.get_field("codigo").max_length
         max_nombre = Producto._meta.get_field("nombre").max_length
+        en_importacion = {str(c or "").strip().upper() for c in codigos_en_importacion}
         nuevos = [(str(c or "").strip(), str(n or "").strip()) for c, n in nuevos]
         nuevos = [(c, n) for c, n in nuevos if c]
         conteo = {}
         for codigo, _ in nuevos:
             conteo[codigo.upper()] = conteo.get(codigo.upper(), 0) + 1
-        existentes = {
-            upper: nombre
-            for upper, nombre in Producto.objects.annotate(codigo_upper=Upper("codigo"))
-            .filter(codigo_upper__in=list(conteo))
-            .values_list("codigo_upper", "nombre")
-        }
         invalidos = []
         vistos = set()
         for codigo, nombre in nuevos:
@@ -343,8 +345,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
                 continue
             vistos.add(clave)
             motivos = []
-            if clave in existentes:
-                motivos.append(f"ya existe en el catálogo ({existentes[clave]})")
+            if clave in en_importacion:
+                motivos.append("ese producto ya está en esta importación")
             if conteo[clave] > 1:
                 motivos.append(f"está repetido {conteo[clave]} veces en esta importación")
             if len(codigo) > max_codigo:
@@ -359,9 +361,32 @@ class ImportacionSerializer(serializers.ModelSerializer):
     def codigos_invalidos_response_data(invalidos):
         lista = "; ".join(f"{row['codigo']}: {row['motivo']}" for row in invalidos)
         return {
-            "detail": f"Hay códigos nuevos que no se pueden crear, cámbialos por otro código: {lista}.",
+            "detail": f"Hay códigos nuevos repetidos, cámbialos o quita la fila: {lista}.",
             "codigos_invalidos": invalidos,
         }
+
+    @staticmethod
+    def _vincular_producto_existente(item):
+        """Un código escrito que ya existe en el catálogo es ese mismo
+        producto: se vincula, sin crear ni modificar nada."""
+        if item.get("producto") is not None:
+            return
+        codigo = str(item.get("codigo") or "").strip()
+        if codigo:
+            item["producto"] = Producto.objects.filter(codigo__iexact=codigo).first()
+
+    @classmethod
+    def vincular_codigos_existentes(cls, detalles):
+        """Los detalles sin producto cuyo código ya existe quedan vinculados a
+        ese producto (p. ej. si alguien lo creó en el catálogo mientras tanto)."""
+        for detalle in detalles:
+            if detalle.producto_id or not (detalle.codigo or "").strip():
+                continue
+            item = {"producto": None, "codigo": detalle.codigo}
+            cls._vincular_producto_existente(item)
+            if item["producto"] is not None:
+                detalle.producto = item["producto"]
+                detalle.save(update_fields=["producto"])
 
     def crear_productos_pendientes(self, importacion):
         """Al importar: los detalles con codigo que todavia no tienen producto
