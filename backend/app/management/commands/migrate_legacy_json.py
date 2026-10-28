@@ -88,7 +88,9 @@ JSON_PATH = Path(r"C:\Users\PC\Documents\GitHub\InventarioApp\jpaezdemo-default-
 
 # Marca (JSON viejo) -> como resolver la CasaComercial ya existente.
 MARCA_OVERRIDES = {
-    "COMPRA LOCAL": ("nombre", "TECNOVA"),
+    # El JSON viejo no distingue Tecnova: toda "COMPRA LOCAL" va a la casa
+    # COMPRA LOCAL (Tecnova se agrega aparte a los que tuvieron pedido).
+    "COMPRA LOCAL": ("nombre", "COMPRA LOCAL"),
     "AFP": ("codigo", "AFP"),
     "PCX": ("codigo", "PX"),
     "COMPRA LOCAL MAVESA": ("codigo", "CLO"),
