@@ -5152,13 +5152,16 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                   })()}
                                 </td>
                                 <td style={{ padding: '7px 12px' }}>
-                                  {row.oem ? (
+                                  {/* Sin OEM igual va el ícono si hay coincidencias (por
+                                      referencia, p. ej. un producto agregado a mano), para
+                                      ver sus descripciones y precios. */}
+                                  {row.oem || (row.oem_matches || []).length ? (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                                       <span
-                                        title={row.oem}
+                                        title={row.oem || undefined}
                                         style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                       >
-                                        {row.oem}
+                                        {row.oem || '—'}
                                       </span>
                                       <Info
                                         size={13}
