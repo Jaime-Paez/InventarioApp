@@ -918,8 +918,6 @@ function CreateProducto({
     const next = toggleCasaSelection(selectedCasas, supplier)
     setSelectedCasas(next)
     setFormData((prev) => ({ ...prev, casasIds: next.map((casa) => String(casa.id)) }))
-    setCasaSearch('')
-    setShowCasaDropdown(false)
   }
 
   const alternoIdSet = useMemo(

@@ -619,7 +619,12 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                     list(matched.referencias.values_list("valor", flat=True)) if matched else []
                 ),
                 "matched_producto_precio": float(matched.precio) if matched and matched.precio is not None else None,
-                "oem_matches": oem_matches,
+                # Los productos de COMPRA LOCAL van primero: de la primera
+                # coincidencia salen el codigo sugerido y el PVP JP.
+                "oem_matches": sorted(
+                    oem_matches,
+                    key=lambda m: "COMPRA LOCAL" not in (m.get("casas_comerciales_nombres") or []),
+                ),
                 "sucursal_quantities": suc_quantities,
                 "conflicto_casa": conflicto_casa,
                 "conflicto_casa_nombre": conflicto_casa_nombre,
