@@ -440,6 +440,16 @@ class ProductoSerializer(serializers.ModelSerializer):
             casas_comerciales = list(self.instance.casas_comerciales.all())
         if not casas_comerciales:
             errors["casas_comerciales_ids"] = ["Debe seleccionar al menos una casa comercial."]
+        elif (
+            "casas_comerciales" in attrs
+            and len(casas_comerciales) > 1
+            and not any(casa.tipo == CasaComercial.TIPO_LOCAL for casa in casas_comerciales)
+        ):
+            # Varias casas solo para productos de compra local (p. ej.
+            # COMPRA LOCAL + TECNOVA); uno de importacion lleva una sola.
+            errors["casas_comerciales_ids"] = [
+                "Solo los productos de compra local pueden tener varias casas comerciales."
+            ]
 
         if errors:
             raise serializers.ValidationError(errors)
