@@ -7462,65 +7462,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     modalRestoreRef.current = null
   }, [open, imp])
 
-  // Sugerencias creadas antes de que se guardara la coincidencia: al abrirlas
-  // se buscan sus productos sin vincular igual que en la vista previa del
-  // Excel, para mostrar el amarillo (solo por OEM), el naranja (por
-  // referencia o codigo en otra casa) y los contadores. Solo marca: no
-  // vincula ni cambia codigos; se guarda con el proximo "Guardar cambios".
-  const [coincidenciasBuscando, setCoincidenciasBuscando] = useState(false)
-  useEffect(() => {
-    if (!open || imp?.estado !== 'borrador' || !selectedCasa?.id || !token) return undefined
-    const pendientes = (initialDetailsRef.current || []).filter((item) => (
-      !item.producto?.id && !item.coincidencia && (String(item.oem || '').trim() || String(item.referencia || '').trim())
-    ))
-    if (!pendientes.length) return undefined
-    let cancelled = false
-    setCoincidenciasBuscando(true)
-    ;(async () => {
-      try {
-        const xlsxMod = await import('xlsx')
-        const xlsx = xlsxMod?.default ?? xlsxMod
-        // Sin el codigo: el guardado puede ser uno ya sugerido, y con codigo
-        // la busqueda no vuelve a sugerir por OEM.
-        const aoa = [
-          ['CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCION', 'CANTIDAD'],
-          ...pendientes.map((item) => ['', item.referencia, item.oem, item.nombre, Number(item.cantidad) || '']),
-        ]
-        const book = xlsx.utils.book_new()
-        xlsx.utils.book_append_sheet(book, xlsx.utils.aoa_to_sheet(aoa), 'Pendientes')
-        const out = xlsx.write(book, { bookType: 'xlsx', type: 'array' })
-        const lookup = await runParseExcelJob({ file: new Blob([out]), fileName: 'pendientes.xlsx', casaId: selectedCasa.id, token, isCancelled: () => cancelled })
-        if (cancelled || !lookup) return
-        const byFila = new Map((lookup.rows || []).map((r) => [r.fila_excel, enrichParsedRow(r, selectedCasa.codigo)]))
-        const cambios = new Map()
-        pendientes.forEach((item, idx) => {
-          const found = byFila.get(idx + 2)
-          if (!found || found.matched_producto_id) return
-          const coincidencia = found.conflicto_casa ? 'otra_casa' : found.codigo_sugerido ? 'oem' : ''
-          if (!coincidencia) return
-          const precio = found.conflicto_precio ?? found.sugerido_precio ?? null
-          cambios.set(item._key, {
-            coincidencia,
-            coincidencia_precio: precio,
-            _sugeridoDesde: coincidencia === 'oem' ? (found.sugerido_desde || '') : '',
-            _sugeridoCasa: found.conflicto_casa ? (found.conflicto_casa_nombre || '') : (found.sugerido_casa || ''),
-          })
-        })
-        if (!cambios.size) return
-        const aplicar = (list) => list.map((d) => (cambios.has(d._key) && !d.coincidencia ? { ...d, ...cambios.get(d._key) } : d))
-        // Tambien en la copia inicial: solo es como se ve, no un cambio del
-        // usuario, asi que no pide confirmar al cerrar.
-        initialDetailsRef.current = aplicar(initialDetailsRef.current || [])
-        setDetails(aplicar)
-      } catch (error) {
-        console.error(error)
-      } finally {
-        if (!cancelled) setCoincidenciasBuscando(false)
-      }
-    })()
-    return () => { cancelled = true; setCoincidenciasBuscando(false) }
-  }, [open, imp, selectedCasa?.id, selectedCasa?.codigo, token])
-
   useEffect(() => {
     if (!open) return undefined
     const handleMouseDown = (event) => {
@@ -9027,12 +8968,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         })}
                         onQuitarTodos={canEdit ? () => setDetails((prev) => prev.filter((d) => d.producto?.id || d.coincidencia)) : undefined}
                       />
-                    )}
-                    {isSugerencia && coincidenciasBuscando && (
-                      <p style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
-                        <i className="pi pi-spin pi-spinner" aria-hidden="true" />
-                        Buscando coincidencias por OEM y referencia de los productos sin catálogo...
-                      </p>
                     )}
 
                     {details.length > 0 && (
