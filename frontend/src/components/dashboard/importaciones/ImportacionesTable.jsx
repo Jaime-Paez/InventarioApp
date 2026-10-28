@@ -9058,17 +9058,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         )}
                       </ImportProductSearch>
                     )}
-                    {incompletos.length > 0 && (
-                      <div className="imp-incompletos-aviso" role="status">
-                        <i className="pi pi-exclamation-triangle" aria-hidden="true" />
-                        <span>
-                          <strong>
-                            {incompletos.length} producto{incompletos.length !== 1 ? 's' : ''} con datos incompletos.
-                          </strong>{' '}
-                          Completa el código, la referencia y la descripción (marcados en rojo) para poder pedir la cotización. El OEM y la cantidad pueden quedar vacíos.
-                        </span>
-                      </div>
-                    )}
                     {avisoCodigosInvalidos.length > 0 && (
                       <div className="imp-incompletos-aviso" role="alert">
                         <i className="pi pi-exclamation-triangle" aria-hidden="true" />
