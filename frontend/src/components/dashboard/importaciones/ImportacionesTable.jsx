@@ -7764,22 +7764,29 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Agrega al menos un producto.', life: 4000 })
       return
     }
-    // En la sugerencia (borrador) la cantidad todavia no es obligatoria: se
-    // exige al pasarla a verificacion (Pedir cotizacion) y despues.
+    // En la sugerencia (borrador) y en la verificacion la cantidad todavia no
+    // es obligatoria (solo no puede ser negativa): se exige al pedir la
+    // confirmacion y despues.
+    const cantidadOpcional = imp?.estado === 'borrador' || imp?.estado === 'cotizacion'
     const badKeys = new Set(
-      imp?.estado === 'borrador'
-        ? []
-        : itemsToSubmit.filter((item) => {
-          // Lo agregado en la verificación puede guardarse sin cantidad: se
-          // exige al pedir la confirmación.
-          if (item.quitado || esAgregadoVerificacion(item)) return false
-          const n = Number(item.cantidad || 0)
-          return !Number.isFinite(n) || n <= 0
-        }).map((item) => item._key)
+      itemsToSubmit.filter((item) => {
+        if (item.quitado) return false
+        const n = Number(item.cantidad || 0)
+        if (!Number.isFinite(n) || n < 0) return true
+        // Lo agregado en la verificación puede guardarse sin cantidad: se
+        // exige al pedir la confirmación.
+        if (cantidadOpcional || esAgregadoVerificacion(item)) return false
+        return n <= 0
+      }).map((item) => item._key)
     )
     if (badKeys.size > 0) {
       setInvalidQtyKeys(badKeys)
-      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Todas las cantidades deben ser mayores a cero.', life: 4000 })
+      toastRef.current?.show({
+        severity: 'error',
+        summary: 'Error',
+        detail: cantidadOpcional ? 'Las cantidades no pueden ser negativas.' : 'Todas las cantidades deben ser mayores a cero.',
+        life: 4000,
+      })
       return
     }
     const normalizedDetails = itemsToSubmit.map((item) => {
