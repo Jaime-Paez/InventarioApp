@@ -68,7 +68,7 @@ const centavosToText = (centsStr) => {
   return (parseInt(digits, 10) / 100).toFixed(2)
 }
 
-function PrecioCentavosInput({ value, onChange, disabled, title, onDoubleClick }) {
+function PrecioCentavosInput({ value, onChange, disabled, title, onDoubleClick, invalid = false }) {
   const [draft, setDraft] = useState(null)
   return (
     <input
@@ -77,6 +77,7 @@ function PrecioCentavosInput({ value, onChange, disabled, title, onDoubleClick }
       disabled={disabled}
       title={title}
       placeholder="0.00"
+      style={invalid ? { borderColor: '#ef4444' } : undefined}
       value={draft ?? centavosToText(value)}
       onFocus={(e) => {
         const text = centavosToText(value)
@@ -6363,12 +6364,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const [details, setDetails] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [invalidQtyKeys, setInvalidQtyKeys] = useState(new Set())
+  // Verificacion: productos a los que les falta PVP Aprox. o Cant. aprox. al
+  // pedir la confirmacion (se marcan en rojo hasta completarlos).
+  const [faltanConfirmar, setFaltanConfirmar] = useState(new Set())
   const [codigosInvalidos, setCodigosInvalidos] = useState([])
   const [showAceptadosView, setShowAceptadosView] = useState(false)
-  const [aceptadosItems, setAceptadosItems] = useState([])
-  const [aceptadosLoading, setAceptadosLoading] = useState(false)
-  const [aceptadosSelected, setAceptadosSelected] = useState(new Set())
-  const [aceptadosSearch, setAceptadosSearch] = useState('')
   const [aceptadosCount, setAceptadosCount] = useState(null)
   const [showImportarModal, setShowImportarModal] = useState(false)
   const [facturaInput, setFacturaInput] = useState('')
@@ -6428,9 +6428,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const [showVerificarExcelDropdown, setShowVerificarExcelDropdown] = useState(false)
   const [showSaveOnCloseModal, setShowSaveOnCloseModal] = useState(false)
   const [showNuevoProductoView, setShowNuevoProductoView] = useState(false)
-  const [nuevoProductoDraft, setNuevoProductoDraft] = useState({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
-  const [nuevoProductoErrors, setNuevoProductoErrors] = useState({})
-  const [nuevoProductoExisting, setNuevoProductoExisting] = useState({ codigo: null, referencia: null })
 
   useCloseDropdownsOnTabSwitch(
     useCallback(() => {
@@ -6453,8 +6450,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const productTimerRef = useRef(null)
   const productSearchIdRef = useRef(0)
   const productDropdownRef = useRef(null)
-  const nuevoProductoCheckTimerRef = useRef(null)
-  const nuevoProductoNotifiedRef = useRef({ codigoId: null, referenciaId: null })
   const isFirstOpenRef = useRef(true)
   const detailsRef = useRef([])
   detailsRef.current = details
@@ -6658,10 +6653,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     setDetailDraft({ producto: null, cantidad: '', comentario: '' })
     setActiveTab('general')
     setInvalidQtyKeys(new Set())
+    setFaltanConfirmar(new Set())
     setShowAceptadosView(false)
-    setAceptadosItems([])
-    setAceptadosSelected(new Set())
-    setAceptadosSearch('')
     setIsMaximized(false)
     modalRestoreRef.current = null
   }, [open, imp])
@@ -6687,32 +6680,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       .catch(() => { if (!cancelled) setAceptadosCount(null) })
     return () => { cancelled = true }
   }, [open, selectedCasa?.id, token])
-
-  useEffect(() => {
-    if (!showAceptadosView || !selectedCasa?.id || !token) return undefined
-    setAceptadosSelected(new Set())
-    setAceptadosSearch('')
-    setAceptadosLoading(true)
-    let cancelled = false
-    authFetch(`${API_URL}/solicitudes/solicitudes/aceptados-por-casa/?casa_comercial_id=${selectedCasa.id}`, {}, token)
-      .then((r) => r.ok ? r.json() : Promise.reject())
-      .then((payload) => {
-        if (!cancelled) {
-          const loaded = parseApiList(payload)
-          setAceptadosItems(loaded)
-          setAceptadosSelected(new Set(
-            loaded
-              .filter((item) => item.producto_id
-                ? alreadyAddedIds.has(String(item.producto_id))
-                : alreadyAddedSolIds.has(String(item.solicitud_id)))
-              .map((item) => item.solicitud_id)
-          ))
-        }
-      })
-      .catch(() => { if (!cancelled) setAceptadosItems([]) })
-      .finally(() => { if (!cancelled) setAceptadosLoading(false) })
-    return () => { cancelled = true }
-  }, [showAceptadosView, selectedCasa?.id, token])
 
   const searchProducts = useCallback((term) => {
     if (!token) return
@@ -6774,6 +6741,102 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     setDetailDraft({ producto: null, cantidad: '', comentario: '' })
   }
 
+  // Verificacion: "+ Agregar nuevo producto" (el mismo popup de la
+  // sugerencia). Con el OEM o la referencia se busca en el catalogo: si ya
+  // existe se agrega ese producto (verde), si no, uno nuevo con el codigo
+  // sugerido (verde azulado). Lleva la nota de agregado en la verificacion.
+  const handleAddNuevoVerificacion = async (nuevo) => {
+    const mismo = (a, b) => Boolean(String(b || '').trim()) && String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase()
+    const activos = details.filter((d) => !d.quitado)
+    if (activos.some((d) => mismo(d.producto?.referencia || d.referencia, nuevo.referencia))) return { referencia: 'Ya hay un producto con esta referencia en el listado.' }
+    if (activos.some((d) => mismo(getProductoOem(d.producto) || d.oem, nuevo.oem))) return { oem: 'Ya hay un producto con este OEM en el listado.' }
+    let encontrada
+    try {
+      [encontrada] = await fetchCoincidencias(token, selectedCasa?.id, [{ key: 'nuevo', oem: nuevo.oem, referencia: nuevo.referencia, descripcion: nuevo.nombre }])
+    } catch (e) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 })
+      return {}
+    }
+    const row = enrichParsedRow({
+      ...(encontrada || { oem: nuevo.oem, referencia: nuevo.referencia, oem_matches: [] }),
+      descripcion: nuevo.nombre || encontrada?.descripcion || '',
+      pvp: nuevo.precio ?? 0,
+      cantidad: '',
+    }, selectedCasa?.codigo)
+    if (row.matched_producto_id) {
+      const existente = details.find((d) => String(d.producto?.id) === String(row.matched_producto_id))
+      if (existente) {
+        if (existente.quitado) handleToggleQuitado(existente._key)
+        else toastRef.current?.show({ severity: 'warn', summary: 'Ya está en la lista', detail: `${row.matched_producto_codigo || row.codigo} ya está en esta importación.`, life: 4000 })
+        setShowNuevoProductoView(false)
+        setProductSearch('')
+        jumpToDetailRow(existente._key)
+        return null
+      }
+    }
+    const key = row.matched_producto_id ? String(row.matched_producto_id) : `manual_${Date.now()}`
+    const detalle = sugerenciaRowToDetalle({
+      ...row,
+      fila_excel: key,
+      _producto: row.matched_producto_id
+        ? { id: row.matched_producto_id, codigo: row.matched_producto_codigo, nombre: row.matched_producto_nombre, referencia: row.matched_producto_referencia, precio: row.matched_producto_precio }
+        : undefined,
+    })
+    setDetails((prev) => [...prev, {
+      ...detalle,
+      cantidad: '',
+      cantidad_aproximada: '',
+      comentario: withNotaVerificacion('', NOTA_AGREGADO_VERIFICACION),
+      orden: nextOrden(prev),
+    }])
+    setShowNuevoProductoView(false)
+    setProductSearch('')
+    window.setTimeout(() => jumpToDetailRow(key), 50)
+    return null
+  }
+
+  // Verificacion: "+ Aceptados de solicitudes" (el mismo popup de la
+  // sugerencia). Quitar uno que venia de antes lo deja como quitado (se puede
+  // restaurar); uno agregado en esta etapa se borra. Agregar uno quitado lo
+  // restaura.
+  const vigentesIds = new Set(details.filter((d) => d.producto?.id && !d.quitado).map((d) => String(d.producto.id)))
+  const vigentesSolIds = new Set(details.filter((d) => !d.producto?.id && d._solId && !d.quitado).map((d) => String(d._solId)))
+  const handleAceptadosVerificacion = ({ toAdd, toRemove }) => {
+    setDetails((prev) => {
+      const esDe = (d, item) => (item.producto_id
+        ? String(d.producto?.id) === String(item.producto_id)
+        : !d.producto?.id && String(d._solId) === String(item.solicitud_id))
+      const next = prev.flatMap((d) => {
+        if (d.quitado || !toRemove.some((item) => esDe(d, item))) return [d]
+        if (esAgregadoVerificacion(d)) return []
+        return [{ ...d, quitado: true, comentario: withNotaVerificacion(d.comentario, NOTA_QUITADO_VERIFICACION) }]
+      })
+      for (const item of toAdd) {
+        const idx = next.findIndex((d) => esDe(d, item))
+        if (idx >= 0) {
+          const d = next[idx]
+          next[idx] = d.quitado
+            ? { ...d, quitado: false, comentario: withoutNotaVerificacion(d.comentario, NOTA_QUITADO_VERIFICACION) }
+            : { ...d, cantidad: String(Number(d.cantidad || 0) + Number(item.cantidad || 0)) }
+          continue
+        }
+        const base = item.producto_id
+          ? { _key: String(item.producto_id), producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', '), precio: item.precio ?? null, referencia: item.referencia || '' } }
+          : { _key: `sol_${item.solicitud_id}`, producto: null, codigo: item.codigo || '', nombre: item.nombre || '', oem: (item.oem_codigos || []).join(', '), referencia: item.referencia || '' }
+        next.push({
+          ...base,
+          _solId: item.solicitud_id,
+          cantidad: String(item.cantidad || ''),
+          cantidad_aproximada: '',
+          precio_estimado: '',
+          comentario: withNotaVerificacion('', NOTA_AGREGADO_VERIFICACION),
+          orden: nextOrden(next),
+        })
+      }
+      return next
+    })
+  }
+
   const handleQuantityChange = (_key, value) => {
     const clean = String(value || '').replace(/[^\d]/g, '')
     setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, cantidad: clean } : item))
@@ -6799,106 +6862,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
   const handleConfirmedChange = (_key, field, value) => {
     setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, [field]: String(value || '') } : item))
-  }
-
-  useEffect(() => {
-    if (!showNuevoProductoView) return
-    const codigoVal = nuevoProductoDraft.codigo.trim()
-    const referenciaVal = nuevoProductoDraft.referencia.trim()
-    if (!codigoVal && !referenciaVal) { setNuevoProductoExisting({ codigo: null, referencia: null }); return }
-    clearTimeout(nuevoProductoCheckTimerRef.current)
-    nuevoProductoCheckTimerRef.current = setTimeout(async () => {
-      const [codigoData, referenciaData] = await Promise.all([
-        codigoVal
-          ? authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(codigoVal)}`, {}, token).then((r) => r.ok ? r.json() : null).catch(() => null)
-          : Promise.resolve(null),
-        referenciaVal
-          ? authFetch(`${API_URL}/productos/listado/?search=${encodeURIComponent(referenciaVal)}`, {}, token).then((r) => r.ok ? r.json() : null).catch(() => null)
-          : Promise.resolve(null),
-      ])
-      const codigoMatch = codigoVal ? parseApiList(codigoData).find((p) => String(p.codigo || '').trim().toLowerCase() === codigoVal.toLowerCase()) : null
-      const referenciaMatch = referenciaVal ? parseApiList(referenciaData).find((p) => String(p.referencia || '').trim().toLowerCase() === referenciaVal.toLowerCase()) : null
-      const notified = nuevoProductoNotifiedRef.current
-      if (codigoMatch && notified.codigoId !== codigoMatch.id) {
-        notified.codigoId = codigoMatch.id
-        toastRef.current?.show({ severity: 'warn', summary: 'Código ya existe', detail: `${codigoMatch.codigo}: ${codigoMatch.nombre || codigoMatch.descripcion || ''}`, life: 4500 })
-      } else if (!codigoMatch) {
-        notified.codigoId = null
-      }
-      if (referenciaMatch && notified.referenciaId !== referenciaMatch.id) {
-        notified.referenciaId = referenciaMatch.id
-        toastRef.current?.show({ severity: 'warn', summary: 'Referencia ya existe', detail: `${referenciaMatch.codigo}: ${referenciaMatch.nombre || referenciaMatch.descripcion || ''}`, life: 4500 })
-      } else if (!referenciaMatch) {
-        notified.referenciaId = null
-      }
-      setNuevoProductoExisting({ codigo: codigoMatch || null, referencia: referenciaMatch || null })
-    }, 350)
-    return () => clearTimeout(nuevoProductoCheckTimerRef.current)
-  }, [nuevoProductoDraft.codigo, nuevoProductoDraft.referencia, showNuevoProductoView, token])
-
-  const handleAddNuevoProducto = () => {
-    const errors = {}
-    if (!nuevoProductoDraft.nombre.trim()) errors.nombre = 'El nombre es requerido'
-    if (!nuevoProductoDraft.oem.trim()) errors.oem = 'El OEM es requerido'
-    if (!nuevoProductoDraft.referencia.trim()) errors.referencia = 'La referencia es requerida'
-    if (!nuevoProductoDraft.codigo.trim()) errors.codigo = 'El código JP es requerido'
-    // En la sugerencia la cantidad no es obligatoria: se exige al pedir la
-    // cotización. Si se escribe, no puede ser negativa.
-    const cantidadOpcional = imp?.estado === 'borrador'
-    const qty = Number(nuevoProductoDraft.cantidad)
-    if (nuevoProductoDraft.cantidad === ''
-      ? !cantidadOpcional
-      : (!Number.isFinite(qty) || qty < 0 || (!cantidadOpcional && qty <= 0))) {
-      errors.cantidad = cantidadOpcional ? 'La cantidad no puede ser negativa' : 'La cantidad debe ser mayor a 0'
-    }
-    setNuevoProductoErrors(errors)
-    let blocked = false
-    if (Object.keys(errors).length > 0) {
-      toastRef.current?.show({ severity: 'error', summary: 'Campos incompletos', detail: 'Debes completar los campos obligatorios.', life: 4000 })
-      blocked = true
-    }
-    if (nuevoProductoExisting.codigo) {
-      toastRef.current?.show({ severity: 'warn', summary: 'Código ya existe', detail: `${nuevoProductoExisting.codigo.codigo}: ${nuevoProductoExisting.codigo.nombre || nuevoProductoExisting.codigo.descripcion || ''}`, life: 4500 })
-      blocked = true
-    }
-    if (nuevoProductoExisting.referencia) {
-      toastRef.current?.show({ severity: 'warn', summary: 'Referencia ya existe', detail: `${nuevoProductoExisting.referencia.codigo}: ${nuevoProductoExisting.referencia.nombre || nuevoProductoExisting.referencia.descripcion || ''}`, life: 4500 })
-      blocked = true
-    }
-    if (blocked) return
-    const incomingRef = nuevoProductoDraft.referencia.trim().toLowerCase()
-    if (details.some((d) => String(d.producto?.referencia || d.referencia || '').trim().toLowerCase() === incomingRef)) {
-      setNuevoProductoErrors((p) => ({ ...p, referencia: 'Ya existe un producto con esta referencia en el listado.' }))
-      return
-    }
-    // Codigo JP: no se puede repetir con otro producto del listado.
-    const incomingCodigo = nuevoProductoDraft.codigo.trim().toLowerCase()
-    if (details.some((d) => String(d.producto?.codigo || d.codigo || '').trim().toLowerCase() === incomingCodigo)) {
-      setNuevoProductoErrors((p) => ({ ...p, codigo: 'Ya hay un producto con este código JP en el listado.' }))
-      toastRef.current?.show({ severity: 'warn', summary: 'Código repetido', detail: 'Ya hay un producto con este código JP en el listado.', life: 4500 })
-      return
-    }
-    const key = 'manual_' + Date.now() + '_' + Math.floor(Math.random() * 10000)
-    setDetails((prev) => [...prev, {
-      _key: key,
-      producto: null,
-      codigo: nuevoProductoDraft.codigo.trim(),
-      nombre: nuevoProductoDraft.nombre.trim(),
-      oem: nuevoProductoDraft.oem.trim(),
-      referencia: nuevoProductoDraft.referencia.trim(),
-      precio: nuevoProductoDraft.precio !== '' ? Number(nuevoProductoDraft.precio) : null,
-      cantidad: String(nuevoProductoDraft.cantidad || '0'),
-      comentario: isVerificar ? withNotaVerificacion(nuevoProductoDraft.comentario, NOTA_AGREGADO_VERIFICACION) : nuevoProductoDraft.comentario.trim(),
-      ...(isVerificar ? {
-        cantidad_aproximada: String(nuevoProductoDraft.cantidad || ''),
-        precio_estimado: nuevoProductoDraft.precio !== '' ? String(Math.round(Number(nuevoProductoDraft.precio) * 100)) : '',
-        orden: nextOrden(prev),
-      } : {}),
-    }])
-    setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' })
-    setNuevoProductoErrors({})
-    setNuevoProductoExisting({ codigo: null, referencia: null })
-    setShowNuevoProductoView(false)
   }
 
   // El backend borra y vuelve a crear los detalles al guardar: la
@@ -7520,18 +7483,22 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       toastRef.current?.show({ severity: 'error', summary: 'Sin productos', detail: 'Todos los productos están quitados: restaura al menos uno para pedir confirmación.', life: 5000 })
       return
     }
+    // Guardar se puede sin completar; para pasar a confirmacion cada producto
+    // necesita su PVP Aprox. y su Cant. aprox. (la cantidad pedida no cuenta).
     const missingData = vigentes.filter((item) => {
       const precio = parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
-      const sinCantidad = Number(item.cantidad || 0) <= 0 && Number(item.cantidad_aproximada || 0) <= 0
-      return precio <= 0 || sinCantidad
+      return precio <= 0 || !(Number(item.cantidad_aproximada) > 0)
     })
+    setFaltanConfirmar(new Set(missingData.map((item) => item._key)))
     if (missingData.length > 0) {
       toastRef.current?.show({
         severity: 'error',
         summary: 'Datos incompletos',
-        detail: `Completa el PVP Aprox. y la Cant. aprox. de todos los productos (${missingData.length} sin completar).`,
+        detail: `Completa el PVP Aprox. y la Cant. aprox. de todos los productos (${missingData.length} sin completar). Están marcados en rojo.`,
         life: 5000,
       })
+      setProductSearch('')
+      jumpToDetailRow(missingData[0]._key)
       return
     }
     setImportarSubmitting(true)
@@ -7825,90 +7792,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       .slice(0, 6)
   }, [details, productQuery])
 
-  const alreadyAddedIds = useMemo(
-    () => new Set(details.filter((d) => d.producto?.id).map((d) => String(d.producto.id))),
-    [details]
-  )
-  const alreadyAddedSolIds = useMemo(
-    () => new Set(details.filter((d) => !d.producto?.id && d._solId).map((d) => String(d._solId))),
-    [details]
-  )
-
-  const filteredAceptados = useMemo(() => {
-    const q = aceptadosSearch.trim().toLowerCase()
-    if (!q) return aceptadosItems
-    return aceptadosItems.filter((item) =>
-      String(item.codigo || '').toLowerCase().includes(q) ||
-      String(item.nombre || '').toLowerCase().includes(q) ||
-      String(item.solicitud_codigo || '').toLowerCase().includes(q) ||
-      String(item.referencia || '').toLowerCase().includes(q) ||
-      (item.oem_codigos || []).some((oem) => String(oem).toLowerCase().includes(q))
-    )
-  }, [aceptadosItems, aceptadosSearch])
-
-  const allSelectableSelected = filteredAceptados.length > 0 && filteredAceptados.every((item) => aceptadosSelected.has(item.solicitud_id))
-  const aceptadosCambios = getAceptadosCambios(aceptadosItems, aceptadosSelected, alreadyAddedIds, alreadyAddedSolIds)
-  const aceptadosAgregadosCount = aceptadosItems.filter((item) => isAceptadoAgregado(item, alreadyAddedIds, alreadyAddedSolIds)).length
-
-  const handleToggleAceptado = (solId) => {
-    setAceptadosSelected((prev) => { const next = new Set(prev); if (next.has(solId)) next.delete(solId); else next.add(solId); return next })
-  }
-  const handleToggleAllAceptados = () => {
-    if (allSelectableSelected) setAceptadosSelected(new Set())
-    else setAceptadosSelected(new Set(filteredAceptados.map((i) => i.solicitud_id)))
-  }
-  const handleConfirmAceptados = () => {
-    const { toAdd, toRemove } = aceptadosCambios
-    if (toRemove.length > 0) {
-      setDetails((prev) => prev.filter((d) => {
-        if (d.producto?.id) return !toRemove.some((r) => r.producto_id && String(r.producto_id) === String(d.producto.id))
-        return !toRemove.some((r) => !r.producto_id && String(r.solicitud_id) === String(d._solId))
-      }))
-    }
-    if (toAdd.length > 0) handleAddFromAceptados(toAdd)
-    setShowAceptadosView(false)
-  }
-  const handleAddFromAceptados = useCallback((aceptados) => {
-    setDetails((prev) => {
-      const next = [...prev]
-      for (const item of aceptados) {
-        if (item.producto_id) {
-          const pid = String(item.producto_id)
-          const idx = next.findIndex((d) => d._key === pid)
-          if (idx >= 0) {
-            const merged = { ...next[idx] }
-            merged.cantidad = String(Number(merged.cantidad || 0) + Number(item.cantidad || 0))
-            next[idx] = merged
-          } else {
-            next.push({
-              _key: pid,
-              _solId: item.solicitud_id,
-              producto: { id: item.producto_id, codigo: item.codigo, nombre: item.nombre, oem: (item.oem_codigos || []).join(', '), precio: item.precio ?? null, referencia: item.referencia || '' },
-              cantidad: String(item.cantidad || ''),
-              comentario: '',
-            })
-          }
-        } else {
-          const solKey = 'sol_' + item.solicitud_id
-          const idx = next.findIndex((d) => d._key === solKey)
-          if (idx >= 0) {
-            const merged = { ...next[idx] }
-            merged.cantidad = String(Number(merged.cantidad || 0) + Number(item.cantidad || 0))
-            next[idx] = merged
-          } else {
-            next.push({
-              _key: solKey, _solId: item.solicitud_id, producto: null,
-              codigo: item.codigo || '', nombre: item.nombre || '',
-              oem: (item.oem_codigos || []).join(', '), referencia: item.referencia || '', cantidad: String(item.cantidad || ''),
-              comentario: '',
-            })
-          }
-        }
-      }
-      return next
-    })
-  }, [])
-
   // Selector de codigo de la fila "Agregar" (se usa en la tabla de la
   // sugerencia y en la de verificacion).
   const productPickerDropdown = (
@@ -8116,12 +7999,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                           <button
                             type="button"
                             className="create-user__ghost"
-                            onClick={() => { setNuevoProductoDraft({ codigo: '', nombre: '', oem: '', referencia: '', precio: '', cantidad: '', comentario: '' }); setNuevoProductoErrors({}); setNuevoProductoExisting({ codigo: null, referencia: null }); nuevoProductoNotifiedRef.current = { codigoId: null, referenciaId: null }; setShowNuevoProductoView(true) }}
+                            onClick={() => setShowNuevoProductoView(true)}
                             style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}
                           >
                             + Agregar nuevo producto
                           </button>
-                          {!isVerificarOrConfirmacion && (
+                          {(!isVerificarOrConfirmacion || isVerificar) && (
                             <span title={aceptadosCount === 0 ? 'No hay productos aceptados para esta casa comercial' : undefined}>
                               <button
                                 type="button"
@@ -8138,6 +8021,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                       )}
                     </div>
 
+                    {isVerificar && details.length > 0 && (
+                      <div className="imp-verificar__leyenda" aria-label="Colores de la tabla">
+                        <span className="imp-verificar__leyenda-item"><span className="imp-verificar__leyenda-color imp-verificar__leyenda-color--catalogo" />Del catálogo</span>
+                        <span className="imp-verificar__leyenda-item"><span className="imp-verificar__leyenda-color imp-verificar__leyenda-color--no-existe" />No existe en el catálogo</span>
+                        <span className="imp-verificar__leyenda-item"><span className="imp-verificar__leyenda-color imp-verificar__leyenda-color--agregado" />Agregado en la verificación (ya existe)</span>
+                        <span className="imp-verificar__leyenda-item"><span className="imp-verificar__leyenda-color imp-verificar__leyenda-color--agregado-nuevo" />Agregado en la verificación (nuevo)</span>
+                        <span className="imp-verificar__leyenda-item"><span className="imp-verificar__leyenda-color imp-verificar__leyenda-color--quitado" />Quitado</span>
+                      </div>
+                    )}
                     {!isSugerencia && details.length > 0 && (
                       <ImportProductSearch
                         value={productSearch}
@@ -8339,7 +8231,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
-                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? ' imp-verificar__row--agregado' : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
+                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? (sinCatalogo ? ' imp-verificar__row--agregado-nuevo' : ' imp-verificar__row--agregado') : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
                             <span
                               className="imp-table-cell-tip"
                               onMouseEnter={(e) => codigo && showCellHover(e, sinCatalogo ? `${codigo} (nuevo: se crea al importar)` : codigo, 'Código')}
@@ -8431,6 +8323,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                         <span className="importaciones-verificar__currency-sign">$</span>
                                         <PrecioCentavosInput
                                           disabled={isImportRealizada}
+                                          invalid={faltanConfirmar.has(item._key) && !(parseInt(String(item[priceField] || '').replace(/\D/g, '') || '0', 10) > 0)}
                                           value={item[priceField]}
                                           onChange={(cents) => handleConfirmedChange(item._key, priceField, cents)}
                                           title={isImportRealizada ? undefined : 'Doble click: usar precio original'}
@@ -8469,6 +8362,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                           step="1"
                                           disabled={isImportRealizada}
                                           value={item[qtyField] ?? ''}
+                                          style={faltanConfirmar.has(item._key) && !(Number(item[qtyField]) > 0) ? { borderColor: '#ef4444' } : undefined}
                                           onChange={(e) => handleConfirmedChange(item._key, qtyField, e.target.value)}
                                           onDoubleClick={() => !isImportRealizada && handleConfirmedChange(item._key, qtyField, item.cantidad)}
                                           title={isImportRealizada ? undefined : 'Doble click: usar cantidad original'}
@@ -8827,117 +8721,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           onSave={handleSaveAndClose}
         />
 
-        {showNuevoProductoView && createPortal(
-          <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowNuevoProductoView(false) }}>
-            <div className="imp-aceptados-popup__dialog imp-nuevo-producto-popup__dialog">
-              <header className="imp-aceptados-popup__header">
-                <div>
-                  <h3>Agregar nuevo producto</h3>
-                  <p>El producto se agregará directamente al listado.</p>
-                </div>
-                <button type="button" className="imp-aceptados-popup__close" onClick={() => setShowNuevoProductoView(false)} aria-label="Cerrar">
-                  <i className="pi pi-times" />
-                </button>
-              </header>
-
-              <div className="imp-aceptados-popup__body">
-                <div className="create-user__grid create-user__grid--two" style={{ padding: '4px 0' }}>
-                  <label className={`create-user__field${nuevoProductoErrors.codigo || nuevoProductoExisting.codigo ? ' create-user__field--invalid' : ''}`}>
-                    <span>Código JP <span style={{ color: '#dc2626' }}>*</span></span>
-                    <input
-                      type="text"
-                      value={nuevoProductoDraft.codigo}
-                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, codigo: toUpperCode(e.target.value) })); setNuevoProductoErrors((p) => ({ ...p, codigo: undefined })) }}
-                      placeholder="Código del producto"
-                      autoComplete="off"
-                    />
-                    {(nuevoProductoErrors.codigo || nuevoProductoExisting.codigo) && (
-                      <small style={{ color: '#dc2626' }}>
-                        {nuevoProductoErrors.codigo || `Ya existe en el catálogo: ${nuevoProductoExisting.codigo.codigo} — ${nuevoProductoExisting.codigo.nombre || nuevoProductoExisting.codigo.descripcion || ''}`}
-                      </small>
-                    )}
-                  </label>
-                  <label className={`create-user__field${nuevoProductoErrors.nombre ? ' create-user__field--invalid' : ''}`}>
-                    <span>Descripción <span style={{ color: '#dc2626' }}>*</span></span>
-                    <input
-                      type="text"
-                      value={nuevoProductoDraft.nombre}
-                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, nombre: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, nombre: undefined })) }}
-                      placeholder="Descripción del producto"
-                      autoComplete="off"
-                      autoFocus
-                    />
-                  </label>
-                  <label className={`create-user__field${nuevoProductoErrors.oem ? ' create-user__field--invalid' : ''}`}>
-                    <span>OEM <span style={{ color: '#dc2626' }}>*</span></span>
-                    <input
-                      type="text"
-                      value={nuevoProductoDraft.oem}
-                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, oem: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, oem: undefined })) }}
-                      placeholder="Código OEM"
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label className={`create-user__field${nuevoProductoErrors.referencia || nuevoProductoExisting.referencia ? ' create-user__field--invalid' : ''}`}>
-                    <span>Referencia <span style={{ color: '#dc2626' }}>*</span></span>
-                    <input
-                      type="text"
-                      value={nuevoProductoDraft.referencia}
-                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, referencia: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, referencia: undefined })) }}
-                      placeholder="Referencia del producto"
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label className="create-user__field">
-                    <span>Precio</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={nuevoProductoDraft.precio}
-                      onChange={(e) => setNuevoProductoDraft((p) => ({ ...p, precio: e.target.value }))}
-                      placeholder="0.00"
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label className={`create-user__field${nuevoProductoErrors.cantidad ? ' create-user__field--invalid' : ''}`}>
-                    <span>Cantidad{imp?.estado === 'borrador' ? '' : <span style={{ color: '#dc2626' }}> *</span>}</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={nuevoProductoDraft.cantidad}
-                      onChange={(e) => { setNuevoProductoDraft((p) => ({ ...p, cantidad: e.target.value })); setNuevoProductoErrors((p) => ({ ...p, cantidad: undefined })) }}
-                      placeholder="0"
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label className="create-user__field" style={{ gridColumn: '1 / -1' }}>
-                    <span>Comentario</span>
-                    <input
-                      type="text"
-                      value={nuevoProductoDraft.comentario}
-                      onChange={(e) => setNuevoProductoDraft((p) => ({ ...p, comentario: e.target.value }))}
-                      placeholder="Opcional"
-                      autoComplete="off"
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div className="imp-aceptados-popup__footer">
-                <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowNuevoProductoView(false)}>Cancelar</button>
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--primary"
-                  onClick={handleAddNuevoProducto}
-                >
-                  Agregar producto
-                </button>
-              </div>
-            </div>
-          </div>,
-          getPortalRoot()
+        {showNuevoProductoView && (
+          <SugerenciaNuevoProductoPopup
+            onClose={() => setShowNuevoProductoView(false)}
+            onAdd={handleAddNuevoVerificacion}
+            notify={(severity, summary, detail) => toastRef.current?.show({ severity, summary, detail, life: 4500 })}
+          />
         )}
 
         {cellHover && createPortal(
@@ -8964,93 +8753,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           getPortalRoot()
         )}
 
-        {showAceptadosView && createPortal(
-          <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAceptadosView(false) }}>
-            <div className="imp-aceptados-popup__dialog">
-              <header className="imp-aceptados-popup__header">
-                <div>
-                  <h3>Aceptados de solicitudes</h3>
-                  {selectedCasa?.nombre && <p>{formatCasaLabel(selectedCasa)}</p>}
-                  {!aceptadosLoading && aceptadosItems.length > 0 && (
-                    <p className="importaciones-aceptados__resumen">{aceptadosAgregadosCount} de {aceptadosItems.length} ya agregado{aceptadosItems.length !== 1 ? 's' : ''} a la lista</p>
-                  )}
-                </div>
-                <button type="button" className="imp-aceptados-popup__close" onClick={() => setShowAceptadosView(false)} aria-label="Cerrar">
-                  <i className="pi pi-times" />
-                </button>
-              </header>
-              <div className="imp-aceptados-popup__search">
-                <i className="pi pi-search" />
-                <input
-                  type="text"
-                  placeholder="Buscar por código, nombre, OEM o solicitud..."
-                  value={aceptadosSearch}
-                  onChange={(e) => setAceptadosSearch(e.target.value)}
-                  autoComplete="off"
-                />
-              </div>
-              <div className="imp-aceptados-popup__body">
-                <div className="create-user__locations-table importaciones-aceptados__table" onKeyDown={handleProductsGridKeyDown}>
-                  <div className="create-user__locations-row create-user__locations-row--head">
-                    <span>
-                      <input type="checkbox" checked={allSelectableSelected} disabled={filteredAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
-                    </span>
-                    <span>Solicitud</span><span>Código JP</span><span>Descripción</span><span>Referencia</span><span>Precio</span><span>OEMs</span><span>Cant.</span><span>Estado</span>
-                  </div>
-                  {aceptadosLoading && (
-                    <div className="create-user__locations-row create-user__locations-row--empty"><span>Cargando...</span></div>
-                  )}
-                  {!aceptadosLoading && filteredAceptados.length === 0 && (
-                    <div className="create-user__locations-row create-user__locations-row--empty">
-                      <span>{aceptadosItems.length === 0 ? 'No hay productos aceptados.' : 'Sin resultados.'}</span>
-                    </div>
-                  )}
-                  {!aceptadosLoading && filteredAceptados.map((item) => {
-                    const noProducto = !item.producto_id
-                    const isSelected = aceptadosSelected.has(item.solicitud_id)
-                    const agregado = isAceptadoAgregado(item, alreadyAddedIds, alreadyAddedSolIds)
-                    const oemText = (item.oem_codigos || []).join(', ') || '-'
-                    const precioText = item.precio != null ? `$${Number(item.precio).toFixed(2)}` : '-'
-                    return (
-                      <div
-                        key={item.solicitud_id}
-                        className={`create-user__locations-row importaciones-aceptados__row${isSelected ? ' importaciones-aceptados__row--selected' : ''}${noProducto ? ' importaciones-aceptados__row--no-catalogo' : ''}`}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => handleToggleAceptado(item.solicitud_id)}
-                      >
-                        <span>
-                          <input type="checkbox" checked={isSelected} onChange={() => handleToggleAceptado(item.solicitud_id)} onClick={(e) => e.stopPropagation()} style={{ cursor: 'pointer' }} />
-                        </span>
-                        <span style={{ fontSize: '0.79rem', color: 'var(--color-muted, #888)' }}>
-                          <span className="imp-cell-text">{item.solicitud_codigo || '-'}</span>
-                        </span>
-                        <span>
-                          <span className="imp-cell-text">
-                            {noProducto
-                              ? <span className="importaciones-aceptados__no-catalogo-badge" title="Sin producto en catálogo">Sin catálogo</span>
-                              : (item.codigo || '-')}
-                          </span>
-                        </span>
-                        <span title={item.nombre}><span className="imp-cell-text">{item.nombre || '-'}</span></span>
-                        <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{item.referencia || '-'}</span></span>
-                        <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{precioText}</span></span>
-                        <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{oemText}</span></span>
-                        <span>{item.cantidad ?? '-'}</span>
-                        <span><AceptadoEstadoChip agregado={agregado} marcado={isSelected} /></span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-              <div className="imp-aceptados-popup__footer">
-                <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowAceptadosView(false)}>Regresar</button>
-                <button type="button" className="create-user__action create-user__action--primary" disabled={!aceptadosCambios.toAdd.length && !aceptadosCambios.toRemove.length} onClick={handleConfirmAceptados}>
-                  {getAceptadosConfirmLabel(aceptadosCambios)}
-                </button>
-              </div>
-            </div>
-          </div>,
-          getPortalRoot()
+        {showAceptadosView && (
+          <SugerenciaAceptadosPopup
+            token={token}
+            casa={selectedCasa}
+            alreadyAddedIds={vigentesIds}
+            alreadyAddedSolIds={vigentesSolIds}
+            onConfirm={handleAceptadosVerificacion}
+            onClose={() => setShowAceptadosView(false)}
+          />
         )}
       </div>
     </>

@@ -1039,6 +1039,17 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 ImportacionSerializer.codigos_invalidos_response_data(invalidos),
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # En la verificacion se puede guardar sin PVP Aprox. ni Cant. aprox.;
+        # para pasar a confirmacion tienen que estar todos completos.
+        incompletos = vigentes.filter(
+            Q(precio_estimado__isnull=True) | Q(precio_estimado__lte=0)
+            | Q(cantidad_aproximada__isnull=True) | Q(cantidad_aproximada__lte=0)
+        ).count()
+        if incompletos:
+            return Response(
+                {"detail": f"Completa el PVP Aprox. y la Cant. aprox. de todos los productos ({incompletos} sin completar) antes de pedir la confirmación."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         ImportacionSerializer.vincular_codigos_existentes(vigentes.filter(producto__isnull=True))
         # Antes de sacar los quitados se guarda que se pidio y que no, para
         # poder verlo siempre (los quitados ya no siguen en la importacion).

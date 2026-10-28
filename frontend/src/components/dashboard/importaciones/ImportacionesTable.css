@@ -2638,12 +2638,49 @@ body.app-theme-dark .imp-receive-footer-hint {
   font-weight: 600;
 }
 
-/* Verificacion: lo agregado (amarillo, como los sugeridos) y los contadores
-   para ir a los nuevos, los eliminados y el resto. */
+/* Verificacion: lo agregado en esta etapa va en verde (si ya existe en el
+   catalogo) o verde azulado (si es un producto nuevo); el amarillo queda
+   solo para lo que no existe. Tambien los contadores para ir a los nuevos,
+   los eliminados y el resto. */
 .importaciones-modal__products-table .create-user__locations-row.imp-verificar__row--agregado {
-  background: color-mix(in srgb, #facc15 22%, transparent);
-  box-shadow: inset 3px 0 0 0 #eab308;
+  background: color-mix(in srgb, #22c55e 20%, transparent);
+  box-shadow: inset 3px 0 0 0 #16a34a;
 }
+
+.importaciones-modal__products-table .create-user__locations-row.imp-verificar__row--agregado-nuevo {
+  background: color-mix(in srgb, #14b8a6 22%, transparent);
+  box-shadow: inset 3px 0 0 0 #0d9488;
+}
+
+/* Leyenda de colores de la verificacion. */
+.imp-verificar__leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0 0 8px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.imp-verificar__leyenda-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.imp-verificar__leyenda-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  flex-shrink: 0;
+}
+
+.imp-verificar__leyenda-color--catalogo { background: var(--color-surface, #fff); }
+.imp-verificar__leyenda-color--no-existe { background: color-mix(in srgb, #f59e0b 26%, transparent); border-left: 3px solid #f59e0b; }
+.imp-verificar__leyenda-color--agregado { background: color-mix(in srgb, #22c55e 20%, transparent); border-left: 3px solid #16a34a; }
+.imp-verificar__leyenda-color--agregado-nuevo { background: color-mix(in srgb, #14b8a6 22%, transparent); border-left: 3px solid #0d9488; }
+.imp-verificar__leyenda-color--quitado { background: color-mix(in srgb, #ef4444 18%, transparent); border-left: 3px solid #ef4444; }
 
 .imp-verificar__grupos {
   display: flex;

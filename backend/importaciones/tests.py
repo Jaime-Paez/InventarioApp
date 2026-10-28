@@ -321,7 +321,7 @@ class SugerenciaProductosNuevosTests(TestCase):
             f"{BASE_URL}/{importacion.id}/",
             {
                 "detalles": [
-                    {"producto_id": self.existente.id, "cantidad": 2},
+                    {"producto_id": self.existente.id, "cantidad": 2, "precio_estimado": "18.50", "cantidad_aproximada": 2},
                     {"codigo": "NUEVO-CI", "nombre": "Filtro nuevo", "cantidad": 0, "quitado": True},
                 ],
             },
@@ -354,12 +354,33 @@ class SugerenciaProductosNuevosTests(TestCase):
         importacion = self._crear(cantidad_nuevo=3)
         self._pedir_cotizacion(importacion)
         importacion.detalles.filter(codigo="NUEVO-CI").update(quitado=True)
+        importacion.detalles.filter(producto=self.existente).update(precio_estimado=Decimal("18.50"), cantidad_aproximada=2)
         response = self.client.post(f"{BASE_URL}/{importacion.id}/confirmar/")
         self.assertEqual(response.status_code, 200, response.data)
         importacion.refresh_from_db()
         estados = {row["codigo"]: row["estado"] for row in importacion.historial_verificacion}
         self.assertEqual(estados, {"EX-1": "pedido", "NUEVO-CI": "quitado"})
         self.assertFalse(importacion.detalles.filter(codigo="NUEVO-CI").exists())
+
+    def test_verificacion_guarda_sin_cantidades_pero_no_confirma_incompleta(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        self._pedir_cotizacion(importacion)
+        response = self.client.patch(
+            f"{BASE_URL}/{importacion.id}/",
+            {
+                "detalles": [
+                    {"producto_id": self.existente.id, "cantidad": 0, "precio_estimado": "18.50"},
+                    {"codigo": "NUEVO-CI", "nombre": "Filtro nuevo", "cantidad": 0},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.post(f"{BASE_URL}/{importacion.id}/confirmar/")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("2 sin completar", response.data["detail"])
+        importacion.refresh_from_db()
+        self.assertEqual(importacion.estado, "cotizacion")
 
     def test_importar_no_crea_los_productos_negados(self):
         importacion = self._crear(cantidad_nuevo=3)
