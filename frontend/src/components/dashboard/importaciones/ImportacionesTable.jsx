@@ -59,6 +59,47 @@ const importItemMatches = (item, query) => {
   return terms.every((term) => text.includes(term))
 }
 
+// Precio que se escribe como un numero normal: "120", luego "." y los
+// centavos. Guarda el valor en centavos (string de digitos, '' si queda
+// vacio), igual que el resto de la verificacion/confirmacion.
+const centavosToText = (centsStr) => {
+  const digits = String(centsStr || '').replace(/\D/g, '')
+  if (!digits) return ''
+  return (parseInt(digits, 10) / 100).toFixed(2)
+}
+
+function PrecioCentavosInput({ value, onChange, disabled, title, onDoubleClick }) {
+  const [draft, setDraft] = useState(null)
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      disabled={disabled}
+      title={title}
+      placeholder="0.00"
+      value={draft ?? centavosToText(value)}
+      onFocus={(e) => {
+        const text = centavosToText(value)
+        setDraft(text && Number(text) === 0 ? '' : text)
+        e.target.select()
+      }}
+      onBlur={() => setDraft(null)}
+      onDoubleClick={onDoubleClick}
+      onChange={(e) => {
+        const text = e.target.value.replace(',', '.').replace(/[^\d.]/g, '')
+        if (!/^\d*(\.\d{0,2})?$/.test(text)) return
+        setDraft(text)
+        if (!text || text === '.') {
+          onChange('')
+          return
+        }
+        const [entero, dec = ''] = text.split('.')
+        onChange(String(parseInt(entero || '0', 10) * 100 + parseInt(dec.padEnd(2, '0'), 10)))
+      }}
+    />
+  )
+}
+
 function ImportProductSearch({ value, onChange, shown, total, children }) {
   return (
     <div className="imp-product-search">
@@ -7608,15 +7649,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, [field]: String(value || '') } : item))
   }
 
-  const formatCentavos = (centsStr) => {
-    const digits = String(centsStr || '').replace(/\D/g, '')
-    if (!digits) return '0.00'
-    const n = parseInt(digits, 10)
-    const intPart = Math.floor(n / 100)
-    const decPart = n % 100
-    return `${intPart.toLocaleString('en-US')}.${String(decPart).padStart(2, '0')}`
-  }
-
   useEffect(() => {
     if (!showNuevoProductoView) return
     const codigoVal = nuevoProductoDraft.codigo.trim()
@@ -9495,27 +9527,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                       {eliminado ? <span className="imp-table-cell-text" style={{ textAlign: 'center' }}>-</span> : (
                                       <span className="importaciones-verificar__precio-cell">
                                         <span className="importaciones-verificar__currency-sign">$</span>
-                                        <input
-                                          type="text"
-                                          inputMode="numeric"
-                                          readOnly
+                                        <PrecioCentavosInput
                                           disabled={isImportRealizada}
-                                          value={formatCentavos(item[priceField])}
+                                          value={item[priceField]}
+                                          onChange={(cents) => handleConfirmedChange(item._key, priceField, cents)}
                                           title={isImportRealizada ? undefined : 'Doble click: usar precio original'}
                                           onDoubleClick={() => {
                                             if (isImportRealizada) return
                                             if (item.producto?.precio != null)
                                               handleConfirmedChange(item._key, priceField, Math.round(Number(item.producto.precio) * 100))
-                                          }}
-                                          onKeyDown={(e) => {
-                                            if (isImportRealizada) return
-                                            if (e.key === 'Backspace') {
-                                              e.preventDefault()
-                                              handleConfirmedChange(item._key, priceField, String(item[priceField] || '').replace(/\D/g, '').slice(0, -1))
-                                            } else if (/^\d$/.test(e.key)) {
-                                              e.preventDefault()
-                                              handleConfirmedChange(item._key, priceField, String(item[priceField] || '').replace(/\D/g, '') + e.key)
-                                            }
                                           }}
                                         />
                                       </span>
