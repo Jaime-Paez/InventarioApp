@@ -2757,6 +2757,13 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   // ImportacionReceiveModal, se reemplaza en cuanto llega la versión fresca.
   const [impOverride, setImpOverride] = useState(null)
   const imp = impOverride && impProp && impOverride.id === impProp.id ? impOverride : impProp
+  // La "i" del OEM: coincidencias del catalogo de cada producto.
+  const coincidenciaItems = useMemo(() => (imp?.detalles || []).map((d) => ({
+    key: d.id,
+    oem: getProductoOem(d.producto) || d.oem || '',
+    referencia: d.producto?.referencia || d.referencia || '',
+  })), [imp?.detalles])
+  const coincidenciasByKey = useCoincidencias(token, imp?.casa_comercial?.id, coincidenciaItems)
   const [loadingImp, setLoadingImp] = useState(true)
   useEffect(() => {
     if (!impProp?.id || !token) { setLoadingImp(false); return }
@@ -3254,12 +3261,16 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           >
                             <span className="imp-table-cell-text">{nombre}</span>
                           </span>
-                          <span
-                            className="imp-table-cell-tip"
-                            onMouseEnter={(e) => showCellHover(e, oemList, 'OEM')}
-                            onMouseLeave={hideCellHover}
-                          >
-                            <span className="imp-table-cell-text">{oem}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                            <span
+                              className="imp-table-cell-tip"
+                              style={{ flex: '1 1 auto', minWidth: 0 }}
+                              onMouseEnter={(e) => showCellHover(e, oemList, 'OEM')}
+                              onMouseLeave={hideCellHover}
+                            >
+                              <span className="imp-table-cell-text">{oem}</span>
+                            </span>
+                            <CoincidenciasInfo matches={coincidenciasByKey[d.id]} />
                           </span>
                           <span
                             className="imp-table-cell-tip"
@@ -4454,10 +4465,12 @@ function SugerenciaAceptadosPopup({ token, casa, alreadyAddedIds, alreadyAddedSo
 // Coincidencias del catalogo para filas sueltas de una sugerencia (producto
 // agregado a mano o sugerencia ya guardada), igual que las de una fila del
 // Excel. rows = [{ key, codigo, referencia, oem, descripcion }].
-const fetchCoincidencias = async (token, casaId, rows) => {
+// soloCoincidencias: solo la lista de la "i" (sin vincular cada fila), mucho
+// mas rapido para tablas grandes.
+const fetchCoincidencias = async (token, casaId, rows, { soloCoincidencias = false } = {}) => {
   const resp = await authFetch(
     `${API_URL}/importaciones/importaciones/coincidencias/`,
-    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ casa_comercial_id: casaId, rows }) },
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ casa_comercial_id: casaId, rows, solo_coincidencias: soloCoincidencias }) },
     token
   )
   if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo buscar en el catálogo.'))
@@ -5438,6 +5451,118 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
 // "Sugerencia desde Excel" y tambien "Crear sugerencia" a mano (modo
 // "manual": de la casa comercial pasa directo a la tabla, vacia). Las dos
 // usan la misma tabla (SugerenciaTabla) que la sugerencia ya guardada.
+// Coincidencias del catalogo de las filas de una importacion (para la "i"
+// del OEM), pedidas una sola vez por fila. items = [{ key, oem, referencia }].
+// Devuelve { [key]: matches }; una fila sin OEM ni referencia queda en [].
+const useCoincidencias = (token, casaId, items) => {
+  const [byKey, setByKey] = useState({})
+  const pedidasRef = useRef(new Set())
+  useEffect(() => {
+    pedidasRef.current = new Set()
+    setByKey({})
+  }, [casaId])
+  useEffect(() => {
+    if (!token || !casaId) return
+    const nuevas = items.filter((it) => it.key != null && !pedidasRef.current.has(String(it.key)))
+    if (!nuevas.length) return
+    nuevas.forEach((it) => pedidasRef.current.add(String(it.key)))
+    const sinDatos = nuevas.filter((it) => !String(it.oem || '').trim() && !String(it.referencia || '').trim())
+    const conDatos = nuevas.filter((it) => !sinDatos.includes(it))
+    if (sinDatos.length) {
+      setByKey((prev) => ({ ...prev, ...Object.fromEntries(sinDatos.map((it) => [String(it.key), []])) }))
+    }
+    if (!conDatos.length) return
+    fetchCoincidencias(token, casaId, conDatos.map((it) => ({ key: String(it.key), oem: it.oem || '', referencia: it.referencia || '' })), { soloCoincidencias: true })
+      .then((rows) => setByKey((prev) => {
+        const next = { ...prev }
+        rows.forEach((r) => { next[String(r.fila_excel)] = r.oem_matches || [] })
+        return next
+      }))
+      .catch(() => {})
+  }, [token, casaId, items])
+  return byKey
+}
+
+// Icono "i" junto al OEM en las tablas de importaciones: que productos del
+// catalogo tienen ese OEM o esa referencia (la misma tarjeta que en la
+// sugerencia). Sin coincidencias el icono se ve opaco.
+function CoincidenciasInfo({ matches }) {
+  const [hover, setHover] = useState(null)
+  const [pos, setPos] = useState(null)
+  const cardRef = useRef(null)
+  const timerRef = useRef(null)
+  const lista = Array.isArray(matches) ? matches : null
+  const cancelar = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null } }
+  const mostrar = (event) => {
+    cancelar()
+    const rect = event.currentTarget.getBoundingClientRect()
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null
+      setHover({ triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left })
+    }, 150)
+  }
+  // Con un pequeno retraso, para poder pasar del icono a la tarjeta.
+  const ocultar = () => {
+    cancelar()
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null
+      setHover(null)
+      setPos(null)
+    }, 250)
+  }
+  useEffect(() => cancelar, [])
+  useLayoutEffect(() => {
+    if (!hover || !cardRef.current) return
+    setPos(computeSmartPopoverPosition(hover, cardRef.current))
+  }, [hover, lista?.length])
+  return (
+    <>
+      <Info
+        size={13}
+        style={{ flexShrink: 0 }}
+        className={`imp-distribucion__info-icon${lista?.length ? '' : ' imp-distribucion__info-icon--empty'}`}
+        onMouseEnter={mostrar}
+        onMouseLeave={ocultar}
+      />
+      {hover && createPortal(
+        <div
+          ref={cardRef}
+          className={`imp-alternos-hover-card${lista?.length ? ' imp-alternos-hover-card--oem' : ''}`}
+          style={{ top: pos?.top ?? hover.triggerBottom + 4, left: pos?.left ?? hover.triggerLeft, visibility: pos ? 'visible' : 'hidden' }}
+          onMouseEnter={cancelar}
+          onMouseLeave={ocultar}
+        >
+          {lista == null ? (
+            <div className="imp-alternos-hover-card__message">Buscando coincidencias en el catálogo...</div>
+          ) : lista.length ? (
+            <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--oem">
+              <thead>
+                <tr><th>Código</th><th>Nombre</th><th>Referencia</th><th>OEM</th><th>Casa comercial</th><th>PVP</th><th>PVP + IVA</th></tr>
+              </thead>
+              <tbody>
+                {lista.map((p, i) => (
+                  <tr key={i}>
+                    <td>{p.codigo || '-'}</td>
+                    <td>{p.nombre || '-'}</td>
+                    <td>{(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ') || '-'}</td>
+                    <td>{(p.oems || []).join(', ') || '-'}</td>
+                    <td>{(p.casas_comerciales_nombres || []).join(', ') || '-'}</td>
+                    <td>{p.precio != null ? `$${Number(p.precio).toFixed(2)}` : '-'}</td>
+                    <td>{p.precio_con_iva != null ? `$${Number(p.precio_con_iva).toFixed(2)}` : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="imp-alternos-hover-card__message">Ningún producto del catálogo tiene este OEM o esta referencia registrados.</div>
+          )}
+        </div>,
+        getPortalRoot()
+      )}
+    </>
+  )
+}
+
 function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 'excel' }) {
   const esManual = modo === 'manual'
   const toastRef = useRef(null)
@@ -7783,32 +7908,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     const codigo = String(item.codigo || '').trim()
     return [codigo.toUpperCase(), { codigo, motivo: codigoInvalidoDe(item) }]
   })).values()]
-  // Sugerencia: la misma tabla que el Paso 3 (SugerenciaTabla). La "i" del
-  // OEM muestra las coincidencias del catalogo, que se piden una vez por fila.
-  const [coincidenciasByKey, setCoincidenciasByKey] = useState({})
-  const coincidenciasPedidasRef = useRef(new Set())
-  useEffect(() => {
-    coincidenciasPedidasRef.current = new Set()
-    setCoincidenciasByKey({})
-  }, [imp?.id])
-  useEffect(() => {
-    if (!open || !isSugerencia || !token || !selectedCasa?.id) return
-    const pendientes = details.filter((d) => !coincidenciasPedidasRef.current.has(d._key) && !d._oemMatches
-      && (getProductoOem(d.producto) || d.oem || d.producto?.referencia || d.referencia))
-    if (!pendientes.length) return
-    pendientes.forEach((d) => coincidenciasPedidasRef.current.add(d._key))
-    fetchCoincidencias(token, selectedCasa.id, pendientes.map((d) => ({
-      key: d._key,
-      oem: getProductoOem(d.producto) || d.oem || '',
-      referencia: d.producto?.referencia || d.referencia || '',
-    })))
-      .then((rows) => setCoincidenciasByKey((prev) => {
-        const next = { ...prev }
-        rows.forEach((r) => { next[r.fila_excel] = r.oem_matches || [] })
-        return next
-      }))
-      .catch(() => {})
-  }, [open, isSugerencia, token, selectedCasa?.id, details])
+  // La "i" del OEM (sugerencia, verificacion y confirmacion): coincidencias
+  // del catalogo, pedidas una vez por fila.
+  const coincidenciaItems = useMemo(() => details.map((d) => ({
+    key: d._key,
+    oem: getProductoOem(d.producto) || d.oem || '',
+    referencia: d.producto?.referencia || d.referencia || '',
+  })), [details])
+  const coincidenciasByKey = useCoincidencias(token, open ? selectedCasa?.id : null, coincidenciaItems)
   const sugerenciaRows = useMemo(
     () => (isSugerencia ? details.map((d) => detalleToSugerenciaRow(d, coincidenciasByKey[d._key])) : []),
     [isSugerencia, details, coincidenciasByKey]
@@ -8325,12 +8432,16 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                             >
                               <span className="imp-table-cell-text">{nombre}</span>
                             </span>
-                            <span
-                              className="imp-table-cell-tip"
-                              onMouseEnter={(e) => showCellHover(e, oemList, 'OEM')}
-                              onMouseLeave={hideCellHover}
-                            >
-                              <span className="imp-table-cell-text">{oem}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                              <span
+                                className="imp-table-cell-tip"
+                                style={{ flex: '1 1 auto', minWidth: 0 }}
+                                onMouseEnter={(e) => showCellHover(e, oemList, 'OEM')}
+                                onMouseLeave={hideCellHover}
+                              >
+                                <span className="imp-table-cell-text">{oem}</span>
+                              </span>
+                              <CoincidenciasInfo matches={coincidenciasByKey[item._key]} />
                             </span>
                             <span
                               className="imp-table-cell-tip"

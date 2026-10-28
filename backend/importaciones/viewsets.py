@@ -278,13 +278,16 @@ def _split_codes(value):
     return [code.strip() for code in str(value or "").split(",") if code.strip()]
 
 
-def _match_rows(rows, casa_comercial_id, on_progress=None):
+def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=False):
     """Busca en el catalogo cada fila de una sugerencia (codigo, referencia,
     OEM) y devuelve, por fila, el producto vinculado, las coincidencias por
     OEM/referencia y si ya existe en otra casa. Lo usa el Excel de sugerencia
     y tambien las filas que se agregan a mano (ver accion "coincidencias").
     Cada fila: {fila_excel, orden, codigo, referencia, oem, descripcion,
     cantidad, pvp, sucursal_quantities}.
+    solo_coincidencias: solo las coincidencias por OEM/referencia (la "i" de
+    las tablas), sin vincular cada fila: son pocas consultas para todas las
+    filas en vez de varias por fila.
     """
     from django.db.models.functions import Lower
 
@@ -396,6 +399,21 @@ def _match_rows(rows, casa_comercial_id, on_progress=None):
         cantidad = item.get("cantidad") or 0
         pvp = float(item.get("pvp") or 0)
         orden = item.get("orden")
+
+        if solo_coincidencias:
+            matches = {}
+            for code in _split_codes(oem) + _split_codes(referencia):
+                for producto_id in sorted(product_ids_by_code.get(code.lower(), ())):
+                    if producto_id in payload_by_product_id:
+                        matches[producto_id] = payload_by_product_id[producto_id]
+            parsed.append({
+                "fila_excel": item.get("fila_excel"),
+                "oem_matches": sorted(
+                    matches.values(),
+                    key=lambda m: "COMPRA LOCAL" not in (m.get("casas_comerciales_nombres") or []),
+                ),
+            })
+            continue
 
         matched = None
         # Un match por código o referencia es una identidad fuerte (ese
@@ -1913,7 +1931,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             for item in raw_rows[:2000]
             if isinstance(item, dict)
         ]
-        return Response({"rows": _match_rows(rows, casa_comercial_id)})
+        solo = str(request.data.get("solo_coincidencias") or "").lower() in ("1", "true")
+        return Response({"rows": _match_rows(rows, casa_comercial_id, solo_coincidencias=solo)})
 
     @action(detail=False, methods=["post"], url_path="parse-excel-iniciar")
     def parse_excel_iniciar(self, request):
