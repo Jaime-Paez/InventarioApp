@@ -84,7 +84,9 @@ from .serializers import (
     format_actor_display_name,
     generate_entry_document_number,
     generate_transfer_request_document_number,
+    load_ubicacion_orden,
     normalize_name,
+    principal_ubicacion_key,
     resolve_subtipo_key,
     SALIDA_SUBTYPE_PREFIXES,
 )
@@ -4566,7 +4568,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     )
     def ubicaciones_detalle_solicitud_traslado(self, request, solicitud_id=None, detalle_id=None):
         # Todas las ubicaciones del producto en la sucursal proveedora (la
-        # tabla de decision solo muestra la de mayor cantidad), para que quien
+        # tabla de decision solo muestra la principal), para que quien
         # separa pueda buscarlo en las demas antes de rechazarlo. Con
         # `?conteo=1` (el "No tengo") no van las cantidades del sistema: quien
         # rechaza cuenta a ciegas; van todas las ubicaciones de la sucursal
@@ -4600,8 +4602,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 subdivision__division__bodega__sucursal_id=solicitud.sucursal_proveedora_id,
             )
             .select_related("subdivision__division__bodega")
-            .order_by("-cantidad", "subdivision__division__bodega__nombre", "subdivision__division__nombre", "subdivision__nombre")
         )
+        # La principal primero (la misma que muestra la tabla).
+        user_order = load_ubicacion_orden([detalle.producto_id])
+        rows = sorted(rows, key=lambda row: principal_ubicacion_key(row, user_order))
         ubicaciones = []
         for inventario in rows:
             subdivision = inventario.subdivision

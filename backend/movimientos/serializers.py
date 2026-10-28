@@ -10,7 +10,7 @@ from rest_framework import serializers
 from core.concurrency import acquire_sequence_lock
 from casa_comercial.models import CasaComercial
 from configuracion.models import ConfiguracionSistema
-from inventario.models import Inventario, SubDivision, Sucursal
+from inventario.models import Inventario, ProductoUbicacionOrden, SubDivision, Sucursal
 from productos.models import Producto, add_producto_referencia
 from tipos.models import (
     EstadoMovimiento,
@@ -38,6 +38,40 @@ from .entry_adjustment import (
 from .stock_availability import get_available_transfer_quantities_by_product
 from .transfer_helpers import cancel_pending_transfer_requests, public_detalles_no_enviados, REMINDERS_SYNC_FLAG
 
+
+
+def load_ubicacion_orden(product_ids):
+    """Orden de ubicaciones elegido por el usuario: {(producto_id, subdivision_id): orden}."""
+    ids = sorted({int(pid) for pid in product_ids if pid})
+    if not ids:
+        return {}
+    return {
+        (int(row["producto_id"]), int(row["subdivision_id"])): int(row["orden"])
+        for row in ProductoUbicacionOrden.objects.filter(producto_id__in=ids).values(
+            "producto_id", "subdivision_id", "orden"
+        )
+    }
+
+
+def principal_ubicacion_key(inventario, user_order):
+    """Orden para que la ubicacion principal quede primera (como en
+    inventario): las del orden elegido por el usuario primero, en ese orden, y
+    las demas por bodega / division / subdivision. Las filas de Inventario
+    deben traer select_related("subdivision__division__bodega")."""
+    subdivision = inventario.subdivision
+    division = subdivision.division
+    bodega = division.bodega
+    orden = user_order.get((int(inventario.producto_id), int(subdivision.id)))
+    return (
+        0 if orden is not None else 1,
+        orden if orden is not None else 0,
+        str(bodega.nombre or "").lower(),
+        str(division.nombre or "").lower(),
+        str(subdivision.nombre or "").lower(),
+        int(bodega.id),
+        int(division.id),
+        int(subdivision.id),
+    )
 
 def normalize_name(value):
     text = str(value or "")
@@ -376,16 +410,18 @@ class SolicitudTrasladoDetalleSerializer(serializers.ModelSerializer):
         precomputed = self.context.get("ubicacion_actual_map")
         if precomputed is not None:
             return precomputed.get((int(sucursal_id), int(producto_id)))
-        return (
+        # La ubicacion principal (con stock) de la sucursal proveedora.
+        rows = list(
             Inventario.objects.filter(
                 producto_id=producto_id,
                 cantidad__gt=0,
                 subdivision__division__bodega__sucursal_id=sucursal_id,
-            )
-            .select_related("subdivision__division__bodega")
-            .order_by("-cantidad", "subdivision__division__nombre", "subdivision__nombre")
-            .first()
+            ).select_related("subdivision__division__bodega")
         )
+        if not rows:
+            return None
+        user_order = load_ubicacion_orden([producto_id])
+        return min(rows, key=lambda row: principal_ubicacion_key(row, user_order))
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -2281,10 +2317,10 @@ def build_solicitud_traslado_list_context(solicitudes):
                 subdivision__division__bodega__sucursal_id__in=sorted({suc for suc, _ in pairs}),
             )
             .select_related("subdivision__division__bodega")
-            .order_by("-cantidad", "subdivision__division__nombre", "subdivision__nombre")
         )
-        # Mismo orden que _resolve_ubicacion_actual: la primera de cada par gana.
-        for inventario in rows:
+        # Mismo criterio que _resolve_ubicacion_actual: la principal de cada par.
+        user_order = load_ubicacion_orden({pid for _, pid in pairs})
+        for inventario in sorted(rows, key=lambda row: principal_ubicacion_key(row, user_order)):
             key = (int(inventario.subdivision.division.bodega.sucursal_id), int(inventario.producto_id))
             if key in pairs and key not in ubicaciones:
                 ubicaciones[key] = inventario
