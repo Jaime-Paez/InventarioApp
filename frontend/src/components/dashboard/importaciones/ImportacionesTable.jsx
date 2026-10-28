@@ -3800,6 +3800,52 @@ const deriveSuggestedCodigo = (row, casaCodigo) => {
 // por OEM, coinciden por referencia o codigo) y "N no encontrados" (sin
 // catalogo) con "Quitar todos". chipProps(grupo, texto) hace clicable cada
 // contador para ir a sus filas.
+// Contadores de la verificacion, con el mismo formato que los de la
+// sugerencia (ImportGroupsSummary) y los colores de las filas. Cada chip lleva
+// a la siguiente fila de ese grupo. conteo: { catalogo, noExiste,
+// agregadoExiste, agregadoNuevo, quitado }.
+function VerificacionGroupsSummary({ conteo, chipProps }) {
+  const enLista = (conteo.catalogo || 0) + (conteo.noExiste || 0) + (conteo.agregadoExiste || 0) + (conteo.agregadoNuevo || 0)
+  const quitados = conteo.quitado || 0
+  if (!enLista && !quitados) return null
+  const caja = { display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }
+  const titulo = { fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }
+  const chip = { borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }
+  const plural = (n, uno, varios) => `${n} ${n !== 1 ? varios : uno}`
+  const chips = [
+    ['catalogo', plural(conteo.catalogo || 0, 'del catálogo', 'del catálogo'), 'los productos del catálogo', { background: '#ffffff', color: '#334155', border: '1px solid #cbd5e1' }],
+    ['noExiste', plural(conteo.noExiste || 0, 'no existe en el catálogo', 'no existen en el catálogo'), 'los que no existen en el catálogo', { background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }],
+    ['agregadoExiste', plural(conteo.agregadoExiste || 0, 'agregado (ya existe)', 'agregados (ya existen)'), 'los agregados que ya existen', { background: '#dcfce7', color: '#15803d', border: '1px solid #86efac' }],
+    ['agregadoNuevo', plural(conteo.agregadoNuevo || 0, 'agregado (nuevo)', 'agregados (nuevos)'), 'los agregados nuevos', { background: '#ccfbf1', color: '#0f766e', border: '1px solid #5eead4' }],
+  ]
+  return (
+    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
+      {enLista > 0 && (
+        <div style={{ ...caja, flex: '1 1 auto' }}>
+          <span style={titulo}>{enLista} en la lista</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {chips.filter(([key]) => conteo[key] > 0).map(([key, texto, label, colores]) => (
+              <span key={key} {...chipProps(key, label)} title={`Clic: ir a ${label}`} style={{ ...chip, ...colores }}>
+                {texto}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {quitados > 0 && (
+        <div style={caja}>
+          <span style={titulo}>{plural(quitados, 'quitado', 'quitados')}</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span {...chipProps('quitado', 'los quitados')} title="Clic: ir a los quitados (no pasan a confirmación)" style={{ ...chip, background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}>
+              {plural(quitados, 'no pasa a confirmación', 'no pasan a confirmación')}
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, sinCatalogo = 0, chipProps, onQuitarTodos }) {
   const [confirmarQuitar, setConfirmarQuitar] = useState(false)
   const encontrados = vinculados + oem + otraCasa
@@ -7701,7 +7747,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const shownDetails = isVerificar
     ? [...details].sort((a, b) => VERIFICAR_GRUPOS.indexOf(verificarGrupoDe(a)) - VERIFICAR_GRUPOS.indexOf(verificarGrupoDe(b)))
     : details
-  const verificarConteo = VERIFICAR_GRUPOS.reduce((acc, g) => ({ ...acc, [g]: shownDetails.filter((item) => verificarGrupoDe(item) === g).length }), {})
+  // Mismos grupos (y colores) que las filas de la verificacion.
+  const verificarColorDe = (item) => (
+    item.quitado ? 'quitado'
+      : esAgregadoVerificacion(item) ? (item.producto?.id ? 'agregadoExiste' : 'agregadoNuevo')
+        : item.producto?.id ? 'catalogo' : 'noExiste'
+  )
+  const verificarConteo = isVerificar
+    ? shownDetails.reduce((acc, item) => ({ ...acc, [verificarColorDe(item)]: (acc[verificarColorDe(item)] || 0) + 1 }), {})
+    : {}
   // Datos que le faltan a un producto sin catalogo para pedir la cotizacion
   // (la sugerencia se puede crear y guardar sin ellos). Misma regla que el
   // backend en pedir_cotizacion.
@@ -7768,7 +7822,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // Cada clic en un contador lleva a la siguiente fila de ese grupo.
   const verificarJumpRef = useRef({ grupo: '', idx: -1 })
   const jumpToVerificarGrupo = (grupo) => {
-    const keys = shownDetails.filter((item) => verificarGrupoDe(item) === grupo).map((item) => item._key)
+    const keys = shownDetails.filter((item) => verificarColorDe(item) === grupo).map((item) => item._key)
     if (!keys.length) return
     const last = verificarJumpRef.current
     const idx = last.grupo === grupo && last.idx + 1 < keys.length ? last.idx + 1 : 0
@@ -8022,13 +8076,22 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                     </div>
 
                     {isVerificar && details.length > 0 && (
-                      <div className="imp-verificar__leyenda" aria-label="Colores de la tabla">
-                        <span className="imp-verificar__leyenda-item"><span className="imp-verificar__leyenda-color imp-verificar__leyenda-color--catalogo" />Del catálogo</span>
-                        <span className="imp-verificar__leyenda-item"><span className="imp-verificar__leyenda-color imp-verificar__leyenda-color--no-existe" />No existe en el catálogo</span>
-                        <span className="imp-verificar__leyenda-item"><span className="imp-verificar__leyenda-color imp-verificar__leyenda-color--agregado" />Agregado en la verificación (ya existe)</span>
-                        <span className="imp-verificar__leyenda-item"><span className="imp-verificar__leyenda-color imp-verificar__leyenda-color--agregado-nuevo" />Agregado en la verificación (nuevo)</span>
-                        <span className="imp-verificar__leyenda-item"><span className="imp-verificar__leyenda-color imp-verificar__leyenda-color--quitado" />Quitado</span>
-                      </div>
+                      <VerificacionGroupsSummary
+                        conteo={verificarConteo}
+                        chipProps={(grupo, label) => ({
+                          role: 'button',
+                          tabIndex: 0,
+                          onClick: () => jumpToVerificarGrupo(grupo),
+                          onKeyDown: (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              jumpToVerificarGrupo(grupo)
+                            }
+                          },
+                          className: 'imp-excel-review__group-chip',
+                          'aria-label': `Ir a ${label}`,
+                        })}
+                      />
                     )}
                     {!isSugerencia && details.length > 0 && (
                       <ImportProductSearch
@@ -8037,20 +8100,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         shown={details.filter((item) => importItemMatches(item, productSearch)).length}
                         total={details.length}
                       >
-                        {isVerificar && (verificarConteo.nuevos > 0 || verificarConteo.eliminados > 0) && (
-                          <div className="imp-verificar__grupos" role="group" aria-label="Ir a un grupo de productos">
-                            {verificarConteo.nuevos > 0 && (
-                              <button type="button" className="imp-verificar__grupo imp-verificar__grupo--nuevos" onClick={() => jumpToVerificarGrupo('nuevos')}>
-                                Nuevos <strong>{verificarConteo.nuevos}</strong>
-                              </button>
-                            )}
-                            {verificarConteo.eliminados > 0 && (
-                              <button type="button" className="imp-verificar__grupo imp-verificar__grupo--eliminados" onClick={() => jumpToVerificarGrupo('eliminados')}>
-                                Eliminados <strong>{verificarConteo.eliminados}</strong>
-                              </button>
-                            )}
-                          </div>
-                        )}
                       </ImportProductSearch>
                     )}
                     {avisoCodigosInvalidos.length > 0 && (
