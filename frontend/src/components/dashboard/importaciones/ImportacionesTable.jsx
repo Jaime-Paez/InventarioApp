@@ -7101,6 +7101,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const [details, setDetails] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [invalidQtyKeys, setInvalidQtyKeys] = useState(new Set())
+  const [codigosInvalidos, setCodigosInvalidos] = useState([])
   const [showAceptadosView, setShowAceptadosView] = useState(false)
   const [aceptadosItems, setAceptadosItems] = useState([])
   const [aceptadosLoading, setAceptadosLoading] = useState(false)
@@ -7361,6 +7362,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
   useEffect(() => {
     if (!open || !imp) return
+    setCodigosInvalidos([])
     const toCentavos = (val) => {
       if (val == null || val === '') return ''
       return String(Math.round(parseFloat(val) * 100))
@@ -8292,6 +8294,26 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
   }
 
+  // Codigos nuevos que el backend no deja crear (ya existen en el catalogo,
+  // repetidos...): todos a la vez en el aviso y marcados en la tabla, hasta
+  // que se cambian.
+  const showCodigosInvalidos = async (response) => {
+    const payload = await response.clone().json().catch(() => null)
+    const invalidos = Array.isArray(payload?.codigos_invalidos) ? payload.codigos_invalidos : []
+    if (!invalidos.length) return false
+    setCodigosInvalidos(invalidos)
+    toastRef.current?.show({
+      severity: 'warn',
+      summary: 'Códigos nuevos repetidos',
+      detail: `${invalidos.length} código${invalidos.length !== 1 ? 's' : ''} nuevo${invalidos.length !== 1 ? 's' : ''} no se ${invalidos.length !== 1 ? 'pueden' : 'puede'} crear: cámbialos por otro código (están marcados en la tabla).`,
+      life: 6000,
+    })
+    const motivos = new Set(invalidos.map((row) => String(row.codigo || '').trim().toUpperCase()))
+    const primera = details.find((item) => !item.producto?.id && !item.quitado && motivos.has(String(item.codigo || '').trim().toUpperCase()))
+    if (primera) { setProductSearch(''); jumpToDetailRow(primera._key) }
+    return true
+  }
+
   const handleConfirmar = async () => {
     // Los productos quitados en la verificacion ya no pasan a confirmacion.
     const vigentes = details.filter((item) => !item.quitado)
@@ -8315,7 +8337,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
     setImportarSubmitting(true)
     try {
-      const normalizedDetails = vigentes.map((item) => {
+      // Los quitados tambien se mandan (con su marca): el backend los guarda
+      // en el historial de verificacion y recien ahi los saca.
+      const normalizedDetails = details.map((item) => {
         const solId = item._solId ? { solicitud_id: Number(item._solId) } : {}
         const precioEstimadoVal = item.precio_estimado
           ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
@@ -8326,6 +8350,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           cantidad_aproximada: cantAproxVal,
           precio_confirmado: precioEstimadoVal,
           cantidad_confirmada: cantAproxVal,
+          quitado: Boolean(item.quitado),
         }
         const cantidad = Number(item.cantidad || item.cantidad_aproximada || 0)
         if (item.producto?.id) return { producto_id: item.producto.id, cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
@@ -8342,6 +8367,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         { method: 'POST' },
         token
       )
+      if (!response.ok && await showCodigosInvalidos(response)) return
       if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo confirmar la importación.'))
       const payload = await response.json()
       onSaved?.(payload)
@@ -8390,6 +8416,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         },
         token
       )
+      if (!response.ok && await showCodigosInvalidos(response)) { setShowImportarModal(false); return }
       if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo generar la importación.'))
       const payload = await response.json()
       setShowImportarModal(false)
@@ -8538,6 +8565,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     ].filter(([field]) => !String(item[field] || '').trim()).map(([, label]) => label)
   }
   const incompletos = isSugerencia ? details.filter((item) => faltantesDe(item).length > 0) : []
+  // Productos nuevos cuyo codigo el backend rechazo: dejan de marcarse en
+  // cuanto se les cambia el codigo (o se quitan).
+  const motivoCodigoInvalido = new Map(codigosInvalidos.map((row) => [String(row.codigo || '').trim().toUpperCase(), row.motivo]))
+  const codigoInvalidoDe = (item) => (!item.producto?.id && !item.quitado ? motivoCodigoInvalido.get(String(item.codigo || '').trim().toUpperCase()) : undefined)
+  const filasCodigoInvalido = codigosInvalidos.length ? details.filter((item) => codigoInvalidoDe(item)) : []
+  const avisoCodigosInvalidos = [...new Map(filasCodigoInvalido.map((item) => {
+    const codigo = String(item.codigo || '').trim()
+    return [codigo.toUpperCase(), { codigo, motivo: codigoInvalidoDe(item) }]
+  })).values()]
   // Igual que el Paso 3 de la vista previa: cada clic en un contador lleva a
   // la siguiente fila de ese grupo, la deja arriba (debajo del encabezado)
   // dentro de la tabla y la hace parpadear.
@@ -8991,6 +9027,29 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         </button>
                       </div>
                     )}
+                    {avisoCodigosInvalidos.length > 0 && (
+                      <div className="imp-incompletos-aviso" role="alert">
+                        <i className="pi pi-exclamation-triangle" aria-hidden="true" />
+                        <span>
+                          <strong>
+                            {avisoCodigosInvalidos.length} código{avisoCodigosInvalidos.length !== 1 ? 's' : ''} nuevo{avisoCodigosInvalidos.length !== 1 ? 's' : ''} no se {avisoCodigosInvalidos.length !== 1 ? 'pueden' : 'puede'} crear.
+                          </strong>{' '}
+                          No puede haber códigos repetidos: cámbialos por otro código (marcados en rojo).
+                          <span className="imp-codigos-invalidos__lista">
+                            {avisoCodigosInvalidos.map((row) => (
+                              <span key={row.codigo}><strong>{row.codigo}</strong>: {row.motivo}</span>
+                            ))}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          className="imp-incompletos-aviso__ir"
+                          onClick={() => { setProductSearch(''); jumpToDetailRow(filasCodigoInvalido[0]._key) }}
+                        >
+                          Ir al primero
+                        </button>
+                      </div>
+                    )}
                     {isSugerencia ? (
                       // Misma tabla que el Paso 3 de "Sugerencia desde Excel"
                       // (estructura, colores, anchos y salto de los contadores),
@@ -9381,11 +9440,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                   código, como en la sugerencia; si el código se sugirió se ve
                                   de qué producto salió. Los demás muestran su código o la
                                   etiqueta "Sin catálogo". */}
-                              {sinCatalogo && !item.quitado && canEdit && (isSugerencia || isVerificar) ? (
+                              {sinCatalogo && !item.quitado && canEdit && (isSugerencia || isVerificar || (isConfirmacion && !isImportRealizada)) ? (
                                 <span className="imp-codigo-editable">
                                   <input
                                     type="text"
-                                    className="imp-excel-review__codigo-input"
+                                    className={`imp-excel-review__codigo-input${codigoInvalidoDe(item) ? ' imp-excel-review__codigo-input--invalid' : ''}`}
+                                    data-title={codigoInvalidoDe(item) ? `No se puede crear: ${codigoInvalidoDe(item)}` : undefined}
                                     value={item.codigo || ''}
                                     onChange={(e) => {
                                       const value = e.target.value.toUpperCase()

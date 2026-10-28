@@ -1,6 +1,7 @@
 import re
 
 from django.db import transaction
+from django.db.models.functions import Upper
 
 from rest_framework import serializers
 
@@ -314,14 +315,53 @@ class ImportacionSerializer(serializers.ModelSerializer):
         item["producto"] = producto
 
     @staticmethod
-    def _vincular_producto_existente(item):
-        """Antes de importar solo se vincula el detalle a un producto que ya
-        existe en el catálogo con ese código; no se crea ni se modifica nada."""
-        if item.get("producto") is not None:
-            return
-        codigo = str(item.get("codigo") or "").strip()
-        if codigo:
-            item["producto"] = Producto.objects.filter(codigo__iexact=codigo).first()
+    def validar_codigos_nuevos(nuevos):
+        """Los códigos nuevos no pueden repetirse: antes de crear (o de pedir
+        la confirmación) se revisan todos de una vez y se devuelve cada uno
+        con su motivo, para no crear ninguno si alguno está mal. `nuevos` son
+        los (codigo, nombre) de los detalles sin producto que se van a crear.
+        Un código que ya existe en el catálogo no se vincula solo: se avisa
+        para cambiarlo."""
+        max_codigo = Producto._meta.get_field("codigo").max_length
+        max_nombre = Producto._meta.get_field("nombre").max_length
+        nuevos = [(str(c or "").strip(), str(n or "").strip()) for c, n in nuevos]
+        nuevos = [(c, n) for c, n in nuevos if c]
+        conteo = {}
+        for codigo, _ in nuevos:
+            conteo[codigo.upper()] = conteo.get(codigo.upper(), 0) + 1
+        existentes = {
+            upper: nombre
+            for upper, nombre in Producto.objects.annotate(codigo_upper=Upper("codigo"))
+            .filter(codigo_upper__in=list(conteo))
+            .values_list("codigo_upper", "nombre")
+        }
+        invalidos = []
+        vistos = set()
+        for codigo, nombre in nuevos:
+            clave = codigo.upper()
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            motivos = []
+            if clave in existentes:
+                motivos.append(f"ya existe en el catálogo ({existentes[clave]})")
+            if conteo[clave] > 1:
+                motivos.append(f"está repetido {conteo[clave]} veces en esta importación")
+            if len(codigo) > max_codigo:
+                motivos.append(f"tiene más de {max_codigo} caracteres")
+            if len(nombre or codigo) > max_nombre:
+                motivos.append(f"la descripción tiene más de {max_nombre} caracteres")
+            if motivos:
+                invalidos.append({"codigo": codigo, "motivo": "; ".join(motivos)})
+        return invalidos
+
+    @staticmethod
+    def codigos_invalidos_response_data(invalidos):
+        lista = "; ".join(f"{row['codigo']}: {row['motivo']}" for row in invalidos)
+        return {
+            "detail": f"Hay códigos nuevos que no se pueden crear, cámbialos por otro código: {lista}.",
+            "codigos_invalidos": invalidos,
+        }
 
     def crear_productos_pendientes(self, importacion):
         """Al importar: los detalles con codigo que todavia no tienen producto
@@ -348,9 +388,6 @@ class ImportacionSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         if detalles_data is not None:
-            if instance.estado != Importacion.ESTADO_BORRADOR:
-                for item in detalles_data:
-                    self._vincular_producto_existente(item)
             # Los guardados que no mandan precio_casa (casi todos) conservan
             # la que ya tenía cada producto -- aquí se borra y se vuelve a
             # crear todo el listado.

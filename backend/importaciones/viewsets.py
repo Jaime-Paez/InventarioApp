@@ -993,6 +993,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "Todos los productos están quitados: deja al menos uno para pedir confirmación."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # Los códigos nuevos se revisan aquí porque es el último paso donde
+        # todavía se pueden cambiar (al importar se vuelven a revisar).
+        invalidos = ImportacionSerializer.validar_codigos_nuevos(
+            instance.detalles.filter(quitado=False, producto__isnull=True).values_list("codigo", "nombre")
+        )
+        if invalidos:
+            return Response(
+                ImportacionSerializer.codigos_invalidos_response_data(invalidos),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         # Antes de sacar los quitados se guarda que se pidio y que no, para
         # poder verlo siempre (los quitados ya no siguen en la importacion).
         instance.historial_verificacion = [
@@ -1073,6 +1083,25 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             if d.get("producto_id"):
                 confirmed_by_producto_id[str(d["producto_id"])] = d
 
+        # El código de un producto nuevo se puede corregir en la confirmación
+        # (p. ej. si alguien creó ese código mientras tanto): se toma el que
+        # viene, y todos los que se van a crear se revisan antes de tocar nada.
+        detalles = list(instance.detalles.select_related("producto").all())
+        for detalle in detalles:
+            confirmed = confirmed_by_detalle_id.get(str(detalle.id))
+            if not detalle.producto_id and confirmed and confirmed.get("codigo") is not None:
+                detalle.codigo = str(confirmed["codigo"]).strip()
+        invalidos = ImportacionSerializer.validar_codigos_nuevos(
+            (detalle.codigo, detalle.nombre)
+            for detalle in detalles
+            if not detalle.producto_id and f"sc_{detalle.id}" in selected_keys
+        )
+        if invalidos:
+            return Response(
+                ImportacionSerializer.codigos_invalidos_response_data(invalidos),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # 1. Snapshot every reviewed detalle (checked, x'd, or untouched) with its
         # confirmed price/quantity/comment before anything is removed, so the
         # confirmación review (checks, x's, comments) stays visible via "Historial"
@@ -1080,7 +1109,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # is spawned anymore.
         historial = []
         detalles_to_delete = []
-        for detalle in instance.detalles.select_related("producto").all():
+        for detalle in detalles:
             key = str(detalle.producto_id) if detalle.producto_id else f"sc_{detalle.id}"
             confirmed = confirmed_by_detalle_id.get(str(detalle.id)) or confirmed_by_producto_id.get(key, {})
             precio_raw = confirmed.get("precio_confirmado")
@@ -1121,7 +1150,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             if revision == "check":
                 detalle.cantidad = detalle.cantidad_confirmada if detalle.cantidad_confirmada is not None else detalle.cantidad
                 detalle.precio_pvp_snapshot = detalle.producto.precio if detalle.producto_id else None
-                detalle.save(update_fields=["precio_confirmado", "cantidad_confirmada", "comentario", "seleccionado", "cantidad", "precio_pvp_snapshot"])
+                detalle.save(update_fields=["codigo", "precio_confirmado", "cantidad_confirmada", "comentario", "seleccionado", "cantidad", "precio_pvp_snapshot"])
             else:
                 detalles_to_delete.append(detalle.id)
 
