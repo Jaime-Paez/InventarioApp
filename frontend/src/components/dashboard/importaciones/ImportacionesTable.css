@@ -836,6 +836,27 @@
   flex: none;
 }
 
+/* Sugerencia (detalle): igual, la tabla llena el alto que queda en el modal
+   y es la unica que se desplaza. El body solo scrollea si el modal es tan
+   bajo que ni el alto minimo de la tabla cabe. */
+.create-user__body:has(> .create-user__section .imp-sugerencia__tabla-wrap) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: auto;
+  padding-bottom: 12px;
+}
+
+.create-user__body:has(> .create-user__section .imp-sugerencia__tabla-wrap) > .create-user__section {
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 0;
+}
+
+.create-user__body:has(> .create-user__section .imp-sugerencia__tabla-wrap) > .create-user__section > :not(.imp-sugerencia__tabla-wrap) {
+  flex: none;
+}
+
 .dashboard-shell.dark .importaciones-modal__products-table,
 .dashboard-shell.dark .importaciones-modal__products-table:has(.create-salida__product-dropdown .create-user__dropdown-panel) {
   background: var(--table-color-dark);
@@ -1744,8 +1765,45 @@
 }
 
 .importaciones-aceptados__table .create-user__locations-row {
-  grid-template-columns: 38px minmax(80px, 0.6fr) minmax(90px, 0.7fr) minmax(150px, 1.5fr) minmax(90px, 0.7fr) minmax(70px, 0.5fr) minmax(100px, 0.9fr) minmax(50px, 0.3fr);
+  grid-template-columns: 38px minmax(80px, 0.6fr) minmax(90px, 0.7fr) minmax(150px, 1.5fr) minmax(90px, 0.7fr) minmax(70px, 0.5fr) minmax(100px, 0.9fr) minmax(50px, 0.3fr) 112px;
   align-items: center;
+}
+
+/* Estado de cada aceptado frente a la lista: ya agregado / se agregara /
+   se quitara / no agregado. */
+.importaciones-aceptados__estado {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.importaciones-aceptados__estado--agregado {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+}
+
+.importaciones-aceptados__estado--agregar {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #93c5fd;
+}
+
+.importaciones-aceptados__estado--quitar {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.importaciones-aceptados__estado--no {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #e2e8f0;
 }
 
 .importaciones-aceptados__table input[type='checkbox'] {
@@ -2675,4 +2733,10 @@ body.app-theme-dark .imp-receive-footer-hint {
 
 .dashboard-shell.dark .imp-codigo-editable__origen {
   color: #fde68a;
+}
+
+.imp-aceptados-popup__header p.importaciones-aceptados__resumen {
+  margin-top: 2px;
+  font-weight: 600;
+  color: #15803d;
 }

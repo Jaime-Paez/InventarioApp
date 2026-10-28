@@ -3759,6 +3759,7 @@ const deriveSuggestedCodigo = (row, casaCodigo) => {
 // catalogo) con "Quitar todos". chipProps(grupo, texto) hace clicable cada
 // contador para ir a sus filas.
 function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, sinCatalogo = 0, chipProps, onQuitarTodos }) {
+  const [confirmarQuitar, setConfirmarQuitar] = useState(false)
   const encontrados = vinculados + oem + otraCasa
   if (!encontrados && !sinCatalogo) return null
   const caja = { display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }
@@ -3801,7 +3802,7 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, sinCatalog
               <button
                 type="button"
                 className="imp-excel-review__quitar-todos"
-                onClick={onQuitarTodos}
+                onClick={() => setConfirmarQuitar(true)}
                 title="Quita de la sugerencia todos los productos que no se encontraron en el catálogo"
               >
                 <X size={13} /> Quitar todos
@@ -3810,8 +3811,68 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, sinCatalog
           </div>
         </div>
       )}
+      {confirmarQuitar && createPortal(
+        <div className="user-details__confirm-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setConfirmarQuitar(false) }}>
+          <div className="user-details__confirm-dialog">
+            <div className="user-details__confirm-icon">
+              <Info size={18} />
+            </div>
+            <div className="user-details__confirm-content">
+              <h4>Quitar productos no encontrados</h4>
+              <p>¿Estás seguro que quieres quitar los <strong>{sinCatalogo}</strong> producto{sinCatalogo !== 1 ? 's' : ''} sin catálogo de la lista?</p>
+            </div>
+            <div className="user-details__confirm-actions">
+              <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setConfirmarQuitar(false)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="create-user__action user-details__confirm-danger"
+                onClick={() => { setConfirmarQuitar(false); onQuitarTodos() }}
+              >
+                Quitar todos
+              </button>
+            </div>
+          </div>
+        </div>,
+        getPortalRoot()
+      )}
     </div>
   )
+}
+
+// Popup "Aceptados de solicitudes": un aceptado ya esta en la lista si su
+// producto (o, sin catalogo, su solicitud) ya esta en los detalles.
+const isAceptadoAgregado = (item, addedIds, addedSolIds) => (item.producto_id
+  ? addedIds.has(String(item.producto_id))
+  : addedSolIds.has(String(item.solicitud_id)))
+
+const getAceptadosCambios = (items, selected, addedIds, addedSolIds) => {
+  const toAdd = []
+  const toRemove = []
+  for (const item of items) {
+    const agregado = isAceptadoAgregado(item, addedIds, addedSolIds)
+    const marcado = selected.has(item.solicitud_id)
+    if (agregado && !marcado) toRemove.push(item)
+    else if (!agregado && marcado) toAdd.push(item)
+  }
+  return { toAdd, toRemove }
+}
+
+const getAceptadosConfirmLabel = ({ toAdd, toRemove }) => {
+  if (toAdd.length && toRemove.length) return `Guardar (+${toAdd.length} / −${toRemove.length})`
+  if (toRemove.length) return `Quitar (${toRemove.length})`
+  if (toAdd.length) return `Agregar (${toAdd.length})`
+  return 'Sin cambios'
+}
+
+// Estado de un aceptado frente a la lista actual: ya agregado, se agregara,
+// se quitara o no agregado (segun lo marcado en el popup).
+function AceptadoEstadoChip({ agregado, marcado }) {
+  const [texto, mod] = agregado
+    ? (marcado ? ['Agregado', 'agregado'] : ['Se quitará', 'quitar'])
+    : (marcado ? ['Se agregará', 'agregar'] : ['No agregado', 'no'])
+  return <span className={`importaciones-aceptados__estado importaciones-aceptados__estado--${mod}`}>{texto}</span>
 }
 
 const enrichParsedRow = (row, casaCodigo) => {
@@ -6054,6 +6115,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   }, [aceptadosItems, aceptadosSearch])
 
   const allSelectableSelected = filteredAceptados.length > 0 && filteredAceptados.every((item) => aceptadosSelected.has(item.solicitud_id))
+  const aceptadosCambios = getAceptadosCambios(aceptadosItems, aceptadosSelected, alreadyAddedIds, alreadyAddedSolIds)
+  const aceptadosAgregadosCount = aceptadosItems.filter((item) => isAceptadoAgregado(item, alreadyAddedIds, alreadyAddedSolIds)).length
 
   const handleToggleAceptado = (solId) => {
     setAceptadosSelected((prev) => {
@@ -6073,18 +6136,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
   }
 
   const handleConfirmAceptados = () => {
-    const toRemove = aceptadosItems.filter((item) => {
-      const wasAdded = item.producto_id
-        ? alreadyAddedIds.has(String(item.producto_id))
-        : alreadyAddedSolIds.has(String(item.solicitud_id))
-      return wasAdded && !aceptadosSelected.has(item.solicitud_id)
-    })
-    const toAdd = aceptadosItems.filter((item) => {
-      const wasAdded = item.producto_id
-        ? alreadyAddedIds.has(String(item.producto_id))
-        : alreadyAddedSolIds.has(String(item.solicitud_id))
-      return !wasAdded && aceptadosSelected.has(item.solicitud_id)
-    })
+    const { toAdd, toRemove } = aceptadosCambios
     if (toRemove.length > 0) {
       setDetails((prev) => prev.filter((d) => {
         if (d.producto?.id) return !toRemove.some((r) => r.producto_id && String(r.producto_id) === String(d.producto.id))
@@ -6831,6 +6883,9 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                 {selectedCasa?.nombre && (
                   <p>{formatCasaLabel(selectedCasa)}</p>
                 )}
+                {!aceptadosLoading && aceptadosItems.length > 0 && (
+                  <p className="importaciones-aceptados__resumen">{aceptadosAgregadosCount} de {aceptadosItems.length} ya agregado{aceptadosItems.length !== 1 ? 's' : ''} a la lista</p>
+                )}
               </div>
               <button type="button" className="imp-aceptados-popup__close" onClick={() => setShowAceptadosView(false)} aria-label="Cerrar">
                 <i className="pi pi-times" />
@@ -6861,6 +6916,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                   <span>Precio</span>
                   <span>OEMs</span>
                   <span>Cant.</span>
+                  <span>Estado</span>
                 </div>
 
                 {aceptadosLoading && (
@@ -6874,6 +6930,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                 {!aceptadosLoading && filteredAceptados.map((item) => {
                   const noProducto = !item.producto_id
                   const isSelected = aceptadosSelected.has(item.solicitud_id)
+                  const agregado = isAceptadoAgregado(item, alreadyAddedIds, alreadyAddedSolIds)
                   const oemText = (item.oem_codigos || []).join(', ') || '-'
                   const precioText = item.precio != null ? `$${Number(item.precio).toFixed(2)}` : '-'
                   return (
@@ -6901,6 +6958,7 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
                       <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{precioText}</span></span>
                       <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{oemText}</span></span>
                       <span>{item.cantidad ?? '-'}</span>
+                      <span><AceptadoEstadoChip agregado={agregado} marcado={isSelected} /></span>
                     </div>
                   )
                 })}
@@ -6909,8 +6967,8 @@ function CreateImportacionModal({ open, token, onClose, onCreated, onError, onOp
 
             <div className="imp-aceptados-popup__footer">
               <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowAceptadosView(false)}>Regresar</button>
-              <button type="button" className="create-user__action create-user__action--primary" disabled={aceptadosSelected.size === 0} onClick={handleConfirmAceptados}>
-                {aceptadosSelected.size > 0 ? `Agregar (${aceptadosSelected.size})` : 'Agregar'}
+              <button type="button" className="create-user__action create-user__action--primary" disabled={!aceptadosCambios.toAdd.length && !aceptadosCambios.toRemove.length} onClick={handleConfirmAceptados}>
+                {getAceptadosConfirmLabel(aceptadosCambios)}
               </button>
             </div>
           </div>
@@ -8657,6 +8715,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   }, [aceptadosItems, aceptadosSearch])
 
   const allSelectableSelected = filteredAceptados.length > 0 && filteredAceptados.every((item) => aceptadosSelected.has(item.solicitud_id))
+  const aceptadosCambios = getAceptadosCambios(aceptadosItems, aceptadosSelected, alreadyAddedIds, alreadyAddedSolIds)
+  const aceptadosAgregadosCount = aceptadosItems.filter((item) => isAceptadoAgregado(item, alreadyAddedIds, alreadyAddedSolIds)).length
 
   const handleToggleAceptado = (solId) => {
     setAceptadosSelected((prev) => { const next = new Set(prev); if (next.has(solId)) next.delete(solId); else next.add(solId); return next })
@@ -8666,18 +8726,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     else setAceptadosSelected(new Set(filteredAceptados.map((i) => i.solicitud_id)))
   }
   const handleConfirmAceptados = () => {
-    const toRemove = aceptadosItems.filter((item) => {
-      const wasAdded = item.producto_id
-        ? alreadyAddedIds.has(String(item.producto_id))
-        : alreadyAddedSolIds.has(String(item.solicitud_id))
-      return wasAdded && !aceptadosSelected.has(item.solicitud_id)
-    })
-    const toAdd = aceptadosItems.filter((item) => {
-      const wasAdded = item.producto_id
-        ? alreadyAddedIds.has(String(item.producto_id))
-        : alreadyAddedSolIds.has(String(item.solicitud_id))
-      return !wasAdded && aceptadosSelected.has(item.solicitud_id)
-    })
+    const { toAdd, toRemove } = aceptadosCambios
     if (toRemove.length > 0) {
       setDetails((prev) => prev.filter((d) => {
         if (d.producto?.id) return !toRemove.some((r) => r.producto_id && String(r.producto_id) === String(d.producto.id))
@@ -9018,13 +9067,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                           </strong>{' '}
                           Completa el código, la referencia y la descripción (marcados en rojo) para poder pedir la cotización. El OEM y la cantidad pueden quedar vacíos.
                         </span>
-                        <button
-                          type="button"
-                          className="imp-incompletos-aviso__ir"
-                          onClick={() => { setProductSearch(''); jumpToDetailRow(incompletos[0]._key) }}
-                        >
-                          Ir al primero
-                        </button>
                       </div>
                     )}
                     {avisoCodigosInvalidos.length > 0 && (
@@ -9057,7 +9099,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                       // Alto propio (como el Paso 3): la tabla se desplaza por
                       // dentro con el encabezado fijo, y los contadores pueden
                       // llevar cada fila arriba.
-                      <div ref={sugerenciaWrapRef} onScroll={handleSugerenciaScroll} onKeyDown={handleProductsGridKeyDown} className="imp-excel-review-table-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: 'max(320px, calc(100dvh - 380px))' }}>
+                      <div ref={sugerenciaWrapRef} onScroll={handleSugerenciaScroll} onKeyDown={handleProductsGridKeyDown} className="imp-excel-review-table-wrap imp-sugerencia__tabla-wrap" style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 0', minHeight: 160 }}>
                         <table className="imp-excel-review-table" style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: 'var(--font-size-base)', minWidth: 1000 }}>
                           <colgroup>
                             <col style={{ width: 150 }} />
@@ -10068,6 +10110,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                 <div>
                   <h3>Aceptados de solicitudes</h3>
                   {selectedCasa?.nombre && <p>{formatCasaLabel(selectedCasa)}</p>}
+                  {!aceptadosLoading && aceptadosItems.length > 0 && (
+                    <p className="importaciones-aceptados__resumen">{aceptadosAgregadosCount} de {aceptadosItems.length} ya agregado{aceptadosItems.length !== 1 ? 's' : ''} a la lista</p>
+                  )}
                 </div>
                 <button type="button" className="imp-aceptados-popup__close" onClick={() => setShowAceptadosView(false)} aria-label="Cerrar">
                   <i className="pi pi-times" />
@@ -10089,7 +10134,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                     <span>
                       <input type="checkbox" checked={allSelectableSelected} disabled={filteredAceptados.length === 0} onChange={handleToggleAllAceptados} title="Seleccionar todos" />
                     </span>
-                    <span>Solicitud</span><span>Código JP</span><span>Descripción</span><span>Referencia</span><span>Precio</span><span>OEMs</span><span>Cant.</span>
+                    <span>Solicitud</span><span>Código JP</span><span>Descripción</span><span>Referencia</span><span>Precio</span><span>OEMs</span><span>Cant.</span><span>Estado</span>
                   </div>
                   {aceptadosLoading && (
                     <div className="create-user__locations-row create-user__locations-row--empty"><span>Cargando...</span></div>
@@ -10102,6 +10147,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                   {!aceptadosLoading && filteredAceptados.map((item) => {
                     const noProducto = !item.producto_id
                     const isSelected = aceptadosSelected.has(item.solicitud_id)
+                    const agregado = isAceptadoAgregado(item, alreadyAddedIds, alreadyAddedSolIds)
                     const oemText = (item.oem_codigos || []).join(', ') || '-'
                     const precioText = item.precio != null ? `$${Number(item.precio).toFixed(2)}` : '-'
                     return (
@@ -10129,6 +10175,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{precioText}</span></span>
                         <span style={{ fontSize: '0.8rem' }}><span className="imp-cell-text">{oemText}</span></span>
                         <span>{item.cantidad ?? '-'}</span>
+                        <span><AceptadoEstadoChip agregado={agregado} marcado={isSelected} /></span>
                       </div>
                     )
                   })}
@@ -10136,8 +10183,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
               </div>
               <div className="imp-aceptados-popup__footer">
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setShowAceptadosView(false)}>Regresar</button>
-                <button type="button" className="create-user__action create-user__action--primary" disabled={aceptadosSelected.size === 0} onClick={handleConfirmAceptados}>
-                  {aceptadosSelected.size > 0 ? `Agregar (${aceptadosSelected.size})` : 'Agregar'}
+                <button type="button" className="create-user__action create-user__action--primary" disabled={!aceptadosCambios.toAdd.length && !aceptadosCambios.toRemove.length} onClick={handleConfirmAceptados}>
+                  {getAceptadosConfirmLabel(aceptadosCambios)}
                 </button>
               </div>
             </div>
