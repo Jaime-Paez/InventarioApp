@@ -15,6 +15,7 @@ import ProductoRatingTab from '../ProductoRatingTab/ProductoRatingTab'
 import ReposicionProductPanel from '../../reposicion/ReposicionProductPanel'
 import { formatMoneyFromValue, formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
 import { toUpperCode } from '../../../../utils/textInput'
+import { toggleCasaSelection } from '../../../../utils/casasComerciales'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
 
 const MIN_WIDTH = 720
@@ -135,8 +136,8 @@ function ProductoDetails({
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
   const [suppliers, setSuppliers] = useState([])
-  const [selectedCasa, setSelectedCasa] = useState(null)
-  const [originalCasa, setOriginalCasa] = useState(null)
+  const [selectedCasas, setSelectedCasas] = useState([])
+  const [originalCasas, setOriginalCasas] = useState([])
   const [casaSearch, setCasaSearch] = useState('')
   const [activeTab, setActiveTab] = useState('general')
   const [showCasaDropdown, setShowCasaDropdown] = useState(false)
@@ -404,9 +405,8 @@ function ProductoDetails({
       setFormData(normalized)
       setOriginalData(normalized)
       const casas = Array.isArray(data?.casas_comerciales) ? data.casas_comerciales : []
-      const casaPrincipal = casas[0] || null
-      setSelectedCasa(casaPrincipal)
-      setOriginalCasa(casaPrincipal)
+      setSelectedCasas(casas)
+      setOriginalCasas(casas)
       const alternos = Array.isArray(data?.alternativas) ? data.alternativas : []
       setAlternativas(alternos)
       setOriginalAlternativas(alternos)
@@ -551,8 +551,8 @@ function ProductoDetails({
     setFormData(emptyForm)
     setOriginalData(emptyForm)
     setCasaSearch('')
-    setSelectedCasa(null)
-    setOriginalCasa(null)
+    setSelectedCasas([])
+    setOriginalCasas([])
     setAlternativas([])
     setOriginalAlternativas([])
     setOemItems([])
@@ -707,10 +707,11 @@ function ProductoDetails({
     if (!isEditing || !supplier) return
     const id = String(supplier.id)
     if (!id) return
-    setSelectedCasa({ id: supplier.id, nombre: supplier.nombre })
+    const next = toggleCasaSelection(selectedCasas, supplier)
+    setSelectedCasas(next)
     setFormData((prev) => ({
       ...prev,
-      casasIds: [id],
+      casasIds: next.map((casa) => String(casa.id)),
     }))
     setCasaSearch('')
     setShowCasaDropdown(false)
@@ -1250,9 +1251,8 @@ function ProductoDetails({
       setFormData(normalized)
       setOriginalData(normalized)
       const casas = Array.isArray(data?.casas_comerciales) ? data.casas_comerciales : []
-      const casaPrincipal = casas[0] || null
-      setSelectedCasa(casaPrincipal)
-      setOriginalCasa(casaPrincipal)
+      setSelectedCasas(casas)
+      setOriginalCasas(casas)
       const nextAlternativas = Array.isArray(alternativas) ? alternativas : []
       setAlternativas(nextAlternativas)
       setOriginalAlternativas(nextAlternativas)
@@ -1336,7 +1336,7 @@ function ProductoDetails({
 
   const handleCancelEdit = () => {
     setFormData(originalData)
-    setSelectedCasa(originalCasa)
+    setSelectedCasas(originalCasas)
     setAlternativas(originalAlternativas)
     setOemItems(originalOemItems)
     setOemDraft({ codigo: '' })
@@ -1522,7 +1522,7 @@ function ProductoDetails({
   // cerrar la pestana). Guardar = el mismo boton de guardar.
   const submitSucceededRef = useRef(false)
   const unsavedGuard = useUnsavedChangesGuard({
-    watch: { formData, selectedCasa, alternativas, oemItems, referenciaItems },
+    watch: { formData, selectedCasas, alternativas, oemItems, referenciaItems },
     enabled: Boolean(isEditing),
     onSave: async () => {
       submitSucceededRef.current = false
@@ -1753,7 +1753,7 @@ function ProductoDetails({
                     <div className="create-user__grid create-user__grid--two">
                       <StaticFieldDisplay label="Descripción" value={formData.nombre} />
                       <StaticFieldDisplay label="Código" value={formData.codigo} />
-                      <StaticFieldDisplay label="Casa comercial" value={selectedCasa?.nombre} />
+                      <StaticFieldDisplay label="Casa comercial" value={selectedCasas.map((casa) => casa.nombre).join(', ')} />
                     </div>
                   </div>
                 </section>
@@ -1855,7 +1855,7 @@ function ProductoDetails({
                           }}
                           disabled={editorDisabled}
                         >
-                          <span>{selectedCasa?.nombre || 'Selecciona una casa comercial'}</span>
+                          <span>{selectedCasas.length ? selectedCasas.map((casa) => casa.nombre).join(', ') : 'Selecciona una casa comercial'}</span>
                           <i className={`pi pi-chevron-${showCasaDropdown ? 'up' : 'down'}`} />
                         </button>
 
@@ -1877,7 +1877,9 @@ function ProductoDetails({
                               {casaSearch.trim() && !filteredSuppliers.length && (
                                 <small className="muted">Sin resultados.</small>
                               )}
-                              {filteredSuppliers.map((supplier) => (
+                              {filteredSuppliers.map((supplier) => {
+                                const isSelected = selectedCasas.some((casa) => String(casa.id) === String(supplier.id))
+                                return (
                                 <button
                                   key={supplier.id}
                                   type="button"
@@ -1894,8 +1896,12 @@ function ProductoDetails({
                                     <strong>{supplier.nombre}</strong>
                                     <small>{supplier.codigo ? `Código: ${supplier.codigo}` : `ID: ${supplier.id}`}</small>
                                   </div>
+                                  <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
+                                    {isSelected ? 'Quitar' : 'Seleccionar'}
+                                  </span>
                                 </button>
-                              ))}
+                                )
+                              })}
                             </div>
                           </div>
                         )}

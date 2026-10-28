@@ -5,6 +5,7 @@ import useModalAnimation from '../../common/useModalAnimation'
 import BlockerNotice from '../../common/BlockerNotice'
 import { formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
 import { toUpperCode } from '../../../../utils/textInput'
+import { toggleCasaSelection } from '../../../../utils/casasComerciales'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
 
 const MIN_WIDTH = 720
@@ -148,7 +149,7 @@ function CreateProducto({
   const [editingField, setEditingField] = useState(null)
   const [editingValue, setEditingValue] = useState('')
   const [editError, setEditError] = useState('')
-  const [selectedCasa, setSelectedCasa] = useState(null)
+  const [selectedCasas, setSelectedCasas] = useState([])
   const [casaSearch, setCasaSearch] = useState('')
   const [codigoChecking, setCodigoChecking] = useState(false)
   const [codigoError, setCodigoError] = useState('')
@@ -611,7 +612,7 @@ function CreateProducto({
     setReferenciaError('')
     setShowCasaDropdown(false)
     setIsMaximized(false)
-    setSelectedCasa(null)
+    setSelectedCasas([])
     setBranches([])
     setBodegas([])
     setDivisions([])
@@ -914,17 +915,9 @@ function CreateProducto({
     if (!supplier) return
     const id = String(supplier.id)
     if (!id) return
-    let didSelect = false
-    setFormData((prev) => {
-      const current = (prev.casasIds || []).map(String)
-      if (current.includes(id)) {
-        setSelectedCasa(null)
-        return { ...prev, casasIds: [] }
-      }
-      didSelect = true
-      setSelectedCasa({ id: supplier.id, nombre: supplier.nombre })
-      return { ...prev, casasIds: [id] }
-    })
+    const next = toggleCasaSelection(selectedCasas, supplier)
+    setSelectedCasas(next)
+    setFormData((prev) => ({ ...prev, casasIds: next.map((casa) => String(casa.id)) }))
     setCasaSearch('')
     setShowCasaDropdown(false)
   }
@@ -1794,7 +1787,7 @@ function CreateProducto({
   // pestana). Guardar = el mismo boton de crear.
   const submitSucceededRef = useRef(false)
   const unsavedGuard = useUnsavedChangesGuard({
-    watch: { formData, alternosSelected, oemItems, referenciaItems, locations, selectedCasa },
+    watch: { formData, alternosSelected, oemItems, referenciaItems, locations, selectedCasas },
     enabled: Boolean(open),
     onSave: async () => {
       submitSucceededRef.current = false
@@ -1966,7 +1959,7 @@ function CreateProducto({
                           }}
                           disabled={loading}
                         >
-                          <span>{selectedCasa?.nombre || 'Selecciona una casa comercial'}</span>
+                          <span>{selectedCasas.length ? selectedCasas.map((casa) => casa.nombre).join(', ') : 'Selecciona una casa comercial'}</span>
                           <i className={`pi pi-chevron-${showCasaDropdown ? 'up' : 'down'}`} />
                         </button>
 
@@ -1994,6 +1987,7 @@ function CreateProducto({
                                 </small>
                               )}
                               {filteredSuppliers.map((supplier) => {
+                                const isSelected = selectedCasas.some((casa) => String(casa.id) === String(supplier.id))
                                 return (
                                   <button
                                     key={supplier.id}
@@ -2011,6 +2005,9 @@ function CreateProducto({
                                       <strong>{supplier.nombre}</strong>
                                       <small>{supplier.codigo ? `Código: ${supplier.codigo}` : `ID: ${supplier.id}`}</small>
                                     </div>
+                                    <span className={`create-user__result-tag ${isSelected ? 'is-selected' : ''}`}>
+                                      {isSelected ? 'Quitar' : 'Seleccionar'}
+                                    </span>
                                   </button>
                                 )
                               })}
@@ -2019,7 +2016,8 @@ function CreateProducto({
                         )}
                       </div>
                       {casaInvalid && <small className="create-user__field-error">Selecciona una casa comercial.</small>}
-                      {supplierCatalogEmpty && !selectedCasa && (
+                      <small className="muted">Las casas de compra local se pueden combinar (p. ej. Compra Local y Tecnova).</small>
+                      {supplierCatalogEmpty && !selectedCasas.length && (
                         <BlockerNotice
                           compact
                           title="No hay casas comerciales registradas: crea una en Proveedores antes de crear el producto."
