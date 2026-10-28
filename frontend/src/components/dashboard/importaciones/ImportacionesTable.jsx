@@ -812,6 +812,8 @@ const formatProductLabel = (product) => {
 }
 
 const MIN_WIDTH = 700
+// Ancho con el que abre una sugerencia (guardada y Paso 3).
+const SUGERENCIA_MODAL_WIDTH = 1080
 const MIN_HEIGHT = 520
 const SELECTOR_WIDTH = 520
 const SELECTOR_HEIGHT_EMPTY = 'auto'
@@ -5561,9 +5563,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
     // esto evita que el modal se recentre con una medida vieja y se vea
     // saltar de lugar al pasar de un paso a otro). Solo el paso 3 es más
     // ancho, porque necesita espacio real para la tabla de revisión.
-    // El paso 3 abre al mismo ancho que la sugerencia guardada (1240), para
-    // que la tabla de revision se vea igual (EXCEL_STEP3_WIDTH queda de minimo).
-    const preferredWidth = step === 3 ? 1240 : EXCEL_STEP_WIDTH
+    // El paso 3 abre al mismo ancho que la sugerencia guardada, para que la
+    // tabla de revision se vea igual (EXCEL_STEP3_WIDTH queda de minimo).
+    const preferredWidth = step === 3 ? Math.max(Math.min(SUGERENCIA_MODAL_WIDTH, Math.round(window.innerWidth * 0.9)), EXCEL_STEP3_WIDTH) : EXCEL_STEP_WIDTH
     const measuredWidth = Math.min(preferredWidth, availableWidth)
     const nextWidth = measuredWidth
     const measuredHeight = modalRef.current?.offsetHeight || (isCasaStep ? (casaDraft ? 380 : 200) : 300)
@@ -6536,11 +6538,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     // las columnas: min-width de la tabla en ImportacionesTable.css (866 /
     // 854) + 40 de padding del modal + 16 por si la tabla muestra scroll
     // vertical.
-    // Sugerencia abre grande: con 700 x 520 la tabla de productos (9
-    // columnas) quedaba cortada, con scroll lateral y solo 4 filas a la vista.
+    // Sugerencia abre mas grande que 700 x 520 (ahi la tabla quedaba cortada y
+    // con solo 4 filas a la vista), pero sin llenar la pantalla: 1080 x 680 o
+    // el 90% / 88% de la ventana. La tabla necesita ~940 de ancho.
     const isSugerenciaOpen = imp?.estado === 'borrador'
-    const targetWidth = isSugerenciaOpen ? 1240 : imp?.estado === 'cotizacion' ? 922 : imp?.estado === 'confirmacion' ? 910 : MIN_WIDTH
-    const targetHeight = isSugerenciaOpen ? 780 : MIN_HEIGHT
+    const sugerenciaWidth = Math.max(Math.min(SUGERENCIA_MODAL_WIDTH, Math.round(window.innerWidth * 0.9)), 960)
+    const targetWidth = isSugerenciaOpen ? sugerenciaWidth : imp?.estado === 'cotizacion' ? 922 : imp?.estado === 'confirmacion' ? 910 : MIN_WIDTH
+    const targetHeight = isSugerenciaOpen ? Math.min(680, Math.round(window.innerHeight * 0.88)) : MIN_HEIGHT
     const nextWidth = Math.min(targetWidth, availableWidth)
     const nextHeight = Math.min(targetHeight, availableHeight)
     const centerX = Math.max((window.innerWidth - nextWidth) / 2, VIEWPORT_PADDING)
