@@ -4891,11 +4891,12 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
   // Quien usa la tabla puede llevar a una fila (p. ej. "Ir al primero").
   if (jumpRef) jumpRef.current = (filaExcel) => { setReviewQuery(''); jumpToFila(filaExcel) }
 
-  const addDraftQty = Number(addDraft.cantidad)
-  const canAddDraft = Boolean(addDraft.producto && Number.isFinite(addDraftQty) && addDraftQty > 0)
+  // La cantidad es opcional; solo no puede ser negativa.
+  const addDraftQty = Number(addDraft.cantidad || 0)
+  const canAddDraft = Boolean(addDraft.producto && Number.isFinite(addDraftQty) && addDraftQty >= 0)
   const handleAddDraft = () => {
     if (!canAddDraft) return
-    appendRows([catalogRow(addDraft.producto, { cantidad: String(addDraftQty) })])
+    appendRows([catalogRow(addDraft.producto, { cantidad: addDraftQty > 0 ? String(addDraftQty) : '' })])
     setAddDraft({ producto: null, cantidad: '' })
   }
 
@@ -6641,8 +6642,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // y se agrupan arriba para encontrarlos rapido.
   const esAgregadoVerificacion = (item) => isVerificar && !item.quitado && String(item.comentario || '').includes(NOTA_AGREGADO_VERIFICACION)
   const detailDraftQuantity = Number(detailDraft.cantidad)
+  // La cantidad es opcional (se completa despues); solo no puede ser negativa.
   const canAddDetailDraft = Boolean(
-    detailDraft.producto && Number.isFinite(detailDraftQuantity) && detailDraftQuantity > 0
+    detailDraft.producto && Number.isFinite(detailDraftQuantity) && detailDraftQuantity >= 0
   )
 
   useEffect(() => { modalSizeRef.current = modalSize }, [modalSize])
@@ -6890,8 +6892,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const nextOrden = (list) => list.reduce((max, d) => Math.max(max, Number(d.orden) || 0), 0) + 1
 
   const handleAddProduct = (product, cantidad = '', comentario = '') => {
-    const n = Number(cantidad)
-    if (!Number.isFinite(n) || n <= 0) return
+    const n = Number(cantidad || 0)
+    if (!Number.isFinite(n) || n < 0) return
     const existing = details.find((d) => d.producto?.id && String(d.producto.id) === String(product.id))
     if (existing) {
       // Si estaba quitado de la verificacion, agregarlo de nuevo lo restaura.
