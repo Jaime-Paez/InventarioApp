@@ -274,6 +274,274 @@ def _resolve_producto_by_referencia(referencia, casa_comercial_id):
     return _pick_producto_match(_productos_by_referencia(referencia), casa_comercial_id)
 
 
+def _split_codes(value):
+    return [code.strip() for code in str(value or "").split(",") if code.strip()]
+
+
+def _match_rows(rows, casa_comercial_id, on_progress=None):
+    """Busca en el catalogo cada fila de una sugerencia (codigo, referencia,
+    OEM) y devuelve, por fila, el producto vinculado, las coincidencias por
+    OEM/referencia y si ya existe en otra casa. Lo usa el Excel de sugerencia
+    y tambien las filas que se agregan a mano (ver accion "coincidencias").
+    Cada fila: {fila_excel, orden, codigo, referencia, oem, descripcion,
+    cantidad, pvp, sucursal_quantities}.
+    """
+    from django.db.models.functions import Lower
+
+    # Junta los códigos OEM y las referencias para resolverlos en pocas
+    # consultas (en vez de una por fila). Referencia y OEM se tratan igual:
+    # un valor de cualquiera de las dos se busca tanto entre los OEM como
+    # entre las referencias del catálogo, así basta con que traiga una.
+    all_codes_lower = set()
+    for item in rows:
+        for column in ("oem", "referencia"):
+            for code in _split_codes(item.get(column)):
+                all_codes_lower.add(code.lower())
+
+    iva_rate = ConfiguracionSistema.get_solo().iva_rate or 0
+
+    def with_iva(precio):
+        return round(float(precio) * (1 + float(iva_rate)), 2) if precio is not None else None
+
+    def match_payload(producto):
+        precio = float(producto.precio) if producto.precio is not None else None
+        # Productos "alternos" (ProductoAlterno, en cualquiera de las dos
+        # direcciones): aunque no compartan este mismo OEM, son la MISMA
+        # pieza física en otras casas comerciales, así que también sirven
+        # como fuente del patrón <base><sufijo> para sugerir un código
+        # nuevo cuando el match directo no alcanza otra casa.
+        alterno_productos = [rel.alterno for rel in producto.alternativas.all()]
+        alterno_productos += [rel.producto for rel in producto.alternativas_para.all()]
+        alternos_payload = []
+        for alt in alterno_productos:
+            alt_precio = float(alt.precio) if alt.precio is not None else None
+            alternos_payload.append({
+                "producto_id": alt.id,
+                "codigo": alt.codigo,
+                "nombre": alt.nombre,
+                "referencia": alt.referencia,
+                "casas_comerciales_codigos": [
+                    c.codigo for c in alt.casas_comerciales.all() if c.codigo
+                ],
+                "casas_comerciales_nombres": [
+                    c.nombre for c in alt.casas_comerciales.all() if c.nombre
+                ],
+                "precio": alt_precio,
+                "precio_con_iva": with_iva(alt_precio),
+            })
+        return {
+            "producto_id": producto.id,
+            "codigo": producto.codigo,
+            "nombre": producto.nombre,
+            "referencia": producto.referencia,
+            # Todas las referencias y OEM del producto, para mostrarlas en
+            # el hover de recomendaciones.
+            "referencias": [r.valor for r in producto.referencias.all()],
+            "oems": [link.oem.codigo for link in producto.oem_productos.all()],
+            # Códigos JP se arman como <base><sufijo de la casa comercial>;
+            # se manda el sufijo de cada casa a la que pertenece este
+            # producto para que el frontend pueda inferir la base y
+            # sugerir el código con el sufijo de la casa actual.
+            "casas_comerciales_codigos": [
+                c.codigo for c in producto.casas_comerciales.all() if c.codigo
+            ],
+            # Nombres completos (para mostrarlos en el hover de OEMs,
+            # a diferencia de los códigos de arriba que son para lógica).
+            "casas_comerciales_nombres": [
+                c.nombre for c in producto.casas_comerciales.all() if c.nombre
+            ],
+            "alternos": alternos_payload,
+            "precio": precio,
+            "precio_con_iva": with_iva(precio),
+        }
+
+    # codigo (en minúsculas) -> ids de los productos que lo tienen como
+    # OEM o como referencia.
+    product_ids_by_code = {}
+    if all_codes_lower:
+        for codigo_lower, producto_id in (
+            OEMProducto.objects.annotate(codigo_lower=Lower("oem__codigo"))
+            .filter(codigo_lower__in=all_codes_lower)
+            .values_list("codigo_lower", "producto_id")
+        ):
+            product_ids_by_code.setdefault(codigo_lower, set()).add(producto_id)
+        for valor_lower, producto_id in (
+            ProductoReferencia.objects.annotate(valor_lower=Lower("valor"))
+            .filter(valor_lower__in=all_codes_lower)
+            .values_list("valor_lower", "producto_id")
+        ):
+            product_ids_by_code.setdefault(valor_lower, set()).add(producto_id)
+
+    payload_by_product_id = {}
+    matched_ids = set().union(*product_ids_by_code.values()) if product_ids_by_code else set()
+    if matched_ids:
+        for producto in (
+            Producto.objects.filter(pk__in=matched_ids).prefetch_related(
+                "casas_comerciales",
+                "referencias",
+                "oem_productos__oem",
+                "alternativas__alterno__casas_comerciales",
+                "alternativas_para__producto__casas_comerciales",
+            )
+        ):
+            payload_by_product_id[producto.id] = match_payload(producto)
+
+    total_rows = max(len(rows), 1)
+    parsed = []
+    for i, item in enumerate(rows, start=1):
+        codigo = str(item.get("codigo") or "").strip()
+        referencia = str(item.get("referencia") or "").strip()
+        oem = str(item.get("oem") or "").strip()
+        descripcion = str(item.get("descripcion") or "").strip()
+        cantidad = item.get("cantidad") or 0
+        pvp = float(item.get("pvp") or 0)
+        orden = item.get("orden")
+
+        matched = None
+        # Un match por código o referencia es una identidad fuerte (ese
+        # código/referencia es unico de ese producto), asi que si resulta
+        # ser de otra casa es un conflicto real. Un match por OEM en
+        # cambio solo indica que el repuesto es compatible/equivalente:
+        # es normal que el mismo OEM lo fabriquen o lo cataloguen varias
+        # casas, asi que por si solo NO implica que sea el mismo producto
+        # de esa otra casa (ver mas abajo).
+        matched_via_identity = False
+        conflicto_casa = False
+        conflicto_casa_nombre = ""
+        conflicto_precio = None
+        if codigo:
+            matched = _pick_producto_match(
+                list(Producto.objects.filter(codigo__iexact=codigo)), casa_comercial_id
+            )
+            if matched:
+                matched_via_identity = True
+        if not matched and referencia:
+            matched = _resolve_producto_by_referencia(referencia, casa_comercial_id)
+            if matched:
+                matched_via_identity = True
+
+        # Recomendaciones: productos del catálogo que tienen como OEM o como
+        # referencia cualquiera de los valores de las columnas OEM o
+        # Referencia de esta fila.
+        oem_matches_dict = {}
+        for code in _split_codes(oem) + _split_codes(referencia):
+            for producto_id in sorted(product_ids_by_code.get(code.lower(), ())):
+                if producto_id in payload_by_product_id:
+                    oem_matches_dict[producto_id] = payload_by_product_id[producto_id]
+        oem_matches = list(oem_matches_dict.values())
+
+        # Si el Excel solo trae OEM (sin código ni referencia, o con datos
+        # que no encontraron producto), y ese OEM identifica sin ambigüedad
+        # un único producto del catálogo, se usa para vincular la fila igual
+        # que si hubiera traído código o referencia. Referencia u OEM son
+        # identificadores alternativos: basta con uno de los dos.
+        if not matched and len(oem_matches) == 1:
+            matched = Producto.objects.filter(pk=oem_matches[0]["producto_id"]).first()
+            # matched_via_identity se deja en False: ver comentario arriba.
+
+        if matched and casa_comercial_id:
+            casas_ids = list(matched.casas_comerciales.values_list("id", flat=True))
+            if casas_ids and casa_comercial_id not in casas_ids:
+                if matched_via_identity:
+                    # Product is linked to other casa(s) but not the selected one
+                    otra = matched.casas_comerciales.exclude(id=casa_comercial_id).first()
+                    conflicto_casa = True
+                    conflicto_casa_nombre = otra.nombre if otra else "otra casa comercial"
+                    # Precio de ese producto de la otra casa: se muestra
+                    # como PVP JP para compararlo con el del Excel.
+                    conflicto_precio = float(matched.precio) if matched.precio is not None else None
+                    # Las recomendaciones solo buscan el valor exacto: si
+                    # la referencia calzo ignorando ceros a la izquierda
+                    # ('248L6' vs '0248L6') o por codigo, la fila quedaba
+                    # naranja sin recomendaciones y sin codigo sugerido.
+                    # Se agregan el producto encontrado y los demas con esa
+                    # misma referencia (la misma pieza en otras casas).
+                    extras = [matched] + _productos_by_referencia(referencia)
+                    for producto in extras:
+                        if producto.id not in oem_matches_dict:
+                            oem_matches_dict[producto.id] = payload_by_product_id.get(
+                                producto.id
+                            ) or match_payload(producto)
+                    oem_matches = list(oem_matches_dict.values())
+                # Si el match fue solo por OEM, no es un conflicto: se
+                # descarta el match (matched = None) y la fila sigue como
+                # sin catálogo, para que el frontend pueda sugerir un
+                # código nuevo a partir de oem_matches (igual que cuando
+                # el OEM es ambiguo entre varias casas).
+                matched = None  # treat as unmatched so it never enters the import
+
+        # Si el producto ya existe (por código, referencia u OEM), completa
+        # código/referencia/descripción con los datos del catálogo cuando el
+        # Excel no los trae: cualquiera de esos identificadores solo ya
+        # identifica el producto.
+        if matched:
+            if not codigo:
+                codigo = matched.codigo
+            if not referencia:
+                referencia = matched.referencia or ""
+            if not descripcion:
+                descripcion = matched.nombre or ""
+
+        faltan_datos = []
+        if not conflicto_casa:
+            # Referencia u OEM identifican el producto (ver
+            # ImportacionDetalleSerializer.validate): basta con que el Excel
+            # traiga uno de los dos, no hace falta ambos ni que el producto
+            # ya exista en el catálogo.
+            if not referencia and not oem:
+                faltan_datos.append("Referencia u OEM")
+            # La cantidad no es obligatoria: basta con lo que identifica el
+            # producto. Las unidades se completan después dentro de la
+            # importación (ver ImportacionDetalleSerializer.validate).
+            # La descripción de un producto pendiente ya no bloquea este
+            # paso: se completa directamente en la revisión (paso 3), igual
+            # que el precio de un producto nuevo con código sugerido.
+
+        parsed.append({
+            "fila_excel": item.get("fila_excel"),
+            # Orden real del producto (de la columna "Orden" del Excel si
+            # ya la traía, o la fila del archivo si es la primera vez que
+            # se sube) -- se guarda sin mostrarse en ninguna tabla de la
+            # app, solo para poder exportarlo de vuelta como primera
+            # columna al descargar el Excel de una importacion.
+            "orden": orden,
+            "codigo": codigo,
+            "referencia": referencia,
+            "oem": oem,
+            "descripcion": descripcion,
+            "cantidad": cantidad,
+            "pvp": round(pvp, 2),
+            "matched_producto_id": matched.id if matched else None,
+            "matched_producto_codigo": matched.codigo if matched else None,
+            "matched_producto_nombre": matched.nombre if matched else None,
+            "matched_producto_referencia": matched.referencia if matched else None,
+            # Lista completa (un producto puede tener varias referencias)
+            # -- se usa para no marcar "conflicto" cuando la referencia
+            # del Excel es una de las que el producto ya tiene, aunque no
+            # sea la primera/principal.
+            "matched_producto_referencias": (
+                list(matched.referencias.values_list("valor", flat=True)) if matched else []
+            ),
+            "matched_producto_precio": float(matched.precio) if matched and matched.precio is not None else None,
+            # Los productos de COMPRA LOCAL van primero: de la primera
+            # coincidencia salen el codigo sugerido y el PVP JP.
+            "oem_matches": sorted(
+                oem_matches,
+                key=lambda m: "COMPRA LOCAL" not in (m.get("casas_comerciales_nombres") or []),
+            ),
+            "sucursal_quantities": item.get("sucursal_quantities") or {},
+            "conflicto_casa": conflicto_casa,
+            "conflicto_casa_nombre": conflicto_casa_nombre,
+            "conflicto_precio": conflicto_precio,
+            "faltan_datos": faltan_datos,
+        })
+
+
+        if on_progress and (i % 10 == 0 or i == total_rows):
+            on_progress(i / total_rows)
+    return parsed
+
+
 def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
     """Procesa el Excel de sugerencia en un thread aparte, reportando progreso
     incremental en el job (0-100) para que el frontend pueda hacer polling.
@@ -360,117 +628,8 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
 
         set_progress(10)
 
-        # Junta los códigos OEM y las referencias del Excel para resolverlos en
-        # pocas consultas (en vez de una por fila) y así poder mostrar, por
-        # fila, qué productos del catálogo ya son esa misma pieza. Referencia
-        # y OEM se tratan igual: un valor de cualquiera de las dos columnas se
-        # busca tanto entre los OEM como entre las referencias del catálogo
-        # (muchos productos tienen la referencia pero no el OEM guardado, o al
-        # revés), así basta con que el Excel traiga una de las dos.
-        from django.db.models.functions import Lower
-
-        def split_codes(value):
-            return [code.strip() for code in str(value or "").split(",") if code.strip()]
-
-        all_codes_lower = set()
-        for row in all_rows[1:]:
-            for column in ("oem", "referencia"):
-                for code in split_codes(safe_code(cell(row, column))):
-                    all_codes_lower.add(code.lower())
-
-        iva_rate = ConfiguracionSistema.get_solo().iva_rate or 0
-
-        def with_iva(precio):
-            return round(float(precio) * (1 + float(iva_rate)), 2) if precio is not None else None
-
-        def match_payload(producto):
-            precio = float(producto.precio) if producto.precio is not None else None
-            # Productos "alternos" (ProductoAlterno, en cualquiera de las dos
-            # direcciones): aunque no compartan este mismo OEM, son la MISMA
-            # pieza física en otras casas comerciales, así que también sirven
-            # como fuente del patrón <base><sufijo> para sugerir un código
-            # nuevo cuando el match directo no alcanza otra casa.
-            alterno_productos = [rel.alterno for rel in producto.alternativas.all()]
-            alterno_productos += [rel.producto for rel in producto.alternativas_para.all()]
-            alternos_payload = []
-            for alt in alterno_productos:
-                alt_precio = float(alt.precio) if alt.precio is not None else None
-                alternos_payload.append({
-                    "producto_id": alt.id,
-                    "codigo": alt.codigo,
-                    "nombre": alt.nombre,
-                    "referencia": alt.referencia,
-                    "casas_comerciales_codigos": [
-                        c.codigo for c in alt.casas_comerciales.all() if c.codigo
-                    ],
-                    "casas_comerciales_nombres": [
-                        c.nombre for c in alt.casas_comerciales.all() if c.nombre
-                    ],
-                    "precio": alt_precio,
-                    "precio_con_iva": with_iva(alt_precio),
-                })
-            return {
-                "producto_id": producto.id,
-                "codigo": producto.codigo,
-                "nombre": producto.nombre,
-                "referencia": producto.referencia,
-                # Todas las referencias y OEM del producto, para mostrarlas en
-                # el hover de recomendaciones.
-                "referencias": [r.valor for r in producto.referencias.all()],
-                "oems": [link.oem.codigo for link in producto.oem_productos.all()],
-                # Códigos JP se arman como <base><sufijo de la casa comercial>;
-                # se manda el sufijo de cada casa a la que pertenece este
-                # producto para que el frontend pueda inferir la base y
-                # sugerir el código con el sufijo de la casa actual.
-                "casas_comerciales_codigos": [
-                    c.codigo for c in producto.casas_comerciales.all() if c.codigo
-                ],
-                # Nombres completos (para mostrarlos en el hover de OEMs,
-                # a diferencia de los códigos de arriba que son para lógica).
-                "casas_comerciales_nombres": [
-                    c.nombre for c in producto.casas_comerciales.all() if c.nombre
-                ],
-                "alternos": alternos_payload,
-                "precio": precio,
-                "precio_con_iva": with_iva(precio),
-            }
-
-        # codigo (en minúsculas) -> ids de los productos que lo tienen como
-        # OEM o como referencia.
-        product_ids_by_code = {}
-        if all_codes_lower:
-            for codigo_lower, producto_id in (
-                OEMProducto.objects.annotate(codigo_lower=Lower("oem__codigo"))
-                .filter(codigo_lower__in=all_codes_lower)
-                .values_list("codigo_lower", "producto_id")
-            ):
-                product_ids_by_code.setdefault(codigo_lower, set()).add(producto_id)
-            for valor_lower, producto_id in (
-                ProductoReferencia.objects.annotate(valor_lower=Lower("valor"))
-                .filter(valor_lower__in=all_codes_lower)
-                .values_list("valor_lower", "producto_id")
-            ):
-                product_ids_by_code.setdefault(valor_lower, set()).add(producto_id)
-
-        payload_by_product_id = {}
-        matched_ids = set().union(*product_ids_by_code.values()) if product_ids_by_code else set()
-        if matched_ids:
-            for producto in (
-                Producto.objects.filter(pk__in=matched_ids).prefetch_related(
-                    "casas_comerciales",
-                    "referencias",
-                    "oem_productos__oem",
-                    "alternativas__alterno__casas_comerciales",
-                    "alternativas_para__producto__casas_comerciales",
-                )
-            ):
-                payload_by_product_id[producto.id] = match_payload(producto)
-
-        set_progress(20)
-
         data_rows = all_rows[1:]
-        total_data_rows = max(len(data_rows), 1)
-        parsed = []
+        rows = []
         for i, (fila_excel, row) in enumerate(enumerate(data_rows, start=2), start=1):
             codigo = safe_code(cell(row, "codigo"))
             referencia = safe_code(cell(row, "referencia"))
@@ -478,112 +637,8 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
             descripcion = safe_str(cell(row, "descripcion"))
             cantidad = safe_int(cell(row, "cantidad"))
             pvp = safe_float(cell(row, "pvp"))
-            # Fila en la que cayó el producto dentro de este archivo.
-            orden = i
             if not codigo and not referencia and not oem and not descripcion and cantidad <= 0 and pvp <= 0:
-                if i % 10 == 0 or i == total_data_rows:
-                    set_progress(20 + (i / total_data_rows) * 75)
                 continue  # fully blank template row
-
-            matched = None
-            # Un match por código o referencia es una identidad fuerte (ese
-            # código/referencia es unico de ese producto), asi que si resulta
-            # ser de otra casa es un conflicto real. Un match por OEM en
-            # cambio solo indica que el repuesto es compatible/equivalente:
-            # es normal que el mismo OEM lo fabriquen o lo cataloguen varias
-            # casas, asi que por si solo NO implica que sea el mismo producto
-            # de esa otra casa (ver mas abajo).
-            matched_via_identity = False
-            conflicto_casa = False
-            conflicto_casa_nombre = ""
-            conflicto_precio = None
-            if codigo:
-                matched = _pick_producto_match(
-                    list(Producto.objects.filter(codigo__iexact=codigo)), casa_comercial_id
-                )
-                if matched:
-                    matched_via_identity = True
-            if not matched and referencia:
-                matched = _resolve_producto_by_referencia(referencia, casa_comercial_id)
-                if matched:
-                    matched_via_identity = True
-
-            # Recomendaciones: productos del catálogo que tienen como OEM o como
-            # referencia cualquiera de los valores de las columnas OEM o
-            # Referencia de esta fila.
-            oem_matches_dict = {}
-            for code in split_codes(oem) + split_codes(referencia):
-                for producto_id in sorted(product_ids_by_code.get(code.lower(), ())):
-                    if producto_id in payload_by_product_id:
-                        oem_matches_dict[producto_id] = payload_by_product_id[producto_id]
-            oem_matches = list(oem_matches_dict.values())
-
-            # Si el Excel solo trae OEM (sin código ni referencia, o con datos
-            # que no encontraron producto), y ese OEM identifica sin ambigüedad
-            # un único producto del catálogo, se usa para vincular la fila igual
-            # que si hubiera traído código o referencia. Referencia u OEM son
-            # identificadores alternativos: basta con uno de los dos.
-            if not matched and len(oem_matches) == 1:
-                matched = Producto.objects.filter(pk=oem_matches[0]["producto_id"]).first()
-                # matched_via_identity se deja en False: ver comentario arriba.
-
-            if matched and casa_comercial_id:
-                casas_ids = list(matched.casas_comerciales.values_list("id", flat=True))
-                if casas_ids and casa_comercial_id not in casas_ids:
-                    if matched_via_identity:
-                        # Product is linked to other casa(s) but not the selected one
-                        otra = matched.casas_comerciales.exclude(id=casa_comercial_id).first()
-                        conflicto_casa = True
-                        conflicto_casa_nombre = otra.nombre if otra else "otra casa comercial"
-                        # Precio de ese producto de la otra casa: se muestra
-                        # como PVP JP para compararlo con el del Excel.
-                        conflicto_precio = float(matched.precio) if matched.precio is not None else None
-                        # Las recomendaciones solo buscan el valor exacto: si
-                        # la referencia calzo ignorando ceros a la izquierda
-                        # ('248L6' vs '0248L6') o por codigo, la fila quedaba
-                        # naranja sin recomendaciones y sin codigo sugerido.
-                        # Se agregan el producto encontrado y los demas con esa
-                        # misma referencia (la misma pieza en otras casas).
-                        extras = [matched] + _productos_by_referencia(referencia)
-                        for producto in extras:
-                            if producto.id not in oem_matches_dict:
-                                oem_matches_dict[producto.id] = payload_by_product_id.get(
-                                    producto.id
-                                ) or match_payload(producto)
-                        oem_matches = list(oem_matches_dict.values())
-                    # Si el match fue solo por OEM, no es un conflicto: se
-                    # descarta el match (matched = None) y la fila sigue como
-                    # sin catálogo, para que el frontend pueda sugerir un
-                    # código nuevo a partir de oem_matches (igual que cuando
-                    # el OEM es ambiguo entre varias casas).
-                    matched = None  # treat as unmatched so it never enters the import
-
-            # Si el producto ya existe (por código, referencia u OEM), completa
-            # código/referencia/descripción con los datos del catálogo cuando el
-            # Excel no los trae: cualquiera de esos identificadores solo ya
-            # identifica el producto.
-            if matched:
-                if not codigo:
-                    codigo = matched.codigo
-                if not referencia:
-                    referencia = matched.referencia or ""
-                if not descripcion:
-                    descripcion = matched.nombre or ""
-
-            faltan_datos = []
-            if not conflicto_casa:
-                # Referencia u OEM identifican el producto (ver
-                # ImportacionDetalleSerializer.validate): basta con que el Excel
-                # traiga uno de los dos, no hace falta ambos ni que el producto
-                # ya exista en el catálogo.
-                if not referencia and not oem:
-                    faltan_datos.append("Referencia u OEM")
-                # La cantidad no es obligatoria: basta con lo que identifica el
-                # producto. Las unidades se completan después dentro de la
-                # importación (ver ImportacionDetalleSerializer.validate).
-                # La descripción de un producto pendiente ya no bloquea este
-                # paso: se completa directamente en la revisión (paso 3), igual
-                # que el precio de un producto nuevo con código sugerido.
 
             suc_quantities = {}
             for idx, suc_id in sucursal_col_ids.items():
@@ -593,47 +648,21 @@ def _run_parse_excel_job(job_id, file_bytes, casa_comercial_id):
                 if qty > 0:
                     suc_quantities[str(suc_id)] = qty
 
-            parsed.append({
+            rows.append({
                 "fila_excel": fila_excel,
-                # Orden real del producto (de la columna "Orden" del Excel si
-                # ya la traía, o la fila del archivo si es la primera vez que
-                # se sube) -- se guarda sin mostrarse en ninguna tabla de la
-                # app, solo para poder exportarlo de vuelta como primera
-                # columna al descargar el Excel de una importacion.
-                "orden": orden,
+                # Fila en la que cayó el producto dentro de este archivo.
+                "orden": i,
                 "codigo": codigo,
                 "referencia": referencia,
                 "oem": oem,
                 "descripcion": descripcion,
                 "cantidad": cantidad,
-                "pvp": round(pvp, 2),
-                "matched_producto_id": matched.id if matched else None,
-                "matched_producto_codigo": matched.codigo if matched else None,
-                "matched_producto_nombre": matched.nombre if matched else None,
-                "matched_producto_referencia": matched.referencia if matched else None,
-                # Lista completa (un producto puede tener varias referencias)
-                # -- se usa para no marcar "conflicto" cuando la referencia
-                # del Excel es una de las que el producto ya tiene, aunque no
-                # sea la primera/principal.
-                "matched_producto_referencias": (
-                    list(matched.referencias.values_list("valor", flat=True)) if matched else []
-                ),
-                "matched_producto_precio": float(matched.precio) if matched and matched.precio is not None else None,
-                # Los productos de COMPRA LOCAL van primero: de la primera
-                # coincidencia salen el codigo sugerido y el PVP JP.
-                "oem_matches": sorted(
-                    oem_matches,
-                    key=lambda m: "COMPRA LOCAL" not in (m.get("casas_comerciales_nombres") or []),
-                ),
+                "pvp": pvp,
                 "sucursal_quantities": suc_quantities,
-                "conflicto_casa": conflicto_casa,
-                "conflicto_casa_nombre": conflicto_casa_nombre,
-                "conflicto_precio": conflicto_precio,
-                "faltan_datos": faltan_datos,
             })
 
-            if i % 10 == 0 or i == total_data_rows:
-                set_progress(20 + (i / total_data_rows) * 75)
+        set_progress(20)
+        parsed = _match_rows(rows, casa_comercial_id, on_progress=lambda f: set_progress(20 + f * 75))
 
         if not parsed:
             raise ValueError("No se encontraron filas con datos válidos.")
@@ -1846,6 +1875,34 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             label=envio.origen_label,
             sucursal_id=None,
         )
+
+    @action(detail=False, methods=["post"], url_path="coincidencias")
+    def coincidencias(self, request):
+        """Coincidencias del catalogo para filas sueltas de una sugerencia
+        (producto agregado a mano o sugerencia ya guardada), igual que las de
+        una fila del Excel: {casa_comercial_id, rows: [{key, codigo,
+        referencia, oem, descripcion}]} -> {rows: [... con fila_excel = key]}.
+        """
+        casa_comercial_id = request.data.get("casa_comercial_id")
+        try:
+            casa_comercial_id = int(casa_comercial_id) if casa_comercial_id else None
+        except (TypeError, ValueError):
+            casa_comercial_id = None
+        raw_rows = request.data.get("rows") or []
+        if not isinstance(raw_rows, list):
+            return Response({"detail": "rows debe ser una lista."}, status=status.HTTP_400_BAD_REQUEST)
+        rows = [
+            {
+                "fila_excel": item.get("key"),
+                "codigo": item.get("codigo") or "",
+                "referencia": item.get("referencia") or "",
+                "oem": item.get("oem") or "",
+                "descripcion": item.get("descripcion") or "",
+            }
+            for item in raw_rows[:2000]
+            if isinstance(item, dict)
+        ]
+        return Response({"rows": _match_rows(rows, casa_comercial_id)})
 
     @action(detail=False, methods=["post"], url_path="parse-excel-iniciar")
     def parse_excel_iniciar(self, request):
