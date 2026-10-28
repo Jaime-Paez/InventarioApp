@@ -1049,7 +1049,7 @@
 }
 
 .imp-aceptados-popup__dialog {
-  width: min(720px, calc(100vw - 32px));
+  width: min(860px, calc(100vw - 32px));
   height: min(82vh, 620px);
   height: min(82dvh, 620px);
   max-height: min(82vh, 620px);
@@ -1765,7 +1765,7 @@
 }
 
 .importaciones-aceptados__table .create-user__locations-row {
-  grid-template-columns: 38px minmax(80px, 0.6fr) minmax(90px, 0.7fr) minmax(150px, 1.5fr) minmax(90px, 0.7fr) minmax(70px, 0.5fr) minmax(100px, 0.9fr) minmax(50px, 0.3fr) 112px;
+  grid-template-columns: 34px minmax(70px, 0.6fr) minmax(84px, 0.7fr) minmax(130px, 1.5fr) minmax(80px, 0.7fr) minmax(56px, 0.5fr) minmax(86px, 0.9fr) minmax(44px, 0.3fr) 108px;
   align-items: center;
 }
 
@@ -1807,8 +1807,9 @@
 }
 
 .importaciones-aceptados__table input[type='checkbox'] {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
+  margin: 0;
   flex-shrink: 0;
   cursor: pointer;
   accent-color: var(--color-primary, #3b82f6);
@@ -1822,6 +1823,12 @@
 .importaciones-aceptados__table input[type='checkbox']:focus-visible {
   outline: none;
   box-shadow: none;
+}
+
+.importaciones-aceptados__table .create-user__locations-row > span:first-child {
+  padding-left: 8px;
+  padding-right: 8px;
+  justify-content: center;
 }
 
 .importaciones-aceptados__table .create-user__locations-row > span:not(:first-child):not(:nth-child(8)) {
