@@ -3859,10 +3859,12 @@ function VerificacionGroupsSummary({ conteo, chipProps }) {
   )
 }
 
-function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, sinCatalogo = 0, chipProps, onQuitarTodos }) {
+function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuevo = 0, sinCatalogo = 0, chipProps, onQuitarTodos }) {
   const [confirmarQuitar, setConfirmarQuitar] = useState(false)
   const encontrados = vinculados + oem + otraCasa
-  if (!encontrados && !sinCatalogo) return null
+  // No encontrados: con un codigo nuevo (del Excel o escrito) y sin codigo.
+  const noEncontrados = codigoNuevo + sinCatalogo
+  if (!encontrados && !noEncontrados) return null
   const caja = { display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }
   const titulo = { fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }
   const chip = { borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }
@@ -3892,13 +3894,20 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, sinCatalog
           </div>
         </div>
       )}
-      {sinCatalogo > 0 && (
+      {noEncontrados > 0 && (
         <div style={caja}>
-          <span style={titulo}>{sinCatalogo} no encontrado{sinCatalogo !== 1 ? 's' : ''}</span>
+          <span style={titulo}>{noEncontrados} no encontrado{noEncontrados !== 1 ? 's' : ''}</span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <span {...chipProps('sinCatalogo', 'los productos sin catálogo')} title="Clic: ir a los productos sin catálogo" style={{ ...chip, background: '#f1f5f9', color: '#64748b' }}>
-              {sinCatalogo} sin catálogo
-            </span>
+            {codigoNuevo > 0 && (
+              <span {...chipProps('codigoNuevo', 'los no encontrados con código nuevo')} title="Clic: ir a los no encontrados que ya tienen un código nuevo" style={{ ...chip, background: '#e0e7ff', color: '#3730a3' }}>
+                {codigoNuevo} con código nuevo
+              </span>
+            )}
+            {sinCatalogo > 0 && (
+              <span {...chipProps('sinCatalogo', 'los productos sin código')} title="Clic: ir a los productos sin código" style={{ ...chip, background: '#f1f5f9', color: '#64748b' }}>
+                {sinCatalogo} sin código
+              </span>
+            )}
             {onQuitarTodos && (
               <button
                 type="button"
@@ -3920,7 +3929,7 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, sinCatalog
             </div>
             <div className="user-details__confirm-content">
               <h4>Quitar productos no encontrados</h4>
-              <p>¿Estás seguro que quieres quitar los <strong>{sinCatalogo}</strong> producto{sinCatalogo !== 1 ? 's' : ''} sin catálogo de la lista?</p>
+              <p>¿Estás seguro que quieres quitar los <strong>{noEncontrados}</strong> producto{noEncontrados !== 1 ? 's' : ''} no encontrados de la lista?</p>
             </div>
             <div className="user-details__confirm-actions">
               <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setConfirmarQuitar(false)}>
@@ -4665,7 +4674,6 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
   // Clic en un contador de arriba (vinculados, sin catalogo, amarillo...):
   // salta a la siguiente fila de ese grupo en cuanto este dibujada.
   const [reviewJump, setReviewJump] = useState(null)
-  const reviewJumpLastRef = useRef({ key: '', pos: -1 })
   useLayoutEffect(() => {
     if (!reviewJump) return
     const wrap = reviewTableWrapRef.current
@@ -4775,27 +4783,26 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
   const unmatchedCount = validRows.filter((r) => !r.matched_producto_id).length
   const suggestedCount = validRows.filter((r) => r.codigo_sugerido && !r.conflicto_casa).length
   const referenciaConflictCount = validRows.filter((r) => hasReferenciaConflict(r)).length
-  // Los amarillos y naranjas tambien son "sin catalogo"; para que los
-  // contadores sumen el total, el de sin catalogo cuenta solo el resto.
-  const sinCoincidenciaCount = validRows.filter((r) => !r.matched_producto_id && !r.codigo_sugerido && !r.conflicto_casa).length
+  // No encontrados (ni vinculados, ni amarillos, ni naranjas): los que traen
+  // un codigo nuevo y los que no tienen codigo, cada grupo junto (ver
+  // sugerenciaRowRank).
+  const esNoEncontrado = (r) => !r.matched_producto_id && !r.codigo_sugerido && !r.conflicto_casa
+  const tieneCodigo = (r) => Boolean(String(r.codigo || '').trim())
+  const codigoNuevoCount = validRows.filter((r) => esNoEncontrado(r) && tieneCodigo(r)).length
+  const sinCodigoCount = validRows.filter((r) => esNoEncontrado(r) && !tieneCodigo(r)).length
   const REVIEW_GROUPS = {
     vinculados: (r) => Boolean(r.matched_producto_id),
-    sinCatalogo: (r) => !r.matched_producto_id && !r.codigo_sugerido && !r.conflicto_casa,
-    sinCatalogoTodos: (r) => !r.matched_producto_id,
+    codigoNuevo: (r) => esNoEncontrado(r) && tieneCodigo(r),
+    sinCatalogo: (r) => esNoEncontrado(r) && !tieneCodigo(r),
     sugeridos: (r) => Boolean(r.codigo_sugerido) && !r.conflicto_casa,
     otraCasa: (r) => Boolean(r.conflicto_casa),
     referencia: (r) => hasReferenciaConflict(r),
   }
+  // Clic en un contador: lleva al inicio de ese grupo (los grupos van juntos).
   const jumpToReviewGroup = (key) => {
-    let test = REVIEW_GROUPS[key]
-    if (key === 'sinCatalogo' && !reviewRows.some(({ row }) => test(row))) test = REVIEW_GROUPS.sinCatalogoTodos
-    const positions = reviewRows.reduce((acc, { row }, pos) => (test(row) ? [...acc, pos] : acc), [])
-    if (!positions.length) return
-    // Cada clic avanza a la siguiente fila del grupo (y vuelve a la primera).
-    const last = reviewJumpLastRef.current
-    const next = last.key === key ? positions.find((pos) => pos > last.pos) : undefined
-    const pos = next ?? positions[0]
-    reviewJumpLastRef.current = { key, pos }
+    const test = REVIEW_GROUPS[key]
+    const pos = reviewRows.findIndex(({ row }) => test(row))
+    if (pos === -1) return
     if (pos >= reviewRenderCount) setReviewRenderCount(pos + REVIEW_ROWS_BATCH)
     setReviewJump({ pos })
   }
@@ -5005,7 +5012,8 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                       vinculados={matchedCount}
                       oem={suggestedCount}
                       otraCasa={conflictoRows.length}
-                      sinCatalogo={sinCoincidenciaCount}
+                      codigoNuevo={codigoNuevoCount}
+                      sinCatalogo={sinCodigoCount}
                       chipProps={(key, label) => reviewGroupChipProps(key === 'oem' ? 'sugeridos' : key, label)}
                       onQuitarTodos={readOnly ? undefined : removeNoEncontrados}
                     />
