@@ -3861,19 +3861,20 @@ function VerificacionGroupsSummary({ conteo, chipProps }) {
 
 function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuevo = 0, sinCatalogo = 0, chipProps, onQuitarTodos }) {
   const [confirmarQuitar, setConfirmarQuitar] = useState(false)
-  const encontrados = vinculados + oem + otraCasa
-  // No encontrados: con un codigo nuevo (del Excel o escrito) y sin codigo.
-  const noEncontrados = codigoNuevo + sinCatalogo
-  if (!encontrados && !noEncontrados) return null
+  // Completos: los del catalogo, los sugeridos y los que ya traen un codigo
+  // nuevo (del Excel o escrito). Sin codigo: lo unico que falta completar.
+  const completos = vinculados + oem + otraCasa + codigoNuevo
+  const noEncontrados = sinCatalogo
+  if (!completos && !noEncontrados) return null
   const caja = { display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }
   const titulo = { fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }
   const chip = { borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
-      {encontrados > 0 && (
+      {completos > 0 && (
         <div style={{ ...caja, flex: '1 1 auto' }}>
-          <span style={titulo} title="Vinculados al catálogo + coinciden solo por OEM + coinciden por referencia o código">
-            {encontrados} encontrado{encontrados !== 1 ? 's' : ''}
+          <span style={titulo} title="Vinculados al catálogo + coinciden por OEM o referencia + con código nuevo">
+            {completos} completo{completos !== 1 ? 's' : ''}
           </span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {vinculados > 0 && (
@@ -3891,18 +3892,18 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuev
                 {otraCasa} coinciden por referencia o código
               </span>
             )}
+            {codigoNuevo > 0 && (
+              <span {...chipProps('codigoNuevo', 'los productos nuevos con código')} title="Clic: ir a los productos nuevos que ya tienen código (todavía no están en el sistema)" style={{ ...chip, background: '#e0e7ff', color: '#3730a3', border: '1px solid #a5b4fc' }}>
+                {codigoNuevo} nuevo{codigoNuevo !== 1 ? 's' : ''} con código
+              </span>
+            )}
           </div>
         </div>
       )}
       {noEncontrados > 0 && (
         <div style={caja}>
-          <span style={titulo}>{noEncontrados} no encontrado{noEncontrados !== 1 ? 's' : ''}</span>
+          <span style={titulo}>{noEncontrados} sin código</span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {codigoNuevo > 0 && (
-              <span {...chipProps('codigoNuevo', 'los no encontrados con código nuevo')} title="Clic: ir a los no encontrados que ya tienen un código nuevo" style={{ ...chip, background: '#e0e7ff', color: '#3730a3' }}>
-                {codigoNuevo} con código nuevo
-              </span>
-            )}
             {sinCatalogo > 0 && (
               <span {...chipProps('sinCatalogo', 'los productos sin código')} title="Clic: ir a los productos sin código" style={{ ...chip, background: '#f1f5f9', color: '#64748b' }}>
                 {sinCatalogo} sin código
@@ -3913,7 +3914,7 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuev
                 type="button"
                 className="imp-excel-review__quitar-todos"
                 onClick={() => setConfirmarQuitar(true)}
-                title="Quita de la sugerencia todos los productos que no se encontraron en el catálogo"
+                title="Quita de la sugerencia todos los productos que no tienen código"
               >
                 <X size={13} /> Quitar todos
               </button>
@@ -3928,8 +3929,8 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuev
               <Info size={18} />
             </div>
             <div className="user-details__confirm-content">
-              <h4>Quitar productos no encontrados</h4>
-              <p>¿Estás seguro que quieres quitar los <strong>{noEncontrados}</strong> producto{noEncontrados !== 1 ? 's' : ''} no encontrados de la lista?</p>
+              <h4>Quitar productos sin código</h4>
+              <p>¿Estás seguro que quieres quitar los <strong>{noEncontrados}</strong> producto{noEncontrados !== 1 ? 's' : ''} sin código de la lista?</p>
             </div>
             <div className="user-details__confirm-actions">
               <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setConfirmarQuitar(false)}>
@@ -4841,8 +4842,10 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
 
   // Quita de una vez todos los no encontrados (ni vinculados, ni sugeridos
   // por OEM, ni de otra casa).
+  // "Quitar todos": solo los que no tienen codigo (los nuevos con codigo ya
+  // estan completos).
   const removeNoEncontrados = () => {
-    setRows((prev) => prev.filter((r) => r.matched_producto_id || r.codigo_sugerido || r.conflicto_casa))
+    setRows((prev) => prev.filter((r) => r.matched_producto_id || r.codigo_sugerido || r.conflicto_casa || String(r.codigo || '').trim()))
   }
 
   const updateRowCampo = (filaExcel, field, value) => {
@@ -5159,7 +5162,10 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                       ? '#fef08a'
                                       : conflict && decision === undefined
                                         ? '#fffbeb'
-                                        : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)',
+                                        // Nuevo con codigo: completo, aunque todavia no este en el sistema.
+                                        : REVIEW_GROUPS.codigoNuevo(row)
+                                          ? '#e0e7ff'
+                                          : i % 2 === 0 ? 'var(--color-surface, #f8fafc)' : 'var(--color-bg)',
                                 }}
                               >
                                 <td
