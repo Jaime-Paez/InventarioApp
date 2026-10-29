@@ -212,15 +212,18 @@ class SugerenciaProductosNuevosTests(TestCase):
 
         response = self.client.post(f"{BASE_URL}/{importacion.id}/pedir-cotizacion/")
         self.assertEqual(response.status_code, 400)
-        for falta in ("1 sin código", "1 sin referencia", "1 sin descripción"):
+        for falta in ("1 sin referencia", "1 sin descripción"):
             self.assertIn(falta, response.data["detail"])
+        # Ni el OEM ni el codigo JP son obligatorios (el codigo se completa al
+        # confirmar la llegada).
         self.assertNotIn("OEM", response.data["detail"])
+        self.assertNotIn("código", response.data["detail"])
         importacion.refresh_from_db()
         self.assertEqual(importacion.estado, Importacion.ESTADO_BORRADOR)
 
         # Sin OEM, pero con referencia: ya puede pasar a cotizacion.
         importacion.detalles.filter(codigo="INC-1").update(referencia="REF-INC-1")
-        importacion.detalles.filter(referencia="REF-INC-2").update(codigo="INC-2", nombre="Ya completo")
+        importacion.detalles.filter(referencia="REF-INC-2").update(nombre="Ya completo")
         response = self.client.post(f"{BASE_URL}/{importacion.id}/pedir-cotizacion/")
         self.assertEqual(response.status_code, 200, response.data)
 

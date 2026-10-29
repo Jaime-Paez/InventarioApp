@@ -4483,7 +4483,11 @@ const fetchCoincidencias = async (token, casaId, rows, { soloCoincidencias = fal
 // en otra casa (necesitan revision), 2) codigo sugerido (amarillo), 3) ya
 // vinculados al catalogo, 4) el resto (sin catalogo). sort es estable: dentro
 // de cada grupo se conserva el orden original.
-const sugerenciaRowRank = (row) => (row.conflicto_casa ? 0 : row.codigo_sugerido ? 1 : row.matched_producto_id ? 2 : 3)
+// Los no encontrados: primero los que traen codigo y al final, juntos, los
+// que no tienen codigo.
+const sugerenciaRowRank = (row) => (
+  row.conflicto_casa ? 0 : row.codigo_sugerido ? 1 : row.matched_producto_id ? 2 : String(row.codigo || '').trim() ? 3 : 4
+)
 const sortSugerenciaRows = (rows) => [...rows].sort((a, b) => sugerenciaRowRank(a) - sugerenciaRowRank(b))
 
 // La referencia del Excel no es ninguna de las que ya tiene el producto
@@ -8002,10 +8006,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // backend en pedir_cotizacion.
   // La cantidad puede quedar en 0, y el OEM tambien puede faltar (hay casas
   // cuyos productos no tienen OEM, p. ej. Loma Hermosa Plast).
+  // El codigo JP no hace falta: se completa al confirmar la llegada.
   const faltantesDe = (item) => {
     if (item.producto?.id) return []
     return [
-      ['codigo', 'Código'],
       ['referencia', 'Referencia'],
       ['nombre', 'Descripción'],
     ].filter(([field]) => !String(item[field] || '').trim()).map(([, label]) => label)

@@ -998,12 +998,12 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # La cantidad puede quedar en 0: se completa en la verificacion (Cant.
         # aprox.) y se exige al pedir la confirmacion.
         # La sugerencia se puede crear con productos incompletos; antes de
-        # pedir la cotizacion cada producto sin catalogo debe tener codigo
-        # (aunque sea sugerido), referencia y descripcion. El OEM no: hay
-        # casas cuyos productos no tienen OEM (p. ej. Loma Hermosa Plast).
+        # pedir la cotizacion cada producto sin catalogo debe tener referencia
+        # y descripcion. El codigo JP no: se completa al confirmar la llegada
+        # (sin codigo queda como pendiente). El OEM tampoco: hay casas cuyos
+        # productos no tienen OEM (p. ej. Loma Hermosa Plast).
         faltan = []
         for campo, etiqueta in (
-            ("codigo", "código"),
             ("referencia", "referencia"),
             ("nombre", "descripción"),
         ):
