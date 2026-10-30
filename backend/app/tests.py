@@ -2,6 +2,7 @@ from django.test import TestCase
 
 from app.views import (
     _hydrate_transfer_history_from_solicitudes,
+    _keep_transfer_reminder_stage,
     _merge_reminder,
     _sanitize_transfer_history,
 )
@@ -189,6 +190,46 @@ class TransferReminderHistoryTests(TestCase):
                 "Su solicitud fue rechazada. Motivo: dos",
             ],
         )
+
+
+class StaleTransferReminderTests(TestCase):
+    def test_copia_vieja_no_regresa_un_traslado_recibido_a_pendiente(self):
+        base = {
+            "id": "r-1",
+            "date": "2026-10-30",
+            "time": "09:58",
+            "createdAt": "2026-10-30T14:58:59Z",
+            "creator": {"id": "8", "name": "9 de Octubre"},
+            "recipients": [{"id": "28", "name": "Alex"}],
+            "context": {"type": "solicitud_traslado", "id": "809", "label": "Solicitud de traslado #TR-67"},
+            "completedBy": [],
+        }
+        stale = {
+            **base,
+            "kind": "solicitud_traslado_decision",
+            "description": "Solicitud de traslado #TR-67. Revisar gestion pendiente.",
+            "decision": {"status": "aceptada", "by": {"id": "28", "name": "Alex"}, "at": "2026-10-30T15:02:10Z"},
+        }
+        received = {
+            **base,
+            "time": "10:48",
+            "kind": "recordatorio_general",
+            "description": "Su envio de traslado #TR-67 llego completo en 9 de Octubre.",
+            "decision": {"status": "aceptada", "by": {"id": "28", "name": "Alex"}, "at": "2026-10-30T15:02:10Z"},
+            "completedBy": [{"id": "32", "name": "Steven"}],
+        }
+
+        merged = _merge_reminder(received, stale)
+        _keep_transfer_reminder_stage(received, merged)
+
+        self.assertEqual(merged["kind"], "recordatorio_general")
+        self.assertIn("llego completo", merged["description"])
+        self.assertEqual(merged["time"], "10:48")
+
+        # Al reves (la recepcion llega despues) si avanza.
+        merged = _merge_reminder(stale, received)
+        _keep_transfer_reminder_stage(stale, merged)
+        self.assertIn("llego completo", merged["description"])
 
 
 class SolicitudTrasladoHistoryPersistenceTests(TestCase):

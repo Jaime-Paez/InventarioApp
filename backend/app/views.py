@@ -784,6 +784,33 @@ def _hydrate_urgente_from_solicitudes(reminders):
     return hydrated, changed
 
 
+_TRANSFER_REMINDER_STAGE_RANK = {"enviado": 1, "completo": 2, "incompleto": 2}
+
+
+def _transfer_reminder_stage_rank(reminder):
+    # El aviso de envio conserva decision "aceptada": se mira el texto primero.
+    description = _normalize_text((reminder or {}).get("description")).lower()
+    if "en traslado" in description or "fue enviada" in description:
+        return _TRANSFER_REMINDER_STAGE_RANK["enviado"]
+    entry = _infer_transfer_history_entry_from_reminder(reminder)
+    return _TRANSFER_REMINDER_STAGE_RANK.get((entry or {}).get("stage"), 0)
+
+
+def _keep_transfer_reminder_stage(existing, merged):
+    """El frontend sube la lista entera de recordatorios: un navegador con una
+    copia vieja devolvia el recordatorio de un traslado ya enviado/recibido a
+    "pendiente de aceptar" (TR-TUM-9OCT-67). Si lo guardado ya va mas
+    adelante, se conserva su contenido; completedBy si se une."""
+    if not isinstance(existing, dict):
+        return
+    existing_rank = _transfer_reminder_stage_rank(existing)
+    if not existing_rank or existing_rank <= _transfer_reminder_stage_rank(merged):
+        return
+    for key in ("description", "kind", "date", "time", "decision", "deadlineAt"):
+        if key in existing:
+            merged[key] = existing[key]
+
+
 def _latest_transfer_history_stage(history):
     if not isinstance(history, list) or not history:
         return ""
@@ -3206,6 +3233,7 @@ class ReminderStateAPIView(APIView):
                 merged = _merge_reminder(previous, reminder)
                 if merged is None:
                     continue
+                _keep_transfer_reminder_stage(previous, merged)
                 merged_by_id[reminder_id] = merged
 
             merged = list(merged_by_id.values())
