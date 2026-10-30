@@ -7347,8 +7347,41 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
   }
 
+  // Verificacion: plantilla vacía para la fábrica, con las columnas que lee
+  // aplicarExcelFabrica (Código, Referencia u OEM, y Precio).
+  const handleDownloadPlantillaPrecios = async () => {
+    try {
+      const XLSXStyle = (await import('xlsx-js-style')).default
+      const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
+      const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: '1e3a5f' }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: '2563EB' } }, left: bt, right: bt } }
+      const precioHdr = { ...hdr, fill: { fgColor: { rgb: '15803d' }, patternType: 'solid' }, border: { ...hdr.border, bottom: { style: 'medium', color: { rgb: '166534' } } } }
+      const worksheet = XLSXStyle.utils.aoa_to_sheet([['Código', 'Referencia', 'OEM', 'Precio']])
+      ;['A1', 'B1', 'C1'].forEach((ref) => { worksheet[ref].s = hdr })
+      worksheet.D1.s = precioHdr
+      worksheet['!cols'] = [{ wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 12 }]
+      worksheet['!rows'] = [{ hpt: 22 }]
+      const instrucciones = XLSXStyle.utils.aoa_to_sheet([
+        ['Cómo llenar la plantilla'],
+        ['1. Una fila por producto, en la hoja "Precios".'],
+        ['2. Llena al menos uno: Código, Referencia u OEM (se busca en ese orden).'],
+        ['3. Precio: el PVP aproximado, con punto o coma decimal (ej. 12.50).'],
+        ['4. No repitas productos. Los que no estén en la importación se ignoran.'],
+        ['5. Súbelo con Excel → Subir Excel en la verificación y luego guarda.'],
+      ])
+      instrucciones.A1.s = { font: { bold: true, sz: 12 } }
+      instrucciones['!cols'] = [{ wch: 80 }]
+      const workbook = XLSXStyle.utils.book_new()
+      XLSXStyle.utils.book_append_sheet(workbook, worksheet, 'Precios')
+      XLSXStyle.utils.book_append_sheet(workbook, instrucciones, 'Instrucciones')
+      XLSXStyle.writeFile(workbook, `plantilla-precios-${imp?.codigo || 'verificacion'}.xlsx`)
+    } catch (e) {
+      console.error(e)
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo generar la plantilla.', life: 3500 })
+    }
+  }
+
   // "3, 5 y 7"
-  const unirFilas = (filas) => (filas.length > 1 ? `${filas.slice(0, -1).join(', ')} y ${filas[filas.length - 1]}` : String(filas[0] ?? ''))
+  const unirFilas =(filas) => (filas.length > 1 ? `${filas.slice(0, -1).join(', ')} y ${filas[filas.length - 1]}` : String(filas[0] ?? ''))
 
   // Filas repetidas en el Excel subido: no se aplica nada y se dice cuales.
   // grupos = [[{ fila, etiqueta }, ...], ...]
@@ -8786,6 +8819,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         <button type="button" onClick={() => { (isSugerencia ? handleDownloadSugerenciaExcel : handleDownloadVerificarExcel)(); setShowVerificarExcelDropdown(false) }}>
                           <i className="pi pi-download" /> Descargar Excel
                         </button>
+                        {isVerificar && (
+                          <button type="button" onClick={() => { handleDownloadPlantillaPrecios(); setShowVerificarExcelDropdown(false) }}>
+                            <i className="pi pi-file" /> Descargar plantilla
+                          </button>
+                        )}
                         {!isImportRealizada && (!isSugerencia || canEdit) && (
                           <button type="button" onClick={() => { verificarFileInputRef.current?.click(); setShowVerificarExcelDropdown(false) }}>
                             <i className="pi pi-upload" /> Subir Excel
