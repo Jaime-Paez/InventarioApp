@@ -6874,9 +6874,28 @@ function QuickActions({
                       </div>
 
                       {(
-                        randomInspectionAdd?.groupKey === activeRandomInspectionGroup.key ? (
-                          <div className="quick-actions__inspection-add">
-                            <strong>Agregar un producto que no está en la lista</strong>
+                        randomInspectionAdd?.groupKey === activeRandomInspectionGroup.key ? createPortal(
+                          // Modal (no abajo de la tabla): producto, cantidad y listo.
+                          <div
+                            className={`quick-actions__inspection-add-overlay${darkMode ? ' dark' : ''}`}
+                            onMouseDown={() => {
+                              if (randomInspectionAdd.saving || randomInspectionAdd.mover) return
+                              setRandomInspectionAdd(null)
+                            }}
+                          >
+                          <div
+                            className="quick-actions__inspection-add quick-actions__inspection-add--modal"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="Agregar un producto que no está en la lista"
+                            onMouseDown={(event) => event.stopPropagation()}
+                          >
+                            <div className="quick-actions__inspection-add-head">
+                              <strong>Agregar un producto que no está en la lista</strong>
+                              {randomInspectionAdd.fixedLocation && randomInspectionAdd.location?.label && (
+                                <small>{`Lo encontraste en ${randomInspectionAdd.location.label}`}</small>
+                              )}
+                            </div>
                             <div className="quick-actions__inspection-add-row">
                               <button
                                 type="button"
@@ -7372,6 +7391,8 @@ function QuickActions({
                               )
                             })()}
                           </div>
+                          </div>,
+                          getAppPortalRoot()
                         ) : null
                       )}
                     </div>
