@@ -259,29 +259,22 @@ class ReposicionTests(TestCase):
         # La sucursal Norte no compra: no aparece en la sugerencia.
         self.assertEqual(len(grupos["IMPORTA"]["items"]), 1)
 
-        response = self.client_admin.post(
-            "/reposicion/sugerencia-importacion/",
-            {"casa_comercial_id": importador.id, "items": [{"producto_id": self.rapido.id, "cantidad": 80}]},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 201, response.data)
-        creada = Importacion.objects.get(pk=response.data["id"])
-        self.assertEqual(creada.estado, Importacion.ESTADO_BORRADOR)
-        self.assertEqual(creada.casa_comercial_id, importador.id)
-        detalle = creada.detalles.get()
-        self.assertEqual((detalle.producto_id, detalle.cantidad, detalle.orden), (self.rapido.id, 80, 1))
-        self.assertIn("Reposicion", detalle.comentario)
+        self.assertEqual(grupos["IMPORTA"]["casa_codigo"], "IMP")
 
-    def test_sugerencia_valida_cantidades(self):
+    def test_sugerencia_no_crea_importaciones(self):
+        # El boton solo abre el formulario lleno: la API ya no crea nada.
         from casa_comercial.models import CasaComercial
+        from importaciones.models import Importacion
 
         casa = CasaComercial.objects.create(nombre="X", codigo="X", tipo=CasaComercial.TIPO_IMPORTACION)
-        bad = self.client_admin.post(
+        antes = Importacion.objects.count()
+        response = self.client_admin.post(
             "/reposicion/sugerencia-importacion/",
-            {"casa_comercial_id": casa.id, "items": [{"producto_id": self.rapido.id, "cantidad": 0}]},
+            {"casa_comercial_id": casa.id, "items": [{"producto_id": self.rapido.id, "cantidad": 5}]},
             format="json",
         )
-        self.assertEqual(bad.status_code, 400)
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(Importacion.objects.count(), antes)
 
     def test_busqueda_por_referencia_y_oem(self):
         from core.search_utils import attach_product_search, matching_product_ids

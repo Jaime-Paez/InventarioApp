@@ -176,6 +176,9 @@ function EntradasTable({
   moduleActions,
   pendingTransferEntradaRequest = null,
   onPendingTransferEntradaRequestHandled,
+  // Compra local armada desde Reposicion: abre el formulario ya lleno.
+  pendingCompraLocalPrefill = null,
+  onPendingCompraLocalPrefillHandled,
 }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
@@ -193,6 +196,8 @@ function EntradasTable({
   const latestTableOptionsRef = useRef({})
   const loadedTokenRef = useRef(null)
   const handledTransferRequestKeyRef = useRef('')
+  const [createPrefillCompraLocal, setCreatePrefillCompraLocal] = useState(null)
+  const handledCompraPrefillKeyRef = useRef('')
   const notificationRefreshInFlightRef = useRef(false)
   const pendingNotificationRefreshRef = useRef(false)
   const refreshDataRef = useRef(() => Promise.resolve([]))
@@ -1126,8 +1131,30 @@ function EntradasTable({
       // Si falla la precarga, el modal se abre y carga sus catalogos como respaldo.
     }
     setCreatePrefillTransferRequest(null)
+    setCreatePrefillCompraLocal(null)
     setShowCreateModal(true)
   }
+
+  // Desde Reposicion: cuando ya esta elegida la sucursal central, se abre
+  // "Compra local" con todo lleno (nada se guarda hasta confirmar).
+  useEffect(() => {
+    const request = pendingCompraLocalPrefill
+    if (!request?.requestKey || handledCompraPrefillKeyRef.current === request.requestKey) return
+    const targetBranchId = String(request.sucursalId || '').trim()
+    if (targetBranchId && normalizedCreateBranchId !== targetBranchId) return
+    handledCompraPrefillKeyRef.current = request.requestKey
+    onPendingCompraLocalPrefillHandled?.()
+    ;(async () => {
+      try {
+        await preloadEntradaCatalogs()
+      } catch {
+        // El modal carga sus catalogos como respaldo.
+      }
+      setCreatePrefillTransferRequest(null)
+      setCreatePrefillCompraLocal(request)
+      setShowCreateModal(true)
+    })()
+  }, [normalizedCreateBranchId, onPendingCompraLocalPrefillHandled, pendingCompraLocalPrefill, preloadEntradaCatalogs])
 
   const handleCancelTransfer = useCallback(async (previewPayload) => {
     const preview = previewPayload && typeof previewPayload === 'object'
@@ -1705,6 +1732,7 @@ function EntradasTable({
         onClose={() => {
           setShowCreateModal(false)
           setCreatePrefillTransferRequest(null)
+          setCreatePrefillCompraLocal(null)
         }}
         onCreated={handleCreated}
         token={token}
@@ -1714,6 +1742,7 @@ function EntradasTable({
         preloadedSubTipos={prefetchedSubTiposEntrada}
         prefilledSucursalId={hasSpecificCreateBranch ? normalizedCreateBranchId : ''}
         prefilledTransferRequest={createPrefillTransferRequest}
+        prefilledCompraLocal={createPrefillCompraLocal}
         currentUser={user}
       />
 

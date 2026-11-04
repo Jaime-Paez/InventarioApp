@@ -157,6 +157,31 @@ function Workspace({
       String(user?.rol || '').trim().toLowerCase() === 'administrador'
   )
 
+  // Reposicion -> Importaciones / Entradas: abre el formulario de crear ya
+  // lleno (proveedor, productos, cantidades). Nada se guarda hasta que el
+  // usuario lo confirme alla.
+  const [pendingCreateImportacionPrefill, setPendingCreateImportacionPrefill] = useState(null)
+  const [pendingCreateImportacionTab, setPendingCreateImportacionTab] = useState(null)
+  const [pendingCompraLocalPrefill, setPendingCompraLocalPrefill] = useState(null)
+
+  const handleOpenImportacionPrefill = useCallback((prefill) => {
+    const borradorCapableTabs = ['Importaciones', 'En camino']
+    const targetTab = openTabs.find((t) => borradorCapableTabs.includes(t)) || 'Importaciones'
+    onSelectTab?.(targetTab)
+    setPendingCreateImportacionPrefill({ ...prefill, requestKey: `${Date.now()}` })
+    setPendingCreateImportacionTab(targetTab)
+  }, [onSelectTab, openTabs])
+
+  const handleOpenCompraLocalPrefill = useCallback((prefill) => {
+    if (!labelHasAccess('Entradas', permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return
+    const sucursalId = String(prefill?.sucursalId || '').trim()
+    if (sucursalId) {
+      setMovementBranchSelection((prev) => ({ ...prev, Entradas: sucursalId }))
+    }
+    onSelectTab?.('Entradas')
+    setPendingCompraLocalPrefill({ ...prefill, sucursalId, requestKey: `${Date.now()}` })
+  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
+
   const showWelcome = !activeItem
   const farewellTitle = `Hasta luego, ${username}.`
 
@@ -502,6 +527,8 @@ function Workspace({
           user={user}
           pendingOpenSolicitudWebId={tab === 'Configuraciones' ? pendingOpenSolicitudWebId : undefined}
           onPendingOpenSolicitudWebHandled={tab === 'Configuraciones' ? handlePendingOpenSolicitudWebHandled : undefined}
+          onOpenImportacionPrefill={tab === 'Reposición' ? handleOpenImportacionPrefill : undefined}
+          onOpenCompraLocalPrefill={tab === 'Reposición' ? handleOpenCompraLocalPrefill : undefined}
         />
       )
     }
@@ -564,6 +591,16 @@ function Workspace({
           tab === 'Salidas' ? (branchId) => handleMovementBranchChange('Salidas', branchId) : undefined
         }
         pendingTransferEntradaRequest={tab === 'Entradas' ? pendingTransferEntradaRequest : null}
+        pendingCompraLocalPrefill={tab === 'Entradas' ? pendingCompraLocalPrefill : null}
+        onPendingCompraLocalPrefillHandled={
+          tab === 'Entradas' ? () => setPendingCompraLocalPrefill(null) : undefined
+        }
+        pendingCreatePrefill={tab === pendingCreateImportacionTab ? pendingCreateImportacionPrefill : null}
+        onPendingCreatePrefillHandled={
+          tab === pendingCreateImportacionTab
+            ? () => { setPendingCreateImportacionPrefill(null); setPendingCreateImportacionTab(null) }
+            : undefined
+        }
         onPendingTransferSalidaRequestHandled={
           tab === 'Salidas' ? handleTransferSalidaRequestHandled : undefined
         }

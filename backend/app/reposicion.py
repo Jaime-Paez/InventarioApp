@@ -644,7 +644,10 @@ def _open_imports_by_product(product_ids):
 
 class ReposicionSugerenciaImportacionAPIView(APIView):
     """GET: lo que la sucursal central debe pedir, agrupado por proveedor.
-    POST: crea la sugerencia de importacion (borrador) de un proveedor."""
+
+    No crea nada: el frontend abre el formulario de Importaciones (proveedor de
+    importacion) o de Compra local (proveedor local) ya lleno, y el usuario
+    decide alla si lo guarda."""
 
     permission_classes = [IsAuthenticated]
 
@@ -684,6 +687,7 @@ class ReposicionSugerenciaImportacionAPIView(APIView):
             group = groups.setdefault(key, {
                 "casa_comercial_id": key or None,
                 "casa_nombre": casa.nombre if casa else "Sin proveedor",
+                "casa_codigo": casa.codigo if casa else "",
                 "tipo": casa.tipo if casa else "",
                 "es_importacion": bool(casa and casa.tipo == CasaComercial.TIPO_IMPORTACION),
                 "items": [],
@@ -713,71 +717,6 @@ class ReposicionSugerenciaImportacionAPIView(APIView):
             group["items"].sort(key=lambda item: ({"agotado": 0, "pedir": 1}.get(item["estado"], 2), item["codigo"]))
             group["valor_total"] = round(sum(item["valor_sugerido"] for item in group["items"]), 2)
         return Response({"meta": meta, "proveedores": ordered}, status=status.HTTP_200_OK)
-
-    def post(self, request):
-        from casa_comercial.models import CasaComercial
-        from importaciones.serializers import ImportacionSerializer
-        from productos.models import Producto
-
-        if not is_app_admin(request.user):
-            return Response({"detail": "Solo administradores."}, status=status.HTTP_403_FORBIDDEN)
-        casa = CasaComercial.objects.filter(pk=request.data.get("casa_comercial_id")).first()
-        if casa is None:
-            return Response({"detail": "Elige el proveedor de la importacion."}, status=status.HTTP_400_BAD_REQUEST)
-        raw_items = request.data.get("items")
-        if not isinstance(raw_items, list) or not raw_items:
-            return Response({"detail": "Agrega al menos un producto."}, status=status.HTTP_400_BAD_REQUEST)
-        quantities = {}
-        for raw in raw_items:
-            try:
-                pid = int(raw.get("producto_id"))
-                qty = int(raw.get("cantidad"))
-            except (TypeError, ValueError, AttributeError):
-                return Response({"detail": "Producto o cantidad invalidos."}, status=status.HTTP_400_BAD_REQUEST)
-            if qty <= 0:
-                return Response({"detail": "Cada cantidad debe ser mayor a cero."}, status=status.HTTP_400_BAD_REQUEST)
-            quantities[pid] = quantities.get(pid, 0) + qty
-        products = {p.id: p for p in Producto.objects.filter(id__in=quantities)}
-        if any(pid not in products for pid in quantities):
-            return Response({"detail": "Uno de los productos ya no existe."}, status=status.HTTP_400_BAD_REQUEST)
-
-        rows, meta = cached_replenishment()
-        central_id = meta.get("sucursal_central_id")
-        by_product = {row["producto_id"]: row for row in rows if row["sucursal_id"] == central_id}
-        detalles = []
-        for orden, pid in enumerate(quantities, start=1):
-            product = products[pid]
-            row = by_product.get(pid) or {}
-            comment = ""
-            if row:
-                comment = "Reposicion: vende {:.2f}/dia, stock {}, en camino {}, sugerido {}".format(
-                    float(row["venta_dia"]), row["stock"], row["en_camino"], row["sugerido"]
-                )
-            detalles.append({
-                "producto_id": pid,
-                "codigo": product.codigo,
-                "nombre": product.nombre,
-                "cantidad": quantities[pid],
-                "comentario": comment,
-                "orden": orden,
-            })
-        serializer = ImportacionSerializer(
-            data={"casa_comercial_id": casa.id, "detalles": detalles},
-            context={"request": request},
-        )
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        importacion = serializer.save()
-        return Response(
-            {
-                "id": int(importacion.id),
-                "codigo": importacion.codigo,
-                "estado": importacion.estado,
-                "productos": len(detalles),
-                "unidades": sum(quantities.values()),
-            },
-            status=status.HTTP_201_CREATED,
-        )
 
 
 CONFIG_FIELDS = {

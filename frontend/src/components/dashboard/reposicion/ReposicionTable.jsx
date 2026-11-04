@@ -121,7 +121,7 @@ const num = (value, digits = 0) => (
   value == null ? '—' : Number(value).toLocaleString('es-EC', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 )
 
-function ReposicionTable({ token }) {
+function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPrefill }) {
   const toast = useRef(null)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -417,7 +417,7 @@ function ReposicionTable({ token }) {
             <div className="users-header__right">
               <button type="button" className="reposicion__btn reposicion__btn--primary" onClick={() => setImportOpen(true)}>
                 <PackagePlus size={14} />
-                Sugerencia de importación
+                Sugerencia de pedido
               </button>
               <button
                 type="button"
@@ -560,13 +560,20 @@ function ReposicionTable({ token }) {
         open={importOpen}
         token={token}
         onClose={() => { setImportOpen(false); void load({ recalcular: true }) }}
-        onCreated={(created) => {
-          toast.current?.show({
-            severity: 'success',
-            summary: 'Sugerencia creada',
-            detail: `${created.codigo}: ${created.productos} productos. Está en Importaciones.`,
-            life: 4000,
-          })
+        // Abre el formulario ya lleno en Importaciones / Entradas (no crea nada).
+        onOpenImportacion={(prefill) => { setImportOpen(false); onOpenImportacionPrefill?.(prefill) }}
+        onOpenCompraLocal={(prefill) => {
+          if (!prefill?.sucursalId) {
+            toast.current?.show({
+              severity: 'warn',
+              summary: 'Falta la sucursal central',
+              detail: 'Elige la sucursal central en la configuración de Reposición para abrir la compra local.',
+              life: 4500,
+            })
+            return
+          }
+          setImportOpen(false)
+          onOpenCompraLocalPrefill?.(prefill)
         }}
       />
 

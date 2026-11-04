@@ -36,6 +36,24 @@ const getPortalRoot = () => getAppPortalRoot()
 const getProductoOem = (producto) =>
   (producto?.oem_productos || []).map((r) => r?.oem?.codigo).filter(Boolean).join(', ')
 
+// Fila de la sugerencia a partir de un producto del catalogo (vinculada).
+const buildCatalogSugerenciaRow = (producto, extra = {}) => ({
+  codigo: producto.codigo || '',
+  referencia: producto.referencia || '',
+  oem: getProductoOem(producto) || producto.oem || '',
+  descripcion: producto.nombre || '',
+  matched_producto_id: producto.id,
+  matched_producto_codigo: producto.codigo || '',
+  matched_producto_nombre: producto.nombre || '',
+  matched_producto_referencia: producto.referencia || '',
+  matched_producto_referencias: (producto.referencias || []).map((r) => r?.valor).filter(Boolean),
+  matched_producto_precio: producto.precio != null ? Number(producto.precio) : null,
+  oem_matches: [],
+  // El producto completo, para la sugerencia guardada.
+  _producto: producto,
+  ...extra,
+})
+
 // Referencias del producto (la vieja y las varias) + las del propio detalle,
 // para que los buscadores tambien encuentren por referencia.
 const getReferenciasTexto = (producto, detalle = null) => [
@@ -4935,22 +4953,7 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
   }
 
   // Fila del Excel a partir de un producto del catalogo (vinculada).
-  const catalogRow = (producto, extra = {}) => ({
-    codigo: producto.codigo || '',
-    referencia: producto.referencia || '',
-    oem: getProductoOem(producto) || producto.oem || '',
-    descripcion: producto.nombre || '',
-    matched_producto_id: producto.id,
-    matched_producto_codigo: producto.codigo || '',
-    matched_producto_nombre: producto.nombre || '',
-    matched_producto_referencia: producto.referencia || '',
-    matched_producto_referencias: (producto.referencias || []).map((r) => r?.valor).filter(Boolean),
-    matched_producto_precio: producto.precio != null ? Number(producto.precio) : null,
-    oem_matches: [],
-    // El producto completo, para la sugerencia guardada.
-    _producto: producto,
-    ...extra,
-  })
+  const catalogRow = buildCatalogSugerenciaRow
 
   // Agrega filas al final (orden = despues de la ultima). La clave lleva la
   // hora para no repetirse si la tabla se vuelve a montar.
@@ -5624,7 +5627,7 @@ function CoincidenciasInfo({ matches }) {
   )
 }
 
-function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 'excel' }) {
+function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 'excel', prefill = null }) {
   const esManual = modo === 'manual'
   const toastRef = useRef(null)
 
@@ -6014,6 +6017,59 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
     } catch (e) { console.error(e) }
     setDownloadingReview(false)
   }
+
+  // Sugerencia armada desde Reposicion: proveedor y productos con su
+  // cantidad ya puestos, directo en la revision. No se guarda nada hasta que
+  // el usuario presione Crear.
+  const [prefillLoading, setPrefillLoading] = useState(false)
+  const appliedPrefillKeyRef = useRef('')
+  useEffect(() => {
+    const requestKey = String(prefill?.requestKey || '')
+    if (!requestKey || appliedPrefillKeyRef.current === requestKey || !token) return
+    appliedPrefillKeyRef.current = requestKey
+    const casa = prefill.casa || null
+    if (casa?.id) {
+      setCasaDraft(casa)
+      setSelectedCasa(casa)
+    }
+    const items = (Array.isArray(prefill.items) ? prefill.items : []).filter((item) => item?.codigo)
+    if (!casa?.id) return
+    setStep(3)
+    if (!items.length) return
+    setPrefillLoading(true)
+    ;(async () => {
+      try {
+        const found = new Map()
+        for (let start = 0; start < items.length; start += 300) {
+          const chunk = items.slice(start, start + 300)
+          const params = new URLSearchParams({ page_size: '300', modulo: 'solicitudes', codigos: chunk.map((item) => item.codigo).join(',') })
+          const resp = await authFetch(`${API_URL}/productos/listado/?${params.toString()}`, {}, token)
+          if (!resp.ok) throw new Error('No se pudieron cargar los productos de la sugerencia.')
+          parseApiList(await resp.json().catch(() => ({}))).forEach((producto) => found.set(String(producto.id), producto))
+        }
+        const rows = items
+          .map((item) => found.get(String(item.producto_id)))
+          .map((producto, index) => (producto
+            ? buildCatalogSugerenciaRow(producto, {
+              cantidad: String(Math.max(0, Number(items[index].cantidad) || 0) || ''),
+              fila_excel: `r${requestKey}-${index}`,
+              orden: index + 1,
+              ...(items[index].comentario ? { comentario: items[index].comentario } : {}),
+            })
+            : null))
+          .filter(Boolean)
+        setParsedRows(rows)
+        const missing = items.length - rows.length
+        if (missing > 0) {
+          toastRef.current?.show({ severity: 'warn', summary: 'Productos', detail: `${missing} producto(s) ya no existen y no se agregaron.`, life: 4500 })
+        }
+      } catch (e) {
+        setSubmitError(e.message)
+      } finally {
+        setPrefillLoading(false)
+      }
+    })()
+  }, [prefill, token])
 
   const handleFileSelect = (file) => {
     if (!file) return
@@ -6427,6 +6483,12 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
                 {/* Los datos incompletos no se marcan en la vista previa: no
                     impiden crearla y se completan dentro de la sugerencia,
                     antes de pedir la cotizacion. */}
+                {prefillLoading && (
+                  <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+                    Cargando los productos de Reposición...
+                  </p>
+                )}
                 <SugerenciaTabla
                   token={token}
                   casa={selectedCasa}
@@ -9191,7 +9253,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   )
 }
 
-function ImportacionesTable({ token, moduleActions, status: statusProp, isTabActive, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled }) {
+function ImportacionesTable({ token, moduleActions, status: statusProp, isTabActive, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled, pendingCreatePrefill, onPendingCreatePrefillHandled }) {
   const toast = useRef(null)
   const tableWrapperRef = useRef(null)
 
@@ -9264,6 +9326,15 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const pendingClickRowRef = useRef(null)
   const pendingClickCountRef = useRef(0)
   const statusModalSnapshotsRef = useRef({})
+
+  // Desde Reposicion: abre "Crear sugerencia" ya lleno (no la guarda).
+  const [createPrefill, setCreatePrefill] = useState(null)
+  useEffect(() => {
+    if (!pendingCreatePrefill) return
+    setCreatePrefill(pendingCreatePrefill)
+    setShowCreate(true)
+    onPendingCreatePrefillHandled?.()
+  }, [pendingCreatePrefill]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!pendingOpenBorradorData) return
@@ -9945,7 +10016,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
                       style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.875rem', textAlign: 'left', color: 'inherit' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--color-surface, #f8fafc)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      onClick={() => { setShowCreate(true); setShowCreateMenu(false) }}
+                      onClick={() => { setCreatePrefill(null); setShowCreate(true); setShowCreateMenu(false) }}
                     >
                       <i className="pi pi-file-edit" style={{ color: 'var(--color-primary, #2563eb)' }} />
                       <span>Crear sugerencia</span>
@@ -10231,9 +10302,11 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
           modo="manual"
           token={token}
           isTabActive={isTabActive}
-          onClose={() => setShowCreate(false)}
+          prefill={createPrefill}
+          onClose={() => { setShowCreate(false); setCreatePrefill(null) }}
           onCreated={() => {
             setShowCreate(false)
+            setCreatePrefill(null)
             invalidateImportacionesItemsCache()
             if (status === 'borrador') {
               fetchItems(true)

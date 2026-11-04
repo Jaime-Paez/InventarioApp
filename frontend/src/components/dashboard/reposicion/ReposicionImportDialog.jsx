@@ -6,9 +6,10 @@ import '../admin/CreateUsuario/CreateUsuario.css'
 import BlockerNotice from '../common/BlockerNotice'
 import { ESTADO_LABEL } from './reposicionConstants'
 
-// Sugerencia de importacion a partir de Reposicion: lo que la sucursal
-// central debe pedir, agrupado por proveedor. Por cada proveedor se crea un
-// borrador en Importaciones con los productos y cantidades elegidos.
+// Sugerencia de pedido a partir de Reposicion: lo que la sucursal central
+// debe pedir, agrupado por proveedor. Por cada proveedor se ABRE (no se crea)
+// el formulario de Importaciones (proveedor de importacion) o de Compra local
+// (proveedor local) ya lleno; alla se revisa, se edita y se decide si se guarda.
 
 const num = (value, digits = 0) => Number(value || 0).toLocaleString('es-EC', {
   minimumFractionDigits: digits,
@@ -22,14 +23,12 @@ const IMPORT_STATE_LABEL = {
   en_camino: 'en camino',
 }
 
-export default function ReposicionImportDialog({ open, token, onClose, onCreated }) {
+export default function ReposicionImportDialog({ open, token, onClose, onOpenImportacion, onOpenCompraLocal }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   // { [producto_id]: { selected, cantidad } }
   const [draft, setDraft] = useState({})
-  const [creating, setCreating] = useState('')
-  const [created, setCreated] = useState({})
   const [groupErrors, setGroupErrors] = useState({})
 
   const load = useCallback(async () => {
@@ -52,7 +51,6 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
         })
       })
       setDraft(next)
-      setCreated({})
       setGroupErrors({})
     } catch (err) {
       setError(err?.message || 'No se pudo armar la sugerencia.')
@@ -74,11 +72,15 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
 
   const setItem = (productId, patch) => setDraft((prev) => ({ ...prev, [productId]: { ...prev[productId], ...patch } }))
 
-  const createSuggestion = async (group) => {
+  // Arma lo elegido del proveedor y abre el formulario que corresponde. No
+  // guarda nada: eso se decide alla.
+  const openGroup = (group) => {
     const { chosen } = groupSummary(group)
     const items = chosen.map((item) => ({
       producto_id: item.producto_id,
+      codigo: item.codigo,
       cantidad: Number.parseInt(draft[item.producto_id]?.cantidad, 10) || 0,
+      comentario: `Reposicion: vende ${Number(item.venta_dia || 0).toFixed(2)}/dia, stock ${item.stock}, en camino ${item.en_camino || 0}, sugerido ${item.sugerido}`,
     }))
     if (!items.length) {
       setGroupErrors((prev) => ({ ...prev, [group.casa_comercial_id]: 'Marca al menos un producto.' }))
@@ -88,25 +90,12 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
       setGroupErrors((prev) => ({ ...prev, [group.casa_comercial_id]: 'Cada cantidad debe ser mayor a cero.' }))
       return
     }
-    setCreating(String(group.casa_comercial_id))
     setGroupErrors((prev) => ({ ...prev, [group.casa_comercial_id]: '' }))
-    try {
-      const response = await authFetch(
-        `${API_URL}/reposicion/sugerencia-importacion/`,
-        { method: 'POST', body: JSON.stringify({ casa_comercial_id: group.casa_comercial_id, items }) },
-        token
-      )
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        const detail = payload?.detail || payload?.detalles || Object.values(payload || {})[0]
-        throw new Error(Array.isArray(detail) ? detail.join(' ') : String(detail || 'No se pudo crear la sugerencia.'))
-      }
-      setCreated((prev) => ({ ...prev, [group.casa_comercial_id]: payload }))
-      onCreated?.(payload, group)
-    } catch (err) {
-      setGroupErrors((prev) => ({ ...prev, [group.casa_comercial_id]: err?.message || 'No se pudo crear la sugerencia.' }))
-    } finally {
-      setCreating('')
+    const casa = { id: group.casa_comercial_id, nombre: group.casa_nombre, codigo: group.casa_codigo || '' }
+    if (group.es_importacion) {
+      onOpenImportacion?.({ casa, items })
+    } else {
+      onOpenCompraLocal?.({ casa, items, sucursalId: data?.meta?.sucursal_central_id })
     }
   }
 
@@ -117,10 +106,10 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
       <div className="create-user__modal reposicion-dialog reposicion-import">
         <header className="create-user__header">
           <div className="create-user__header-text">
-            <h3>Sugerencia de importación</h3>
+            <h3>Sugerencia de pedido</h3>
           </div>
           <div className="create-user__header-actions">
-            <button type="button" className="create-user__icon-button" onClick={onClose} aria-label="Cerrar" disabled={Boolean(creating)}>
+            <button type="button" className="create-user__icon-button" onClick={onClose} aria-label="Cerrar">
               <i className="pi pi-times" aria-hidden="true" />
             </button>
           </div>
@@ -128,7 +117,7 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
         <div className="create-user__content">
           <div className="create-user__body reposicion-import__body">
             <p className="reposicion-import__intro">
-              {`Lo que ${data?.meta?.sucursal_central_nombre || 'la sucursal central'} necesita pedir según Reposición, agrupado por proveedor. Revisa las cantidades, desmarca lo que no quieras y crea la sugerencia: queda como borrador en Importaciones.`}
+              {`Lo que ${data?.meta?.sucursal_central_nombre || 'la sucursal central'} necesita pedir según Reposición, agrupado por proveedor. Revisa las cantidades, desmarca lo que no quieras y ábrelo: se abre la importación o la compra local ya llena, para editarla y decidir allá si se guarda. Aquí no se crea nada.`}
             </p>
             {loading && !data && (
               <div className="reposicion-panel__state"><i className="pi pi-spin pi-spinner" aria-hidden="true" /></div>
@@ -141,12 +130,11 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
             {groups.map((group) => {
               const key = String(group.casa_comercial_id)
               const summary = groupSummary(group)
-              const done = created[group.casa_comercial_id]
-              const canCreate = group.es_importacion && group.casa_comercial_id
+              const canOpen = Boolean(group.casa_comercial_id)
               const allInOpenImport = group.items.length > 0
                 && group.items.every((item) => (item.importaciones_abiertas || []).length)
               return (
-                <section key={key} className={`reposicion-import__group${done ? ' is-done' : ''}`}>
+                <section key={key} className="reposicion-import__group">
                   <header className="reposicion-import__group-head">
                     <div>
                       <strong>{group.casa_nombre}</strong>
@@ -184,7 +172,7 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
                                   type="checkbox"
                                   checked={Boolean(itemDraft.selected)}
                                   onChange={(event) => setItem(item.producto_id, { selected: event.target.checked })}
-                                  disabled={Boolean(done) || !canCreate}
+                                  disabled={!canOpen}
                                   aria-label={`Incluir ${item.codigo}`}
                                 />
                               </td>
@@ -210,7 +198,7 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
                                   className="reposicion-import__qty"
                                   value={itemDraft.cantidad ?? ''}
                                   onChange={(event) => setItem(item.producto_id, { cantidad: event.target.value.replace(/\D+/g, '').slice(0, 6) })}
-                                  disabled={Boolean(done) || !canCreate || !itemDraft.selected}
+                                  disabled={!canOpen || !itemDraft.selected}
                                   aria-label={`Cantidad de ${item.codigo}`}
                                 />
                               </td>
@@ -225,20 +213,16 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
                     {groupErrors[group.casa_comercial_id] && (
                       <span className="reposicion-import__error">{groupErrors[group.casa_comercial_id]}</span>
                     )}
-                    {done ? (
-                      <span className="reposicion-import__done">
-                        {`Creada ${done.codigo} con ${done.productos} productos (${num(done.unidades)} unidades). Está en Importaciones como sugerencia.`}
-                      </span>
-                    ) : canCreate ? (
+                    {canOpen ? (
                       <>
                         {!summary.chosen.length && !groupErrors[group.casa_comercial_id] && (
                           <BlockerNotice
                             compact
                             className="reposicion-import__blocker"
-                            title="No se puede crear la sugerencia todavía"
+                            title={group.es_importacion ? 'No se puede abrir la importación todavía' : 'No se puede abrir la compra local todavía'}
                             reason={allInOpenImport
                               ? 'Todos estos productos ya están en una importación abierta. Márcalos si igual quieres pedirlos.'
-                              : 'Marca al menos un producto para crear la sugerencia.'}
+                              : 'Marca al menos un producto para abrirla.'}
                             actionLabel={allInOpenImport ? 'Marcar todos' : undefined}
                             onAction={allInOpenImport
                               ? () => setDraft((prev) => {
@@ -254,19 +238,14 @@ export default function ReposicionImportDialog({ open, token, onClose, onCreated
                         <button
                           type="button"
                           className="reposicion__btn reposicion__btn--primary"
-                          onClick={() => void createSuggestion(group)}
-                          disabled={Boolean(creating) || !summary.chosen.length}
+                          onClick={() => openGroup(group)}
+                          disabled={!summary.chosen.length}
                         >
-                          {creating === key ? 'Creando...' : `Crear sugerencia de importación (${summary.chosen.length})`}
+                          {group.es_importacion
+                            ? `Abrir en Importaciones (${summary.chosen.length})`
+                            : `Abrir compra local (${summary.chosen.length})`}
                         </button>
                       </>
-                    ) : group.casa_comercial_id ? (
-                      <BlockerNotice
-                        compact
-                        className="reposicion-import__blocker"
-                        title="No se puede crear una importación"
-                        reason={`${group.casa_nombre || 'Este proveedor'} es un proveedor local: estos productos se compran con una entrada de compra local, no con una importación.`}
-                      />
                     ) : (
                       <BlockerNotice
                         compact

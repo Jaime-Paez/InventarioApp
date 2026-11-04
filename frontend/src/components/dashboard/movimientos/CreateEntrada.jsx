@@ -413,6 +413,10 @@ function CreateEntrada({
   preloadedSubTipos = [],
   prefilledSucursalId = '',
   prefilledTransferRequest = null,
+  // Compra local armada desde Reposicion: { requestKey, sucursalId, casa,
+  // items: [{ producto_id, codigo, cantidad }] }. Solo llena el formulario;
+  // nada se guarda hasta que el usuario lo confirme.
+  prefilledCompraLocal = null,
   currentUser = null,
 }) {
   const [formData, setFormData] = useState(initialForm)
@@ -550,6 +554,7 @@ function CreateEntrada({
   const modalPositionRef = useRef(modalPosition)
   const modalRestoreRef = useRef(null)
   const appliedPrefillTransferKeyRef = useRef('')
+  const appliedPrefillCompraKeyRef = useRef('')
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -1934,6 +1939,95 @@ function CreateEntrada({
     prefilledTransferRequest,
     subTipos,
     subTiposEntrada,
+  ])
+
+  // Compra local desde Reposicion: sucursal, tipo, proveedor y productos con
+  // su cantidad, costo y PVP ya puestos. El usuario revisa, edita y decide si
+  // la guarda (no se crea nada aqui).
+  useEffect(() => {
+    if (!open) {
+      appliedPrefillCompraKeyRef.current = ''
+      return
+    }
+    const request = prefilledCompraLocal
+    const requestKey = String(request?.requestKey || '').trim()
+    if (!requestKey || appliedPrefillCompraKeyRef.current === requestKey) return
+    const compraSubTipo = (subTiposEntrada.length ? subTiposEntrada : subTipos).find(
+      (item) => normalizeValue(item?.nombre).includes('compra')
+    )
+    if (!compraSubTipo?.id || !defaultEstadoProductoId || !branches.length) return
+    appliedPrefillCompraKeyRef.current = requestKey
+
+    const sucursalId = String(request?.sucursalId || normalizedPrefilledSucursalId || '').trim()
+    const compraOption = entradaSubTipoOptions.find((option) => option.value === String(compraSubTipo.id))
+    setFormData((prev) => ({
+      ...prev,
+      sucursalId: sucursalId || prev.sucursalId,
+      subTipoId: compraOption?.blocked ? '' : String(compraSubTipo.id),
+      fecha: todayISO(),
+    }))
+    if (compraOption?.blocked) {
+      notifyError(compraOption.blockedReason || 'No tienes permiso para crear compras locales en esta sucursal.')
+      return
+    }
+    const casa = request?.casa
+    if (casa?.id) {
+      const casaValue = { id: casa.id, nombre: casa.nombre || '', codigo: casa.codigo || '' }
+      setCasaComercialDraft(casaValue)
+      setSelectedCasaComercial(casaValue)
+    }
+    setActiveTab('general')
+
+    const items = (Array.isArray(request?.items) ? request.items : []).filter((item) => item?.codigo)
+    if (!items.length) return
+    const estadoProducto = estadosProducto.find((item) => String(item.id) === String(defaultEstadoProductoId))
+    ;(async () => {
+      try {
+        const found = new Map()
+        for (let start = 0; start < items.length; start += 300) {
+          const chunk = items.slice(start, start + 300)
+          const params = new URLSearchParams({ page_size: '300', codigos: chunk.map((item) => item.codigo).join(',') })
+          const response = await authFetch(`${API_URL}/productos/listado/?${params.toString()}`, {}, token)
+          if (!response.ok) throw new Error('No se pudieron cargar los productos de la compra local.')
+          parseApiList(await response.json().catch(() => ({}))).forEach((producto) => {
+            found.set(String(producto.id), producto)
+          })
+        }
+        if (appliedPrefillCompraKeyRef.current !== requestKey) return
+        const rows = items
+          .map((item) => {
+            const producto = found.get(String(item.producto_id))
+            if (!producto) return null
+            return buildDetailRowFromProduct(producto, Math.max(1, Number(item.cantidad) || 1), {
+              estadoProductoId: String(defaultEstadoProductoId),
+              estadoProductoNombre: estadoProducto?.nombre ?? '',
+              isCompraEntrada: true,
+            })
+          })
+          .filter(Boolean)
+        setProductos((prev) => {
+          const known = new Set(prev.map((item) => String(item.id)))
+          return [...prev, ...[...found.values()].filter((item) => !known.has(String(item.id)))]
+        })
+        setDetails(rows)
+        const missing = items.length - rows.length
+        if (missing > 0) notifyError(`${missing} producto(s) de la sugerencia ya no existen y no se agregaron.`)
+      } catch (err) {
+        notifyError(err?.message || 'No se pudieron cargar los productos de la compra local.')
+      }
+    })()
+  }, [
+    branches.length,
+    defaultEstadoProductoId,
+    entradaSubTipoOptions,
+    estadosProducto,
+    normalizedPrefilledSucursalId,
+    notifyError,
+    open,
+    prefilledCompraLocal,
+    subTipos,
+    subTiposEntrada,
+    token,
   ])
 
   useEffect(() => {
