@@ -4772,7 +4772,6 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
   const reviewHitCount = reviewHasQuery ? reviewRows.filter((entry) => entry.hit).length : validRows.length
   const conflictoRows = validRows.filter((r) => r.conflicto_casa)
   const matchedCount = validRows.filter((r) => r.matched_producto_id).length
-  const unmatchedCount = validRows.filter((r) => !r.matched_producto_id).length
   const suggestedCount = validRows.filter((r) => r.codigo_sugerido && !r.conflicto_casa).length
   const referenciaConflictCount = validRows.filter((r) => hasReferenciaConflict(r)).length
   // No encontrados (ni vinculados, ni amarillos, ni naranjas): los que traen
@@ -5369,13 +5368,6 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                       </table>
                       </fieldset>
                     </div>
-
-                    {unmatchedCount > 0 && (
-                      <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Info size={13} />
-                        Los productos sin catálogo se crearán como pendientes. Podrás vincularlos al confirmar la llegada.
-                      </p>
-                    )}
 
                   </>
                 )}
