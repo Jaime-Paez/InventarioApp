@@ -4031,6 +4031,11 @@
   font-weight: 600;
 }
 
+.quick-actions__inspection-move-list > small.is-ok {
+  color: #15803d;
+  font-weight: 600;
+}
+
 .quick-actions__inspection-move-actions {
   display: flex;
   justify-content: flex-end;

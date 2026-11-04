@@ -5069,7 +5069,7 @@ function QuickActions({
       setRandomInspectionAdd((prev) => ({
         ...prev,
         error: '',
-        mover: { paso: 'aviso', modo: '', llevar: {}, conteo: {}, error: '' },
+        mover: { paso: 'aviso', modo: '', llevar: {}, traer: {}, conteo: {}, error: '' },
       }))
       return
     }
@@ -6919,7 +6919,13 @@ function QuickActions({
                               const llevadas = others.reduce((total, location) => total + toPositiveInt(mover.llevar?.[idOf(location)], 0), 0)
                               const recountFilled = allLocations.every((location) => String(mover.conteo?.[idOf(location)] ?? '').trim() !== '')
                               const recountTotal = allLocations.reduce((total, location) => total + toPositiveInt(mover.conteo?.[idOf(location)], 0), 0)
-                              const canCount = mover.modo === 'traer' || (mover.modo === 'llevar' && llevadas > 0 && llevadas <= found)
+                              // Pasar aqui: cuantas quedan aqui y en cada ubicacion donde ya estaba.
+                              const traerFilled = allLocations.every((location) => String(mover.traer?.[idOf(location)] ?? '').trim() !== '')
+                              const traerTotal = allLocations.reduce((total, location) => total + toPositiveInt(mover.traer?.[idOf(location)], 0), 0)
+                              // Llevarlas: se reparten TODAS, no se queda ninguna aqui.
+                              const canCount = mover.modo === 'traer'
+                                ? traerFilled && traerTotal > 0
+                                : mover.modo === 'llevar' && found > 0 && llevadas === found
                               const setMover = (patch) => setRandomInspectionAdd((prev) => (prev?.mover ? { ...prev, mover: { ...prev.mover, error: '', ...patch } } : prev))
                               const busy = Boolean(randomInspectionAdd.saving)
                               const confirm = () => {
@@ -6939,8 +6945,8 @@ function QuickActions({
                                     .filter((location) => toPositiveInt(mover.llevar?.[idOf(location)], 0) > 0)
                                     .map((location) => `${toPositiveInt(mover.llevar?.[idOf(location)], 0)} a ${location.label}`)
                                     .join(', ')}. Recuento: ${recountText}.`
-                                  : `Encontré ${found} en ${here.label}: es su nueva ubicación y traje aquí lo de ${others
-                                    .map((location) => location.label)
+                                  : `Encontré ${found} en ${here.label}: es su nueva ubicación. Quedaron ${allLocations
+                                    .map((location) => `${toPositiveInt(mover.traer?.[idOf(location)], 0)} en ${location.label}`)
                                     .join(', ')}. Recuento: ${recountText}.`
                                 void submitRandomInspectionAdd({
                                   nota,
@@ -7017,7 +7023,7 @@ function QuickActions({
                                             }}
                                           >
                                             <strong>Llevarlas a su ubicación</strong>
-                                            <small>Escribe cuántas llevas a cada ubicación.</small>
+                                            <small>{`Reparte las ${found} entre sus ubicaciones: aquí no se queda ninguna.`}</small>
                                             <div className="quick-actions__inspection-move-list">
                                               {others.map((location) => (
                                                 <label key={idOf(location)} className="quick-actions__inspection-move-line">
@@ -7038,10 +7044,12 @@ function QuickActions({
                                                   />
                                                 </label>
                                               ))}
-                                              <small className={llevadas > found ? 'is-error' : undefined}>
+                                              <small className={llevadas > found ? 'is-error' : llevadas === found ? 'is-ok' : undefined}>
                                                 {llevadas > found
                                                   ? `Solo encontraste ${found}: no puedes llevar ${llevadas}.`
-                                                  : `Se quedan aquí: ${found - llevadas}`}
+                                                  : llevadas === found
+                                                    ? `Listo: repartiste las ${found}.`
+                                                    : `Faltan por repartir: ${found - llevadas}`}
                                               </small>
                                             </div>
                                           </div>
@@ -7050,16 +7058,41 @@ function QuickActions({
                                             tabIndex={0}
                                             aria-checked={mover.modo === 'traer'}
                                             className={`quick-actions__inspection-move-option${mover.modo === 'traer' ? ' is-active' : ''}`}
-                                            onClick={() => { if (!busy) setMover({ modo: 'traer' }) }}
+                                            onClick={() => { if (!busy && mover.modo !== 'traer') setMover({ modo: 'traer' }) }}
                                             onKeyDown={(event) => {
+                                              if (event.target !== event.currentTarget) return
                                               if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setMover({ modo: 'traer' }) }
                                             }}
                                           >
                                             <strong>Pasar a esta ubicación</strong>
-                                            <small>{`Esta es su nueva ubicación: trae a ${here.label} todas las unidades de:`}</small>
-                                            <ul>
-                                              {others.map((location) => <li key={idOf(location)}>{location.label}</li>)}
-                                            </ul>
+                                            <small>Esta es su nueva ubicación: escribe cuántas quedan aquí y cuántas en cada ubicación donde ya estaba.</small>
+                                            <div className="quick-actions__inspection-move-list">
+                                              {allLocations.map((location, index) => (
+                                                <label key={idOf(location)} className="quick-actions__inspection-move-line">
+                                                  <span>
+                                                    {location.label}
+                                                    {index === 0 && <small> (aquí)</small>}
+                                                  </span>
+                                                  <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    className="quick-actions__inspection-add-qty"
+                                                    value={mover.traer?.[idOf(location)] ?? ''}
+                                                    onFocus={() => { if (mover.modo !== 'traer') setMover({ modo: 'traer' }) }}
+                                                    onChange={(event) => setMover({
+                                                      modo: 'traer',
+                                                      traer: { ...(mover.traer || {}), [idOf(location)]: normalizeQuantityInputString(event.target.value) },
+                                                    })}
+                                                    placeholder="-"
+                                                    aria-label={`Cuántas quedan en ${location.label}`}
+                                                    disabled={busy}
+                                                  />
+                                                </label>
+                                              ))}
+                                              <small>
+                                                {traerFilled ? `Total: ${traerTotal}` : 'Escribe una cantidad en cada ubicación (0 si no queda ninguna).'}
+                                              </small>
+                                            </div>
                                           </div>
                                         </div>
 
