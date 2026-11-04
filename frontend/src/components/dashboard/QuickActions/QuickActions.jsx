@@ -5226,16 +5226,24 @@ function QuickActions({
     if (randomInspectionSubmitting || !row) return
     const itemId = normalizeId(row?.row_id || row?.id)
     if (!itemId) return
-    setRandomInspectionDraftByItemId((prev) => ({
-      ...prev,
-      [itemId]: {
-        ...(prev?.[itemId] || {}),
-        id: itemId,
-        no_encontrado: true,
-        cantidad_reportada_input: '',
-        cantidad_reportada_por_ubicacion: {},
-      },
-    }))
+    setRandomInspectionDraftByItemId((prev) => {
+      const current = prev?.[itemId] || {}
+      return {
+        ...prev,
+        [itemId]: {
+          ...current,
+          id: itemId,
+          no_encontrado: true,
+          // Lo que habia escrito vuelve si se quita el "No lo encontre".
+          ...(current.no_encontrado ? {} : {
+            cantidad_previa: current.cantidad_reportada_input ?? '',
+            por_ubicacion_previa: current.cantidad_reportada_por_ubicacion || {},
+          }),
+          cantidad_reportada_input: '',
+          cantidad_reportada_por_ubicacion: {},
+        },
+      }
+    })
     markRandomInspectionItemDirty(itemId)
     setRandomInspectionError('')
     if (!advance) return
@@ -5298,6 +5306,9 @@ function QuickActions({
     setRandomInspectionDraftByItemId((prev) => {
       const current = prev?.[itemId] || {}
       const marks = { ...(current?.ubicaciones_no_encontradas || {}), [key]: true }
+      const previo = current?.ubicaciones_no_encontradas?.[key]
+        ? current?.ubicaciones_valor_previo || {}
+        : { ...(current?.ubicaciones_valor_previo || {}), [key]: current?.cantidad_reportada_por_ubicacion?.[key] ?? '' }
       return {
         ...prev,
         [itemId]: {
@@ -5305,6 +5316,8 @@ function QuickActions({
           id: itemId,
           no_encontrado: allKeys.length > 0 && allKeys.every((locationKey2) => marks[locationKey2]),
           ubicaciones_no_encontradas: marks,
+          // Lo que habia escrito vuelve si se quita el "No lo encontre".
+          ubicaciones_valor_previo: previo,
           cantidad_reportada_por_ubicacion: {
             ...(current?.cantidad_reportada_por_ubicacion || {}),
             [key]: '0',
@@ -5314,6 +5327,45 @@ function QuickActions({
     })
     markRandomInspectionItemDirty(itemId)
     setRandomInspectionError('')
+  }, [markRandomInspectionItemDirty, randomInspectionSubmitting])
+
+  // Quitar el "No lo encontre" (otro clic en el boton): vuelve la cantidad
+  // que habia escrito antes de marcarlo. Sin `locationKey`, el del producto.
+  const handleRandomInspectionUndoNotFound = useCallback((itemId, locationKey = '') => {
+    const normalizedItemId = normalizeId(itemId)
+    const key = String(locationKey || '').trim()
+    if (randomInspectionSubmitting || !normalizedItemId) return
+    setRandomInspectionDraftByItemId((prev) => {
+      const current = prev?.[normalizedItemId] || {}
+      if (!key) {
+        return {
+          ...prev,
+          [normalizedItemId]: {
+            ...current,
+            id: normalizedItemId,
+            no_encontrado: false,
+            cantidad_reportada_input: current.cantidad_previa ?? '',
+            cantidad_reportada_por_ubicacion: current.por_ubicacion_previa || {},
+          },
+        }
+      }
+      const marks = { ...(current?.ubicaciones_no_encontradas || {}) }
+      delete marks[key]
+      return {
+        ...prev,
+        [normalizedItemId]: {
+          ...current,
+          id: normalizedItemId,
+          no_encontrado: false,
+          ubicaciones_no_encontradas: marks,
+          cantidad_reportada_por_ubicacion: {
+            ...(current?.cantidad_reportada_por_ubicacion || {}),
+            [key]: current?.ubicaciones_valor_previo?.[key] ?? '',
+          },
+        },
+      }
+    })
+    markRandomInspectionItemDirty(normalizedItemId)
   }, [markRandomInspectionItemDirty, randomInspectionSubmitting])
 
   const handleSubmitRandomInspection = useCallback(
@@ -6616,9 +6668,7 @@ function QuickActions({
                             : entry.location
                               ? String(entry.location?.cantidad_contada_input ?? '')
                               : String(row?.cantidad_reportada_input ?? '')
-                          const undoNotFound = () => (entry.location
-                            ? handleRandomInspectionLocationCountChange(rowId, entry.location?.key, '')
-                            : handleRandomInspectionDraftFieldChange(rowId, 'cantidad_reportada', ''))
+                          const undoNotFound = () => handleRandomInspectionUndoNotFound(rowId, entry.location?.key || '')
                           // Las de fuera de la division se cuentan aqui mismo (abajo).
                           const outsideLocations = Array.isArray(entry.outsideLocations) ? entry.outsideLocations : []
                           const outsideKeys = new Set(
@@ -6767,7 +6817,7 @@ function QuickActions({
                                     type="button"
                                     className={`quick-actions__inspection-row-notfound${location?.no_encontrado ? ' is-active' : ''}`}
                                     onClick={() => (location?.no_encontrado
-                                      ? handleRandomInspectionLocationCountChange(rowId, location.key, '')
+                                      ? handleRandomInspectionUndoNotFound(rowId, location.key)
                                       : handleRandomInspectionLocationNotFound(row, location.key))}
                                     disabled={randomInspectionSubmitting}
                                     aria-pressed={Boolean(location?.no_encontrado)}
