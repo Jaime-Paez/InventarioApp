@@ -321,19 +321,41 @@ class SugerenciaProductosNuevosTests(TestCase):
         response = self.client.post(f"{BASE_URL}/{importacion.id}/confirmar/")
         self.assertEqual(response.status_code, 200, response.data)
 
-    def test_sugerencia_se_crea_con_un_codigo_repetido(self):
+    def test_codigo_repetido_se_guarda_en_sugerencia_y_verificacion(self):
+        """Con el mismo codigo en dos filas se crea, se guarda la sugerencia,
+        se pide la cotizacion y se guarda la verificacion; solo pedir la
+        confirmacion se bloquea."""
+        detalles = [
+            {"producto_id": self.existente.id, "referencia": "QFA0332", "cantidad": 5},
+            {"producto_id": self.existente.id, "referencia": "QFA0677", "cantidad": 60},
+        ]
         response = self.client.post(
-            BASE_URL + "/",
-            {
-                "casa_comercial_id": self.casa.id,
-                "detalles": [
-                    {"producto_id": self.existente.id, "referencia": "QFA0332", "cantidad": 0},
-                    {"producto_id": self.existente.id, "referencia": "QFA0677", "cantidad": 60},
-                ],
-            },
-            format="json",
+            BASE_URL + "/", {"casa_comercial_id": self.casa.id, "detalles": detalles}, format="json"
         )
         self.assertEqual(response.status_code, 201, response.data)
+        importacion = Importacion.objects.get(pk=response.data["id"])
+
+        response = self.client.patch(f"{BASE_URL}/{importacion.id}/", {"detalles": detalles}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        self._pedir_cotizacion(importacion)
+        importacion.refresh_from_db()
+        self.assertEqual(importacion.estado, "cotizacion")
+
+        verificacion = [
+            {**detalle, "precio_estimado": "10.00", "cantidad_aproximada": detalle["cantidad"],
+             "seleccionado": None, "quitado": False}
+            for detalle in detalles
+        ]
+        response = self.client.patch(f"{BASE_URL}/{importacion.id}/", {"detalles": verificacion}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(
+            sorted(importacion.detalles.values_list("referencia", flat=True)), ["QFA0332", "QFA0677"]
+        )
+
+        response = self.client.post(f"{BASE_URL}/{importacion.id}/confirmar/")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("productos_repetidos", response.data)
 
     def test_importar_rechaza_un_producto_repetido(self):
         importacion = self._crear(cantidad_nuevo=3)
