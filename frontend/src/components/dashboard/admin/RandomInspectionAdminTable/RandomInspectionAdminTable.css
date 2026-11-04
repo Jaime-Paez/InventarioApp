@@ -1775,6 +1775,13 @@ body.app-theme-dark .inspection-admin__found-tag {
   flex-wrap: wrap;
 }
 
+/* Sin la linea separadora: no hay nada a la izquierda de Sucursales/Diferencias. */
+.inspection-admin__head.users-page__actions .transfer-issues-page__type-filter {
+  border-left: none;
+  padding-left: 0;
+  margin-left: 0;
+}
+
 .inspection-admin__head.users-page__actions .inspection-admin__head-actions {
   flex-wrap: wrap;
   justify-content: flex-end;

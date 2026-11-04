@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, PackageCheck, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
+import { Button } from 'primereact/button'
 import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -1657,14 +1658,13 @@ function RandomInspectionAdminTable({
                 : 'Diferencias',
             },
           ].map((option) => (
-            <button
+            <Button
               key={option.key}
               type="button"
-              className={`p-button users-topbtn transfer-issues-page__type-btn${view === option.key ? ' transfer-issues-page__type-btn--active' : ''}`}
+              label={option.label}
+              className={`users-topbtn transfer-issues-page__type-btn${view === option.key ? ' transfer-issues-page__type-btn--active' : ''}`}
               onClick={() => setView(option.key)}
-            >
-              {option.label}
-            </button>
+            />
           ))}
         </div>
         <div className="inspection-admin__head-actions">
