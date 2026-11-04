@@ -1233,6 +1233,18 @@ class AgregarProductoEncontradoTests(InspeccionAleatoriaBaseTestCase):
         ])
         self.assertEqual(incompleto.status_code, 400)
 
+    def test_quita_solo_lo_que_agrego(self):
+        self._agregar()
+        agregado = self.inspection.items.get(producto=self.producto)
+        de_la_lista = self.inspection.items.get(producto=self.producto_2)
+        url = f"{BASE_URL}/{self.inspection.id}/quitar-producto/"
+        self.assertEqual(self.revisor_client.post(url, {"item_id": de_la_lista.id}, format="json").status_code, 400)
+        response = self.revisor_client.post(url, {"item_id": agregado.id}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(self.inspection.items.filter(pk=agregado.pk).exists())
+        self.inspection.refresh_from_db()
+        self.assertEqual(self.inspection.total_items, 1)
+
     def test_buscar_producto_por_referencia(self):
         from productos.models import ProductoReferencia
 

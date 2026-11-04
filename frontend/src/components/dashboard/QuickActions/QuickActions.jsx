@@ -5124,6 +5124,46 @@ function QuickActions({
       } : prev))
     }
   }, [activeRandomInspection?.id, flushRandomInspectionDraft, randomInspectionAdd, randomInspectionAddOtherLocations, token])
+  // Quita un producto que el revisor agrego (se equivoco).
+  const [randomInspectionRemovingId, setRandomInspectionRemovingId] = useState('')
+  const removeRandomInspectionAddedProduct = useCallback(async (row) => {
+    const inspectionId = normalizeId(activeRandomInspection?.id)
+    const itemId = normalizeId(row?.row_id || row?.id)
+    if (!token || !inspectionId || !itemId || randomInspectionRemovingId) return
+    setRandomInspectionRemovingId(itemId)
+    try {
+      const flushResult = await flushRandomInspectionDraft()
+      if (flushResult?.completed) return
+      const response = await authFetch(
+        `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/quitar-producto/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ item_id: Number(itemId), version: randomInspectionVersionRef.current }),
+        },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (payload?.inspection) randomInspectionApplyServerRef.current?.(payload.inspection)
+      if (!response.ok) {
+        throw new Error(
+          payload?.conflict
+            ? 'La revisión se actualizó desde otro dispositivo. Vuelve a intentarlo.'
+            : String(payload?.detail || '').trim() || 'No se pudo quitar el producto.'
+        )
+      }
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Producto quitado',
+        detail: `${row?.producto_codigo || 'El producto'} ya no está en esta revisión.`,
+        life: 3000,
+      })
+    } catch (error) {
+      toast.current?.show({ severity: 'error', summary: 'No se pudo quitar', detail: error?.message || 'No se pudo quitar el producto.', life: 4000 })
+    } finally {
+      setRandomInspectionRemovingId('')
+    }
+  }, [activeRandomInspection?.id, flushRandomInspectionDraft, randomInspectionRemovingId, token])
+
   const jumpToRandomInspectionStep = useCallback((rowIndex) => {
     if (randomInspectionSubmitting) return
     let step = rowIndex
@@ -6629,8 +6669,21 @@ function QuickActions({
                                 />
                               </span>
                               <span>
-                                {/* Con varias ubicaciones, "no lo encontre" es de esta ubicacion. */}
-                                {(entry.location ? entry.location?.no_encontrado : row?.no_encontrado) ? (
+                                {/* Lo agrego el revisor: en vez de "No lo encontre", se puede quitar. */}
+                                {row?.agregado_por_revisor ? (
+                                  <button
+                                    type="button"
+                                    className="quick-actions__inspection-row-remove"
+                                    onClick={() => void removeRandomInspectionAddedProduct(row)}
+                                    disabled={randomInspectionSubmitting || Boolean(randomInspectionRemovingId)}
+                                    aria-label={`Quitar ${row?.producto_codigo || 'producto'} de la revisión`}
+                                    data-title="Quitar este producto (lo agregaste tú)"
+                                  >
+                                    {randomInspectionRemovingId === rowId
+                                      ? <i className="pi pi-spin pi-spinner" aria-hidden="true" />
+                                      : <i className="pi pi-times" aria-hidden="true" />}
+                                  </button>
+                                ) : (entry.location ? entry.location?.no_encontrado : row?.no_encontrado) ? (
                                   <span className="quick-actions__inspection-notfound-tag">No encontrado</span>
                                 ) : (
                                   <button

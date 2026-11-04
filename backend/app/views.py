@@ -4436,6 +4436,45 @@ class RandomInspectionAddProductAPIView(APIView):
         )
 
 
+class RandomInspectionRemoveAddedProductAPIView(APIView):
+    """El revisor quita un producto que el mismo agrego (se equivoco)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, inspection_id):
+        with transaction.atomic():
+            inspection, error = _pending_division_inspection_for_reviewer(
+                request, inspection_id, lock=True
+            )
+            if error is not None:
+                return error
+            client_version = _parse_client_draft_version(request.data)
+            if client_version is not None and client_version != int(inspection.borrador_version or 0):
+                return _random_inspection_conflict_response(inspection.id, request)
+            item = inspection.items.filter(
+                pk=_normalize_int(request.data.get("item_id"), 0), agregado_por_revisor=True
+            ).first()
+            if item is None:
+                return Response(
+                    {"detail": "Solo puedes quitar productos que agregaste tu."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            item.delete()
+            inspection.total_items = inspection.items.count()
+            inspection.borrador_version = int(inspection.borrador_version or 0) + 1
+            inspection.save(update_fields=["total_items", "borrador_version", "updated_at"])
+
+        refreshed = _get_random_inspection_queryset().filter(pk=inspection_id).first()
+        return Response(
+            {
+                "ok": True,
+                "version": int(inspection.borrador_version),
+                "inspection": _serialize_random_inspection(refreshed, viewer=request.user),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class RandomInspectionVerifyItemAPIView(APIView):
     permission_classes = [IsAuthenticated]
 

@@ -4031,6 +4031,30 @@
   font-weight: 600;
 }
 
+/* Quitar un producto que agrego el revisor. */
+.quick-actions__inspection-row-remove {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(220, 38, 38, 0.45);
+  border-radius: 999px;
+  background: transparent;
+  color: #b91c1c;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.quick-actions__inspection-row-remove:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.quick-actions__inspection-row-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .quick-actions__inspection-move-list > small.is-ok {
   color: #15803d;
   font-weight: 600;

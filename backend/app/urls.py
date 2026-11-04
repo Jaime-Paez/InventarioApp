@@ -113,6 +113,11 @@ urlpatterns = [
         name="recordatorios-inspeccion-aleatoria-agregar-producto",
     ),
     path(
+        "recordatorios/inspeccion-aleatoria/<int:inspection_id>/quitar-producto/",
+        views.RandomInspectionRemoveAddedProductAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-quitar-producto",
+    ),
+    path(
         "recordatorios/inspeccion-aleatoria/<int:inspection_id>/borrador/",
         views.RandomInspectionSaveDraftAPIView.as_view(),
         name="recordatorios-inspeccion-aleatoria-borrador",
