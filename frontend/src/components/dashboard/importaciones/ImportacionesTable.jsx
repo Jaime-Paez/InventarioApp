@@ -3852,13 +3852,14 @@ function VerificacionGroupsSummary({ conteo, chipProps }) {
   )
 }
 
-function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuevo = 0, sinCatalogo = 0, chipProps, onQuitarTodos }) {
+// `repetidos`: [{ codigo, referencias }] codigos que estan en mas de una fila.
+function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuevo = 0, sinCatalogo = 0, repetidos = [], chipProps, onQuitarTodos }) {
   const [confirmarQuitar, setConfirmarQuitar] = useState(false)
   // Completos: los del catalogo, los sugeridos y los que ya traen un codigo
   // nuevo (del Excel o escrito). Sin codigo: lo unico que falta completar.
   const completos = vinculados + oem + otraCasa + codigoNuevo
   const noEncontrados = sinCatalogo
-  if (!completos && !noEncontrados) return null
+  if (!completos && !noEncontrados && !repetidos.length) return null
   const caja = { display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }
   const chip = { borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }
   return (
@@ -3886,6 +3887,19 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuev
                 {codigoNuevo} nuevo{codigoNuevo !== 1 ? 's' : ''} con código
               </span>
             )}
+          </div>
+        </div>
+      )}
+      {repetidos.length > 0 && (
+        <div style={{ ...caja, justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span
+              {...chipProps('repetidos', 'los productos repetidos')}
+              data-title={`Clic: ir a los repetidos (${repetidos.map((grupo) => (grupo.referencias.length ? `${grupo.codigo}: ${grupo.referencias.join(', ')}` : grupo.codigo)).join(' · ')}). Puedes pedir la cotización así; antes de la confirmación deja solo una fila de cada código.`}
+              style={{ ...chip, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
+            >
+              {repetidos.length} repetido{repetidos.length !== 1 ? 's' : ''}
+            </span>
           </div>
         </div>
       )}
@@ -4810,6 +4824,8 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
   // un codigo nuevo y los que no tienen codigo, cada grupo junto (ver
   // sugerenciaRowRank).
   const esNoEncontrado = (r) => !r.matched_producto_id && !r.codigo_sugerido && !r.conflicto_casa
+  const duplicateProductGroups = getDuplicateProductGroups(validRows)
+  const duplicateRowSet = new Set(duplicateProductGroups.flat())
   const tieneCodigo = (r) => Boolean(String(r.codigo || '').trim())
   const codigoNuevoCount = validRows.filter((r) => esNoEncontrado(r) && tieneCodigo(r)).length
   const sinCodigoCount = validRows.filter((r) => esNoEncontrado(r) && !tieneCodigo(r)).length
@@ -4820,6 +4836,7 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
     sugeridos: (r) => Boolean(r.codigo_sugerido) && !r.conflicto_casa,
     otraCasa: (r) => Boolean(r.conflicto_casa),
     referencia: (r) => hasReferenciaConflict(r),
+    repetidos: (r) => duplicateRowSet.has(r),
   }
   // Clic en un contador: lleva al inicio de ese grupo (los grupos van juntos).
   const jumpToReviewGroup = (key) => {
@@ -4844,7 +4861,6 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
   })
   const getSistemaPrecio = sugerenciaSistemaPrecio
   const getPrecioGuardado = (row) => sugerenciaPrecioGuardado(row, casa?.nombre)
-  const duplicateProductGroups = getDuplicateProductGroups(validRows)
 
   const selectAllDecision = (decision) => {
     const updates = {}
@@ -4997,15 +5013,6 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
 
   return (
     <>
-                <CodigosRepetidosAviso
-                  etapa="sugerencia"
-                  grupos={duplicateProductGroups.map((grupo) => ({
-                    codigo: grupo[0]?.matched_producto_codigo || grupo[0]?.codigo || '—',
-                    nombre: grupo[0]?.matched_producto_nombre || grupo[0]?.descripcion || '',
-                    filas: grupo.length,
-                    referencias: grupo.map((row) => String(row._detalle?.referencia || row.referencia || '').trim()).filter(Boolean),
-                  }))}
-                />
                   <>
                     <ImportGroupsSummary
                       vinculados={matchedCount}
@@ -5013,6 +5020,10 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                       otraCasa={conflictoRows.length}
                       codigoNuevo={codigoNuevoCount}
                       sinCatalogo={sinCodigoCount}
+                      repetidos={duplicateProductGroups.map((grupo) => ({
+                        codigo: grupo[0]?.matched_producto_codigo || grupo[0]?.codigo || '—',
+                        referencias: grupo.map((row) => String(row._detalle?.referencia || row.referencia || '').trim()).filter(Boolean),
+                      }))}
                       chipProps={(key, label) => reviewGroupChipProps(key === 'oem' ? 'sugeridos' : key, label)}
                       onQuitarTodos={readOnly ? undefined : removeNoEncontrados}
                     />
