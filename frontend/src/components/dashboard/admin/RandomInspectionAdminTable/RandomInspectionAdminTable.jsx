@@ -1459,7 +1459,8 @@ function RandomInspectionAdminTable({
   // productos pendientes arriba, solucionados y revisados abajo).
   // Reenviar conteo desde el detalle de la revision (uno o todos los pendientes).
   const [recountSendingId, setRecountSendingId] = useState('')
-  const [recountConfirmAll, setRecountConfirmAll] = useState(false)
+  // Productos que se van a reenviar (se pregunta antes, uno o todos).
+  const [recountConfirmRows, setRecountConfirmRows] = useState(null)
   const resendToRecount = async (rows) => {
     const list = rows.filter((row) => Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3))
     if (!token || !list.length || recountSendingId) return
@@ -1481,7 +1482,7 @@ function RandomInspectionAdminTable({
       if (errors.length) notifyError(errors.join(' · '))
     } finally {
       setRecountSendingId('')
-      setRecountConfirmAll(false)
+      setRecountConfirmRows(null)
       void loadSummary({ silent: true })
       void loadItems({ silent: true })
     }
@@ -1587,8 +1588,8 @@ function RandomInspectionAdminTable({
                           {canFix && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3) ? (
                             <button
                               type="button"
-                              className="inspection-admin__action inspection-admin__verify-recount"
-                              onClick={() => void resendToRecount([row])}
+                              className="inspection-admin__action inspection-admin__recount-btn"
+                              onClick={() => setRecountConfirmRows([row])}
                               disabled={Boolean(recountSendingId)}
                               data-title={`Manda a contar de nuevo este producto al mismo revisor (reconteo ${Number(row?.reconteos || 0) + 1} de ${Number(row?.max_reconteos || 3)}). No ajusta nada.`}
                             >
@@ -1643,8 +1644,10 @@ function RandomInspectionAdminTable({
                   {recountableCount > 0 && (
                     <button
                       type="button"
-                      className="create-user__action create-user__action--secondary inspection-admin__verify-recount"
-                      onClick={() => setRecountConfirmAll(true)}
+                      className="create-user__action inspection-admin__recount-btn inspection-admin__recount-btn--solid"
+                      onClick={() => setRecountConfirmRows(revisionItems.filter((row) => (
+                        getItemStatus(row).key === 'pendiente' && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3)
+                      )))}
                       disabled={Boolean(recountSendingId)}
                     >
                       <RefreshCw size={14} />
@@ -1661,30 +1664,34 @@ function RandomInspectionAdminTable({
                 </div>
               ) : null}
             </footer>
-            {recountConfirmAll && (
-              <div className="quick-actions__inspection-move-overlay" onMouseDown={() => { if (!recountSendingId) setRecountConfirmAll(false) }}>
+            {Array.isArray(recountConfirmRows) && recountConfirmRows.length > 0 && (
+              <div className="quick-actions__inspection-move-overlay" onMouseDown={() => { if (!recountSendingId) setRecountConfirmRows(null) }}>
                 <div className="quick-actions__inspection-move-card" role="alertdialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
                   <div className="quick-actions__inspection-move-warning">
                     <i className="pi pi-refresh" aria-hidden="true" />
                     <div>
-                      <strong>{`Reenviar ${recountableCount} producto(s) a contar de nuevo`}</strong>
+                      <strong>
+                        {recountConfirmRows.length === 1
+                          ? `¿Reenviar ${String(recountConfirmRows[0]?.producto_codigo || 'este producto').trim()} a contar de nuevo? (reconteo ${Number(recountConfirmRows[0]?.reconteos || 0) + 1} de ${Number(recountConfirmRows[0]?.max_reconteos || 3)})`
+                          : `¿Reenviar ${recountConfirmRows.length} productos a contar de nuevo?`}
+                      </strong>
                       <p>{`Le llegan a ${String(revision?.usuario_nombre || 'el revisor').trim()} en una revisión "Reconteo de ${String(revision?.codigo || '').trim()}". No se ajusta nada del inventario.`}</p>
-                      {pendingCount > recountableCount && (
+                      {recountConfirmRows.length > 1 && pendingCount > recountableCount && (
                         <p>{`${pendingCount - recountableCount} ya se recontaron 3 veces: esos hay que solucionarlos aquí.`}</p>
                       )}
                     </div>
                   </div>
                   <div className="quick-actions__inspection-move-actions">
-                    <button type="button" className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost" onClick={() => setRecountConfirmAll(false)} disabled={Boolean(recountSendingId)}>
+                    <button type="button" className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost" onClick={() => setRecountConfirmRows(null)} disabled={Boolean(recountSendingId)}>
                       Cancelar
                     </button>
                     <button
                       type="button"
                       className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
-                      onClick={() => void resendToRecount(revisionItems.filter((row) => getItemStatus(row).key === 'pendiente'))}
+                      onClick={() => void resendToRecount(recountConfirmRows)}
                       disabled={Boolean(recountSendingId)}
                     >
-                      {recountSendingId ? 'Enviando...' : 'Reenviar conteo'}
+                      {recountSendingId ? 'Enviando...' : 'Sí, reenviar conteo'}
                     </button>
                   </div>
                 </div>
@@ -2625,7 +2632,7 @@ function RandomInspectionAdminTable({
                     {!decision && canResend && (
                       <button
                         type="button"
-                        className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost inspection-admin__verify-recount"
+                        className="quick-actions__inspection-btn inspection-admin__recount-btn inspection-admin__recount-btn--solid"
                         onClick={() => void submitVerifyDecision('recontar')}
                         disabled={busy || verifyWizardConfirming}
                         data-title={`Manda a contar de nuevo este producto al mismo revisor (reconteo ${recounts + 1} de ${maxRecounts}). No ajusta nada.`}

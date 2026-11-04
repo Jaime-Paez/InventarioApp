@@ -2232,6 +2232,32 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   background: var(--table-color-dark);
 }
 
+/* Reenviar conteo: amarillo para que se distinga del azul de Verificar. */
+.inspection-admin__recount-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d97706 !important;
+  background: #fef3c7 !important;
+  color: #78350f !important;
+  font-weight: 700;
+}
+
+.inspection-admin__recount-btn:hover:not(:disabled) {
+  background: #fde68a !important;
+}
+
+.inspection-admin__recount-btn.inspection-admin__recount-btn--solid {
+  background: #f59e0b !important;
+  border-color: #d97706 !important;
+  color: #1f1300 !important;
+}
+
+.inspection-admin__recount-btn.inspection-admin__recount-btn--solid:hover:not(:disabled) {
+  background: #d97706 !important;
+  color: #fff !important;
+}
+
 /* Reconteos: puntos que dicen cuantos se han enviado (de 3). */
 .inspection-admin__recount-dots {
   display: inline-flex;
