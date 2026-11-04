@@ -4154,7 +4154,7 @@ class RandomInspectionSaveDraftAPIView(APIView):
         return Response(response_payload, status=status.HTTP_200_OK)
 
 
-def _pending_division_inspection_for_reviewer(request, inspection_id, *, lock=False):
+def _pending_inspection_for_reviewer(request, inspection_id, *, lock=False):
     inspection = (
         _lock_random_inspection(inspection_id)
         if lock
@@ -4174,23 +4174,31 @@ def _pending_division_inspection_for_reviewer(request, inspection_id, *, lock=Fa
         )
     if not _is_random_inspection_pending(inspection):
         return None, _random_inspection_completed_response()
-    if not inspection.es_por_division or not inspection.division_id:
-        return None, Response(
-            {"detail": "Solo se pueden agregar productos en revisiones por division o subdivision."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    # Cualquier tipo de revision (division, aleatoria o lista): el formulario
+    # es el mismo para todas.
     return inspection, None
 
 
-def _inspection_branch_locations(inspection):
-    """Ubicaciones de la sucursal de la revision (sin POR UBICAR)."""
-    from inventario.por_ubicar import POR_UBICAR_NOMBRE
-
+def _inspection_branch_ids(inspection):
+    """Sucursales de la revision: la de su division, la suya o (aleatoria de
+    varias sucursales) las de sus productos."""
     division = getattr(inspection, "division", None)
     sucursal_id = getattr(getattr(division, "bodega", None), "sucursal_id", None)
-    if not sucursal_id:
+    if sucursal_id:
+        return {int(sucursal_id)}
+    if getattr(inspection, "sucursal_id", None):
+        return {int(inspection.sucursal_id)}
+    return {int(value) for value in inspection.items.values_list("sucursal_id", flat=True).distinct()}
+
+
+def _inspection_branch_locations(inspection):
+    """Ubicaciones de las sucursales de la revision (sin POR UBICAR)."""
+    from inventario.por_ubicar import POR_UBICAR_NOMBRE
+
+    branch_ids = _inspection_branch_ids(inspection)
+    if not branch_ids:
         return SubDivision.objects.none()
-    return SubDivision.objects.filter(division__bodega__sucursal_id=int(sucursal_id)).exclude(
+    return SubDivision.objects.filter(division__bodega__sucursal_id__in=branch_ids).exclude(
         division__nombre__iexact=POR_UBICAR_NOMBRE
     )
 
@@ -4201,7 +4209,7 @@ class RandomInspectionLocationsAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, inspection_id):
-        inspection, error = _pending_division_inspection_for_reviewer(request, inspection_id)
+        inspection, error = _pending_inspection_for_reviewer(request, inspection_id)
         if error is not None:
             return error
         rows = (
@@ -4209,11 +4217,24 @@ class RandomInspectionLocationsAPIView(APIView):
             .select_related("division__bodega")
             .order_by("division__bodega__nombre", "division__nombre", "nombre", "id")
         )
+        # Por division: las de esa division. Aleatoria / lista: donde estan
+        # los productos de la revision.
+        if inspection.division_id:
+            def en_revision(subdivision):
+                return int(subdivision.division_id) == int(inspection.division_id)
+        else:
+            con_productos = set(
+                Inventario.objects.filter(
+                    producto_id__in=inspection.items.values_list("producto_id", flat=True),
+                    subdivision__division__bodega__sucursal_id__in=_inspection_branch_ids(inspection),
+                    cantidad__gt=0,
+                ).values_list("subdivision_id", flat=True)
+            )
+
+            def en_revision(subdivision):
+                return int(subdivision.id) in con_productos
         locations = [
-            {
-                **_serialize_found_location(subdivision),
-                "en_revision": int(subdivision.division_id) == int(inspection.division_id),
-            }
+            {**_serialize_found_location(subdivision), "en_revision": en_revision(subdivision)}
             for subdivision in rows
         ]
         locations.sort(key=lambda row: _natural_sort_key(row["label"]))
@@ -4228,7 +4249,7 @@ class RandomInspectionSearchProductAPIView(APIView):
     def get(self, request, inspection_id):
         from productos.models import Producto
 
-        inspection, error = _pending_division_inspection_for_reviewer(request, inspection_id)
+        inspection, error = _pending_inspection_for_reviewer(request, inspection_id)
         if error is not None:
             return error
         term = _normalize_text(request.query_params.get("q"))
@@ -4269,13 +4290,12 @@ class RandomInspectionSearchProductAPIView(APIView):
 def _product_branch_locations(inspection, product_ids):
     """{producto_id: [ubicacion]} con stock en la sucursal de la revision
     (dentro de su alcance), sin cantidades."""
-    division = getattr(inspection, "division", None)
-    sucursal_id = getattr(getattr(division, "bodega", None), "sucursal_id", None)
-    if not sucursal_id or not product_ids:
+    branch_ids = _inspection_branch_ids(inspection)
+    if not branch_ids or not product_ids:
         return {}
     rows = (
         _inspection_stock_queryset(
-            branch_ids={int(sucursal_id)},
+            branch_ids=branch_ids,
             product_ids=set(product_ids),
             division_id=_inspection_division_scope(inspection),
             subdivision_id=_inspection_subdivision_scope(inspection),
@@ -4284,6 +4304,7 @@ def _product_branch_locations(inspection, product_ids):
             "producto_id",
             "subdivision_id",
             "subdivision__division_id",
+            "subdivision__division__bodega__sucursal_id",
             "subdivision__division__bodega__nombre",
             "subdivision__division__nombre",
             "subdivision__nombre",
@@ -4300,7 +4321,7 @@ def _product_branch_locations(inspection, product_ids):
         ]
         result.setdefault(int(row["producto_id"]), []).append(
             {
-                "sucursal_id": int(sucursal_id),
+                "sucursal_id": int(row["subdivision__division__bodega__sucursal_id"]),
                 "subdivision_id": int(row["subdivision_id"]),
                 "division_id": int(row["subdivision__division_id"]),
                 "bodega_nombre": parts[0],
@@ -4323,7 +4344,7 @@ class RandomInspectionAddProductAPIView(APIView):
         from productos.models import Producto
 
         with transaction.atomic():
-            inspection, error = _pending_division_inspection_for_reviewer(
+            inspection, error = _pending_inspection_for_reviewer(
                 request, inspection_id, lock=True
             )
             if error is not None:
@@ -4443,7 +4464,7 @@ class RandomInspectionRemoveAddedProductAPIView(APIView):
 
     def post(self, request, inspection_id):
         with transaction.atomic():
-            inspection, error = _pending_division_inspection_for_reviewer(
+            inspection, error = _pending_inspection_for_reviewer(
                 request, inspection_id, lock=True
             )
             if error is not None:

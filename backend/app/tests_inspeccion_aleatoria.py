@@ -1155,14 +1155,20 @@ class AgregarProductoEncontradoTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(self._stock(subdivision=self.sub_b), 12)
         self.assertFalse(Inventario.objects.filter(producto=self.producto, subdivision=self.sub_a).exists())
 
-    def test_solo_en_revision_por_division(self):
+    def test_tambien_en_revision_por_lista(self):
+        """El formulario es el mismo para todas las revisiones: en una por
+        lista tambien se puede agregar un producto encontrado."""
         lista = self._crear_inspeccion(productos=[self.producto_2], es_por_lista=True, sucursal=self.sucursal)
+        response = self.revisor_client.get(f"{BASE_URL}/{lista.id}/ubicaciones/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIn(self.sub_b.id, {row["subdivision_id"] for row in response.data["results"]})
         response = self.revisor_client.post(
             f"{BASE_URL}/{lista.id}/agregar-producto/",
             {"producto_id": self.producto.id, "subdivision_id": self.sub_b.id, "cantidad": 1},
             format="json",
         )
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertTrue(lista.items.filter(producto=self.producto, agregado_por_revisor=True).exists())
 
     def _inspeccion_toda_la_sucursal(self):
         InspeccionAleatoriaDiaria.objects.filter(pk=self.inspection.pk).update(cuenta_toda_la_sucursal=True)

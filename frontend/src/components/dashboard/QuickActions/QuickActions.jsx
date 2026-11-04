@@ -2729,10 +2729,9 @@ function QuickActions({
   // Revision por division: se cuenta fila por fila (cada subdivision es un
   // paso con todos sus codigos en una tabla). Un producto que esta en varias
   // filas aparece en cada una con su cantidad por ubicacion.
-  const isRandomInspectionTableMode = (
-    !isRandomInspectionVerifyMode &&
-    Boolean(activeRandomInspection?.es_por_division)
-  )
+  // Todas las revisiones (division, aleatoria y lista) se cuentan igual:
+  // solo cambia que productos trae cada una.
+  const isRandomInspectionTableMode = !isRandomInspectionVerifyMode
   const randomInspectionGroups = useMemo(() => {
     if (!isRandomInspectionTableMode) return []
     const groups = []
@@ -2761,8 +2760,12 @@ function QuickActions({
     // no son un paso aparte; se cuentan ahi mismo, debajo del producto, en su
     // fila de la division (obligatorias igual que las demas).
     const chosenDivisionId = activeRandomInspection?.es_por_subdivision ? '' : String(activeRandomInspection?.division_id || '')
-    const isOutside = (location) => Boolean(chosenDivisionId) &&
-      Boolean(location?.division_id) && String(location.division_id) !== chosenDivisionId
+    // Aleatoria / lista (sin division): el producto va en su primera
+    // ubicacion y las demas se cuentan ahi mismo, debajo, como en la division.
+    const sinDivision = !activeRandomInspection?.es_por_division
+    const isOutside = (location, index) => (sinDivision
+      ? index > 0
+      : Boolean(chosenDivisionId) && Boolean(location?.division_id) && String(location.division_id) !== chosenDivisionId)
     randomInspectionRows.forEach((row, rowIndex) => {
       const locations = Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : []
       if (row?.agregado_por_revisor && row?.encontrado_en) {
@@ -2782,8 +2785,8 @@ function QuickActions({
           }
           : { row, rowIndex, location: null })
       } else if (row?.requiere_conteo_por_ubicacion) {
-        const inside = locations.filter((location) => !isOutside(location))
-        const outside = locations.filter(isOutside)
+        const inside = locations.filter((location, index) => !isOutside(location, index))
+        const outside = locations.filter((location, index) => isOutside(location, index))
         if (!inside.length) {
           locations.forEach((location) => addEntry(location, { row, rowIndex, location }))
           return
@@ -2810,8 +2813,20 @@ function QuickActions({
       groups.forEach((group) => { group.outside = Boolean(group.divisionId) && group.divisionId !== chosenDivisionId })
       groups.sort((left, right) => Number(left.outside) - Number(right.outside))
     }
+    if (sinDivision) {
+      // Aleatoria de varias sucursales: cada fila dice de que sucursal es.
+      const sucursales = new Set(randomInspectionRows.map((row) => String(row?.sucursal_id || '')))
+      if (sucursales.size > 1) {
+        groups.forEach((group) => {
+          const nombre = String(group.place?.sucursal_nombre || group.entries[0]?.row?.sucursal_nombre || '').trim()
+          if (nombre) group.label = `${nombre} · ${group.label}`
+        })
+      }
+      // Las filas en el orden de la bodega (por nombre de ubicacion).
+      groups.sort((left, right) => left.label.localeCompare(right.label, 'es', { numeric: true }))
+    }
     return groups
-  }, [activeRandomInspection?.es_por_subdivision, activeRandomInspection?.subdivision_id, activeRandomInspection?.division_id, isRandomInspectionTableMode, randomInspectionRows])
+  }, [activeRandomInspection?.es_por_division, activeRandomInspection?.es_por_subdivision, activeRandomInspection?.subdivision_id, activeRandomInspection?.division_id, isRandomInspectionTableMode, randomInspectionRows])
   const randomInspectionStepCount = isRandomInspectionTableMode
     ? randomInspectionGroups.length
     : randomInspectionRows.length

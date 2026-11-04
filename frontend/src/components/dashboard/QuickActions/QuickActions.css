@@ -3893,10 +3893,12 @@
   font-weight: 700;
 }
 
+/* Igual que "(otra ubicacion)": gris, sin negrita y pequeno. */
+.quick-actions__inspection-row-table .quick-actions__inspection-added-tag,
 .quick-actions__inspection-added-tag {
   color: var(--color-text-secondary, #64748b) !important;
-  font-weight: 400;
-  font-size: 0.8em;
+  font-weight: 400 !important;
+  font-size: var(--font-size-xs, 12px) !important;
 }
 
 /* Modal "Este producto tiene cantidades en...": al agregar un producto que ya
@@ -4233,7 +4235,7 @@
 
 .quick-actions__inspection-row-other {
   color: var(--color-text-secondary, #64748b);
-  font-size: 0.8em;
+  font-size: var(--font-size-xs, 12px);
   font-weight: 400;
   white-space: nowrap;
 }
