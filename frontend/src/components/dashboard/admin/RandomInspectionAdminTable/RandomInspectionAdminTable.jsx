@@ -1459,11 +1459,44 @@ function RandomInspectionAdminTable({
 
   // Historial: cada revision se abre como en Inconvenientes (resumen arriba;
   // productos pendientes arriba, solucionados y revisados abajo).
+  // Reenviar conteo desde el detalle de la revision (uno o todos los pendientes).
+  const [recountSendingId, setRecountSendingId] = useState('')
+  const [recountConfirmAll, setRecountConfirmAll] = useState(false)
+  const resendToRecount = async (rows) => {
+    const list = rows.filter((row) => Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3))
+    if (!token || !list.length || recountSendingId) return
+    setRecountSendingId(list.length === 1 ? normalizeId(list[0]?.id) : 'all')
+    let sent = 0
+    const errors = []
+    try {
+      for (const row of list) {
+        const response = await authFetch(
+          `${API_URL}/recordatorios/inspeccion-aleatoria/items/${encodeURIComponent(normalizeId(row?.id))}/verificar/`,
+          { method: 'POST', body: JSON.stringify({ accion: 'recontar' }) },
+          token
+        )
+        const payload = await response.json().catch(() => ({}))
+        if (response.ok) sent += 1
+        else errors.push(`${String(row?.producto_codigo || '').trim()}: ${String(payload?.detail || 'no se pudo').trim()}`)
+      }
+      if (sent) notifySuccess(sent === 1 ? 'Se envió a contar de nuevo.' : `Se enviaron ${sent} productos a contar de nuevo.`)
+      if (errors.length) notifyError(errors.join(' · '))
+    } finally {
+      setRecountSendingId('')
+      setRecountConfirmAll(false)
+      void loadSummary({ silent: true })
+      void loadItems({ silent: true })
+    }
+  }
+
   const renderRevisionDetail = () => {
     const revision = itemsRows.find((row) => normalizeId(row?.id) === normalizeId(expandedRevisionId)) || null
     const state = REVISION_STATES[revision?.estado_revision] || REVISION_STATES.revisada
     const sortedItems = [...revisionItems].sort((a, b) => ITEM_ORDER[getItemStatus(a).key] - ITEM_ORDER[getItemStatus(b).key])
     const pendingCount = revisionItems.filter((row) => getItemStatus(row).key === 'pendiente').length
+    const recountableCount = revisionItems.filter((row) => (
+      getItemStatus(row).key === 'pendiente' && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3)
+    )).length
     const solvedCount = revisionItems.filter((row) => ['solucionado', 'mantenido', 'reconteo'].includes(getItemStatus(row).key)).length
     const close = () => setExpandedRevisionId('')
     return (
@@ -1563,6 +1596,18 @@ function RandomInspectionAdminTable({
                           </span>
                         ) : <span />}
                         <div className="transfer-issues-item__actions">
+                          {canFix && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3) ? (
+                            <button
+                              type="button"
+                              className="inspection-admin__action inspection-admin__verify-recount"
+                              onClick={() => void resendToRecount([row])}
+                              disabled={Boolean(recountSendingId)}
+                              data-title={`Manda a contar de nuevo este producto al mismo revisor (reconteo ${Number(row?.reconteos || 0) + 1} de ${Number(row?.max_reconteos || 3)}). No ajusta nada.`}
+                            >
+                              {recountSendingId === normalizeId(row?.id) ? <Loader2 size={13} /> : <RefreshCw size={13} />}
+                              {`Reenviar conteo (${Number(row?.reconteos || 0) + 1}/${Number(row?.max_reconteos || 3)})`}
+                            </button>
+                          ) : null}
                           {canFix ? (
                             <button
                               type="button"
@@ -1607,15 +1652,57 @@ function RandomInspectionAdminTable({
                 Cerrar
               </button>
               {canUpdate && pendingCount > 0 ? (
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--primary"
-                  onClick={() => void openVerifyWizard('', normalizeId(expandedRevisionId))}
-                >
-                  {`Verificar pendientes (${pendingCount})`}
-                </button>
+                <div className="inspection-admin__dialog-actions-left">
+                  {recountableCount > 0 && (
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--secondary inspection-admin__verify-recount"
+                      onClick={() => setRecountConfirmAll(true)}
+                      disabled={Boolean(recountSendingId)}
+                    >
+                      <RefreshCw size={14} />
+                      {`Reenviar conteo de pendientes (${recountableCount})`}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="create-user__action create-user__action--primary"
+                    onClick={() => void openVerifyWizard('', normalizeId(expandedRevisionId))}
+                  >
+                    {`Verificar pendientes (${pendingCount})`}
+                  </button>
+                </div>
               ) : null}
             </footer>
+            {recountConfirmAll && (
+              <div className="quick-actions__inspection-move-overlay" onMouseDown={() => { if (!recountSendingId) setRecountConfirmAll(false) }}>
+                <div className="quick-actions__inspection-move-card" role="alertdialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+                  <div className="quick-actions__inspection-move-warning">
+                    <i className="pi pi-refresh" aria-hidden="true" />
+                    <div>
+                      <strong>{`Reenviar ${recountableCount} producto(s) a contar de nuevo`}</strong>
+                      <p>{`Le llegan a ${String(revision?.usuario_nombre || 'el revisor').trim()} en una revisión "Reconteo de ${String(revision?.codigo || '').trim()}". No se ajusta nada del inventario.`}</p>
+                      {pendingCount > recountableCount && (
+                        <p>{`${pendingCount - recountableCount} ya se recontaron 3 veces: esos hay que solucionarlos aquí.`}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="quick-actions__inspection-move-actions">
+                    <button type="button" className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost" onClick={() => setRecountConfirmAll(false)} disabled={Boolean(recountSendingId)}>
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
+                      onClick={() => void resendToRecount(revisionItems.filter((row) => getItemStatus(row).key === 'pendiente'))}
+                      disabled={Boolean(recountSendingId)}
+                    >
+                      {recountSendingId ? 'Enviando...' : 'Reenviar conteo'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           {!revisionModal.maximized && (
             <button
