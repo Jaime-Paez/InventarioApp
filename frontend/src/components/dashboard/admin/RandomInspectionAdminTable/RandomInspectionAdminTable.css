@@ -1132,10 +1132,6 @@
   grid-template-columns: 1fr;
 }
 
-.inspection-admin__dialog.inspection-admin__dialog--wide {
-  width: min(980px, 100%);
-}
-
 .inspection-admin__dialog .inspection-admin__list-builder .create-salida__products-table.inspection-admin__list-products-table .create-user__locations-row > span.inspection-admin__list-location {
   white-space: normal;
   overflow-wrap: anywhere;

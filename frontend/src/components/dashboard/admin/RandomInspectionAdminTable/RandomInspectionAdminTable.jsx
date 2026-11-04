@@ -2449,7 +2449,7 @@ function RandomInspectionAdminTable({
       {showSendNowDialog && (
         <div className="inspection-admin__dialog-overlay" onMouseDown={() => !(sendNowLoading || sendNowDialogLoading || divisionSending || listSending) && setShowSendNowDialog(false)}>
           <div
-            className={`inspection-admin__dialog${sendNowMode === 'lista' ? ' inspection-admin__dialog--wide' : ''}`}
+            className="inspection-admin__dialog"
             role="dialog"
             aria-modal="true"
             aria-label="Enviar revision ahora"
