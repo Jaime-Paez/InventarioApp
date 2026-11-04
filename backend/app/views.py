@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, F, Max, Q, Sum
+from django.db.models import Case, Count, F, IntegerField, Max, Q, Sum, Value, When
 from django.http import JsonResponse
 from django.utils import timezone
 from rest_framework import status
@@ -5530,13 +5530,26 @@ def _inspection_display_name(inspection):
     return "Revision aleatoria"
 
 
+def _revision_state_key(inspection):
+    """en_curso (aun contando), pendiente (diferencias por verificar),
+    solucionada (todas verificadas) o revisada (sin diferencias)."""
+    if inspection.estado != InspeccionAleatoriaDiaria.Estados.COMPLETADA:
+        return "en_curso"
+    if int(getattr(inspection, "n_pendientes", 0) or 0) > 0:
+        return "pendiente"
+    if int(getattr(inspection, "n_diferencias", 0) or 0) > 0:
+        return "solucionada"
+    return "revisada"
+
+
 class RandomInspectionAdminRevisionsAPIView(APIView):
     """Revisiones de una sucursal con sus diferencias juntas (no producto por
     producto): cuantos productos, cuantas diferencias y cuantas faltan verificar."""
 
     permission_classes = [IsAuthenticated]
 
-    FILTERS = ("pendiente", "diferencias", "verificado", "faltantes", "en_curso", "todos")
+    # pendientes / solucionadas: el historial (como Inconvenientes).
+    FILTERS = ("pendientes", "solucionadas", "pendiente", "diferencias", "verificado", "faltantes", "en_curso", "todos")
 
     def get(self, request):
         if not _can_verify_random_inspection(request.user):
@@ -5589,10 +5602,22 @@ class RandomInspectionAdminRevisionsAPIView(APIView):
                 ),
                 ultima_actividad=Max("items__revisado_en", filter=in_branch),
             )
+            .annotate(
+                # Arriba lo que falta: en curso o con diferencias por verificar.
+                orden_historial=Case(
+                    When(Q(n_pendientes__gt=0) | ~Q(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA), then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                ),
+            )
             .distinct()
-            .order_by("-fecha_programada", "-id")
+            .order_by("orden_historial", "-fecha_programada", "-id")
         )
-        if estado == "pendiente":
+        if estado == "pendientes":
+            queryset = queryset.filter(orden_historial=0)
+        elif estado == "solucionadas":
+            queryset = queryset.filter(orden_historial=1)
+        elif estado == "pendiente":
             queryset = queryset.filter(n_pendientes__gt=0)
         elif estado == "diferencias":
             queryset = queryset.filter(n_diferencias__gt=0)
@@ -5626,6 +5651,8 @@ class RandomInspectionAdminRevisionsAPIView(APIView):
                         "diferencias": int(inspection.n_diferencias or 0),
                         "pendientes": int(inspection.n_pendientes or 0),
                         "faltantes": int(inspection.n_faltantes or 0),
+                        "verificadas": max(0, int(inspection.n_diferencias or 0) - int(inspection.n_pendientes or 0)),
+                        "estado_revision": _revision_state_key(inspection),
                     }
                     for inspection in rows
                 ],
@@ -5664,7 +5691,7 @@ class RandomInspectionAdminItemsAPIView(APIView):
         page_size = _normalize_int(request.query_params.get("page_size"), 20)
         if page_size <= 0:
             page_size = 20
-        page_size = min(page_size, 100)
+        page_size = min(page_size, 500 if _normalize_int(request.query_params.get("inspeccion_id"), 0) > 0 else 100)
 
         allowed_branch_ids = _get_allowed_inventory_branch_ids_for_user(request.user)
         if allowed_branch_ids is not None and sucursal_id not in allowed_branch_ids:

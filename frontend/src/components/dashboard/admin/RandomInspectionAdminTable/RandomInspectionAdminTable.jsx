@@ -18,6 +18,7 @@ import RecountWarningDialog from './RecountWarningDialog'
 import FaltanteAparecioDialog from './FaltanteAparecioDialog'
 import CascadeDropdown from '../../common/CascadeDropdown'
 import BlockerNotice from '../../common/BlockerNotice'
+import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 
 // Aviso de "no se puede enviar" (el componente compartido del sistema).
 function SendBlocker({ title, reason, actionLabel, onAction, goTo }) {
@@ -56,23 +57,6 @@ const formatPercent = (value) => {
   return `${numeric.toFixed(1)}%`
 }
 
-const formatReviewState = (value) => {
-  const normalized = String(value || '').trim().toLowerCase()
-  if (normalized === 'coincide') return 'Coincide'
-  if (normalized === 'no_coincide') return 'No coincide'
-  if (normalized === 'pendiente') return 'Pendiente'
-  return '-'
-}
-
-const formatVerificationState = (value) => {
-  const normalized = String(value || '').trim().toLowerCase()
-  if (normalized === 'sin_novedad') return 'Sin novedad'
-  if (normalized === 'pendiente') return 'Pendiente'
-  if (normalized === 'aprobada') return 'Ajustada'
-  if (normalized === 'rechazada') return 'Sin ajuste'
-  return '-'
-}
-
 const ASSIGNMENTS_MODAL_MIN_WIDTH = 720
 const ASSIGNMENTS_MODAL_MIN_HEIGHT = 520
 const ASSIGNMENTS_VIEWPORT_PADDING = 12
@@ -82,6 +66,58 @@ const detectDarkTheme = () => {
     document.querySelector('.app-shell')?.classList.contains('theme-dark')
     || document.querySelector('.dashboard-shell')?.classList.contains('dark')
   )
+}
+
+// Historial de revisiones (como Inconvenientes): pendientes arriba y
+// solucionadas abajo. `chip`/`row` usan los colores de Inconvenientes.
+const REVISION_STATUS_FILTERS = [
+  { key: 'todos', label: 'Todas' },
+  { key: 'pendientes', label: 'Pendientes' },
+  { key: 'solucionadas', label: 'Solucionadas' },
+]
+
+const REVISION_STATES = {
+  en_curso: { label: 'En curso', chip: 'encurso', row: '' },
+  pendiente: { label: 'Pendiente', chip: 'pendiente', row: 'pendiente' },
+  solucionada: { label: 'Solucionada', chip: 'resuelto', row: 'resuelto' },
+  revisada: { label: 'Revisada', chip: 'revisada', row: '' },
+}
+
+const describeRevisionResolution = (revision) => {
+  const differences = Number(revision?.diferencias || 0)
+  const verified = Number(revision?.verificadas || 0)
+  if (revision?.estado_revision === 'en_curso') return 'Aún contando'
+  if (!differences) return 'Sin diferencias'
+  if (verified >= differences) return `${differences} de ${differences} solucionadas`
+  return `${verified} de ${differences} solucionadas`
+}
+
+// Estado de cada producto dentro de la revision.
+const getItemStatus = (row) => {
+  const review = String(row?.estado_revision || '').trim().toLowerCase()
+  const verification = String(row?.verificacion_estado || '').trim().toLowerCase()
+  if (review === 'no_coincide') {
+    if (verification === 'aprobada') return { key: 'solucionado', label: 'Solucionado' }
+    if (verification === 'rechazada') return { key: 'mantenido', label: 'Mantenido' }
+    return { key: 'pendiente', label: 'Pendiente' }
+  }
+  if (review === 'coincide') return { key: 'revisado', label: 'Revisado' }
+  return { key: 'sin_contar', label: 'Sin contar' }
+}
+
+const ITEM_ORDER = { pendiente: 0, sin_contar: 1, solucionado: 2, mantenido: 3, revisado: 4 }
+
+// Que se hizo con el producto (la "solucion", como en Inconvenientes).
+const describeItemResolution = (row) => {
+  const status = getItemStatus(row).key
+  const expected = Number.parseInt(String(row?.cantidad_esperada || 0), 10) || 0
+  const confirmed = row?.cantidad_confirmada == null ? null : Number.parseInt(String(row.cantidad_confirmada), 10) || 0
+  if (status === 'revisado') return 'coincide con el sistema'
+  if (status === 'mantenido') return 'se dejó como estaba (sin ajuste)'
+  if (status !== 'solucionado') return ''
+  if (String(row?.reubicado_a || '').trim()) return `reubicado a ${String(row.reubicado_a).trim()}`
+  if (confirmed == null || confirmed === expected) return 'aprobado sin ajuste de stock'
+  return `stock ajustado de ${expected} a ${confirmed}`
 }
 
 function RandomInspectionAdminTable({
@@ -109,7 +145,7 @@ function RandomInspectionAdminTable({
   // los productos con diferencia se ven al abrir una (`expandedRevisionId`).
   const [itemsRows, setItemsRows] = useState([])
   const [itemsLoading, setItemsLoading] = useState(false)
-  const [itemsFilter, setItemsFilter] = useState('pendiente')
+  const [itemsFilter, setItemsFilter] = useState('todos')
   const [summarySearch, setSummarySearch] = useState('')
   const [expandedRevisionId, setExpandedRevisionId] = useState('')
   const [revisionItems, setRevisionItems] = useState([])
@@ -119,7 +155,7 @@ function RandomInspectionAdminTable({
   // Faltante abierto al que se le registra "Aparecio".
   const [aparecioItem, setAparecioItem] = useState(null)
   const [itemsPage, setItemsPage] = useState(1)
-  const [itemsPageSize, setItemsPageSize] = useState(20)
+  const [itemsPageSize, setItemsPageSize] = useState(25)
   const [itemsTotalCount, setItemsTotalCount] = useState(0)
 
   // Wizard de verificacion: administracion revisa las diferencias una por
@@ -895,9 +931,9 @@ function RandomInspectionAdminTable({
       const endpoint = new URL(`${API_URL}/recordatorios/inspeccion-aleatoria/admin/items/`)
       endpoint.searchParams.set('sucursal_id', branchId)
       endpoint.searchParams.set('inspeccion_id', revisionId)
-      endpoint.searchParams.set('estado', 'diferencias')
+      endpoint.searchParams.set('estado', 'todos')
       endpoint.searchParams.set('page', '1')
-      endpoint.searchParams.set('page_size', '100')
+      endpoint.searchParams.set('page_size', '500')
       const response = await authFetch(endpoint.toString(), {}, token)
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -1632,113 +1668,154 @@ function RandomInspectionAdminTable({
 
   const toCount = (value) => Number.parseInt(String(value || 0), 10) || 0
 
-  const getRevisionState = (revision) => {
-    const completed = String(revision?.estado || '').trim().toLowerCase() === 'completada'
-    const pending = Number(revision?.pendientes || 0)
-    const differences = Number(revision?.diferencias || 0)
-    if (!completed) return { key: 'curso', label: 'En curso' }
-    if (pending > 0) return { key: 'pendiente', label: 'Por verificar' }
-    if (differences > 0) return { key: 'verificada', label: 'Verificada' }
-    return { key: 'ok', label: 'Sin diferencias' }
-  }
-
-  // Productos con diferencia de la revision desplegada (misma tabla del sistema).
-  const renderRevisionItems = () => (
-    <div className="inspection-admin__revision-detail">
-      <DataTable
-        value={revisionItems}
-        dataKey="id"
-        className="users-datatable users-datatable--compact"
-        tableStyle={{ width: '100%' }}
-        emptyMessage={revisionItemsLoading ? 'Cargando productos...' : 'Esta revisión no tiene productos con diferencia.'}
-        showGridlines
-        size="small"
-      >
-        <Column header="Fecha" body={(row) => formatDateTime(row?.revisado_en || row?.fecha_programada)} />
-        <Column
-          header="Producto"
-          style={{ minWidth: '260px' }}
-          body={(row) => (
-            <div className="inspection-admin__product-cell">
-              <strong>{String(row?.producto_codigo || '').trim() || `#${row?.producto_id || '-'}`}</strong>
-              <span>{String(row?.producto_nombre || 'Producto').trim()}</span>
-              {row?.cambio_ubicacion && (
-                <span className="inspection-admin__notfound-tag inspection-admin__found-tag">Cambio de ubicación</span>
-              )}
-              {row?.agregado_por_revisor && (
-                <span className="inspection-admin__notfound-tag inspection-admin__found-tag">
-                  {`Agregado por el revisor · encontrado en ${String(row?.encontrado_en?.label || '-')}`}
-                </span>
-              )}
-              {row?.no_encontrado && (
-                <span className="inspection-admin__notfound-tag">
-                  {row?.reubicado_a ? `No encontrado · reubicado a ${row.reubicado_a}` : 'No encontrado'}
-                </span>
-              )}
-              {!row?.no_encontrado && getVerifiableLocations(row).some((location) => location?.no_encontrado) && (
-                <span className="inspection-admin__notfound-tag">
-                  {`No encontrado en ${getVerifiableLocations(row).filter((location) => location?.no_encontrado).map((location) => location.label).join(', ')}`}
-                </span>
-              )}
-              {Number(row?.cantidad_faltante || 0) > 0 && (
-                Number(row?.faltante_pendiente || 0) > 0 ? (
-                  <span className="inspection-admin__notfound-tag inspection-admin__shortfall-tag">
-                    {`Faltan ${row.faltante_pendiente} de ${row.cantidad_faltante}`}
-                    {Number(row?.faltante_recuperado || 0) > 0 ? ` · aparecieron ${row.faltante_recuperado}` : ''}
-                  </span>
-                ) : (
-                  <span className="inspection-admin__notfound-tag inspection-admin__recovered-tag">
-                    {`Faltante cerrado: aparecieron las ${row.cantidad_faltante}`}
-                  </span>
-                )
-              )}
-              {Array.isArray(row?.recupera_faltantes) && row.recupera_faltantes.map((entry) => (
-                <span key={`recupera-${entry?.item_id}`} className="inspection-admin__notfound-tag inspection-admin__recovered-tag">
-                  {`Cierra ${entry?.cantidad ?? 0} del faltante de la inspección #${entry?.inspeccion_id ?? '-'}`}
-                </span>
-              ))}
+  // Historial: cada revision se abre como en Inconvenientes (resumen arriba;
+  // productos pendientes arriba, solucionados y revisados abajo).
+  const renderRevisionDetail = () => {
+    const revision = itemsRows.find((row) => normalizeId(row?.id) === normalizeId(expandedRevisionId)) || null
+    const state = REVISION_STATES[revision?.estado_revision] || REVISION_STATES.revisada
+    const sortedItems = [...revisionItems].sort((a, b) => ITEM_ORDER[getItemStatus(a).key] - ITEM_ORDER[getItemStatus(b).key])
+    const pendingCount = revisionItems.filter((row) => getItemStatus(row).key === 'pendiente').length
+    const solvedCount = revisionItems.filter((row) => ['solucionado', 'mantenido'].includes(getItemStatus(row).key)).length
+    const width = Math.min(1000, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 24)
+    const height = Math.min(780, (typeof window !== 'undefined' ? window.innerHeight : 900) - 24)
+    const close = () => setExpandedRevisionId('')
+    return (
+      <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: '12px' }}>
+        <div
+          className="create-user__modal create-salida__modal inspection-admin__history-modal"
+          style={{
+            width,
+            height,
+            left: Math.max(12, ((typeof window !== 'undefined' ? window.innerWidth : 1200) - width) / 2),
+            top: Math.max(12, ((typeof window !== 'undefined' ? window.innerHeight : 900) - height) / 2),
+          }}
+        >
+          <header className="create-user__header">
+            <div className="create-user__header-text">
+              <h3>{`Revisión: ${String(revision?.codigo || `#${expandedRevisionId}`).trim()}`}</h3>
             </div>
-          )}
-        />
-        <Column header="Esperada" body={(row) => toCount(row?.cantidad_esperada)} />
-        <Column header="Reportada" body={(row) => (row?.cantidad_reportada == null ? '-' : toCount(row.cantidad_reportada))} />
-        <Column header="Confirmada" body={(row) => (row?.cantidad_confirmada == null ? '-' : toCount(row.cantidad_confirmada))} />
-        <Column header="Revisión" body={(row) => formatReviewState(row?.estado_revision)} />
-        <Column header="Verificación" body={(row) => formatVerificationState(row?.verificacion_estado)} />
-        <Column
-          header="Acciones"
-          body={(row) => {
-            const canFix = (
-              canUpdate &&
-              String(row?.estado_revision || '').trim().toLowerCase() === 'no_coincide' &&
-              String(row?.verificacion_estado || '').trim().toLowerCase() === 'pendiente'
-            )
-            if (canFix) {
-              return (
+            <div className="create-user__header-actions">
+              <button type="button" className="create-user__icon-button" onClick={close} aria-label="Cerrar">
+                <i className="pi pi-times" />
+              </button>
+            </div>
+          </header>
+
+          <div className="create-user__form">
+            <div className="create-user__body transfer-issues-detail__body">
+              <section className="create-user__section">
+                <div className="create-user__section-header">
+                  <div>
+                    <p className="create-user__eyebrow">Resumen</p>
+                    <h4>Detalle general</h4>
+                  </div>
+                  <span className={`transfer-issues-state transfer-issues-state--${state.chip}`}>{state.label}</span>
+                </div>
+                <div className="create-salida__field-group--defined">
+                  <div className="create-user__grid inspection-admin__history-summary">
+                    <StaticFieldDisplay label="Código" value={String(revision?.codigo || '-')} />
+                    <StaticFieldDisplay label="Qué se revisó" value={String(revision?.descripcion || '-')} />
+                    <StaticFieldDisplay label="Revisor" value={String(revision?.usuario_nombre || '-')} />
+                    <StaticFieldDisplay
+                      label="Fecha"
+                      value={formatDateTime(revision?.completada_en || revision?.ultima_actividad || revision?.fecha_programada)}
+                    />
+                    <StaticFieldDisplay label="Solucionados" value={String(solvedCount)} />
+                    <StaticFieldDisplay label="Pendientes" value={String(pendingCount)} />
+                  </div>
+                </div>
+              </section>
+
+              {revisionItemsLoading && !revisionItems.length ? (
+                <p className="muted transfer-issues-details__hint">Cargando productos...</p>
+              ) : null}
+
+              <section className="transfer-issues-branch">
+                <div className="transfer-issues-branch__list">
+                  {sortedItems.map((row) => {
+                    const status = getItemStatus(row)
+                    const expected = toCount(row?.cantidad_esperada)
+                    const reported = row?.cantidad_reportada == null ? null : toCount(row.cantidad_reportada)
+                    const diff = reported == null ? null : reported - expected
+                    const canFix = canUpdate && status.key === 'pendiente'
+                    const canFound = canUpdate && Number(row?.faltante_pendiente || 0) > 0
+                    const note = String(row?.nota_verificacion || row?.observacion || '').trim()
+                    return (
+                      <div
+                        key={`history-item-${normalizeId(row?.id)}`}
+                        className={`transfer-issues-item ${status.key === 'pendiente' ? 'transfer-issues-item--pending' : status.key === 'sin_contar' ? '' : 'transfer-issues-item--solved'}`}
+                      >
+                        <div className="transfer-issues-item__info">
+                          <strong>{String(row?.producto_codigo || '').trim() || `#${row?.producto_id || '-'}`}</strong>
+                          <span>{String(row?.producto_nombre || 'Producto').trim()}</span>
+                          <small>
+                            {reported == null
+                              ? `Esperado ${expected} · sin contar`
+                              : `Esperado ${expected} · contado ${reported}${row?.no_encontrado ? ' (no lo encontró)' : ''}`}
+                          </small>
+                        </div>
+                        {diff ? (
+                          <span className={`transfer-issues-item__qty transfer-issues-cantidad--${diff > 0 ? 'sobrante' : 'faltante'}`}>
+                            {diff > 0 ? `+${diff}` : `−${Math.abs(diff)}`}
+                          </span>
+                        ) : <span />}
+                        <div className="transfer-issues-item__actions">
+                          {canFix ? (
+                            <button
+                              type="button"
+                              className="inspection-admin__action"
+                              onClick={() => void openVerifyWizard(normalizeId(row?.id), normalizeId(expandedRevisionId))}
+                            >
+                              <Wrench size={13} />
+                              Verificar
+                            </button>
+                          ) : null}
+                          {canFound ? (
+                            <button type="button" className="inspection-admin__action" onClick={() => setAparecioItem(row)}>
+                              <PackageCheck size={13} />
+                              Apareció
+                            </button>
+                          ) : null}
+                        </div>
+                        {status.key !== 'pendiente' && status.key !== 'sin_contar' ? (
+                          <div className="transfer-issues-item__solution">
+                            <i className={`pi ${status.key === 'revisado' ? 'pi-check' : 'pi-check-circle'}`} aria-hidden="true" />
+                            <span>
+                              {`${status.label}: ${describeItemResolution(row)}`}
+                              {note ? <em>{` · ${note}`}</em> : null}
+                              {String(row?.verificado_por || '').trim() ? <em>{` · ${String(row.verificado_por).trim()}`}</em> : null}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                  {!revisionItemsLoading && !revisionItems.length ? (
+                    <p className="muted transfer-issues-details__hint">Esta revisión no tiene productos.</p>
+                  ) : null}
+                </div>
+              </section>
+            </div>
+
+            <footer className="create-user__footer">
+              <button type="button" className="create-user__action create-user__action--secondary" onClick={close}>
+                Cerrar
+              </button>
+              {canUpdate && pendingCount > 0 ? (
                 <button
                   type="button"
-                  className="inspection-admin__action"
-                  onClick={() => void openVerifyWizard(normalizeId(row?.id), normalizeId(row?.inspeccion_id || expandedRevisionId))}
+                  className="create-user__action create-user__action--primary"
+                  onClick={() => void openVerifyWizard('', normalizeId(expandedRevisionId))}
                 >
-                  <Wrench size={13} />
-                  Revisar
+                  {`Verificar pendientes (${pendingCount})`}
                 </button>
-              )
-            }
-            if (canUpdate && Number(row?.faltante_pendiente || 0) > 0) {
-              return (
-                <button type="button" className="inspection-admin__action" onClick={() => setAparecioItem(row)}>
-                  <PackageCheck size={13} />
-                  Apareció
-                </button>
-              )
-            }
-            return <span className="inspection-admin__action-placeholder">Sin accion</span>
-          }}
-        />
-      </DataTable>
-    </div>
-  )
+              ) : null}
+            </footer>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (!canRead) {
     return (
@@ -2009,22 +2086,19 @@ function RandomInspectionAdminTable({
                       </option>
                     ))}
                   </select>
-                  <select
-                    className="inspection-admin__head-select"
-                    value={itemsFilter}
-                    onChange={(event) => setItemsFilter(String(event.target.value || 'pendiente'))}
-                    disabled={itemsLoading}
-                    aria-label="Mostrar"
-                  >
-                    <option value="pendiente">Por verificar</option>
-                    <option value="diferencias">Con diferencias</option>
-                    <option value="verificado">Verificadas</option>
-                    <option value="faltantes">
-                      {`Con faltantes abiertos${Number(selectedBranch?.faltantes_abiertos || 0) > 0 ? ` (${Number(selectedBranch.faltantes_abiertos)})` : ''}`}
-                    </option>
-                    <option value="en_curso">En curso</option>
-                    <option value="todos">Todas</option>
-                  </select>
+                  {/* Como en Inconvenientes: arriba lo pendiente, abajo lo cerrado. */}
+                  <div className="transfer-issues-page__type-filter" role="group" aria-label="Filtro de estado">
+                    {REVISION_STATUS_FILTERS.map((option) => (
+                      <Button
+                        key={option.key}
+                        type="button"
+                        label={option.label}
+                        className={`users-topbtn transfer-issues-page__type-btn${itemsFilter === option.key ? ' transfer-issues-page__type-btn--active' : ''}`}
+                        onClick={() => setItemsFilter(option.key)}
+                        disabled={itemsLoading}
+                      />
+                    ))}
+                  </div>
                   <button
                     className="rounded-icon-btn"
                     type="button"
@@ -2038,8 +2112,9 @@ function RandomInspectionAdminTable({
                     <i className="pi pi-refresh" />
                   </button>
                 </div>
-                {canUpdate && Number(selectedBranch?.pendientes_verificacion || 0) > 0 && (
-                  <div className="users-header__right">
+                <div className="users-header__right">
+                  <span className="users-header__count">{`Reg. ${itemsTotalCount}`}</span>
+                  {canUpdate && Number(selectedBranch?.pendientes_verificacion || 0) > 0 && (
                     <button
                       type="button"
                       className="inspection-admin__manage"
@@ -2048,16 +2123,16 @@ function RandomInspectionAdminTable({
                       <Wrench size={14} />
                       {`Verificar todas (${Number(selectedBranch?.pendientes_verificacion || 0)})`}
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
             className={`users-datatable users-datatable--compact${itemsLoading ? ' users-datatable--loading-content' : ''}`}
             tableStyle={{ width: '100%' }}
             emptyMessage={itemsLoading
               ? ' '
-              : itemsFilter === 'pendiente'
-                ? 'No hay revisiones con diferencias por verificar en esta sucursal.'
+              : itemsFilter === 'pendientes'
+                ? 'No hay revisiones pendientes en esta sucursal.'
                 : 'No hay revisiones con este filtro.'}
             showGridlines
             size="small"
@@ -2068,27 +2143,21 @@ function RandomInspectionAdminTable({
             first={Math.max(0, (Math.min(itemsPage, itemsTotalPages) - 1) * itemsPageSize)}
             rows={itemsPageSize}
             totalRecords={itemsTotalCount}
-            rowsPerPageOptions={[10, 20, 50]}
+            rowsPerPageOptions={[10, 25, 50]}
             onPage={(event) => {
               const nextRows = Number(event.rows) || itemsPageSize
               if (nextRows !== itemsPageSize) setItemsPageSize(nextRows)
               setItemsPage(Math.floor((Number(event.first) || 0) / nextRows) + 1)
             }}
-            expandedRows={expandedRevisionId ? { [normalizeId(expandedRevisionId)]: true } : {}}
-            onRowToggle={(event) => {
-              // Una revision abierta a la vez: se ven sus productos con diferencia.
-              const keys = Object.keys(event.data || {})
-              setExpandedRevisionId(keys.find((key) => key !== normalizeId(expandedRevisionId)) || '')
+            rowClassName={(revision) => {
+              const state = REVISION_STATES[revision?.estado_revision] || REVISION_STATES.revisada
+              return `p-selectable-row${state.row ? ` transfer-issues-row--${state.row}` : ''}`
             }}
-            rowExpansionTemplate={() => renderRevisionItems()}
-            rowClassName={() => 'p-selectable-row'}
             onRowClick={(event) => {
               if (event.originalEvent?.target?.closest?.('button')) return
-              const revisionId = normalizeId(event.data?.id)
-              setExpandedRevisionId((current) => (normalizeId(current) === revisionId ? '' : revisionId))
+              setExpandedRevisionId(normalizeId(event.data?.id))
             }}
           >
-            <Column expander style={{ width: '3rem' }} />
             <Column
               header="Código"
               style={{ minWidth: '220px' }}
@@ -2096,11 +2165,6 @@ function RandomInspectionAdminTable({
                 <div className="inspection-admin__product-cell">
                   <strong>{String(revision?.codigo || `#${revision?.id}`).trim()}</strong>
                   <span>{String(revision?.descripcion || '').trim()}</span>
-                  {Number(revision?.faltantes || 0) > 0 && (
-                    <span className="inspection-admin__notfound-tag inspection-admin__shortfall-tag">
-                      {`${Number(revision.faltantes)} faltante(s) abierto(s)`}
-                    </span>
-                  )}
                 </div>
               )}
             />
@@ -2108,41 +2172,53 @@ function RandomInspectionAdminTable({
             <Column header="Revisor" body={(revision) => String(revision?.usuario_nombre || '-').trim() || '-'} />
             <Column header="Productos" body={(revision) => toCount(revision?.productos)} />
             <Column header="Diferencias" body={(revision) => toCount(revision?.diferencias)} />
-            <Column header="Por verificar" body={(revision) => toCount(revision?.pendientes)} />
             <Column
               header="Estado"
               body={(revision) => {
-                const state = getRevisionState(revision)
-                return (
-                  <span className={`inspection-admin__revision-state inspection-admin__revision-state--${state.key}`}>
-                    {state.label}
-                  </span>
-                )
+                const state = REVISION_STATES[revision?.estado_revision] || REVISION_STATES.revisada
+                return <span className={`transfer-issues-state transfer-issues-state--${state.chip}`}>{state.label}</span>
               }}
             />
+            <Column header="Resolución" body={(revision) => describeRevisionResolution(revision)} />
             <Column
               header="Acciones"
               body={(revision) => {
                 const pending = Number(revision?.pendientes || 0)
-                if (!canUpdate || pending <= 0) return <span className="inspection-admin__action-placeholder">Sin accion</span>
                 return (
-                  <button
-                    type="button"
-                    className="inspection-admin__action"
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      void openVerifyWizard('', normalizeId(revision?.id))
-                    }}
-                  >
-                    <Wrench size={13} />
-                    {`Verificar (${pending})`}
-                  </button>
+                  <div className="inspection-admin__row-actions">
+                    <button
+                      type="button"
+                      className="inspection-admin__action"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        setExpandedRevisionId(normalizeId(revision?.id))
+                      }}
+                    >
+                      <Eye size={13} />
+                      Ver
+                    </button>
+                    {canUpdate && pending > 0 && (
+                      <button
+                        type="button"
+                        className="inspection-admin__action"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void openVerifyWizard('', normalizeId(revision?.id))
+                        }}
+                      >
+                        <Wrench size={13} />
+                        {`Verificar (${pending})`}
+                      </button>
+                    )}
+                  </div>
                 )
               }}
             />
           </DataTable>
         </div>
       )}
+
+      {view === 'diferencias' && expandedRevisionId && renderRevisionDetail()}
 
       {verifyWizardOpen && (() => {
         const total = verifyWizardItems.length

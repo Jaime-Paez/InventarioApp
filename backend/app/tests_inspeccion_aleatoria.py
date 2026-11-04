@@ -1277,6 +1277,31 @@ class RevisionesConDiferenciasTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(self._revisiones(), [])
         self.assertEqual([row["id"] for row in self._revisiones("verificado")], [con_diferencia.id])
 
+    def test_historial_pendientes_arriba_y_solucionadas_abajo(self):
+        revisada = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
+        self._responder(revisada, {self.producto.id: 10})
+        solucionada = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
+        self._responder(solucionada, {self.producto.id: 9})
+        self.admin_client.post(
+            f"{BASE_URL}/items/{solucionada.items.get().id}/verificar/",
+            {"accion": "aprobar", "cantidad_confirmada": 9},
+            format="json",
+        )
+        pendiente = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
+        self._responder(pendiente, {self.producto.id: 7})
+        en_curso = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
+
+        todas = self._revisiones("todos")
+        estados = {row["id"]: row["estado_revision"] for row in todas}
+        self.assertEqual(
+            estados,
+            {revisada.id: "revisada", solucionada.id: "solucionada", pendiente.id: "pendiente", en_curso.id: "en_curso"},
+        )
+        # Arriba lo que falta (en curso y por verificar), abajo lo cerrado.
+        self.assertEqual({row["id"] for row in todas[:2]}, {pendiente.id, en_curso.id})
+        self.assertEqual({row["id"] for row in self._revisiones("pendientes")}, {pendiente.id, en_curso.id})
+        self.assertEqual({row["id"] for row in self._revisiones("solucionadas")}, {revisada.id, solucionada.id})
+
     def test_codigo_por_sucursal_y_tipo(self):
         Sucursal.objects.filter(pk=self.sucursal.pk).update(codigo="NOR")
         response = self.admin_client.post(

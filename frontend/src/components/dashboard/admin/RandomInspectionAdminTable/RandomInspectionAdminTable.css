@@ -211,6 +211,34 @@
   padding: 4px 0 8px 2.5rem;
 }
 
+/* Historial (colores de Inconvenientes + "En curso" en azul). */
+.transfer-issues-state.transfer-issues-state--encurso {
+  color: #3730a3;
+  background: rgba(99, 102, 241, 0.14);
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+.dashboard-shell.dark .transfer-issues-state.transfer-issues-state--encurso {
+  color: #c7d2fe;
+  background: rgba(129, 140, 248, 0.18);
+}
+
+.inspection-admin__row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.inspection-admin__history-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 760px) {
+  .inspection-admin__history-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Las etiquetas ("No encontrado", faltantes...) del ancho de su texto. */
 .inspection-admin__product-cell .inspection-admin__notfound-tag {
   justify-self: start;
