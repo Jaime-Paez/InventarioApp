@@ -6724,6 +6724,7 @@ function QuickActions({
                                 {/* Otra ubicacion del mismo producto (en amarillo): se cuenta aqui mismo. */}
                                 <span className="quick-actions__inspection-row-code">
                                   <strong>{row?.producto_codigo || `Producto ${rowId}`}</strong>
+                                  <small className="quick-actions__inspection-row-other">(otra ubicación)</small>
                                 </span>
                                 <span className="quick-actions__inspection-row-name">
                                   {String(row?.producto_nombre || '').trim()}
