@@ -2195,3 +2195,55 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
 .dashboard-shell.dark .inspection-admin__save-state.is-saved {
   color: #86efac;
 }
+
+/* Reconteos: puntos que dicen cuantos se han enviado (de 3). */
+.inspection-admin__recount-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.inspection-admin__recount-dots > i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #6366f1;
+  background: transparent;
+}
+
+.inspection-admin__recount-dots > i.is-on {
+  background: #6366f1;
+}
+
+.inspection-admin__recount-dots > small {
+  margin-left: 4px;
+  font-size: var(--font-size-xs, 12px);
+  font-weight: 700;
+  color: #4338ca;
+}
+
+.inspection-admin__recount-last {
+  margin: 6px 0 0;
+  padding: 6px 10px;
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  border-radius: 8px;
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 600;
+}
+
+.inspection-admin__verify-recount {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: rgba(99, 102, 241, 0.55);
+  color: #4338ca;
+}
+
+.dashboard-shell.dark .inspection-admin__recount-dots > small,
+.quick-actions__inspection-overlay.dark .inspection-admin__recount-dots > small,
+.quick-actions__inspection-overlay.dark .inspection-admin__verify-recount {
+  color: #c7d2fe;
+}

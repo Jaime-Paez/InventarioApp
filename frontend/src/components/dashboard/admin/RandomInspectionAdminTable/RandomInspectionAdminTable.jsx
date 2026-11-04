@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, PackageCheck, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, PackageCheck, Pencil, RefreshCw, Send, Settings, Wrench, X } from 'lucide-react'
 import { Button } from 'primereact/button'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
@@ -97,13 +97,27 @@ const getItemStatus = (row) => {
   if (review === 'no_coincide') {
     if (verification === 'aprobada') return { key: 'solucionado', label: 'Solucionado' }
     if (verification === 'rechazada') return { key: 'mantenido', label: 'Mantenido' }
+    if (verification === 'reconteo') return { key: 'reconteo', label: 'Reenviado a reconteo' }
     return { key: 'pendiente', label: 'Pendiente' }
   }
   if (review === 'coincide') return { key: 'revisado', label: 'Revisado' }
   return { key: 'sin_contar', label: 'Sin contar' }
 }
 
-const ITEM_ORDER = { pendiente: 0, sin_contar: 1, solucionado: 2, mantenido: 3, revisado: 4 }
+// Puntos de reconteo: cuantos reconteos lleva el producto (de 3).
+function RecountDots({ count = 0, max = 3 }) {
+  if (!count) return null
+  return (
+    <span className="inspection-admin__recount-dots" data-title={`${count} de ${max} reconteos enviados`}>
+      {Array.from({ length: max }, (_, index) => (
+        <i key={index} className={index < count ? 'is-on' : ''} aria-hidden="true" />
+      ))}
+      <small>{`Reconteo ${count} de ${max}`}</small>
+    </span>
+  )
+}
+
+const ITEM_ORDER = { pendiente: 0, sin_contar: 1, reconteo: 2, solucionado: 3, mantenido: 4, revisado: 5 }
 
 // Que se hizo con el producto (la "solucion", como en Inconvenientes).
 const describeItemResolution = (row) => {
@@ -112,6 +126,7 @@ const describeItemResolution = (row) => {
   const confirmed = row?.cantidad_confirmada == null ? null : Number.parseInt(String(row.cantidad_confirmada), 10) || 0
   if (status === 'revisado') return 'coincide con el sistema'
   if (status === 'mantenido') return 'se dejó como estaba (sin ajuste)'
+  if (status === 'reconteo') return `se mandó a contar de nuevo${String(row?.reconteo_enviado_a || '').trim() ? ` (${String(row.reconteo_enviado_a).trim()})` : ''}`
   if (status !== 'solucionado') return ''
   if (String(row?.reubicado_a || '').trim()) return `reubicado a ${String(row.reubicado_a).trim()}`
   if (confirmed == null || confirmed === expected) return 'aprobado sin ajuste de stock'
@@ -1351,7 +1366,10 @@ function RandomInspectionAdminTable({
           ? (String(payload?.verificacion_estado || '').trim().toLowerCase() === 'rechazada' ? 'rechazada' : 'aprobada')
           : action === 'aprobar'
             ? 'aprobada'
-            : action === 'reubicar' ? 'reubicada' : action === 'mover_aqui' ? 'movida' : 'rechazada',
+            : action === 'reubicar' ? 'reubicada' : action === 'mover_aqui' ? 'movida' : action === 'recontar' ? 'reenviada' : 'rechazada',
+      }
+      if (action === 'recontar' && !alreadyVerified) {
+        notifySuccess(`${String(item?.producto_codigo || 'El producto').trim()} se envió a contar de nuevo (reconteo ${Number(payload?.reconteos || 0) + 1} de ${Number(item?.max_reconteos || 3)}).`)
       }
       setVerifyWizardDecisions(nextDecisions)
       setVerifyWizardConfirming(false)
@@ -1446,7 +1464,7 @@ function RandomInspectionAdminTable({
     const state = REVISION_STATES[revision?.estado_revision] || REVISION_STATES.revisada
     const sortedItems = [...revisionItems].sort((a, b) => ITEM_ORDER[getItemStatus(a).key] - ITEM_ORDER[getItemStatus(b).key])
     const pendingCount = revisionItems.filter((row) => getItemStatus(row).key === 'pendiente').length
-    const solvedCount = revisionItems.filter((row) => ['solucionado', 'mantenido'].includes(getItemStatus(row).key)).length
+    const solvedCount = revisionItems.filter((row) => ['solucionado', 'mantenido', 'reconteo'].includes(getItemStatus(row).key)).length
     const close = () => setExpandedRevisionId('')
     return (
       <div className="create-user__overlay" role="dialog" aria-modal="true">
@@ -1537,6 +1555,7 @@ function RandomInspectionAdminTable({
                               ? `Esperado ${expected} · sin contar`
                               : `Esperado ${expected} · contado ${reported}${row?.no_encontrado ? ' (no lo encontró)' : ''}`}
                           </small>
+                          <RecountDots count={Number(row?.reconteos || 0)} max={Number(row?.max_reconteos || 3)} />
                         </div>
                         {diff ? (
                           <span className={`transfer-issues-item__qty transfer-issues-cantidad--${diff > 0 ? 'sobrante' : 'faltante'}`}>
@@ -2025,6 +2044,10 @@ function RandomInspectionAdminTable({
         const decidedCount = Object.keys(verifyWizardDecisions).length
         const approvedCount = Object.values(verifyWizardDecisions).filter((value) => value === 'aprobada').length
         const relocatedCount = Object.values(verifyWizardDecisions).filter((value) => value === 'reubicada' || value === 'movida').length
+        const resentCount = Object.values(verifyWizardDecisions).filter((value) => value === 'reenviada').length
+        const recounts = Number(item?.reconteos || 0)
+        const maxRecounts = Number(item?.max_reconteos || 3)
+        const canResend = recounts < maxRecounts
         const relocateState = relocateOptionsByBranch[normalizeId(item?.sucursal_id)] || null
         const expected = Number.parseInt(String(item?.cantidad_esperada ?? 0), 10) || 0
         const reported = item?.cantidad_reportada == null ? null : Number.parseInt(String(item.cantidad_reportada), 10) || 0
@@ -2092,7 +2115,7 @@ function RandomInspectionAdminTable({
                 ) : !item ? (
                   <div className="quick-actions__inspection-quiz">
                     <p className="quick-actions__inspection-empty">
-                      {`Listo: revisaste ${decidedCount} diferencia(s) (${approvedCount} con ajuste de inventario${relocatedCount ? `, ${relocatedCount} reubicado(s)` : ''}, ${decidedCount - approvedCount - relocatedCount} sin ajuste).`}
+                      {`Listo: revisaste ${decidedCount} diferencia(s) (${approvedCount} con ajuste de inventario${relocatedCount ? `, ${relocatedCount} reubicado(s)` : ''}${resentCount ? `, ${resentCount} enviado(s) a reconteo` : ''}, ${decidedCount - approvedCount - relocatedCount - resentCount} sin ajuste).`}
                     </p>
                   </div>
                 ) : (
@@ -2112,6 +2135,12 @@ function RandomInspectionAdminTable({
                         <h5>{String(item?.producto_codigo || '').trim() || `Producto ${item?.producto_id || ''}`}</h5>
                         {!!String(item?.producto_nombre || '').trim() && (
                           <p className="quick-actions__inspection-stage-name">{String(item.producto_nombre).trim()}</p>
+                        )}
+                        <RecountDots count={recounts} max={maxRecounts} />
+                        {!canResend && !decision && (
+                          <p className="inspection-admin__recount-last">
+                            {`Ya se recontó ${maxRecounts} veces: tienes que solucionarlo (aprobar, reubicar o mantener).`}
+                          </p>
                         )}
                       </div>
 
@@ -2323,7 +2352,9 @@ function RandomInspectionAdminTable({
                               ? 'Producto reubicado; el total no cambió.'
                               : decision === 'movida'
                                 ? 'Producto movido a la ubicación donde se encontró.'
-                                : 'Inventario mantenido, sin ajuste.'}
+                                : decision === 'reenviada'
+                                  ? 'Enviado a contar de nuevo: no se ajustó nada. Vuelve aquí si el reconteo sigue con diferencia.'
+                                  : 'Inventario mantenido, sin ajuste.'}
                         </p>
                       ) : (
                         <>
@@ -2515,6 +2546,18 @@ function RandomInspectionAdminTable({
                         title="No mueve nada: las ubicaciones quedan como estaban"
                       >
                         Mantener como estaba
+                      </button>
+                    )}
+                    {!decision && canResend && (
+                      <button
+                        type="button"
+                        className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost inspection-admin__verify-recount"
+                        onClick={() => void submitVerifyDecision('recontar')}
+                        disabled={busy || verifyWizardConfirming}
+                        data-title={`Manda a contar de nuevo este producto al mismo revisor (reconteo ${recounts + 1} de ${maxRecounts}). No ajusta nada.`}
+                      >
+                        <RefreshCw size={14} />
+                        {`Reenviar conteo (${recounts + 1}/${maxRecounts})`}
                       </button>
                     )}
                     {!decision && (

@@ -2102,6 +2102,9 @@ def _serialize_random_inspection_admin_item(item, subdivision_labels=None):
         {
             "inspeccion_id": int(item.inspeccion_id),
             "inspeccion_codigo": _normalize_text(getattr(inspection, "codigo", "")) if inspection is not None else "",
+            "reconteos": int(getattr(item, "reconteos", 0) or 0),
+            "max_reconteos": MAX_RANDOM_INSPECTION_RECOUNTS,
+            "reconteo_enviado_a": _recount_sent_to_code(item),
             "inspeccion_descripcion": _inspection_display_name(inspection),
             "fecha_programada": (
                 inspection.fecha_programada.isoformat()
@@ -3369,6 +3372,94 @@ class ReminderStateAPIView(APIView):
         return _reminders_response(entry, "")
 
 
+MAX_RANDOM_INSPECTION_RECOUNTS = 3
+RECOUNT_ORIGIN_PREFIX = "Reconteo de "
+
+
+def _recount_sent_to_code(item):
+    """Codigo de la revision a la que se mando a recontar este item."""
+    if str(getattr(item, "verificacion_estado", "") or "") != InspeccionAleatoriaItem.EstadosVerificacion.RECONTEO:
+        return ""
+    child = (
+        InspeccionAleatoriaItem.objects.filter(reconteo_de_id=item.id)
+        .select_related("inspeccion")
+        .order_by("-id")
+        .first()
+    )
+    return _normalize_text(getattr(getattr(child, "inspeccion", None), "codigo", "")) if child else ""
+
+
+def _send_item_to_recount(item, actor_user):
+    """Manda a contar de nuevo el producto de `item` al mismo revisor: en una
+    revision por lista de hoy, "Reconteo de REV-...", una por revision de
+    origen (los que se reenvian de la misma van juntos). Hasta
+    MAX_RANDOM_INSPECTION_RECOUNTS veces; despues hay que solucionarlo."""
+    if int(item.reconteos or 0) >= MAX_RANDOM_INSPECTION_RECOUNTS:
+        return None, Response(
+            {"detail": f"Ya se reconto {MAX_RANDOM_INSPECTION_RECOUNTS} veces: tienes que solucionarlo aqui."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    source = item.inspeccion
+    reviewer = source.usuario
+    origin = f"{RECOUNT_ORIGIN_PREFIX}{_normalize_text(source.codigo) or f'#{int(source.id)}'}"
+    today = timezone.localdate()
+    recount = (
+        InspeccionAleatoriaDiaria.objects.select_for_update()
+        .filter(
+            usuario=reviewer,
+            sucursal_id=item.sucursal_id,
+            es_por_lista=True,
+            fecha_programada=today,
+            nota_general=origin,
+        )
+        .exclude(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA)
+        .first()
+    )
+    if recount is None:
+        recount = InspeccionAleatoriaDiaria.objects.create(
+            usuario=reviewer,
+            sucursal_id=item.sucursal_id,
+            es_por_lista=True,
+            fecha_programada=today,
+            estado=InspeccionAleatoriaDiaria.Estados.PENDIENTE,
+            total_items=0,
+            cobertura_porcentaje=0,
+            nota_general=origin,
+        )
+    if recount.items.filter(producto_id=item.producto_id).exists():
+        return None, Response(
+            {"detail": f"Ese producto ya esta en el reconteo {recount.codigo}."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    new_item = InspeccionAleatoriaItem(
+        inspeccion=recount,
+        sucursal_id=item.sucursal_id,
+        producto_id=item.producto_id,
+        cantidad_esperada=0,
+        cantidad_esperada_inicial=0,
+        reconteo_de=item,
+        reconteos=int(item.reconteos or 0) + 1,
+    )
+    expected = int(_live_expected_quantities([new_item]).get((int(item.sucursal_id), int(item.producto_id)), 0))
+    new_item.cantidad_esperada = expected
+    new_item.cantidad_esperada_inicial = expected
+    new_item.save()
+    recount.total_items = recount.items.count()
+    recount.borrador_version = int(recount.borrador_version or 0) + 1
+    recount.save(update_fields=["total_items", "borrador_version", "updated_at"])
+
+    store = ReminderState.get_global(for_update=True)
+    _upsert_random_inspection_reminder(
+        store,
+        recount,
+        reviewer,
+        branch_nombre=_normalize_text(getattr(getattr(item, "sucursal", None), "nombre", "")) or None,
+        time_str=timezone.localtime().strftime("%H:%M"),
+    )
+    store.save()
+    return recount, None
+
+
 def _normalize_random_inspection_verify_action(value):
     normalized = _normalize_text(value).lower()
     if normalized in {"aprobar", "aprobada", "confirmar", "ajustar"}:
@@ -3379,6 +3470,8 @@ def _normalize_random_inspection_verify_action(value):
         return "reubicar"
     if normalized in {"mover_aqui", "mover-aqui", "aceptar_aqui"}:
         return "mover_aqui"
+    if normalized in {"recontar", "reconteo", "reenviar"}:
+        return "recontar"
     return ""
 
 
@@ -4535,6 +4628,7 @@ class RandomInspectionVerifyItemAPIView(APIView):
             if item.verificacion_estado in {
                 InspeccionAleatoriaItem.EstadosVerificacion.APROBADA,
                 InspeccionAleatoriaItem.EstadosVerificacion.RECHAZADA,
+                InspeccionAleatoriaItem.EstadosVerificacion.RECONTEO,
             }:
                 # Otro admin ya lo decidio: la pantalla lo da por decidido y
                 # sigue con el siguiente en vez de quedarse trabada.
@@ -4634,6 +4728,12 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 item.verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.APROBADA
                 item.cantidad_confirmada = int(item.cantidad_esperada or 0)
                 note = note or f"Reubicado a {target_label}."
+            elif action == "recontar":
+                recount_inspection, recount_error = _send_item_to_recount(item, request.user)
+                if recount_error is not None:
+                    return recount_error
+                item.verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.RECONTEO
+                note = note or f"Enviado a reconteo ({recount_inspection.codigo})."
             elif action == "aprobar":
                 # Cantidad confirmada por ubicacion (cuando se conto en varias):
                 # [{subdivision_id, cantidad}]. El total es la suma de ellas.
@@ -4855,6 +4955,7 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 "cantidad_confirmada": int(item.cantidad_confirmada or 0),
                 "cantidad_faltante": int(item.cantidad_faltante or 0),
                 "recupera_faltantes": recovered,
+                "reconteos": int(item.reconteos or 0),
             },
             status=status.HTTP_200_OK,
         )
@@ -5584,6 +5685,8 @@ def _inspection_display_name(inspection):
         )
     if getattr(inspection, "es_por_lista", False):
         origin = _normalize_text(getattr(inspection, "nota_general", ""))
+        if origin.startswith(RECOUNT_ORIGIN_PREFIX):
+            return origin[:120]
         if int(getattr(inspection, "total_items", 0) or 0) == 1 and origin and inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA:
             return f"Conteo: {origin}"[:120]
         return "Lista de productos"

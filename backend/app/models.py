@@ -298,6 +298,8 @@ class InspeccionAleatoriaItem(models.Model):
         PENDIENTE = "pendiente", "Pendiente"
         APROBADA = "aprobada", "Aprobada"
         RECHAZADA = "rechazada", "Rechazada"
+        # Administracion lo mando a contar de nuevo (ver `reconteos`).
+        RECONTEO = "reconteo", "Enviado a reconteo"
 
     inspeccion = models.ForeignKey(
         InspeccionAleatoriaDiaria,
@@ -367,6 +369,17 @@ class InspeccionAleatoriaItem(models.Model):
         blank=True,
         related_name="+",
     )
+    # Reconteo: administracion puede mandar a contar de nuevo una diferencia
+    # (hasta MAX_RECONTEOS veces). `reconteo_de` es el item que se reconto y
+    # `reconteos` cuantos reconteos lleva este producto (0 = conteo original).
+    reconteo_de = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reconteos_enviados",
+    )
+    reconteos = models.PositiveSmallIntegerField(default=0, db_default=0)
     observacion = models.TextField(blank=True, default="")
     revisado_en = models.DateTimeField(null=True, blank=True)
     verificacion_estado = models.CharField(

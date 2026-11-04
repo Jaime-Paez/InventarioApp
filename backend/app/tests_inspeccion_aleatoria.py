@@ -1336,6 +1336,42 @@ class RevisionesConDiferenciasTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual((lista.codigo, aleatoria.codigo), ("REV-NOR-L1", "REV-GEN-A1"))
 
 
+class ReconteoTests(InspeccionAleatoriaBaseTestCase):
+    def _recontar(self, item):
+        return self.admin_client.post(f"{BASE_URL}/items/{item.id}/verificar/", {"accion": "recontar"}, format="json")
+
+    def test_reenvia_hasta_tres_veces_y_luego_hay_que_solucionarlo(self):
+        Sucursal.objects.filter(pk=self.sucursal.pk).update(codigo="9OCT")
+        original = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
+        self._responder(original, {self.producto.id: 7})
+        item = original.items.get()
+        for numero in (1, 2, 3):
+            response = self._recontar(item)
+            self.assertEqual(response.status_code, 200, response.data)
+            item.refresh_from_db()
+            self.assertEqual(item.verificacion_estado, "reconteo")
+            nuevo = InspeccionAleatoriaItem.objects.get(reconteo_de=item)
+            self.assertEqual(nuevo.reconteos, numero)
+            self.assertEqual(nuevo.inspeccion.usuario_id, original.usuario_id)
+            self.assertTrue(nuevo.inspeccion.nota_general.startswith("Reconteo de "))
+            # El revisor vuelve a contar y sigue la diferencia.
+            self._responder(nuevo.inspeccion, {self.producto.id: 7})
+            item = InspeccionAleatoriaItem.objects.get(pk=nuevo.pk)
+            self.assertEqual(item.estado_revision, "no_coincide")
+        # Tercer reconteo: ya no se puede reenviar, hay que solucionarlo.
+        self.assertEqual(self._recontar(item).status_code, 400)
+        self.assertEqual(self._stock(), 10)
+
+    def test_los_de_una_misma_revision_van_juntos_al_reconteo(self):
+        original = self._crear_inspeccion(productos=[self.producto, self.producto_2], es_por_lista=True, sucursal=self.sucursal)
+        self._responder(original, {self.producto.id: 7, self.producto_2.id: 1})
+        for item in original.items.all():
+            self.assertEqual(self._recontar(item).status_code, 200)
+        reconteos = InspeccionAleatoriaDiaria.objects.filter(nota_general__startswith="Reconteo de ")
+        self.assertEqual(reconteos.count(), 1)
+        self.assertEqual(reconteos.get().items.count(), 2)
+
+
 class MismoProductoEnDosInspeccionesTests(InspeccionAleatoriaBaseTestCase):
     def _verificar(self, item, cantidad):
         return self.admin_client.post(
