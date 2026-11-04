@@ -257,12 +257,105 @@
   font: inherit;
 }
 
-.inspection-admin__send-name {
-  margin-bottom: 12px;
+/* Enviar revision: reloj digital a la izquierda, cantidad grande a la derecha. */
+.inspection-admin__send-top {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+  align-items: start;
 }
 
-.inspection-admin__send-name small {
-  color: var(--color-text-secondary, #64748b);
+.inspection-admin__send-clock-col,
+.inspection-admin__send-qty-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.inspection-admin__send-label {
+  font-weight: 700;
+  font-size: var(--font-size-sm, 13px);
+  color: var(--color-text-primary);
+}
+
+.inspection-admin__send-clock {
+  height: 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: #0f172a;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.25), inset 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.inspection-admin__send-clock input {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: #5eead4;
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: 2.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-shadow: 0 0 10px rgba(94, 234, 212, 0.45);
+  color-scheme: dark;
+  outline: none;
+}
+
+.inspection-admin__send-clock input::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+  cursor: pointer;
+}
+
+.inspection-admin__send-clock:focus-within {
+  box-shadow: inset 0 0 0 2px #5eead4, inset 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.inspection-admin__send-clock-now {
+  color: #5eead4;
+  font-family: 'Courier New', ui-monospace, monospace;
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-shadow: 0 0 10px rgba(94, 234, 212, 0.45);
+}
+
+.inspection-admin__send-qty {
+  height: 84px;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 2.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.inspection-admin__send-qty:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+.dashboard-shell.dark .inspection-admin__send-qty {
+  background: var(--table-color-search-dark);
+  border-color: var(--color-border-dark);
+  color: var(--color-text-dark);
+}
+
+@media (max-width: 640px) {
+  .inspection-admin__send-top {
+    grid-template-columns: 1fr;
+  }
 }
 
 .dashboard-shell.dark .inspection-admin__head-select {

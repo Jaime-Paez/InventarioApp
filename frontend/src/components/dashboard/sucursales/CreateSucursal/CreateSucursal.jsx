@@ -12,6 +12,7 @@ const VIEWPORT_PADDING = 12
 
 const initialForm = {
   nombre: '',
+  codigo: '',
   direccion: '',
   puede_compra_local: false,
 }
@@ -179,6 +180,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
     const payload = {
       nombre: formData.nombre.trim(),
+      codigo: String(formData.codigo || '').trim(),
       direccion: formData.direccion.trim(),
       puede_compra_local: Boolean(formData.puede_compra_local),
       latitud: formatCoordinate(Number(location.latitud)),
@@ -209,7 +211,7 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || data?.nombre?.[0] || 'No se pudo crear la sucursal.'
+        const detail = data?.detail || data?.nombre?.[0] || data?.codigo?.[0] || 'No se pudo crear la sucursal.'
         throw new Error(detail)
       }
 
@@ -466,6 +468,20 @@ function CreateSucursal({ open, onClose, onCreated, token, onError }) {
                     required
                     disabled={loading}
                   />
+                </label>
+
+                <label className="create-user__field">
+                  <span>Código</span>
+                  <input
+                    name="codigo"
+                    type="text"
+                    placeholder="Ej: 9OCT"
+                    value={formData.codigo}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, codigo: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) }))}
+                    maxLength={10}
+                    disabled={loading}
+                  />
+                  <small className="muted">Va en el código de sus revisiones: REV-{formData.codigo || 'XXX'}-D1</small>
                 </label>
 
                 <label className="create-user__field create-user__field--full">

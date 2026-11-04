@@ -14,6 +14,7 @@ const VIEWPORT_PADDING = 12
 
 const emptyForm = {
   nombre: '',
+  codigo: '',
   direccion: '',
   latitud: 0,
   longitud: 0,
@@ -108,6 +109,7 @@ function SucursalDetails({
     )
     return {
       nombre: data?.nombre ?? '',
+      codigo: data?.codigo ?? '',
       direccion: data?.direccion ?? '',
       latitud: safeLocation.latitud,
       longitud: safeLocation.longitud,
@@ -513,6 +515,7 @@ function SucursalDetails({
     const payload = {
       ...formData,
       nombre: formData.nombre.trim(),
+      codigo: String(formData.codigo || '').trim(),
       direccion: formData.direccion.trim(),
       latitud: formatCoordinate(Number(formData.latitud)),
       longitud: formatCoordinate(Number(formData.longitud)),
@@ -541,7 +544,7 @@ function SucursalDetails({
 
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {
-        const detail = data?.detail || data?.nombre?.[0] || 'No se pudo actualizar la sucursal.'
+        const detail = data?.detail || data?.nombre?.[0] || data?.codigo?.[0] || 'No se pudo actualizar la sucursal.'
         throw new Error(detail)
       }
 
@@ -700,6 +703,20 @@ function SucursalDetails({
                       disabled={!isEditing || loadingData || saving}
                       required
                     />
+                  </label>
+
+                  <label className="create-user__field">
+                    <span>Código</span>
+                    <input
+                      name="codigo"
+                      type="text"
+                      placeholder="Ej: 9OCT"
+                      value={formData.codigo}
+                      onChange={(event) => setFormData((prev) => ({ ...prev, codigo: event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) }))}
+                      maxLength={10}
+                      disabled={!isEditing || loadingData || saving}
+                    />
+                    <small className="muted">Va en el código de sus revisiones: REV-{formData.codigo || 'XXX'}-D1</small>
                   </label>
 
                   <label className="create-user__field create-user__field--full">

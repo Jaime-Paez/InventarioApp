@@ -1316,7 +1316,11 @@ def _build_random_inspection_reminder(inspection, user, *, branch_nombre=None, t
         "context": {
             "type": RANDOM_INSPECTION_CONTEXT_TYPE,
             "id": str(int(inspection.id)),
-            "label": f"Inspeccion aleatoria {date_value}",
+            "label": (
+                f"Revision {inspection.codigo}"
+                if _normalize_text(getattr(inspection, "codigo", ""))
+                else f"Inspeccion aleatoria {date_value}"
+            ),
         },
         "kind": RANDOM_INSPECTION_KIND,
         "deadlineAt": "",
@@ -1966,6 +1970,7 @@ def _serialize_random_inspection(inspection, *, viewer=None):
     subdivision = getattr(inspection, "subdivision", None) if inspection.subdivision_id else None
     return {
         "id": int(inspection.id),
+        "codigo": _normalize_text(getattr(inspection, "codigo", "")),
         "usuario_id": int(inspection.usuario_id),
         "fecha_programada": inspection.fecha_programada.isoformat(),
         "estado": str(inspection.estado or "").strip(),
@@ -2096,7 +2101,8 @@ def _serialize_random_inspection_admin_item(item, subdivision_labels=None):
     serialized.update(
         {
             "inspeccion_id": int(item.inspeccion_id),
-            "inspeccion_nombre": _inspection_display_name(inspection),
+            "inspeccion_codigo": _normalize_text(getattr(inspection, "codigo", "")) if inspection is not None else "",
+            "inspeccion_descripcion": _inspection_display_name(inspection),
             "fecha_programada": (
                 inspection.fecha_programada.isoformat()
                 if inspection is not None and getattr(inspection, "fecha_programada", None)
@@ -5502,13 +5508,10 @@ class RandomInspectionAdminSummaryAPIView(APIView):
 
 
 def _inspection_display_name(inspection):
-    """Nombre de la revision: el que se le puso al enviarla o, en las que no
-    tienen (anteriores), uno armado con lo que se reviso."""
+    """Que se reviso (va debajo del codigo): la fila, la columna, la lista
+    o la aleatoria."""
     if inspection is None:
         return ""
-    own = _normalize_text(getattr(inspection, "nombre", ""))
-    if own:
-        return own
     if getattr(inspection, "es_por_subdivision", False) and getattr(inspection, "subdivision_id", None):
         return f"Fila {_subdivision_label(inspection.subdivision)}"
     if getattr(inspection, "es_por_division", False) and getattr(inspection, "division_id", None):
@@ -5610,8 +5613,8 @@ class RandomInspectionAdminRevisionsAPIView(APIView):
                 "results": [
                     {
                         "id": int(inspection.id),
-                        "nombre": _inspection_display_name(inspection),
-                        "nombre_propio": _normalize_text(inspection.nombre),
+                        "codigo": _normalize_text(inspection.codigo) or f"#{int(inspection.id)}",
+                        "descripcion": _inspection_display_name(inspection),
                         "fecha_programada": inspection.fecha_programada.isoformat()
                         if inspection.fecha_programada
                         else "",
@@ -5959,7 +5962,6 @@ class RandomInspectionSendNowAPIView(APIView):
                         )
 
                         inspection = InspeccionAleatoriaDiaria.objects.create(
-                            nombre=_normalize_text(request.data.get("nombre"))[:120],
                             usuario=user,
                             sucursal_id=branch_id,
                             fecha_programada=scheduled_date,
@@ -6150,7 +6152,6 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 )
 
                 inspection = InspeccionAleatoriaDiaria.objects.create(
-                    nombre=_normalize_text(request.data.get("nombre"))[:120],
                     usuario=user,
                     sucursal_id=sucursal_id,
                     division=division,
@@ -6382,7 +6383,6 @@ class RandomInspectionSendListAPIView(APIView):
                 _stocked_candidate_keys(_collect_branch_inspection_candidates(sucursal_id)),
             )
             inspection = InspeccionAleatoriaDiaria.objects.create(
-                nombre=_normalize_text(request.data.get("nombre"))[:120],
                 usuario=user,
                 sucursal_id=sucursal_id,
                 es_por_lista=True,

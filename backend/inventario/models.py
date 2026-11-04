@@ -5,6 +5,9 @@ class Sucursal(models.Model):
     """Sucursal física donde se almacenan productos."""
 
     nombre = models.CharField(max_length=120)
+    # Abreviatura fija (p. ej. "9OCT", "NOR") para los codigos de las
+    # revisiones de inventario: REV-9OCT-D12. No cambia al renombrarla.
+    codigo = models.CharField(max_length=10, blank=True, default="", db_default="")
     direccion = models.CharField(max_length=255)
     latitud = models.DecimalField(max_digits=9, decimal_places=6, default=0)
     longitud = models.DecimalField(max_digits=9, decimal_places=6, default=0)

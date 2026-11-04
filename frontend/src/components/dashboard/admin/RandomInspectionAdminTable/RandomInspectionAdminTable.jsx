@@ -116,8 +116,6 @@ function RandomInspectionAdminTable({
   const [revisionItemsLoading, setRevisionItemsLoading] = useState(false)
   // Revision a desplegar cuando llega su sucursal (abierta desde un recordatorio).
   const pendingExpandRevisionRef = useRef('')
-  // Nombre con el que se envia una revision (lo ve administracion en Diferencias).
-  const [sendNowNombre, setSendNowNombre] = useState('')
   // Faltante abierto al que se le registra "Aparecio".
   const [aparecioItem, setAparecioItem] = useState(null)
   const [itemsPage, setItemsPage] = useState(1)
@@ -302,7 +300,7 @@ function RandomInspectionAdminTable({
     try {
       const response = await authFetch(
         `${API_URL}/recordatorios/inspeccion-aleatoria/enviar-ahora/`,
-        { method: 'POST', body: JSON.stringify({ ...sendNowParams, nombre: sendNowNombre.trim(), hora_recordatorio: hora, usuario_ids: [...sendNowSelectedUserIds] }) },
+        { method: 'POST', body: JSON.stringify({ ...sendNowParams, hora_recordatorio: hora, usuario_ids: [...sendNowSelectedUserIds] }) },
         token
       )
       const payload = await response.json().catch(() => ({}))
@@ -315,7 +313,7 @@ function RandomInspectionAdminTable({
     } finally {
       setSendNowLoading(false)
     }
-  }, [token, sendNowNombre, sendNowParams, sendNowSelectedUserIds, notifyError, notifySuccess, resolveSendNowHour])
+  }, [token, sendNowParams, sendNowSelectedUserIds, notifyError, notifySuccess, resolveSendNowHour])
 
   useEffect(() => {
     if (!token || sendNowMode !== 'division' || !divisionSucursalId) {
@@ -451,7 +449,6 @@ function RandomInspectionAdminTable({
             ...(divisionSubdivisionId ? { subdivision_id: divisionSubdivisionId } : {}),
             usuario_id: divisionUsuarioId,
             hora_recordatorio: hora,
-            nombre: sendNowNombre.trim(),
           }),
         },
         token
@@ -469,7 +466,7 @@ function RandomInspectionAdminTable({
     } finally {
       setDivisionSending(false)
     }
-  }, [token, divisionId, divisionSubdivisionId, divisionUsuarioId, sendNowNombre, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
+  }, [token, divisionId, divisionSubdivisionId, divisionUsuarioId, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
 
   // Ubicaciones (Bodega / Division / Subdivision) del producto dentro de la
   // sucursal elegida, para la columna "Ubicacion" de la lista.
@@ -698,7 +695,6 @@ function RandomInspectionAdminTable({
             usuario_id: listUsuarioId,
             producto_ids: idsToSend,
             hora_recordatorio: hora,
-            nombre: sendNowNombre.trim(),
           }),
         },
         token
@@ -715,7 +711,7 @@ function RandomInspectionAdminTable({
     } finally {
       setListSending(false)
     }
-  }, [token, listSucursalId, listUsuarioId, listProducts, sendNowNombre, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
+  }, [token, listSucursalId, listUsuarioId, listProducts, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
 
   // Desde el mapa: mandar a revisar los productos que faltan de una percha.
   const sendProductListToReviewer = useCallback(async ({ sucursalId, usuarioId, productIds: requestedIds, divisionId }) => {
@@ -1793,7 +1789,6 @@ function RandomInspectionAdminTable({
                 setShowSendNowDialog(true)
                 setSendNowDialogLoading(true)
                 setSendNowMode('aleatorio')
-                setSendNowNombre('')
                 setSendNowImmediate(false)
                 setDivisionSucursalId('')
                 setDivisionBodegaId('')
@@ -2095,12 +2090,12 @@ function RandomInspectionAdminTable({
           >
             <Column expander style={{ width: '3rem' }} />
             <Column
-              header="Revisión"
+              header="Código"
               style={{ minWidth: '220px' }}
               body={(revision) => (
                 <div className="inspection-admin__product-cell">
-                  <strong>{String(revision?.nombre || `Revisión #${revision?.id}`).trim()}</strong>
-                  <span>{`#${revision?.id}`}</span>
+                  <strong>{String(revision?.codigo || `#${revision?.id}`).trim()}</strong>
+                  <span>{String(revision?.descripcion || '').trim()}</span>
                   {Number(revision?.faltantes || 0) > 0 && (
                     <span className="inspection-admin__notfound-tag inspection-admin__shortfall-tag">
                       {`${Number(revision.faltantes)} faltante(s) abierto(s)`}
@@ -2199,7 +2194,7 @@ function RandomInspectionAdminTable({
                   <h4>Verificación de diferencias</h4>
                   <p>
                     {String(selectedBranch?.sucursal_nombre || 'Sucursal').trim()}
-                    {String(item?.inspeccion_nombre || '').trim() ? ` · ${String(item.inspeccion_nombre).trim()}` : ''}
+                    {String(item?.inspeccion_codigo || '').trim() ? ` · ${String(item.inspeccion_codigo).trim()}` : ''}
                     {total ? ` · ${decidedCount} de ${total} revisada(s)` : ''}
                   </p>
                 </div>
@@ -2730,47 +2725,25 @@ function RandomInspectionAdminTable({
             </div>
 
             <div className="inspection-admin__dialog-body">
-              <label className="create-user__field inspection-admin__send-name">
-                <span>Nombre de la revisión</span>
-                <input
-                  type="text"
-                  value={sendNowNombre}
-                  onChange={(event) => setSendNowNombre(event.target.value)}
-                  maxLength={120}
-                  placeholder={sendNowMode === 'division'
-                    ? 'Ej: Columna B13 lunes (si lo dejas vacío se usa la columna)'
-                    : sendNowMode === 'lista'
-                      ? 'Ej: Repuestos de alta rotación (si lo dejas vacío: "Lista de productos")'
-                      : 'Ej: Revisión semanal (si lo dejas vacío: "Revisión aleatoria")'}
-                  disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
-                />
-                <small>Con este nombre la verás en Diferencias.</small>
-              </label>
-              <div className="inspection-admin__config-fields" style={{ marginBottom: '12px' }}>
-                {sendNowMode === 'aleatorio' && (
-                  <label className="create-user__field">
-                    <span>Productos por sucursal</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="200"
-                      step="1"
-                      value={sendNowParams.cantidad_productos}
-                      onChange={(e) => setSendNowParams((prev) => ({ ...prev, cantidad_productos: e.target.value }))}
-                      placeholder="Ej: 5"
-                      disabled={sendNowLoading || sendNowDialogLoading}
-                    />
-                  </label>
-                )}
-                <div className="create-user__field">
-                  <label htmlFor="inspection-send-hour">Hora del recordatorio</label>
-                  <input
-                    id="inspection-send-hour"
-                    type="time"
-                    value={sendNowParams.hora_recordatorio}
-                    onChange={(e) => setSendNowParams((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
-                    disabled={sendNowImmediate || sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
-                  />
+              {/* Izquierda: la hora como reloj digital y debajo "Enviar ahora
+                  mismo". Derecha (solo aleatorio): la cantidad en grande. */}
+              <div className="inspection-admin__send-top">
+                <div className="inspection-admin__send-clock-col">
+                  <label htmlFor="inspection-send-hour" className="inspection-admin__send-label">Hora del recordatorio</label>
+                  <div className={`inspection-admin__send-clock${sendNowImmediate ? ' is-now' : ''}`}>
+                    {sendNowImmediate ? (
+                      <span className="inspection-admin__send-clock-now">AHORA</span>
+                    ) : (
+                      <input
+                        id="inspection-send-hour"
+                        type="time"
+                        value={sendNowParams.hora_recordatorio}
+                        onChange={(e) => setSendNowParams((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
+                        disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
+                        aria-label="Hora del recordatorio"
+                      />
+                    )}
+                  </div>
                   <span className="inspection-admin__send-immediate">
                     <input
                       type="checkbox"
@@ -2782,6 +2755,24 @@ function RandomInspectionAdminTable({
                     <label htmlFor="inspection-send-immediate">Enviar ahora mismo</label>
                   </span>
                 </div>
+                {sendNowMode === 'aleatorio' && (
+                  <div className="inspection-admin__send-qty-col">
+                    <label htmlFor="inspection-send-qty" className="inspection-admin__send-label">Productos por sucursal</label>
+                    <input
+                      id="inspection-send-qty"
+                      className="inspection-admin__send-qty"
+                      type="number"
+                      min="1"
+                      max="200"
+                      step="1"
+                      inputMode="numeric"
+                      value={sendNowParams.cantidad_productos}
+                      onChange={(e) => setSendNowParams((prev) => ({ ...prev, cantidad_productos: e.target.value }))}
+                      placeholder="5"
+                      disabled={sendNowLoading || sendNowDialogLoading}
+                    />
+                  </div>
+                )}
               </div>
 
               {sendNowMode === 'lista' ? (

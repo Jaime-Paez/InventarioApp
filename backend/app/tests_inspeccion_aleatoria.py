@@ -1249,25 +1249,26 @@ class RevisionesConDiferenciasTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(response.status_code, 200, response.data)
         return response.data["results"]
 
-    def test_agrupa_las_diferencias_por_revision_con_su_nombre(self):
-        con_diferencia = self._crear_inspeccion(nombre="Pasillo norte", es_por_lista=True, sucursal=self.sucursal)
+    def test_agrupa_las_diferencias_por_revision_con_su_codigo(self):
+        Sucursal.objects.filter(pk=self.sucursal.pk).update(codigo="9OCT")
+        con_diferencia = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
         self._responder(con_diferencia, {self.producto.id: 7})
         sin_diferencia = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
         self._responder(sin_diferencia, {self.producto.id: 10})
+        self.assertEqual((con_diferencia.codigo, sin_diferencia.codigo), ("REV-9OCT-L1", "REV-9OCT-L2"))
 
         pendientes = self._revisiones()
         self.assertEqual([row["id"] for row in pendientes], [con_diferencia.id])
-        self.assertEqual(pendientes[0]["nombre"], "Pasillo norte")
+        self.assertEqual(pendientes[0]["codigo"], "REV-9OCT-L1")
+        self.assertEqual(pendientes[0]["descripcion"], "Lista de productos")
         self.assertEqual(
             (pendientes[0]["productos"], pendientes[0]["diferencias"], pendientes[0]["pendientes"]), (1, 1, 1)
         )
-        todas = {row["id"]: row["nombre"] for row in self._revisiones("todos")}
-        self.assertEqual(todas[sin_diferencia.id], "Lista de productos")
 
         items = self.admin_client.get(
             f"{BASE_URL}/admin/items/?sucursal_id={self.sucursal.id}&estado=todos&inspeccion_id={sin_diferencia.id}"
         ).data["results"]
-        self.assertEqual([row["inspeccion_id"] for row in items], [sin_diferencia.id])
+        self.assertEqual([row["inspeccion_codigo"] for row in items], ["REV-9OCT-L2"])
 
         item = con_diferencia.items.get()
         self.admin_client.post(
@@ -1276,20 +1277,20 @@ class RevisionesConDiferenciasTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(self._revisiones(), [])
         self.assertEqual([row["id"] for row in self._revisiones("verificado")], [con_diferencia.id])
 
-    def test_enviar_division_guarda_el_nombre(self):
+    def test_codigo_por_sucursal_y_tipo(self):
+        Sucursal.objects.filter(pk=self.sucursal.pk).update(codigo="NOR")
         response = self.admin_client.post(
             f"{BASE_URL}/enviar-division/",
-            {
-                "division_id": self.division.id,
-                "usuario_id": self.revisor.id,
-                "hora_recordatorio": "23:59",
-                "nombre": "Columna A lunes",
-            },
+            {"division_id": self.division.id, "usuario_id": self.revisor.id, "hora_recordatorio": "23:59"},
             format="json",
         )
         self.assertEqual(response.status_code, 200, response.data)
-        inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
-        self.assertEqual(inspection.nombre, "Columna A lunes")
+        division = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
+        self.assertEqual(division.codigo, "REV-NOR-D1")
+        # Cada tipo lleva su propio correlativo; sin sucursal es GEN.
+        lista = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
+        aleatoria = self._crear_inspeccion()
+        self.assertEqual((lista.codigo, aleatoria.codigo), ("REV-NOR-L1", "REV-GEN-A1"))
 
 
 class MismoProductoEnDosInspeccionesTests(InspeccionAleatoriaBaseTestCase):

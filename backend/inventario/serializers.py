@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from productos.models import Producto
@@ -9,7 +11,15 @@ from tipos.models import TipoDivision
 class SucursalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Sucursal
-        fields = ["id", "nombre", "direccion", "latitud", "longitud", "puede_compra_local"]
+        fields = ["id", "nombre", "codigo", "direccion", "latitud", "longitud", "puede_compra_local"]
+
+    def validate_codigo(self, value):
+        # Abreviatura de los codigos de revision (REV-9OCT-D12): sin espacios
+        # ni guiones, en mayusculas y unica.
+        code = re.sub(r"[^A-Za-z0-9]", "", str(value or "")).upper()[:10]
+        if code and Sucursal.objects.filter(codigo=code).exclude(pk=getattr(self.instance, "pk", None)).exists():
+            raise serializers.ValidationError(f"El código {code} ya lo usa otra sucursal.")
+        return code
 
 
 class BodegaSerializer(serializers.ModelSerializer):

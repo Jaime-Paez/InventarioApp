@@ -154,10 +154,12 @@ class InspeccionAleatoriaDiaria(models.Model):
         related_name="inspecciones_aleatorias_diarias",
     )
     fecha_programada = models.DateField(db_index=True)
-    # Nombre con el que administracion identifica la revision (lo escribe al
-    # enviarla). Vacio en las anteriores: se muestra uno armado (ver
-    # `_inspection_display_name`).
+    # Ya no se usa (las revisiones se identifican por `codigo`); la columna se
+    # deja para no romper el despliegue mientras corre la version anterior.
     nombre = models.CharField(max_length=120, blank=True, default="", db_default="")
+    # REV-{sucursal}-{tipo}{n}: tipo A (aleatoria), D (division/fila) o
+    # L (lista); n correlativo por sucursal y tipo. Se asigna al crearla.
+    codigo = models.CharField(max_length=40, blank=True, default="", db_default="", db_index=True)
     estado = models.CharField(
         max_length=20,
         choices=Estados.choices,
@@ -225,10 +227,62 @@ class InspeccionAleatoriaDiaria(models.Model):
                 condition=models.Q(es_por_subdivision=True, subdivision__isnull=False),
                 name="unique_insp_aleatoria_usuario_subdivision_fecha",
             ),
+            models.UniqueConstraint(
+                fields=["codigo"],
+                condition=~models.Q(codigo=""),
+                name="unique_insp_aleatoria_codigo",
+            ),
         ]
 
     def __str__(self) -> str:
         return f"Inspeccion<{self.usuario_id}:{self.fecha_programada}>"
+
+    TIPO_CODIGO = {"aleatoria": "A", "division": "D", "lista": "L"}
+
+    def codigo_prefijo(self):
+        """REV-{sucursal}-{tipo}: la sucursal sale de la revision o de su
+        division; las automaticas viejas de varias sucursales van como GEN."""
+        from inventario.models import Sucursal
+
+        sucursal_id = self.sucursal_id
+        if not sucursal_id and self.division_id:
+            sucursal_id = getattr(getattr(self.division, "bodega", None), "sucursal_id", None)
+        sucursal_code = ""
+        if sucursal_id:
+            sucursal_code = (
+                Sucursal.objects.filter(pk=sucursal_id).values_list("codigo", flat=True).first() or ""
+            ).strip().upper()
+            sucursal_code = sucursal_code or f"S{int(sucursal_id)}"
+        tipo = "division" if self.es_por_division else "lista" if self.es_por_lista else "aleatoria"
+        return f"REV-{sucursal_code or 'GEN'}-{self.TIPO_CODIGO[tipo]}"
+
+    def save(self, *args, **kwargs):
+        if self.codigo:
+            return super().save(*args, **kwargs)
+        import re
+
+        from django.db import transaction
+
+        from core.concurrency import acquire_sequence_lock
+
+        with transaction.atomic():
+            prefix = self.codigo_prefijo()
+            # Dos envios a la vez no pueden sacar el mismo numero.
+            acquire_sequence_lock(InspeccionAleatoriaDiaria._meta.label, prefix)
+            pattern = re.compile(r"^" + re.escape(prefix) + r"(\d+)$")
+            last = max(
+                (
+                    int(match.group(1))
+                    for code in InspeccionAleatoriaDiaria.objects.filter(codigo__startswith=prefix)
+                    .values_list("codigo", flat=True)
+                    if (match := pattern.match(str(code or "")))
+                ),
+                default=0,
+            )
+            self.codigo = f"{prefix}{last + 1}"
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = list({*kwargs["update_fields"], "codigo"})
+            return super().save(*args, **kwargs)
 
 
 class InspeccionAleatoriaItem(models.Model):
