@@ -1893,15 +1893,27 @@ body.app-theme-dark .inspection-admin__notfound-tag {
   cursor: pointer;
 }
 
-.inspection-admin__send-immediate input {
+/* Las reglas globales de `label` (index.css / Login.css) lo dejaban mas
+   grande y en negrita que los titulos de los campos. */
+.inspection-admin__send-immediate input[type='checkbox'] {
   width: 16px;
   height: 16px;
   margin: 0;
+  accent-color: var(--color-primary);
   cursor: pointer;
 }
 
-.inspection-admin__send-immediate label {
+.inspection-admin__dialog .inspection-admin__send-immediate label {
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-text-primary);
+  white-space: nowrap;
   cursor: pointer;
+}
+
+.dashboard-shell.dark .inspection-admin__dialog .inspection-admin__send-immediate label {
+  color: var(--color-text-dark);
 }
 
 /* Producto agregado por el revisor (no estaba en la lista) */
