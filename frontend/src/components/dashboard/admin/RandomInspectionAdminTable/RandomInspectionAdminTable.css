@@ -206,51 +206,15 @@
   color: var(--color-text-secondary, #64748b);
 }
 
-/* Diferencias: una fila por revision; al abrirla se ven sus productos. */
-.inspection-admin__table--revisions {
-  min-width: 860px;
+/* Diferencias: al abrir una revision se ven sus productos con diferencia. */
+.inspection-admin__revision-detail {
+  padding: 4px 0 8px 2.5rem;
 }
 
-.inspection-admin__revision-row {
-  cursor: pointer;
-}
-
-.inspection-admin__revision-row:hover {
-  background: #f6fbff;
-}
-
-.inspection-admin__revision-row.is-expanded {
-  background: #edf6ff;
-}
-
-.inspection-admin__revision-row.is-expanded > td {
-  border-bottom-color: transparent;
-}
-
-.inspection-admin__revision-toggle {
-  width: 32px;
-  color: var(--color-text-secondary, #64748b);
-}
-
-.inspection-admin__revision-toggle svg {
-  display: block;
-  transition: transform 0.15s ease;
-}
-
-.inspection-admin__revision-toggle svg.is-open {
-  transform: rotate(90deg);
-}
-
-.inspection-admin__revision-detail > td {
-  padding: 4px 10px 14px 40px;
-  background: #edf6ff;
-}
-
-.inspection-admin__revision-detail .inspection-admin__table--items {
-  border: 1px solid #d4dae2;
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--table-color, #fff);
+/* Las etiquetas ("No encontrado", faltantes...) del ancho de su texto. */
+.inspection-admin__product-cell .inspection-admin__notfound-tag {
+  justify-self: start;
+  width: fit-content;
 }
 
 .inspection-admin__revision-state {
@@ -299,19 +263,6 @@
 
 .inspection-admin__send-name small {
   color: var(--color-text-secondary, #64748b);
-}
-
-.dashboard-shell.dark .inspection-admin__revision-row:hover {
-  background: rgba(96, 165, 250, 0.08);
-}
-
-.dashboard-shell.dark .inspection-admin__revision-row.is-expanded,
-.dashboard-shell.dark .inspection-admin__revision-detail > td {
-  background: rgba(96, 165, 250, 0.12);
-}
-
-.dashboard-shell.dark .inspection-admin__revision-detail .inspection-admin__table--items {
-  border-color: var(--color-border);
 }
 
 .dashboard-shell.dark .inspection-admin__head-select {

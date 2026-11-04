@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, PackageCheck, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
 import { Button } from 'primereact/button'
-import { Paginator } from 'primereact/paginator'
+import { Column } from 'primereact/column'
+import { DataTable } from 'primereact/datatable'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { formatDateTime } from '../../../../utils/dateFormat'
@@ -109,6 +110,7 @@ function RandomInspectionAdminTable({
   const [itemsRows, setItemsRows] = useState([])
   const [itemsLoading, setItemsLoading] = useState(false)
   const [itemsFilter, setItemsFilter] = useState('pendiente')
+  const [summarySearch, setSummarySearch] = useState('')
   const [expandedRevisionId, setExpandedRevisionId] = useState('')
   const [revisionItems, setRevisionItems] = useState([])
   const [revisionItemsLoading, setRevisionItemsLoading] = useState(false)
@@ -1632,6 +1634,116 @@ function RandomInspectionAdminTable({
     return sendNowSummary.find((b) => b.id === normalizeId(listSucursalId))?.reviewers || []
   }, [sendNowSummary, listSucursalId])
 
+  const toCount = (value) => Number.parseInt(String(value || 0), 10) || 0
+
+  const getRevisionState = (revision) => {
+    const completed = String(revision?.estado || '').trim().toLowerCase() === 'completada'
+    const pending = Number(revision?.pendientes || 0)
+    const differences = Number(revision?.diferencias || 0)
+    if (!completed) return { key: 'curso', label: 'En curso' }
+    if (pending > 0) return { key: 'pendiente', label: 'Por verificar' }
+    if (differences > 0) return { key: 'verificada', label: 'Verificada' }
+    return { key: 'ok', label: 'Sin diferencias' }
+  }
+
+  // Productos con diferencia de la revision desplegada (misma tabla del sistema).
+  const renderRevisionItems = () => (
+    <div className="inspection-admin__revision-detail">
+      <DataTable
+        value={revisionItems}
+        dataKey="id"
+        className="users-datatable users-datatable--compact"
+        tableStyle={{ width: '100%' }}
+        emptyMessage={revisionItemsLoading ? 'Cargando productos...' : 'Esta revisión no tiene productos con diferencia.'}
+        showGridlines
+        size="small"
+      >
+        <Column header="Fecha" body={(row) => formatDateTime(row?.revisado_en || row?.fecha_programada)} />
+        <Column
+          header="Producto"
+          style={{ minWidth: '260px' }}
+          body={(row) => (
+            <div className="inspection-admin__product-cell">
+              <strong>{String(row?.producto_codigo || '').trim() || `#${row?.producto_id || '-'}`}</strong>
+              <span>{String(row?.producto_nombre || 'Producto').trim()}</span>
+              {row?.cambio_ubicacion && (
+                <span className="inspection-admin__notfound-tag inspection-admin__found-tag">Cambio de ubicación</span>
+              )}
+              {row?.agregado_por_revisor && (
+                <span className="inspection-admin__notfound-tag inspection-admin__found-tag">
+                  {`Agregado por el revisor · encontrado en ${String(row?.encontrado_en?.label || '-')}`}
+                </span>
+              )}
+              {row?.no_encontrado && (
+                <span className="inspection-admin__notfound-tag">
+                  {row?.reubicado_a ? `No encontrado · reubicado a ${row.reubicado_a}` : 'No encontrado'}
+                </span>
+              )}
+              {!row?.no_encontrado && getVerifiableLocations(row).some((location) => location?.no_encontrado) && (
+                <span className="inspection-admin__notfound-tag">
+                  {`No encontrado en ${getVerifiableLocations(row).filter((location) => location?.no_encontrado).map((location) => location.label).join(', ')}`}
+                </span>
+              )}
+              {Number(row?.cantidad_faltante || 0) > 0 && (
+                Number(row?.faltante_pendiente || 0) > 0 ? (
+                  <span className="inspection-admin__notfound-tag inspection-admin__shortfall-tag">
+                    {`Faltan ${row.faltante_pendiente} de ${row.cantidad_faltante}`}
+                    {Number(row?.faltante_recuperado || 0) > 0 ? ` · aparecieron ${row.faltante_recuperado}` : ''}
+                  </span>
+                ) : (
+                  <span className="inspection-admin__notfound-tag inspection-admin__recovered-tag">
+                    {`Faltante cerrado: aparecieron las ${row.cantidad_faltante}`}
+                  </span>
+                )
+              )}
+              {Array.isArray(row?.recupera_faltantes) && row.recupera_faltantes.map((entry) => (
+                <span key={`recupera-${entry?.item_id}`} className="inspection-admin__notfound-tag inspection-admin__recovered-tag">
+                  {`Cierra ${entry?.cantidad ?? 0} del faltante de la inspección #${entry?.inspeccion_id ?? '-'}`}
+                </span>
+              ))}
+            </div>
+          )}
+        />
+        <Column header="Esperada" body={(row) => toCount(row?.cantidad_esperada)} />
+        <Column header="Reportada" body={(row) => (row?.cantidad_reportada == null ? '-' : toCount(row.cantidad_reportada))} />
+        <Column header="Confirmada" body={(row) => (row?.cantidad_confirmada == null ? '-' : toCount(row.cantidad_confirmada))} />
+        <Column header="Revisión" body={(row) => formatReviewState(row?.estado_revision)} />
+        <Column header="Verificación" body={(row) => formatVerificationState(row?.verificacion_estado)} />
+        <Column
+          header="Acciones"
+          body={(row) => {
+            const canFix = (
+              canUpdate &&
+              String(row?.estado_revision || '').trim().toLowerCase() === 'no_coincide' &&
+              String(row?.verificacion_estado || '').trim().toLowerCase() === 'pendiente'
+            )
+            if (canFix) {
+              return (
+                <button
+                  type="button"
+                  className="inspection-admin__action"
+                  onClick={() => void openVerifyWizard(normalizeId(row?.id), normalizeId(row?.inspeccion_id || expandedRevisionId))}
+                >
+                  <Wrench size={13} />
+                  Revisar
+                </button>
+              )
+            }
+            if (canUpdate && Number(row?.faltante_pendiente || 0) > 0) {
+              return (
+                <button type="button" className="inspection-admin__action" onClick={() => setAparecioItem(row)}>
+                  <PackageCheck size={13} />
+                  Apareció
+                </button>
+              )
+            }
+            return <span className="inspection-admin__action-placeholder">Sin accion</span>
+          }}
+        />
+      </DataTable>
+    </div>
+  )
+
   if (!canRead) {
     return (
       <section className="inspection-admin">
@@ -1641,7 +1753,7 @@ function RandomInspectionAdminTable({
   }
 
   return (
-    <section className="inspection-admin">
+    <section className="users-page inspection-admin">
       <Toast ref={toast} />
 
       {/* Barra fija de acciones (como en el resto de pantallas); debajo, una
@@ -1740,38 +1852,6 @@ function RandomInspectionAdminTable({
               Configuracion
             </button>
           )}
-          {view === 'diferencias' && (
-            <>
-              <select
-                className="inspection-admin__head-select"
-                value={normalizeId(selectedBranchId)}
-                onChange={(event) => setSelectedBranchId(normalizeId(event.target.value))}
-                aria-label="Sucursal"
-              >
-                {summaryRows.map((row) => (
-                  <option key={`diff-branch-${normalizeId(row?.sucursal_id)}`} value={normalizeId(row?.sucursal_id)}>
-                    {`${String(row?.sucursal_nombre || `Sucursal ${row?.sucursal_id}`).trim()}${Number(row?.pendientes_verificacion) > 0 ? ` (${Number(row.pendientes_verificacion)})` : ''}`}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="inspection-admin__head-select"
-                value={itemsFilter}
-                onChange={(event) => setItemsFilter(String(event.target.value || 'pendiente'))}
-                disabled={itemsLoading}
-                aria-label="Mostrar"
-              >
-                <option value="pendiente">Por verificar</option>
-                <option value="diferencias">Con diferencias</option>
-                <option value="verificado">Verificadas</option>
-                <option value="faltantes">
-                  {`Con faltantes abiertos${Number(selectedBranch?.faltantes_abiertos || 0) > 0 ? ` (${Number(selectedBranch.faltantes_abiertos)})` : ''}`}
-                </option>
-                <option value="en_curso">En curso</option>
-                <option value="todos">Todas</option>
-              </select>
-            </>
-          )}
         </div>
       </header>
 
@@ -1811,364 +1891,263 @@ function RandomInspectionAdminTable({
         />
       )}
 
-      <div className="inspection-admin__body">
+      {/* Una sola tarjeta con la tabla, igual que en el resto del sistema. */}
       {view === 'sucursales' && (
-      <div className="inspection-admin__block">
-        <div className="inspection-admin__block-head">
-          <h4>Sucursales</h4>
-          <button
-            type="button"
-            className="rounded-icon-btn"
-            onClick={() => {
-              void loadSummary()
-              void loadItems()
-            }}
-            disabled={summaryLoading || itemsLoading}
-            title="Actualizar"
-          >
-            <i className={`pi ${summaryLoading || itemsLoading ? 'pi-spin pi-spinner' : 'pi-refresh'}`} />
-          </button>
-        </div>
-        <div className="inspection-admin__table-wrap">
-          <table className="inspection-admin__table inspection-admin__table--summary">
-            <thead>
-              <tr>
-                <th>Sucursal</th>
-                <th>Productos inventario</th>
-                <th>Productos revisados</th>
-                <th>Cobertura</th>
-                <th>Diferencias</th>
-                <th>Pendientes verificacion</th>
-                <th>Ultima revision</th>
-                <th className="inspection-admin__map-col">Mapa</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!summaryRows.length ? (
-                <tr className="inspection-admin__empty-row">
-                  <td colSpan={8} />
-                </tr>
-              ) : summaryRows.map((row) => {
-                const rowId = normalizeId(row?.sucursal_id)
-                const selected = rowId && rowId === normalizeId(selectedBranchId)
-                return (
-                  <tr
-                    key={`inspection-branch-${rowId}`}
-                    className={`inspection-admin__summary-row${selected ? ' is-selected' : ''}`}
-                    data-title="Ver las revisiones de esta sucursal en Diferencias"
+        <div className="users-table users-table--card users-table--compact">
+          {summaryLoading && (
+            <div className="spinner-container spinner-container--table">
+              <div className="spinner" />
+            </div>
+          )}
+          <DataTable
+            value={summaryRows}
+            dataKey="sucursal_id"
+            header={(
+              <div className="users-header">
+                <div className="users-header__left">
+                  <div className="search-input-container">
+                    <input
+                      type="text"
+                      value={summarySearch}
+                      onChange={(event) => setSummarySearch(event.target.value)}
+                      className="search-input"
+                      placeholder="Buscar en tabla"
+                    />
+                    <i className="pi pi-search search-input-icon" />
+                  </div>
+                  <button
+                    className="rounded-icon-btn"
+                    type="button"
                     onClick={() => {
-                      // La sucursal se abre en Diferencias con sus revisiones.
-                      setSelectedBranchId(rowId)
-                      setView('diferencias')
+                      void loadSummary()
+                      void loadItems()
+                    }}
+                    disabled={summaryLoading}
+                    aria-label="Recargar"
+                  >
+                    <i className="pi pi-refresh" />
+                  </button>
+                </div>
+              </div>
+            )}
+            globalFilter={summarySearch}
+            globalFilterFields={['sucursal_nombre']}
+            className={`users-datatable users-datatable--compact${summaryLoading ? ' users-datatable--loading-content' : ''}`}
+            tableStyle={{ width: '100%' }}
+            emptyMessage={summaryLoading ? ' ' : 'No hay sucursales.'}
+            showGridlines
+            size="small"
+            scrollable
+            scrollHeight="flex"
+            removableSort
+            rowClassName={() => 'p-selectable-row'}
+            onRowClick={(event) => {
+              if (event.originalEvent?.target?.closest?.('button')) return
+              // La sucursal se abre en Diferencias con sus revisiones.
+              setSelectedBranchId(normalizeId(event.data?.sucursal_id))
+              setView('diferencias')
+            }}
+          >
+            <Column
+              field="sucursal_nombre"
+              header="Sucursal"
+              sortable
+              style={{ minWidth: '160px' }}
+              body={(row) => String(row?.sucursal_nombre || `Sucursal ${row?.sucursal_id || '-'}`).trim()}
+            />
+            <Column field="total_productos_inventario" header="Productos inventario" sortable body={(row) => toCount(row?.total_productos_inventario)} />
+            <Column field="productos_revisados" header="Productos revisados" sortable body={(row) => toCount(row?.productos_revisados)} />
+            <Column field="cobertura_porcentaje" header="Cobertura" sortable body={(row) => formatPercent(row?.cobertura_porcentaje)} />
+            <Column field="diferencias_reportadas" header="Diferencias" sortable body={(row) => toCount(row?.diferencias_reportadas)} />
+            <Column field="pendientes_verificacion" header="Por verificar" sortable body={(row) => toCount(row?.pendientes_verificacion)} />
+            <Column field="ultima_revision" header="Última revisión" sortable body={(row) => formatDateTime(row?.ultima_revision)} />
+            <Column
+              header="Mapa"
+              style={{ width: '80px', textAlign: 'center' }}
+              body={(row) => {
+                const rowId = normalizeId(row?.sucursal_id)
+                return (
+                  <button
+                    type="button"
+                    className="inspection-admin__map-btn"
+                    aria-label={`Ver mapa de conteo de ${String(row?.sucursal_nombre || '').trim() || 'la sucursal'}`}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      if (!assignmentRows.length) void loadAssignments()
+                      setCoverageMapBranch({
+                        id: rowId,
+                        nombre: String(row?.sucursal_nombre || `Sucursal ${rowId}`).trim(),
+                      })
                     }}
                   >
-                    <td>{String(row?.sucursal_nombre || `Sucursal ${row?.sucursal_id || '-'}`).trim()}</td>
-                    <td>{Number.parseInt(String(row?.total_productos_inventario || 0), 10) || 0}</td>
-                    <td>{Number.parseInt(String(row?.productos_revisados || 0), 10) || 0}</td>
-                    <td>{formatPercent(row?.cobertura_porcentaje)}</td>
-                    <td>{Number.parseInt(String(row?.diferencias_reportadas || 0), 10) || 0}</td>
-                    <td>{Number.parseInt(String(row?.pendientes_verificacion || 0), 10) || 0}</td>
-                    <td>{formatDateTime(row?.ultima_revision)}</td>
-                    <td className="inspection-admin__map-col">
-                      <button
-                        type="button"
-                        className="inspection-admin__map-btn"
-                        title="Ver mapa de conteo"
-                        aria-label={`Ver mapa de conteo de ${String(row?.sucursal_nombre || '').trim() || 'la sucursal'}`}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          if (!assignmentRows.length) void loadAssignments()
-                          setCoverageMapBranch({
-                            id: rowId,
-                            nombre: String(row?.sucursal_nombre || `Sucursal ${rowId}`).trim(),
-                          })
-                        }}
-                      >
-                        <MapIcon size={15} />
-                      </button>
-                    </td>
-                  </tr>
+                    <MapIcon size={15} />
+                  </button>
                 )
-              })}
-            </tbody>
-          </table>
-
-          {summaryLoading && (
-            <p className="inspection-admin__loading">
-              <Loader2 size={14} />
-              Cargando resumen...
-            </p>
-          )}
+              }}
+            />
+          </DataTable>
         </div>
-      </div>
       )}
 
       {view === 'diferencias' && (
-      <div className="inspection-admin__block">
-        <div className="inspection-admin__subhead">
-          <h4>
-            Revisiones
-            {selectedBranch ? ` - ${String(selectedBranch?.sucursal_nombre || '').trim()}` : ''}
-          </h4>
-          <div className="inspection-admin__subhead-actions">
-          {canUpdate && Number(selectedBranch?.pendientes_verificacion || 0) > 0 && (
-            <button
-              type="button"
-              className="inspection-admin__manage"
-              onClick={() => void openVerifyWizard()}
-            >
-              <Wrench size={14} />
-              {`Verificar todas (${Number(selectedBranch?.pendientes_verificacion || 0)})`}
-            </button>
-          )}
-          <button
-            type="button"
-            className="rounded-icon-btn"
-            onClick={() => {
-              void loadSummary()
-              void loadItems()
-            }}
-            disabled={summaryLoading || itemsLoading}
-            aria-label="Actualizar"
-          >
-            <i className={`pi ${summaryLoading || itemsLoading ? 'pi-spin pi-spinner' : 'pi-refresh'}`} />
-          </button>
-          </div>
-        </div>
-
-        <div className="inspection-admin__table-wrap">
-          <table className="inspection-admin__table inspection-admin__table--revisions">
-            <thead>
-              <tr>
-                <th aria-label="Abrir" />
-                <th>Revisión</th>
-                <th>Fecha</th>
-                <th>Revisor</th>
-                <th>Productos</th>
-                <th>Diferencias</th>
-                <th>Por verificar</th>
-                <th>Estado</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!itemsRows.length ? (
-                <tr className="inspection-admin__empty-row">
-                  <td colSpan={9}>
-                    {!itemsLoading && (
-                      <span className="inspection-admin__empty-text">
-                        {itemsFilter === 'pendiente'
-                          ? 'No hay revisiones con diferencias por verificar en esta sucursal.'
-                          : 'No hay revisiones con este filtro.'}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ) : itemsRows.map((revision) => {
-                const revisionId = normalizeId(revision?.id)
-                const expanded = revisionId === normalizeId(expandedRevisionId)
-                const completed = String(revision?.estado || '').trim().toLowerCase() === 'completada'
-                const pending = Number(revision?.pendientes || 0)
-                const differences = Number(revision?.diferencias || 0)
-                const stateLabel = !completed
-                  ? 'En curso'
-                  : pending > 0 ? 'Por verificar' : differences > 0 ? 'Verificada' : 'Sin diferencias'
-                const stateKey = !completed ? 'curso' : pending > 0 ? 'pendiente' : differences > 0 ? 'verificada' : 'ok'
-                const toggle = () => setExpandedRevisionId(expanded ? '' : revisionId)
-                return (
-                  <React.Fragment key={`inspection-revision-${revisionId}`}>
-                  <tr
-                    className={`inspection-admin__revision-row${expanded ? ' is-expanded' : ''}`}
-                    onClick={toggle}
-                    aria-expanded={expanded}
-                  >
-                    <td className="inspection-admin__revision-toggle">
-                      <ChevronRight size={16} className={expanded ? 'is-open' : ''} />
-                    </td>
-                    <td>
-                      <div className="inspection-admin__product-cell">
-                        <strong>{String(revision?.nombre || `Revisión #${revisionId}`).trim()}</strong>
-                        <span>{`#${revisionId}`}</span>
-                        {Number(revision?.faltantes || 0) > 0 && (
-                          <span className="inspection-admin__notfound-tag inspection-admin__shortfall-tag">
-                            {`${Number(revision.faltantes)} faltante(s) abierto(s)`}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td>{formatDateTime(revision?.completada_en || revision?.ultima_actividad || revision?.fecha_programada)}</td>
-                    <td>{String(revision?.usuario_nombre || '-').trim() || '-'}</td>
-                    <td>{Number(revision?.productos || 0)}</td>
-                    <td>{differences}</td>
-                    <td>{pending}</td>
-                    <td>
-                      <span className={`inspection-admin__revision-state inspection-admin__revision-state--${stateKey}`}>
-                        {stateLabel}
-                      </span>
-                    </td>
-                    <td>
-                      {canUpdate && pending > 0 ? (
-                        <button
-                          type="button"
-                          className="inspection-admin__action"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            void openVerifyWizard('', revisionId)
-                          }}
-                        >
-                          <Wrench size={13} />
-                          {`Verificar (${pending})`}
-                        </button>
-                      ) : (
-                        <span className="inspection-admin__action-placeholder">{expanded ? 'Ocultar' : 'Ver'}</span>
-                      )}
-                    </td>
-                  </tr>
-                  {expanded && (
-                  <tr className="inspection-admin__revision-detail">
-                    <td colSpan={9}>
-          <table className="inspection-admin__table inspection-admin__table--items">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Producto</th>
-                <th>Esperada</th>
-                <th>Reportada</th>
-                <th>Confirmada</th>
-                <th>Revision</th>
-                <th>Verificacion</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {!revisionItems.length && (
-                <tr className="inspection-admin__empty-row">
-                  <td colSpan={8}>
-                    <span className="inspection-admin__empty-text">
-                      {revisionItemsLoading ? 'Cargando productos...' : 'Esta revisión no tiene productos con diferencia.'}
-                    </span>
-                  </td>
-                </tr>
-              )}
-              {revisionItems.map((row) => {
-                const canFix = (
-                  canUpdate &&
-                  String(row?.estado_revision || '').trim().toLowerCase() === 'no_coincide' &&
-                  String(row?.verificacion_estado || '').trim().toLowerCase() === 'pendiente'
-                )
-                return (
-                  <tr key={`inspection-item-${normalizeId(row?.id)}`}>
-                    <td>{formatDateTime(row?.revisado_en || row?.fecha_programada)}</td>
-                    <td>
-                      <div className="inspection-admin__product-cell">
-                        <strong>{String(row?.producto_codigo || '').trim() || `#${row?.producto_id || '-'}`}</strong>
-                        <span>{String(row?.producto_nombre || 'Producto').trim()}</span>
-                        {row?.cambio_ubicacion && (
-                          <span className="inspection-admin__notfound-tag inspection-admin__found-tag">Cambio de ubicación</span>
-                        )}
-                        {row?.agregado_por_revisor && (
-                          <span className="inspection-admin__notfound-tag inspection-admin__found-tag">
-                            {`Agregado por el revisor · encontrado en ${String(row?.encontrado_en?.label || '-')}`}
-                          </span>
-                        )}
-                        {row?.no_encontrado && (
-                          <span className="inspection-admin__notfound-tag">
-                            {row?.reubicado_a ? `No encontrado · reubicado a ${row.reubicado_a}` : 'No encontrado'}
-                          </span>
-                        )}
-                        {!row?.no_encontrado && getVerifiableLocations(row).some((location) => location?.no_encontrado) && (
-                          <span className="inspection-admin__notfound-tag">
-                            {`No encontrado en ${getVerifiableLocations(row).filter((location) => location?.no_encontrado).map((location) => location.label).join(', ')}`}
-                          </span>
-                        )}
-                        {Number(row?.cantidad_faltante || 0) > 0 && (
-                          Number(row?.faltante_pendiente || 0) > 0 ? (
-                            <span className="inspection-admin__notfound-tag inspection-admin__shortfall-tag">
-                              {`Faltan ${row.faltante_pendiente} de ${row.cantidad_faltante}`}
-                              {Number(row?.faltante_recuperado || 0) > 0 ? ` · aparecieron ${row.faltante_recuperado}` : ''}
-                            </span>
-                          ) : (
-                            <span className="inspection-admin__notfound-tag inspection-admin__recovered-tag">
-                              {`Faltante cerrado: aparecieron las ${row.cantidad_faltante}`}
-                            </span>
-                          )
-                        )}
-                        {Array.isArray(row?.recupera_faltantes) && row.recupera_faltantes.map((entry) => (
-                          <span key={`recupera-${entry?.item_id}`} className="inspection-admin__notfound-tag inspection-admin__recovered-tag">
-                            {`Cierra ${entry?.cantidad ?? 0} del faltante de la inspección #${entry?.inspeccion_id ?? '-'}`}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>{Number.parseInt(String(row?.cantidad_esperada || 0), 10) || 0}</td>
-                    <td>{row?.cantidad_reportada == null ? '-' : Number.parseInt(String(row?.cantidad_reportada || 0), 10) || 0}</td>
-                    <td>{row?.cantidad_confirmada == null ? '-' : Number.parseInt(String(row?.cantidad_confirmada || 0), 10) || 0}</td>
-                    <td>{formatReviewState(row?.estado_revision)}</td>
-                    <td>{formatVerificationState(row?.verificacion_estado)}</td>
-                    <td>
-                      {canFix ? (
-                        <button
-                          type="button"
-                          className="inspection-admin__action"
-                          onClick={() => void openVerifyWizard(normalizeId(row?.id), revisionId)}
-                        >
-                          <Wrench size={13} />
-                          Revisar
-                        </button>
-                      ) : canUpdate && Number(row?.faltante_pendiente || 0) > 0 ? (
-                        <button
-                          type="button"
-                          className="inspection-admin__action"
-                          onClick={() => setAparecioItem(row)}
-                        >
-                          <PackageCheck size={13} />
-                          Apareció
-                        </button>
-                      ) : (
-                        <span className="inspection-admin__action-placeholder">Sin accion</span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-                    </td>
-                  </tr>
-                  )}
-                  </React.Fragment>
-                )
-              })}
-            </tbody>
-          </table>
-
+        <div className="users-table users-table--card users-table--compact">
           {itemsLoading && (
-            <p className="inspection-admin__loading">
-              <Loader2 size={14} />
-              Cargando revisiones...
-            </p>
+            <div className="spinner-container spinner-container--table">
+              <div className="spinner" />
+            </div>
           )}
+          <DataTable
+            value={itemsRows}
+            dataKey="id"
+            header={(
+              <div className="users-header">
+                <div className="users-header__left">
+                  <select
+                    className="inspection-admin__head-select"
+                    value={normalizeId(selectedBranchId)}
+                    onChange={(event) => setSelectedBranchId(normalizeId(event.target.value))}
+                    aria-label="Sucursal"
+                  >
+                    {summaryRows.map((row) => (
+                      <option key={`diff-branch-${normalizeId(row?.sucursal_id)}`} value={normalizeId(row?.sucursal_id)}>
+                        {`${String(row?.sucursal_nombre || `Sucursal ${row?.sucursal_id}`).trim()}${Number(row?.pendientes_verificacion) > 0 ? ` (${Number(row.pendientes_verificacion)})` : ''}`}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="inspection-admin__head-select"
+                    value={itemsFilter}
+                    onChange={(event) => setItemsFilter(String(event.target.value || 'pendiente'))}
+                    disabled={itemsLoading}
+                    aria-label="Mostrar"
+                  >
+                    <option value="pendiente">Por verificar</option>
+                    <option value="diferencias">Con diferencias</option>
+                    <option value="verificado">Verificadas</option>
+                    <option value="faltantes">
+                      {`Con faltantes abiertos${Number(selectedBranch?.faltantes_abiertos || 0) > 0 ? ` (${Number(selectedBranch.faltantes_abiertos)})` : ''}`}
+                    </option>
+                    <option value="en_curso">En curso</option>
+                    <option value="todos">Todas</option>
+                  </select>
+                  <button
+                    className="rounded-icon-btn"
+                    type="button"
+                    onClick={() => {
+                      void loadSummary()
+                      void loadItems()
+                    }}
+                    disabled={itemsLoading}
+                    aria-label="Recargar"
+                  >
+                    <i className="pi pi-refresh" />
+                  </button>
+                </div>
+                {canUpdate && Number(selectedBranch?.pendientes_verificacion || 0) > 0 && (
+                  <div className="users-header__right">
+                    <button
+                      type="button"
+                      className="inspection-admin__manage"
+                      onClick={() => void openVerifyWizard()}
+                    >
+                      <Wrench size={14} />
+                      {`Verificar todas (${Number(selectedBranch?.pendientes_verificacion || 0)})`}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+            className={`users-datatable users-datatable--compact${itemsLoading ? ' users-datatable--loading-content' : ''}`}
+            tableStyle={{ width: '100%' }}
+            emptyMessage={itemsLoading
+              ? ' '
+              : itemsFilter === 'pendiente'
+                ? 'No hay revisiones con diferencias por verificar en esta sucursal.'
+                : 'No hay revisiones con este filtro.'}
+            showGridlines
+            size="small"
+            scrollable
+            scrollHeight="flex"
+            lazy
+            paginator
+            first={Math.max(0, (Math.min(itemsPage, itemsTotalPages) - 1) * itemsPageSize)}
+            rows={itemsPageSize}
+            totalRecords={itemsTotalCount}
+            rowsPerPageOptions={[10, 20, 50]}
+            onPage={(event) => {
+              const nextRows = Number(event.rows) || itemsPageSize
+              if (nextRows !== itemsPageSize) setItemsPageSize(nextRows)
+              setItemsPage(Math.floor((Number(event.first) || 0) / nextRows) + 1)
+            }}
+            expandedRows={expandedRevisionId ? { [normalizeId(expandedRevisionId)]: true } : {}}
+            onRowToggle={(event) => {
+              // Una revision abierta a la vez: se ven sus productos con diferencia.
+              const keys = Object.keys(event.data || {})
+              setExpandedRevisionId(keys.find((key) => key !== normalizeId(expandedRevisionId)) || '')
+            }}
+            rowExpansionTemplate={() => renderRevisionItems()}
+            rowClassName={() => 'p-selectable-row'}
+            onRowClick={(event) => {
+              if (event.originalEvent?.target?.closest?.('button')) return
+              const revisionId = normalizeId(event.data?.id)
+              setExpandedRevisionId((current) => (normalizeId(current) === revisionId ? '' : revisionId))
+            }}
+          >
+            <Column expander style={{ width: '3rem' }} />
+            <Column
+              header="Revisión"
+              style={{ minWidth: '220px' }}
+              body={(revision) => (
+                <div className="inspection-admin__product-cell">
+                  <strong>{String(revision?.nombre || `Revisión #${revision?.id}`).trim()}</strong>
+                  <span>{`#${revision?.id}`}</span>
+                  {Number(revision?.faltantes || 0) > 0 && (
+                    <span className="inspection-admin__notfound-tag inspection-admin__shortfall-tag">
+                      {`${Number(revision.faltantes)} faltante(s) abierto(s)`}
+                    </span>
+                  )}
+                </div>
+              )}
+            />
+            <Column header="Fecha" body={(revision) => formatDateTime(revision?.completada_en || revision?.ultima_actividad || revision?.fecha_programada)} />
+            <Column header="Revisor" body={(revision) => String(revision?.usuario_nombre || '-').trim() || '-'} />
+            <Column header="Productos" body={(revision) => toCount(revision?.productos)} />
+            <Column header="Diferencias" body={(revision) => toCount(revision?.diferencias)} />
+            <Column header="Por verificar" body={(revision) => toCount(revision?.pendientes)} />
+            <Column
+              header="Estado"
+              body={(revision) => {
+                const state = getRevisionState(revision)
+                return (
+                  <span className={`inspection-admin__revision-state inspection-admin__revision-state--${state.key}`}>
+                    {state.label}
+                  </span>
+                )
+              }}
+            />
+            <Column
+              header="Acciones"
+              body={(revision) => {
+                const pending = Number(revision?.pendientes || 0)
+                if (!canUpdate || pending <= 0) return <span className="inspection-admin__action-placeholder">Sin accion</span>
+                return (
+                  <button
+                    type="button"
+                    className="inspection-admin__action"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      void openVerifyWizard('', normalizeId(revision?.id))
+                    }}
+                  >
+                    <Wrench size={13} />
+                    {`Verificar (${pending})`}
+                  </button>
+                )
+              }}
+            />
+          </DataTable>
         </div>
-
-        <Paginator
-          first={Math.max(0, (Math.min(itemsPage, itemsTotalPages) - 1) * itemsPageSize)}
-          rows={itemsPageSize}
-          totalRecords={itemsTotalCount}
-          rowsPerPageOptions={[10, 20, 50, 100]}
-          className="inspection-admin__paginator"
-          template="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
-          onPageChange={(event) => {
-            const nextRows = Number.parseInt(String(event.rows || itemsPageSize), 10)
-            const nextPage = Number.parseInt(String((event.page ?? 0) + 1), 10)
-            if (Number.isFinite(nextRows) && nextRows > 0 && nextRows !== itemsPageSize) {
-              setItemsPageSize(nextRows)
-            }
-            setItemsPage(Number.isFinite(nextPage) && nextPage > 0 ? nextPage : 1)
-          }}
-        />
-      </div>
       )}
-      </div>
 
       {verifyWizardOpen && (() => {
         const total = verifyWizardItems.length
