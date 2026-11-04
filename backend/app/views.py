@@ -5603,10 +5603,12 @@ class RandomInspectionAdminRevisionsAPIView(APIView):
                 ultima_actividad=Max("items__revisado_en", filter=in_branch),
             )
             .annotate(
-                # Arriba lo que falta: en curso o con diferencias por verificar.
+                # Siempre primero las que tienen diferencias por verificar;
+                # luego las que siguen en curso y al final las cerradas.
                 orden_historial=Case(
-                    When(Q(n_pendientes__gt=0) | ~Q(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA), then=Value(0)),
-                    default=Value(1),
+                    When(n_pendientes__gt=0, then=Value(0)),
+                    When(~Q(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA), then=Value(1)),
+                    default=Value(2),
                     output_field=IntegerField(),
                 ),
             )
@@ -5614,9 +5616,9 @@ class RandomInspectionAdminRevisionsAPIView(APIView):
             .order_by("orden_historial", "-fecha_programada", "-id")
         )
         if estado == "pendientes":
-            queryset = queryset.filter(orden_historial=0)
+            queryset = queryset.filter(orden_historial__in=(0, 1))
         elif estado == "solucionadas":
-            queryset = queryset.filter(orden_historial=1)
+            queryset = queryset.filter(orden_historial=2)
         elif estado == "pendiente":
             queryset = queryset.filter(n_pendientes__gt=0)
         elif estado == "diferencias":

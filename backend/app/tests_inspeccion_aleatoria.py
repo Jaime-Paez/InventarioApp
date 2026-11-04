@@ -1297,8 +1297,8 @@ class RevisionesConDiferenciasTests(InspeccionAleatoriaBaseTestCase):
             estados,
             {revisada.id: "revisada", solucionada.id: "solucionada", pendiente.id: "pendiente", en_curso.id: "en_curso"},
         )
-        # Arriba lo que falta (en curso y por verificar), abajo lo cerrado.
-        self.assertEqual({row["id"] for row in todas[:2]}, {pendiente.id, en_curso.id})
+        # Primero la que tiene diferencias por verificar, luego en curso, abajo lo cerrado.
+        self.assertEqual([row["id"] for row in todas[:2]], [pendiente.id, en_curso.id])
         self.assertEqual({row["id"] for row in self._revisiones("pendientes")}, {pendiente.id, en_curso.id})
         self.assertEqual({row["id"] for row in self._revisiones("solucionadas")}, {revisada.id, solucionada.id})
 
