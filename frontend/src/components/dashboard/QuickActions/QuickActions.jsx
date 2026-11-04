@@ -2745,12 +2745,29 @@ function QuickActions({
       }
       group.entries.push(entry)
     }
+    // Por division: las ubicaciones del producto fuera de la division enviada
+    // no son un paso aparte; se cuentan ahi mismo, debajo del producto, en su
+    // fila de la division (obligatorias igual que las demas).
+    const chosenDivisionId = activeRandomInspection?.es_por_subdivision ? '' : String(activeRandomInspection?.division_id || '')
+    const isOutside = (location) => Boolean(chosenDivisionId) &&
+      Boolean(location?.division_id) && String(location.division_id) !== chosenDivisionId
     randomInspectionRows.forEach((row, rowIndex) => {
       const locations = Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : []
       if (row?.agregado_por_revisor && row?.encontrado_en) {
         addEntry(row.encontrado_en, { row, rowIndex, location: null })
       } else if (row?.requiere_conteo_por_ubicacion) {
-        locations.forEach((location) => addEntry(location, { row, rowIndex, location }))
+        const inside = locations.filter((location) => !isOutside(location))
+        const outside = locations.filter(isOutside)
+        if (!inside.length) {
+          locations.forEach((location) => addEntry(location, { row, rowIndex, location }))
+          return
+        }
+        inside.forEach((location, index) => addEntry(location, {
+          row,
+          rowIndex,
+          location,
+          outsideLocations: index === 0 ? outside : [],
+        }))
       } else {
         addEntry(locations[0] || null, { row, rowIndex, location: null })
       }
@@ -2761,10 +2778,8 @@ function QuickActions({
     if (chosenKey) {
       groups.sort((left, right) => Number(right.key === chosenKey) - Number(left.key === chosenKey))
     }
-    // Por division: primero las filas de la division enviada; despues las
-    // otras ubicaciones de la sucursal donde tambien estan esos productos
-    // (se cuentan ahi tambien, son obligatorias).
-    const chosenDivisionId = activeRandomInspection?.es_por_subdivision ? '' : String(activeRandomInspection?.division_id || '')
+    // Si un producto solo esta fuera de la division (caso raro), su ubicacion
+    // queda como fila aparte al final.
     if (chosenDivisionId) {
       groups.forEach((group) => { group.outside = Boolean(group.divisionId) && group.divisionId !== chosenDivisionId })
       groups.sort((left, right) => Number(left.outside) - Number(right.outside))
@@ -6448,15 +6463,39 @@ function QuickActions({
                           const value = entry.location
                             ? String(entry.location?.cantidad_contada_input ?? '')
                             : String(row?.cantidad_reportada_input ?? '')
+                          // Las de fuera de la division se cuentan aqui mismo (abajo).
+                          const outsideLocations = Array.isArray(entry.outsideLocations) ? entry.outsideLocations : []
+                          const outsideKeys = new Set(
+                            (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
+                              .filter((location) => location?.division_id && activeRandomInspection?.division_id && !activeRandomInspection?.es_por_subdivision &&
+                                String(location.division_id) !== String(activeRandomInspection.division_id))
+                              .map((location) => location?.key)
+                          )
                           const otherLocations = entry.location
                             ? (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
-                              .filter((location) => location?.key !== entry.location?.key)
+                              .filter((location) => location?.key !== entry.location?.key && !outsideKeys.has(location?.key))
                               .map((location) => String(location?.label || location?.subdivision_nombre || '').trim())
                               .filter(Boolean)
                             : []
+                          const handleCountEnter = (event) => {
+                            if (event.key !== 'Enter') return
+                            event.preventDefault()
+                            const inputs = Array.from(
+                              event.currentTarget
+                                .closest('.quick-actions__inspection-row-table')
+                                ?.querySelectorAll('input[data-count-input]') || []
+                            )
+                            const position = inputs.indexOf(event.currentTarget)
+                            if (position >= 0 && position < inputs.length - 1) {
+                              inputs[position + 1].focus()
+                              inputs[position + 1].select?.()
+                              return
+                            }
+                            handleAdvanceRandomInspectionStep()
+                          }
                           return (
+                            <React.Fragment key={`inspection-rowtable-${rowId}-${entry.location?.key || 'unica'}`}>
                             <div
-                              key={`inspection-rowtable-${rowId}-${entry.location?.key || 'unica'}`}
                               data-inspection-row={rowId}
                               className={`create-user__locations-row${randomInspectionHighlightRowId === rowId ? ' quick-actions__inspection-row--highlight' : ''}`}
                             >
@@ -6489,22 +6528,7 @@ function QuickActions({
                                       normalizeQuantityInputString(event.target.value)
                                     )
                                   }}
-                                  onKeyDown={(event) => {
-                                    if (event.key !== 'Enter') return
-                                    event.preventDefault()
-                                    const inputs = Array.from(
-                                      event.currentTarget
-                                        .closest('.quick-actions__inspection-row-table')
-                                        ?.querySelectorAll('input[data-count-input]') || []
-                                    )
-                                    const position = inputs.indexOf(event.currentTarget)
-                                    if (position >= 0 && position < inputs.length - 1) {
-                                      inputs[position + 1].focus()
-                                      inputs[position + 1].select?.()
-                                      return
-                                    }
-                                    handleAdvanceRandomInspectionStep()
-                                  }}
+                                  onKeyDown={handleCountEnter}
                                   maxLength={4}
                                   placeholder="-"
                                   disabled={randomInspectionSubmitting}
@@ -6527,6 +6551,36 @@ function QuickActions({
                                 )}
                               </span>
                             </div>
+                            {outsideLocations.map((location) => (
+                              <div
+                                key={`inspection-rowtable-${rowId}-fuera-${location.key}`}
+                                className="create-user__locations-row quick-actions__inspection-row--outside"
+                              >
+                                <span className="quick-actions__inspection-row-code">
+                                  <small>↳ También aquí</small>
+                                </span>
+                                <span className="quick-actions__inspection-row-name">
+                                  <strong>{String(location?.label || location?.subdivision_nombre || '').trim()}</strong>
+                                  <small>Fuera de esta columna: búscalo ahí y cuéntalo (obligatorio).</small>
+                                </span>
+                                <span>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    data-count-input
+                                    value={String(location?.cantidad_contada_input ?? '')}
+                                    onChange={(event) => handleRandomInspectionLocationCountChange(rowId, location.key, event.target.value)}
+                                    onKeyDown={handleCountEnter}
+                                    maxLength={4}
+                                    placeholder="-"
+                                    disabled={randomInspectionSubmitting}
+                                    aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'} en ${String(location?.label || '').trim()}`}
+                                  />
+                                </span>
+                                <span />
+                              </div>
+                            ))}
+                            </React.Fragment>
                           )
                         })}
                       </div>
