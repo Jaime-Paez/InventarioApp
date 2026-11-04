@@ -4517,17 +4517,50 @@ const sugerenciaPrecioGuardado = (row, casaNombre) => {
   return null
 }
 
-// El backend rechaza la sugerencia si el mismo producto del catalogo esta en
-// mas de una fila: se detecta antes para bloquear la tabla de una vez.
+// Mismo codigo en mas de una fila (del catalogo o nuevo), p. ej. con
+// referencias distintas de la fabrica: se permite en la sugerencia y la
+// verificacion con un aviso; antes de pedir la confirmacion hay que dejar uno.
 const getDuplicateProductGroups = (rows) => {
-  const byProductId = new Map()
+  const byCode = new Map()
   rows.forEach((row) => {
-    if (!row.matched_producto_id) return
-    const key = String(row.matched_producto_id)
-    if (!byProductId.has(key)) byProductId.set(key, [])
-    byProductId.get(key).push(row)
+    const key = row.matched_producto_id
+      ? `p:${row.matched_producto_id}`
+      : String(row.codigo || '').trim() ? `c:${String(row.codigo).trim().toUpperCase()}` : ''
+    if (!key) return
+    if (!byCode.has(key)) byCode.set(key, [])
+    byCode.get(key).push(row)
   })
-  return [...byProductId.values()].filter((group) => group.length > 1)
+  return [...byCode.values()].filter((group) => group.length > 1)
+}
+
+// Aviso de codigos repetidos (sugerencia y verificacion). grupos:
+// [{ codigo, nombre, filas, referencias: [] }].
+function CodigosRepetidosAviso({ grupos, etapa }) {
+  if (!grupos.length) return null
+  return (
+    <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <i className="pi pi-exclamation-triangle" style={{ color: '#b45309', fontSize: 'var(--font-size-base)' }} />
+        <strong style={{ fontSize: 'var(--font-size-sm)', color: '#78350f' }}>
+          {grupos.length === 1 ? '1 código está repetido' : `${grupos.length} códigos están repetidos`} con referencias distintas
+        </strong>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {grupos.map((grupo) => (
+          <div key={grupo.codigo} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)', padding: '4px 6px', background: '#fef3c7', borderRadius: 4, flexWrap: 'wrap', color: '#78350f' }}>
+            <strong style={{ whiteSpace: 'nowrap' }}>{grupo.codigo}</strong>
+            {grupo.nombre && <span>{grupo.nombre}</span>}
+            <span>{grupo.referencias.length ? `Referencias: ${grupo.referencias.join(', ')}` : `${grupo.filas} filas`}</span>
+          </div>
+        ))}
+      </div>
+      <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#78350f' }}>
+        {etapa === 'verificacion'
+          ? 'Para pedir la confirmación deja solo una de cada código: quita las demás.'
+          : 'Puedes crear la sugerencia y pedir la cotización así; antes de pedir la confirmación hay que dejar solo una de cada código.'}
+      </p>
+    </div>
+  )
 }
 
 // Sugerencia guardada <-> filas de SugerenciaTabla: los detalles guardados se
@@ -4583,7 +4616,9 @@ const sugerenciaRowToDetalle = (row) => {
     codigo: row.codigo || '',
     nombre: row.descripcion || '',
     oem: row.oem || '',
-    referencia: row.referencia || '',
+    // Del catalogo: la tabla muestra la referencia del producto, pero la fila
+    // conserva la suya (p. ej. dos filas del mismo codigo con otra referencia).
+    referencia: row.matched_producto_id && base.referencia !== undefined ? (base.referencia || '') : (row.referencia || ''),
     cantidad: String(row.cantidad ?? ''),
     comentario: row.comentario || '',
     _solId: row.solicitud_id || null,
@@ -4962,31 +4997,15 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
 
   return (
     <>
-                {duplicateProductGroups.length > 0 ? (
-                  <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <i className="pi pi-exclamation-triangle" style={{ color: '#dc2626', fontSize: 'var(--font-size-base)' }} />
-                      <strong style={{ fontSize: 'var(--font-size-sm)', color: '#7f1d1d' }}>
-                        {duplicateProductGroups.length} producto{duplicateProductGroups.length !== 1 ? 's' : ''} repetido{duplicateProductGroups.length !== 1 ? 's' : ''} en la misma sugerencia
-                      </strong>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {duplicateProductGroups.map((rows, gi) => (
-                        <div key={gi} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)', padding: '4px 6px', background: '#fee2e2', borderRadius: 4, flexWrap: 'wrap' }}>
-                          <span style={{ color: '#7f1d1d', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                            Filas {rows.map((r) => r.fila_excel).join(', ')}
-                          </span>
-                          <span style={{ color: '#7f1d1d', minWidth: 160 }}>
-                            {rows[0]?.matched_producto_codigo || rows[0]?.codigo || '—'} — {rows[0]?.matched_producto_nombre || rows[0]?.descripcion || ''}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#7f1d1d' }}>
-                      No puedes pedir el mismo producto dos veces. Combina esas filas en una sola (sumando la cantidad) o elimina la repetida.
-                    </p>
-                  </div>
-                ) : (
+                <CodigosRepetidosAviso
+                  etapa="sugerencia"
+                  grupos={duplicateProductGroups.map((grupo) => ({
+                    codigo: grupo[0]?.matched_producto_codigo || grupo[0]?.codigo || '—',
+                    nombre: grupo[0]?.matched_producto_nombre || grupo[0]?.descripcion || '',
+                    filas: grupo.length,
+                    referencias: grupo.map((row) => String(row._detalle?.referencia || row.referencia || '').trim()).filter(Boolean),
+                  }))}
+                />
                   <>
                     <ImportGroupsSummary
                       vinculados={matchedCount}
@@ -5367,7 +5386,6 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                     </div>
 
                   </>
-                )}
       {showNuevoProducto && (
         <SugerenciaNuevoProductoPopup onClose={() => setShowNuevoProducto(false)} onAdd={handleAddNuevoProducto} notify={notify} />
       )}
@@ -5990,10 +6008,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
   const handleCreate = async () => {
     // La descripcion o la referencia/OEM que falten no impiden crear la
     // sugerencia: se completan en ella antes de pedir la cotizacion.
-    if (!allConflictsResolved || duplicateProductGroups.length > 0) {
-      const reasons = []
-      if (!allConflictsResolved) reasons.push('hay conflictos de referencia sin resolver')
-      if (duplicateProductGroups.length > 0) reasons.push('hay productos repetidos dentro del mismo Excel')
+    // Los codigos repetidos no impiden crearla (se avisa en la tabla).
+    if (!allConflictsResolved) {
+      const reasons = ['hay conflictos de referencia sin resolver']
       toastRef.current?.show({
         severity: 'warn',
         summary: 'Faltan datos',
@@ -6060,22 +6077,11 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
     }
   }
 
-  const handleRetry = () => {
-    setSelectedFile(null)
-    if (fileInputRef.current) fileInputRef.current.value = ''
-    setParsedRows([])
-    setReferenciaDecisions({})
-    setSubmitError('')
-    setParseError('')
-    setStep(2)
-  }
-
   const canProcess = Boolean(selectedFile && selectedCasa)
   // Mismo orden que la tabla (ver sortSugerenciaRows): en pantalla, en el
   // Excel descargado y en la sugerencia creada.
   const validRows = sortSugerenciaRows(parsedRows)
   const allConflictsResolved = validRows.every((row) => !hasReferenciaConflict(row) || referenciaDecisions[row.fila_excel] !== undefined)
-  const duplicateProductGroups = getDuplicateProductGroups(validRows)
   const getSistemaPrecio = sugerenciaSistemaPrecio
   const getSistemaCasa = (row) => sugerenciaSistemaCasa(row, selectedCasa?.nombre)
   const getPrecioGuardado = (row) => sugerenciaPrecioGuardado(row, selectedCasa?.nombre)
@@ -6402,7 +6408,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
               {step === 2 && (
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setStep(1)} disabled={parsing}>Atrás</button>
               )}
-              {step === 3 && !duplicateProductGroups.length && (
+              {step === 3 && (
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setStep(esManual ? 'casa' : 2)} disabled={submitting}>Atrás</button>
               )}
             </div>
@@ -6421,9 +6427,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
                 </button>
               )}
               {step === 3 && (
-                duplicateProductGroups.length > 0 ? (
-                  <button type="button" className="create-user__action create-user__action--primary" onClick={handleRetry}>Volver a intentar</button>
-                ) : (
                   <>
                     {validRows.length > 0 && (
                       <button
@@ -6450,7 +6453,6 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
                       {submitting ? 'Creando sugerencia...' : `Crear sugerencia${validRows.length > 0 ? ` (${validRows.length} productos)` : ''}`}
                     </button>
                   </>
-                )
               )}
             </div>
           </div>
@@ -6799,6 +6801,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       if (val == null || val === '') return ''
       return String(Math.round(parseFloat(val) * 100))
     }
+    // Un producto puede estar en dos filas (mismo codigo, otra referencia):
+    // la segunda lleva otra clave para no chocar con la primera.
+    const vecesProducto = new Map()
     const loaded = (imp.detalles || []).map((d, i) => {
       const solId = d.solicitud_id ? String(d.solicitud_id) : null
       const confirmed = {
@@ -6810,7 +6815,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         ...(d.coincidencia_codigo || d.coincidencia_casa ? { _sugeridoDesde: d.coincidencia_codigo || '', _sugeridoCasa: d.coincidencia_casa || '' } : {}),
       }
       if (d.producto?.id) {
-        return { _key: String(d.producto.id), _detalleId: d.id ?? null, orden: d.orden, producto: d.producto, cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, quitado: Boolean(d.quitado), precio_pvp_snapshot: d.precio_pvp_snapshot, precio_casa: d.precio_casa || '', ...confirmed }
+        const vez = (vecesProducto.get(d.producto.id) || 0) + 1
+        vecesProducto.set(d.producto.id, vez)
+        return { _key: vez > 1 ? `${d.producto.id}~${vez}` : String(d.producto.id), _detalleId: d.id ?? null, orden: d.orden, producto: d.producto, referencia: d.referencia || '', cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, quitado: Boolean(d.quitado), precio_pvp_snapshot: d.precio_pvp_snapshot, precio_casa: d.precio_casa || '', ...confirmed }
       }
       return {
         _key: 'sc_' + (d.id ?? i), _detalleId: d.id ?? null, orden: d.orden, producto: null,
@@ -7103,7 +7110,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       // orden: la posición del producto en el Excel de sugerencia original --
       // el backend borra y vuelve a crear todos los detalles al guardar, así
       // que si no se reenvía aquí se pierde en cada "Guardar" (quedaba null).
-      if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || item.cantidad_aproximada || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
+      if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || item.cantidad_aproximada || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
       const manualPrecio = item.precio != null && item.precio !== '' ? Number(item.precio) : undefined
       return {
         codigo: item.codigo || '',
@@ -7406,6 +7413,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       porValor.set(clave, [...(porValor.get(clave) || []), { fila, etiqueta }])
       let candidatos = []
       if (norm(codigo)) candidatos = current.filter((d) => codigoDe(d) === norm(codigo))
+      // Mismo codigo en varias filas (otra referencia): desempata la referencia.
+      if (candidatos.length > 1 && norm(ref)) {
+        // La referencia propia de la fila; si no, las del producto.
+        const propia = candidatos.filter((d) => norm(d.referencia) === norm(ref))
+        const porRef = propia.length ? propia : candidatos.filter((d) => refsDe(d).includes(norm(ref)))
+        if (porRef.length) candidatos = porRef
+      }
       if (!candidatos.length && norm(ref)) candidatos = current.filter((d) => refsDe(d).includes(norm(ref)))
       if (!candidatos.length && lista(oem).length) candidatos = current.filter((d) => oemsDe(d).some((o) => lista(oem).includes(o)))
       if (!candidatos.length) { noEncontradas.push({ fila, etiqueta }); return }
@@ -7500,7 +7514,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       dataRows.forEach((row) => {
         const codigo = cellText(row, codigoIdx)
         const codigoLc = codigo.toLowerCase() === 'sin catálogo' ? '' : codigo.toLowerCase()
-        const clave = codigoLc ? `c:${codigoLc}` : cellText(row, keyIdx) ? `k:${cellText(row, keyIdx)}` : ''
+        // Por la clave de la fila primero: un mismo codigo puede estar en dos
+        // filas (otra referencia) y cada una tiene su clave.
+        const clave = cellText(row, keyIdx) ? `k:${cellText(row, keyIdx)}` : codigoLc ? `c:${codigoLc}` : ''
         if (!clave) return
         porCodigo.set(clave, [...(porCodigo.get(clave) || []), { fila: filaDe.get(row), etiqueta: codigo || cellText(row, refIdx) || cellText(row, oemIdx) }])
       })
@@ -7749,7 +7765,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
             ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
             : null,
         }
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
+        if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
       })
       const saveResponse = await authFetch(
@@ -7801,6 +7817,19 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       toastRef.current?.show({ severity: 'error', summary: 'Sin productos', detail: 'Todos los productos están quitados: restaura al menos uno para pedir confirmación.', life: 5000 })
       return
     }
+    // Un codigo repetido (otra referencia) no pasa a confirmacion: hay que
+    // dejar una sola fila de cada uno.
+    if (codigosRepetidosVerificacion.length > 0) {
+      toastRef.current?.show({
+        severity: 'error',
+        summary: 'Códigos repetidos',
+        detail: `Deja solo una fila de ${codigosRepetidosVerificacion.map((grupo) => grupo.codigo).join(', ')} (quita las demás) para pedir la confirmación.`,
+        life: 6000,
+      })
+      setProductSearch('')
+      jumpToDetailRow(codigosRepetidosVerificacion[0].keys[0])
+      return
+    }
     // Guardar se puede sin completar; para pasar a confirmacion cada producto
     // necesita su PVP Aprox. y su Cant. aprox. (la cantidad pedida no cuenta).
     const missingData = vigentes.filter((item) => {
@@ -7837,7 +7866,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           quitado: Boolean(item.quitado),
         }
         const cantidad = Number(item.cantidad || item.cantidad_aproximada || 0)
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
+        if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
       })
       const saveResponse = await authFetch(
@@ -7881,7 +7910,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
         }
         const detalleId = item._detalleId != null ? { detalle_id: item._detalleId } : {}
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
+        if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
       })
       const selectedKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'check').map(([k]) => k)
@@ -7939,7 +7968,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
           seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
         } : {}
-        if (item.producto?.id) return { producto_id: item.producto.id, cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
+        if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
       })
       const response = await authFetch(
@@ -8030,6 +8059,24 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       return grupo.startsWith('agregado') ? enGrupo.reverse() : enGrupo
     })
     : details
+  // Mismo codigo en mas de una fila sin quitar (p. ej. otra referencia).
+  const codigosRepetidosVerificacion = (() => {
+    if (!isVerificar) return []
+    const grupos = new Map()
+    details.forEach((item) => {
+      if (item.quitado) return
+      const codigo = String(item.producto?.codigo || item.codigo || '').trim()
+      if (!codigo) return
+      const clave = item.producto?.id ? `p:${item.producto.id}` : `c:${codigo.toUpperCase()}`
+      if (!grupos.has(clave)) grupos.set(clave, { codigo, nombre: item.producto?.nombre || item.nombre || '', referencias: [], keys: [], filas: 0 })
+      const grupo = grupos.get(clave)
+      grupo.filas += 1
+      grupo.keys.push(item._key)
+      const referencia = String(item.referencia || item.producto?.referencia || '').trim()
+      if (referencia) grupo.referencias.push(referencia)
+    })
+    return [...grupos.values()].filter((grupo) => grupo.filas > 1)
+  })()
   const verificarConteo = isVerificar
     ? shownDetails.reduce((acc, item) => ({ ...acc, [verificarColorDe(item)]: (acc[verificarColorDe(item)] || 0) + 1 }), {})
     : {}
@@ -8327,6 +8374,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                       )
                       return (
                         <>
+                    {isVerificar && (
+                      <CodigosRepetidosAviso etapa="verificacion" grupos={codigosRepetidosVerificacion} />
+                    )}
                     {isVerificar && details.length > 0 && (
                       <VerificacionGroupsSummary
                         conteo={verificarConteo}

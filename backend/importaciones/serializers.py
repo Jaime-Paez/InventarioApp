@@ -246,16 +246,22 @@ class ImportacionSerializer(serializers.ModelSerializer):
         if self.instance is not None and self.instance.estado != Importacion.ESTADO_BORRADOR:
             for item in value:
                 self._vincular_producto_existente(item)
-        productos =[item["producto"] for item in value if item.get("producto")]
-        codigo_by_id = {producto.id: producto.codigo for producto in productos}
-        conteo_by_id = {}
-        for producto in productos:
-            conteo_by_id[producto.id] = conteo_by_id.get(producto.id, 0) + 1
-        codigos_repetidos = [codigo_by_id[pid] for pid, conteo in conteo_by_id.items() if conteo > 1]
-        if codigos_repetidos:
-            raise serializers.ValidationError(
-                f"No repitas productos dentro de la misma importacion: {', '.join(codigos_repetidos)}."
-            )
+        # En la sugerencia y la verificacion un mismo codigo puede estar dos
+        # veces (p. ej. con referencias distintas de la fabrica): se avisa en
+        # pantalla y hay que dejar uno antes de pedir la confirmacion (ver
+        # productos_repetidos). Despues ya no se permite.
+        estado = self.instance.estado if self.instance is not None else Importacion.ESTADO_BORRADOR
+        if estado not in (Importacion.ESTADO_BORRADOR, Importacion.ESTADO_COTIZACION):
+            productos = [item["producto"] for item in value if item.get("producto")]
+            codigo_by_id = {producto.id: producto.codigo for producto in productos}
+            conteo_by_id = {}
+            for producto in productos:
+                conteo_by_id[producto.id] = conteo_by_id.get(producto.id, 0) + 1
+            codigos_repetidos = [codigo_by_id[pid] for pid, conteo in conteo_by_id.items() if conteo > 1]
+            if codigos_repetidos:
+                raise serializers.ValidationError(
+                    f"No repitas productos dentro de la misma importacion: {', '.join(codigos_repetidos)}."
+                )
 
         conflictos = self._find_shared_field_conflicts(value, "oem", "el OEM") + self._find_shared_field_conflicts(
             value, "referencia", "la referencia"
@@ -356,6 +362,40 @@ class ImportacionSerializer(serializers.ModelSerializer):
             if motivos:
                 invalidos.append({"codigo": codigo, "motivo": "; ".join(motivos)})
         return invalidos
+
+    @staticmethod
+    def productos_repetidos(detalles):
+        """Productos del catalogo que estan en mas de una fila (sin contar las
+        quitadas). Se permiten en la sugerencia y la verificacion, pero hay
+        que dejar uno antes de pedir la confirmacion o importar. Los codigos
+        nuevos repetidos ya los reporta validar_codigos_nuevos.
+        Devuelve [{codigo, referencias}]."""
+        grupos = {}
+        for detalle in detalles:
+            if getattr(detalle, "quitado", False) or not detalle.producto_id:
+                continue
+            producto = detalle.producto
+            grupo = grupos.setdefault(producto.id, {"codigo": producto.codigo, "referencias": [], "filas": 0})
+            grupo["filas"] += 1
+            referencia = str(detalle.referencia or producto.referencia or "").strip()
+            if referencia:
+                grupo["referencias"].append(referencia)
+        return [
+            {"codigo": grupo["codigo"], "referencias": grupo["referencias"]}
+            for grupo in grupos.values()
+            if grupo["filas"] > 1
+        ]
+
+    @staticmethod
+    def productos_repetidos_response_data(repetidos):
+        lista = "; ".join(
+            f"{row['codigo']}" + (f" (referencias {', '.join(row['referencias'])})" if row["referencias"] else "")
+            for row in repetidos
+        )
+        return {
+            "detail": f"Hay códigos repetidos, deja solo uno de cada uno (quita los demás): {lista}.",
+            "productos_repetidos": repetidos,
+        }
 
     @staticmethod
     def codigos_invalidos_response_data(invalidos):

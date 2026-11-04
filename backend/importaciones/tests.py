@@ -280,22 +280,75 @@ class SugerenciaProductosNuevosTests(TestCase):
         self.assertEqual(importacion.detalles.get(codigo="ot-1").producto_id, otro.id)
         self.assertEqual(Producto.objects.filter(codigo__iexact="OT-1").count(), 1)
 
-    def test_codigo_de_un_producto_que_ya_esta_en_la_lista_no_se_duplica(self):
+    def test_codigo_repetido_se_permite_en_la_verificacion_pero_no_pasa_a_confirmacion(self):
+        """Mismo codigo dos veces (p. ej. con referencias distintas de la
+        fabrica): se puede guardar en la verificacion; para pedir la
+        confirmacion hay que dejar uno."""
         importacion = self._crear(cantidad_nuevo=3)
         self._pedir_cotizacion(importacion)
         response = self.client.patch(
             f"{BASE_URL}/{importacion.id}/",
             {
                 "detalles": [
-                    {"producto_id": self.existente.id, "cantidad": 2},
-                    {"codigo": "ex-1", "nombre": "Faro", "cantidad": 1},
+                    {"producto_id": self.existente.id, "referencia": "QFA0332", "cantidad": 2,
+                     "precio_estimado": "10.00", "cantidad_aproximada": 2},
+                    {"codigo": "ex-1", "nombre": "Faro", "referencia": "QFA0677", "cantidad": 1,
+                     "precio_estimado": "10.00", "cantidad_aproximada": 1},
                 ],
             },
             format="json",
         )
+        self.assertEqual(response.status_code, 200, response.data)
+        # El codigo escrito es ese mismo producto: quedan dos filas de EX-1.
+        self.assertEqual(importacion.detalles.filter(producto=self.existente).count(), 2)
+        self.assertEqual(
+            sorted(importacion.detalles.values_list("referencia", flat=True)), ["QFA0332", "QFA0677"]
+        )
+
+        response = self.client.post(f"{BASE_URL}/{importacion.id}/confirmar/")
         self.assertEqual(response.status_code, 400)
-        self.assertIn("EX-1", str(response.data))
-        self.assertEqual(importacion.detalles.filter(producto=self.existente).count(), 1)
+        self.assertEqual(
+            response.data["productos_repetidos"],
+            [{"codigo": "EX-1", "referencias": ["QFA0332", "QFA0677"]}],
+        )
+        importacion.refresh_from_db()
+        self.assertEqual(importacion.estado, "cotizacion")
+
+        # Quitando una, ya pasa.
+        detalle = importacion.detalles.get(referencia="QFA0677")
+        detalle.quitado = True
+        detalle.save(update_fields=["quitado"])
+        response = self.client.post(f"{BASE_URL}/{importacion.id}/confirmar/")
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_sugerencia_se_crea_con_un_codigo_repetido(self):
+        response = self.client.post(
+            BASE_URL + "/",
+            {
+                "casa_comercial_id": self.casa.id,
+                "detalles": [
+                    {"producto_id": self.existente.id, "referencia": "QFA0332", "cantidad": 0},
+                    {"producto_id": self.existente.id, "referencia": "QFA0677", "cantidad": 60},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_importar_rechaza_un_producto_repetido(self):
+        importacion = self._crear(cantidad_nuevo=3)
+        self._pedir_cotizacion(importacion)
+        importacion.detalles.create(producto=self.existente, referencia="R9", cantidad=1)
+        importacion.detalles.create(producto=self.existente, referencia="R10", cantidad=1)
+        response = self.client.post(
+            f"{BASE_URL}/{importacion.id}/importar/",
+            {"numero_factura": "F-1", "detalles_seleccionados": [str(self.existente.id)]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["productos_repetidos"][0]["codigo"], "EX-1")
+        importacion.refresh_from_db()
+        self.assertEqual(importacion.numero_factura, "")
 
     def test_confirmar_avisa_todos_los_codigos_nuevos_con_problema(self):
         importacion = self._crear(cantidad_nuevo=3)

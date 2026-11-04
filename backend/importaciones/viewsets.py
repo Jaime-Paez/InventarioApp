@@ -1048,15 +1048,25 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # Los códigos nuevos se revisan aquí porque es el último paso donde
         # todavía se pueden cambiar (al importar se vuelven a revisar).
         vigentes = instance.detalles.filter(quitado=False)
+        # Un código que quedó en dos filas (p. ej. con referencias distintas)
+        # se puede tener en la verificación, pero no pasa a confirmación.
+        repetidos = ImportacionSerializer.productos_repetidos(vigentes.select_related("producto"))
         invalidos = ImportacionSerializer.validar_codigos_nuevos(
             vigentes.filter(producto__isnull=True).values_list("codigo", "nombre"),
             vigentes.filter(producto__isnull=False).values_list("producto__codigo", flat=True),
         )
-        if invalidos:
-            return Response(
-                ImportacionSerializer.codigos_invalidos_response_data(invalidos),
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if repetidos or invalidos:
+            # Todo lo que hay que corregir, de una vez.
+            data = {}
+            detalles_error = []
+            if repetidos:
+                data.update(ImportacionSerializer.productos_repetidos_response_data(repetidos))
+                detalles_error.append(data["detail"])
+            if invalidos:
+                data.update(ImportacionSerializer.codigos_invalidos_response_data(invalidos))
+                detalles_error.append(data["detail"])
+            data["detail"] = " ".join(detalles_error)
+            return Response(data, status=status.HTTP_400_BAD_REQUEST)
         # En la verificacion se puede guardar sin PVP Aprox. ni Cant. aprox.;
         # para pasar a confirmacion tienen que estar todos completos.
         incompletos = vigentes.filter(
@@ -1118,6 +1128,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if not numero_factura:
             return Response(
                 {"detail": "El número de factura es requerido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Desde cotización se puede importar directo: tampoco con códigos repetidos.
+        repetidos = ImportacionSerializer.productos_repetidos(instance.detalles.select_related("producto"))
+        if repetidos:
+            return Response(
+                ImportacionSerializer.productos_repetidos_response_data(repetidos),
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
