@@ -4,6 +4,7 @@ import { Eye, Info, Pencil } from 'lucide-react'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import '../../admin/UsersDetails/UsersDetails.css'
 import '../../movimientos/CreateSalida.css'
+import './ProductoDetails.css'
 import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { onIvaUpdated } from '../../../../utils/configEvents'
@@ -1749,13 +1750,14 @@ function ProductoDetails({
                   </div>
                   <div className="create-salida__field-group create-salida__field-group--defined">
                     <div className="create-user__grid create-user__grid--two">
-                      <StaticFieldDisplay label="Descripción" value={formData.nombre} />
                       <StaticFieldDisplay label="Código" value={formData.codigo} />
+                      <StaticFieldDisplay label="Descripción" value={formData.nombre} />
                       <StaticFieldDisplay label="Casa comercial" value={selectedCasas.map((casa) => casa.nombre).join(', ')} />
                     </div>
                   </div>
                 </section>
 
+                <div className="producto-details__pair">
                 {referenciaItems.length > 0 && (
                   <section className="create-user__section">
                     <div className="create-user__section-header"><h4>Referencias</h4></div>
@@ -1777,6 +1779,7 @@ function ProductoDetails({
                     </div>
                   </section>
                 )}
+                </div>
 
                 <section className="create-user__section">
                   <div className="create-user__section-header">
@@ -1814,24 +1817,24 @@ function ProductoDetails({
                   </div>
 
                   <div className="create-user__grid create-user__grid--two">
-                    <label className="create-user__field create-user__field--required">
-                      <span>Descripción</span>
-                      <input
-                        name="nombre"
-                        type="text"
-                        value={formData.nombre}
-                        onChange={handleChange}
-                        required
-                        disabled={editorDisabled}
-                      />
-                    </label>
-
                     <label className="create-user__field">
                       <span>Código</span>
                       <input
                         name="codigo"
                         type="text"
                         value={formData.codigo}
+                        onChange={handleChange}
+                        required
+                        disabled={editorDisabled}
+                      />
+                    </label>
+
+                    <label className="create-user__field create-user__field--required">
+                      <span>Descripción</span>
+                      <input
+                        name="nombre"
+                        type="text"
+                        value={formData.nombre}
                         onChange={handleChange}
                         required
                         disabled={editorDisabled}
@@ -1909,6 +1912,7 @@ function ProductoDetails({
                   </div>
                 </section>
 
+                <div className="producto-details__pair">
                 <section className="create-user__section">
                   <div className="create-user__section-header">
                     <h4>Referencias</h4>
@@ -2028,6 +2032,7 @@ function ProductoDetails({
                     ))}
                   </div>
                 </section>
+                </div>
 
                 <section className="create-user__section">
                   <div className="create-user__section-header">

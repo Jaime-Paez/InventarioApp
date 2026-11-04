@@ -1,0 +1,17 @@
+/* Referencias y OEMs uno al lado del otro, en la misma fila. */
+.producto-details__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+  align-items: start;
+}
+
+.producto-details__pair > .create-user__section {
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .producto-details__pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
