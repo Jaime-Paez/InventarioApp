@@ -21,6 +21,8 @@ const TIPO_FILTERS = [
 function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
   const [tipo, setTipo] = useState('')
   const [sucursalId, setSucursalId] = useState('')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
   const [rows, setRows] = useState([])
   const [meta, setMeta] = useState({ count: 0, page: 1, total_pages: 1, totales: { entradas: 0, salidas: 0 }, sucursales: [] })
   const [loading, setLoading] = useState(false)
@@ -33,11 +35,13 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
     const params = new URLSearchParams({ producto_id: String(productoId), page: String(page), page_size: String(PAGE_SIZE) })
     if (tipo) params.set('tipo', tipo)
     if (sucursalId) params.set('sucursal_id', sucursalId)
+    if (fechaDesde) params.set('fecha_desde', fechaDesde)
+    if (fechaHasta) params.set('fecha_hasta', fechaHasta)
     const response = await authFetch(`${API_URL}/movimientos/movimiento_inventario/historial-producto/?${params}`, {}, token)
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo cargar el historial.')
     return payload
-  }, [productoId, tipo, sucursalId, token])
+  }, [productoId, tipo, sucursalId, fechaDesde, fechaHasta, token])
 
   useEffect(() => {
     if (!productoId || !token) return
@@ -117,6 +121,31 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
             </div>
           )}
         </div>
+        <div className="producto-movs__dates">
+          <label className="producto-movs__date">
+            <span>Desde</span>
+            <input
+              type="date"
+              value={fechaDesde}
+              max={fechaHasta || undefined}
+              onChange={(event) => setFechaDesde(event.target.value)}
+            />
+          </label>
+          <label className="producto-movs__date">
+            <span>Hasta</span>
+            <input
+              type="date"
+              value={fechaHasta}
+              min={fechaDesde || undefined}
+              onChange={(event) => setFechaHasta(event.target.value)}
+            />
+          </label>
+          {(fechaDesde || fechaHasta) && (
+            <button type="button" className="producto-movs__clear" onClick={() => { setFechaDesde(''); setFechaHasta('') }}>
+              Todas las fechas
+            </button>
+          )}
+        </div>
         <div className="producto-movs__totals">
           <span className="producto-movs__total producto-movs__total--in">Entraron {totales.entradas}</span>
           <span className="producto-movs__total producto-movs__total--out">Salieron {totales.salidas}</span>
@@ -151,7 +180,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
 
           {!rows.length && (
             <div className="create-user__locations-row create-user__locations-row--empty">
-              <span>Este producto no tiene entradas ni salidas{tipo || sucursalId ? ' con este filtro' : ''}.</span>
+              <span>Este producto no tiene entradas ni salidas{tipo || sucursalId || fechaDesde || fechaHasta ? ' con este filtro' : ''}.</span>
             </div>
           )}
 

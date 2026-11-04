@@ -8,7 +8,7 @@
 .producto-movs__toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 10px;
 }
@@ -52,6 +52,46 @@
   background: var(--color-primary);
   color: var(--color-button-primary);
   font-weight: 600;
+}
+
+/* Rango de fechas: mismo estilo que el mapa de revisiones. */
+.producto-movs__dates {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.producto-movs__date {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.producto-movs__date input,
+.producto-movs__clear {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+}
+
+.producto-movs__clear {
+  padding: 0 10px;
+  background: transparent;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.dashboard-shell.dark .producto-movs__date input {
+  background: var(--color-surface-darker);
+  color-scheme: dark;
 }
 
 .producto-movs__totals {

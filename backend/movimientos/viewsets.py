@@ -2869,7 +2869,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         """Entradas y salidas de un producto, mas recientes primero.
 
         Query: producto_id (obligatorio), tipo (entrada|salida), sucursal_id,
-        page, page_size."""
+        fecha_desde, fecha_hasta (YYYY-MM-DD, incluidas), page, page_size."""
         params = request.query_params
 
         def _int(value, default=None):
@@ -2887,6 +2887,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 producto_id,
                 tipo=tipo,
                 sucursal_id=_int(params.get("sucursal_id")),
+                fecha_desde=parse_date((params.get("fecha_desde") or "").strip()),
+                fecha_hasta=parse_date((params.get("fecha_hasta") or "").strip()),
                 page=_int(params.get("page"), 1),
                 page_size=_int(params.get("page_size"), 50),
             )

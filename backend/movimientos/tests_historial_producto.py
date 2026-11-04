@@ -81,6 +81,10 @@ class HistorialProductoTests(APITestCase):
         salidas = build_product_movement_history(self.producto.id, tipo="salida")
         self.assertEqual([row["no_documento"] for row in salidas["results"]], ["V-1", "TR-1"])
 
+        rango = build_product_movement_history(self.producto.id, fecha_desde="2026-10-02", fecha_hasta="2026-10-03")
+        self.assertEqual([row["no_documento"] for row in rango["results"]], ["TR-1", "CL-1"])
+        self.assertEqual(rango["totales"], {"entradas": 5, "salidas": 4})
+
     def test_endpoint(self):
         self._mov(self.sub["compra"], "CL-9", "2026-10-02", [(self.producto, 2)])
         user = get_user_model().objects.create_superuser(username="adm", email="adm@x.com", password="x")
@@ -90,4 +94,9 @@ class HistorialProductoTests(APITestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.data["count"], 1)
+        response = self.client.get(
+            "/movimientos/movimiento_inventario/historial-producto/",
+            {"producto_id": self.producto.id, "fecha_desde": "2026-10-03"},
+        )
+        self.assertEqual(response.data["count"], 0)
         self.assertEqual(self.client.get("/movimientos/movimiento_inventario/historial-producto/").status_code, 400)

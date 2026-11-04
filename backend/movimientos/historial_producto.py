@@ -112,7 +112,9 @@ def _base_movements():
     ).exclude(garantia_pendiente=True)
 
 
-def build_product_movement_history(producto_id, *, tipo="", sucursal_id=None, page=1, page_size=PAGE_SIZE_DEFAULT):
+def build_product_movement_history(
+    producto_id, *, tipo="", sucursal_id=None, fecha_desde=None, fecha_hasta=None, page=1, page_size=PAGE_SIZE_DEFAULT
+):
     detalles = DetalleMovimiento.objects.filter(
         producto_id=producto_id,
         movimiento_inventario__in=_base_movements(),
@@ -122,6 +124,11 @@ def build_product_movement_history(producto_id, *, tipo="", sucursal_id=None, pa
     scope = detalles
     if sucursal_id:
         scope = scope.filter(movimiento_inventario__sucursal_id=sucursal_id)
+    # Rango de fechas (incluye ambos dias): filtra la tabla y los totales.
+    if fecha_desde:
+        scope = scope.filter(movimiento_inventario__fecha__gte=fecha_desde)
+    if fecha_hasta:
+        scope = scope.filter(movimiento_inventario__fecha__lte=fecha_hasta)
     totales = {"entradas": 0, "salidas": 0}
     for row in scope.values("movimiento_inventario__tipo_movimiento__nombre").annotate(total=Sum("cantidad")):
         key = "salidas" if _norm(row["movimiento_inventario__tipo_movimiento__nombre"]).startswith("sal") else "entradas"
