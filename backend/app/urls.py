@@ -117,4 +117,9 @@ urlpatterns = [
         views.RandomInspectionVerifyItemAPIView.as_view(),
         name="recordatorios-inspeccion-aleatoria-verificar",
     ),
+    path(
+        "recordatorios/inspeccion-aleatoria/items/<int:item_id>/aparecio/",
+        views.RandomInspectionShortfallFoundAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-aparecio",
+    ),
 ]

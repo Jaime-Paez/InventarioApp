@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Count, F, Max, Q, Sum
 from django.http import JsonResponse
 from django.utils import timezone
 from rest_framework import status
@@ -2019,6 +2019,17 @@ def _serialize_random_inspection_admin_item(item, subdivision_labels=None):
             }
         )
     serialized["ubicaciones_conteo"] = location_counts
+    shortfall = int(getattr(item, "cantidad_faltante", 0) or 0)
+    recovered = int(getattr(item, "faltante_recuperado", 0) or 0)
+    serialized["cantidad_faltante"] = shortfall
+    serialized["faltante_recuperado"] = recovered
+    serialized["faltante_pendiente"] = max(0, shortfall - recovered)
+    serialized["faltante_recuperaciones"] = (
+        item.faltante_recuperaciones if isinstance(getattr(item, "faltante_recuperaciones", None), list) else []
+    )
+    serialized["recupera_faltantes"] = (
+        item.recupera_faltantes if isinstance(getattr(item, "recupera_faltantes", None), list) else []
+    )
     if getattr(item, "agregado_por_revisor", False) and getattr(item, "encontrado_en_id", None):
         serialized["otras_ubicaciones"] = [
             {
@@ -2644,6 +2655,68 @@ def _move_found_stock_here(item, target_subdivision, quantity):
     target_row.cantidad = int(target_row.cantidad or 0) + int(quantity)
     target_row.save(update_fields=["cantidad"])
     return {"movido": int(quantity) - remaining, "ajuste": remaining, "origenes": origins}
+
+
+def _open_shortfalls_queryset(*, sucursal_id, producto_id):
+    """Faltantes aprobados de este producto en la sucursal que siguen abiertos."""
+    return InspeccionAleatoriaItem.objects.filter(
+        sucursal_id=int(sucursal_id),
+        producto_id=int(producto_id),
+        verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.APROBADA,
+        cantidad_faltante__gt=F("faltante_recuperado"),
+    )
+
+
+def _register_shortfall_recovery(shortfall_item, quantity, actor_user, *, origen, source_item=None, subdivision=None):
+    """Descuenta `quantity` del faltante abierto de `shortfall_item` y deja
+    registrado de donde aparecio. No toca el stock (quien llama ya lo sumo)."""
+    entry = {
+        "cantidad": int(quantity),
+        "origen": origen,
+        "item_id": int(source_item.id) if source_item is not None else None,
+        "inspeccion_id": int(source_item.inspeccion_id) if source_item is not None else None,
+        "subdivision_id": int(subdivision.id) if subdivision is not None else None,
+        "ubicacion": _subdivision_label(subdivision) if subdivision is not None else "",
+        "usuario": _format_user_display_name(actor_user) if actor_user is not None else "",
+        "fecha": _iso_now(),
+    }
+    shortfall_item.faltante_recuperado = int(shortfall_item.faltante_recuperado or 0) + int(quantity)
+    shortfall_item.faltante_recuperaciones = [
+        *(shortfall_item.faltante_recuperaciones if isinstance(shortfall_item.faltante_recuperaciones, list) else []),
+        entry,
+    ]
+    shortfall_item.save(update_fields=["faltante_recuperado", "faltante_recuperaciones", "updated_at"])
+
+
+def _recover_open_shortfalls(item, quantity, actor_user, subdivision=None):
+    """`item` aparecio con `quantity` unidades de mas: se descuentan de los
+    faltantes abiertos del producto en la sucursal, del mas antiguo al mas
+    nuevo. Devuelve [{item_id, inspeccion_id, cantidad}] de lo que cerro."""
+    remaining = int(quantity or 0)
+    applied = []
+    if remaining <= 0:
+        return applied
+    shortfalls = (
+        _open_shortfalls_queryset(sucursal_id=item.sucursal_id, producto_id=item.producto_id)
+        .exclude(pk=item.pk)
+        .select_for_update()
+        .order_by("verificado_en", "id")
+    )
+    for shortfall in shortfalls:
+        if remaining <= 0:
+            break
+        pending = int(shortfall.cantidad_faltante or 0) - int(shortfall.faltante_recuperado or 0)
+        take = min(pending, remaining)
+        if take <= 0:
+            continue
+        _register_shortfall_recovery(
+            shortfall, take, actor_user, origen="inspeccion", source_item=item, subdivision=subdivision
+        )
+        applied.append(
+            {"item_id": int(shortfall.id), "inspeccion_id": int(shortfall.inspeccion_id), "cantidad": int(take)}
+        )
+        remaining -= take
+    return applied
 
 
 def _record_random_inspection_audit(item, actor_user, detalle, valores):
@@ -4279,6 +4352,7 @@ class RandomInspectionVerifyItemAPIView(APIView):
             note = _normalize_text(
                 request.data.get("nota") or request.data.get("observacion")
             )
+            recovered = []
 
             if action == "mover_aqui":
                 target = getattr(item, "encontrado_en", None) if item.encontrado_en_id else None
@@ -4296,6 +4370,9 @@ class RandomInspectionVerifyItemAPIView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
                 moved = _move_found_stock_here(item, target, quantity)
+                # Lo que se sumo por ajuste son unidades que aparecieron: cierran
+                # faltantes abiertos de este producto.
+                recovered = _recover_open_shortfalls(item, moved["ajuste"], request.user, target)
                 target_label = _subdivision_label(target)
                 _record_random_inspection_audit(
                     item,
@@ -4428,6 +4505,24 @@ class RandomInspectionVerifyItemAPIView(APIView):
                     adjustment = _apply_random_inspection_adjustment(
                         item, int(cantidad_confirmada), confirmed_by_location or None
                     )
+                    if adjustment["delta_total"] < 0:
+                        # Lo que falta queda abierto hasta que aparezca.
+                        item.cantidad_faltante = -int(adjustment["delta_total"])
+                    elif adjustment["delta_total"] > 0:
+                        # Donde aparecio: la ubicacion que subio en el conteo.
+                        surplus_locations = [
+                            entry["subdivision_id"] for entry in adjustment["por_ubicacion"] if entry["delta"] > 0
+                        ]
+                        found_subdivision = (
+                            SubDivision.objects.select_related("division__bodega")
+                            .filter(pk=surplus_locations[0])
+                            .first()
+                            if surplus_locations
+                            else None
+                        )
+                        recovered = _recover_open_shortfalls(
+                            item, adjustment["delta_total"], request.user, found_subdivision
+                        )
                 if confirmed_by_location:
                     # Queda registrado lo confirmado en cada ubicacion.
                     item.conteo_ubicaciones = [
@@ -4466,6 +4561,12 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 )
                 item.cantidad_confirmada = int(item.cantidad_esperada or 0)
 
+            if recovered:
+                item.recupera_faltantes = recovered
+                recovered_note = "Cierra faltante de " + ", ".join(
+                    f"inspeccion #{entry['inspeccion_id']} ({entry['cantidad']})" for entry in recovered
+                ) + "."
+                note = f"{note} · {recovered_note}" if note else recovered_note
             item.nota_verificacion = note
             item.verificado_por = request.user
             item.verificado_en = now
@@ -4473,6 +4574,8 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 update_fields=[
                     "verificacion_estado",
                     "cantidad_confirmada",
+                    "cantidad_faltante",
+                    "recupera_faltantes",
                     "conteo_ubicaciones",
                     "reubicado_a",
                     "nota_verificacion",
@@ -4542,6 +4645,107 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 "accion": action,
                 "verificacion_estado": str(item.verificacion_estado or ""),
                 "cantidad_confirmada": int(item.cantidad_confirmada or 0),
+                "cantidad_faltante": int(item.cantidad_faltante or 0),
+                "recupera_faltantes": recovered,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class RandomInspectionShortfallFoundAPIView(APIView):
+    """"Aparecio": parte (o todo) de un faltante abierto se encontro fuera de
+    una revision. Se suma en la ubicacion donde estaba y se descuenta del
+    faltante; lo que no aparece sigue abierto."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, item_id):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para verificar inspecciones aleatorias."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        with transaction.atomic():
+            item = (
+                InspeccionAleatoriaItem.objects.select_for_update(of=("self",))
+                .select_related("inspeccion", "sucursal", "producto")
+                .filter(pk=item_id)
+                .first()
+            )
+            if item is None:
+                return Response(
+                    {"detail": "No se encontro el item de inspeccion."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            allowed_branch_ids = _get_allowed_inventory_branch_ids_for_user(request.user)
+            if allowed_branch_ids is not None and int(item.sucursal_id) not in allowed_branch_ids:
+                return Response(
+                    {"detail": "No tienes acceso a esta sucursal."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            pending = int(item.cantidad_faltante or 0) - int(item.faltante_recuperado or 0)
+            if (
+                item.verificacion_estado != InspeccionAleatoriaItem.EstadosVerificacion.APROBADA
+                or pending <= 0
+            ):
+                return Response(
+                    {"detail": "Este producto ya no tiene faltante pendiente."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            target = (
+                SubDivision.objects.select_related("division__bodega")
+                .filter(
+                    pk=_normalize_int(request.data.get("subdivision_id"), 0),
+                    division__bodega__sucursal_id=int(item.sucursal_id),
+                )
+                .first()
+            )
+            if target is None:
+                return Response(
+                    {"detail": "Elige la ubicacion donde aparecio (de la misma sucursal)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            quantity = _normalize_int(request.data.get("cantidad"), 0)
+            if quantity <= 0 or quantity > pending:
+                return Response(
+                    {"detail": f"La cantidad debe ser de 1 a {pending} (lo que sigue faltando)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            inventory_row, _ = Inventario.objects.select_for_update().get_or_create(
+                subdivision=target,
+                producto_id=int(item.producto_id),
+                referencia="",
+                defaults={"cantidad": 0},
+            )
+            inventory_row.cantidad = int(inventory_row.cantidad or 0) + quantity
+            inventory_row.save(update_fields=["cantidad"])
+            _register_shortfall_recovery(item, quantity, request.user, origen="manual", subdivision=target)
+            target_label = _subdivision_label(target)
+            _record_random_inspection_audit(
+                item,
+                request.user,
+                (
+                    f"Faltante de inspeccion aleatoria #{int(item.inspeccion_id)}: aparecieron "
+                    f"{quantity} unidad(es) en {target_label}; siguen faltando {pending - quantity}."
+                ),
+                {"cantidad": quantity, "subdivision_destino_id": int(target.id), "pendiente": pending - quantity},
+            )
+
+        refreshed = (
+            InspeccionAleatoriaItem.objects.select_related(
+                "inspeccion", "inspeccion__usuario", "sucursal", "producto", "verificado_por"
+            )
+            .filter(pk=item_id)
+            .first()
+        )
+        return Response(
+            {
+                "ok": True,
+                "item": _serialize_random_inspection_admin_item(
+                    refreshed, _random_inspection_subdivision_labels([refreshed])
+                ),
             },
             status=status.HTTP_200_OK,
         )
@@ -5041,6 +5245,13 @@ class RandomInspectionAdminSummaryAPIView(APIView):
                         verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE,
                     ),
                 ),
+                faltantes_abiertos=Count(
+                    "id",
+                    filter=Q(
+                        verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.APROBADA,
+                        cantidad_faltante__gt=F("faltante_recuperado"),
+                    ),
+                ),
                 ultima_revision=Max("revisado_en"),
                 ultima_verificacion=Max("verificado_en"),
             )
@@ -5071,6 +5282,7 @@ class RandomInspectionAdminSummaryAPIView(APIView):
                 "items_revisados": 0,
                 "diferencias_reportadas": 0,
                 "pendientes_verificacion": 0,
+                "faltantes_abiertos": 0,
                 "cobertura_porcentaje": 0.0,
                 "ultima_revision": "",
                 "ultima_verificacion": "",
@@ -5092,6 +5304,7 @@ class RandomInspectionAdminSummaryAPIView(APIView):
                 "items_revisados": 0,
                 "diferencias_reportadas": 0,
                 "pendientes_verificacion": 0,
+                "faltantes_abiertos": 0,
                 "cobertura_porcentaje": 0.0,
                 "ultima_revision": "",
                 "ultima_verificacion": "",
@@ -5110,6 +5323,7 @@ class RandomInspectionAdminSummaryAPIView(APIView):
             current["pendientes_verificacion"] = _normalize_int(
                 row.get("pendientes_verificacion"), 0
             )
+            current["faltantes_abiertos"] = _normalize_int(row.get("faltantes_abiertos"), 0)
             current["ultima_revision"] = _parse_iso_timestamp(row.get("ultima_revision"))
             current["ultima_verificacion"] = _parse_iso_timestamp(
                 row.get("ultima_verificacion")
@@ -5205,11 +5419,17 @@ class RandomInspectionAdminItemsAPIView(APIView):
             queryset = queryset.filter(
                 estado_revision=InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE
             )
+        elif estado == "faltantes":
+            # Faltantes aprobados que siguen abiertos, del mas antiguo al mas nuevo.
+            queryset = queryset.filter(
+                verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.APROBADA,
+                cantidad_faltante__gt=F("faltante_recuperado"),
+            ).order_by("verificado_en", "id")
         elif estado != "todos":
             return Response(
                 {
                     "detail": (
-                        "El parametro `estado` debe ser uno de: pendiente, verificado, diferencias, todos."
+                        "El parametro `estado` debe ser uno de: pendiente, verificado, diferencias, faltantes, todos."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,

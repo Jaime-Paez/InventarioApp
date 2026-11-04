@@ -313,6 +313,28 @@ class InspeccionAleatoriaItem(models.Model):
         default=EstadosVerificacion.SIN_NOVEDAD,
     )
     cantidad_confirmada = models.PositiveIntegerField(null=True, blank=True)
+    # Faltante aprobado (stock al contar - confirmado): queda abierto como
+    # inconveniente hasta que las unidades aparezcan. Lo que aparece despues
+    # (en otra revision o con "Aparecio") suma en `faltante_recuperado` y cada
+    # vez queda en `faltante_recuperaciones`; pendiente = faltante - recuperado.
+    cantidad_faltante = models.PositiveIntegerField(default=0, db_default=0)
+    faltante_recuperado = models.PositiveIntegerField(default=0, db_default=0)
+    faltante_recuperaciones = models.JSONField(
+        default=list,
+        db_default=models.Value([], output_field=models.JSONField()),
+        blank=True,
+        help_text=(
+            "[{cantidad, origen: inspeccion|manual, item_id, inspeccion_id, "
+            "subdivision_id, ubicacion, usuario, fecha}]"
+        ),
+    )
+    # En la revision donde aparecieron unidades de mas: que faltantes
+    # abiertos cerro. [{item_id, inspeccion_id, cantidad}]
+    recupera_faltantes = models.JSONField(
+        default=list,
+        db_default=models.Value([], output_field=models.JSONField()),
+        blank=True,
+    )
     nota_verificacion = models.TextField(blank=True, default="")
     verificado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,

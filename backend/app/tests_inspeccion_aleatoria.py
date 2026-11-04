@@ -1276,3 +1276,139 @@ class InspeccionAutomaticaApagadaTests(InspeccionAleatoriaBaseTestCase):
 
         config_response = self.admin_client.get(f"{BASE_URL}/configuracion/")
         self.assertFalse(config_response.data["inspeccion_automatica"])
+
+
+class FaltanteAbiertoTests(InspeccionAleatoriaBaseTestCase):
+    """Lo que falta al aprobar queda abierto y se va cerrando con lo que aparece."""
+
+    def setUp(self):
+        super().setUp()
+        Inventario.objects.filter(pk=self.inv_a.pk).update(cantidad=11)
+
+    def _verificar(self, item, **body):
+        return self.admin_client.post(f"{BASE_URL}/items/{item.id}/verificar/", body, format="json")
+
+    def _faltante_no_encontrado(self):
+        inspection = self._crear_inspeccion()
+        self.revisor_client.post(
+            f"{BASE_URL}/{inspection.id}/responder/",
+            {"items": [{"id": item.id, "no_encontrado": True} for item in inspection.items.all()]},
+            format="json",
+        )
+        item = inspection.items.get()
+        response = self._verificar(item, accion="aprobar", cantidad_confirmada=0)
+        self.assertEqual(response.status_code, 200, response.data)
+        # Fue otro dia: la siguiente revision del mismo revisor puede ser hoy.
+        InspeccionAleatoriaDiaria.objects.filter(pk=inspection.pk).update(
+            fecha_programada=timezone.localdate() - timedelta(days=1)
+        )
+        item.refresh_from_db()
+        return item
+
+    def _faltantes(self):
+        response = self.admin_client.get(
+            f"{BASE_URL}/admin/items/?sucursal_id={self.sucursal.id}&estado=faltantes"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.data["results"]
+
+    def test_no_encontrado_aprobado_queda_abierto(self):
+        item = self._faltante_no_encontrado()
+        self.assertEqual(item.cantidad_faltante, 11)
+        self.assertEqual(self._stock(), 0)
+        rows = self._faltantes()
+        self.assertEqual([row["id"] for row in rows], [item.id])
+        self.assertEqual(rows[0]["faltante_pendiente"], 11)
+        resumen = self.admin_client.get(f"{BASE_URL}/admin/resumen/").data["results"]
+        self.assertEqual(resumen[0]["faltantes_abiertos"], 1)
+
+    def test_conteo_menor_tambien_deja_faltante(self):
+        inspection = self._crear_inspeccion()
+        self._responder(inspection, {self.producto.id: 8})
+        item = inspection.items.get()
+        self._verificar(item, accion="aprobar", cantidad_confirmada=8)
+        item.refresh_from_db()
+        self.assertEqual(item.cantidad_faltante, 3)
+
+    def test_rechazar_no_deja_faltante(self):
+        inspection = self._crear_inspeccion()
+        self._responder(inspection, {self.producto.id: 8})
+        item = inspection.items.get()
+        self._verificar(item, accion="rechazar")
+        item.refresh_from_db()
+        self.assertEqual(item.cantidad_faltante, 0)
+        self.assertEqual(self._faltantes(), [])
+
+    def test_aparecen_5_en_otra_revision_y_siguen_faltando_6(self):
+        faltante = self._faltante_no_encontrado()
+
+        otra = self._crear_inspeccion()
+        self._responder(otra, {self.producto.id: 5})
+        nuevo = otra.items.get()
+        response = self._verificar(nuevo, accion="aprobar", cantidad_confirmada=5)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["recupera_faltantes"][0]["cantidad"], 5)
+
+        faltante.refresh_from_db()
+        nuevo.refresh_from_db()
+        self.assertEqual(self._stock(), 5)
+        self.assertEqual(faltante.faltante_recuperado, 5)
+        self.assertEqual(faltante.faltante_recuperaciones[0]["item_id"], nuevo.id)
+        self.assertEqual(nuevo.recupera_faltantes, [{"item_id": faltante.id, "inspeccion_id": faltante.inspeccion_id, "cantidad": 5}])
+        self.assertEqual(nuevo.cantidad_faltante, 0)
+        self.assertIn(f"#{faltante.inspeccion_id}", nuevo.nota_verificacion)
+        rows = self._faltantes()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["faltante_pendiente"], 6)
+
+    def test_mover_aqui_cierra_faltante(self):
+        faltante = self._faltante_no_encontrado()
+        Inventario.objects.create(producto=self.producto_2, subdivision=self.sub_b, cantidad=2)
+        otra = self._crear_inspeccion(productos=[self.producto_2], es_por_division=True, division=self.division_b)
+        self.revisor_client.post(
+            f"{BASE_URL}/{otra.id}/agregar-producto/",
+            {"producto_id": self.producto.id, "subdivision_id": self.sub_b.id, "cantidad": 4},
+            format="json",
+        )
+        self._responder(otra, {self.producto.id: 4, self.producto_2.id: 2})
+        nuevo = otra.items.get(producto=self.producto)
+        response = self._verificar(nuevo, accion="mover_aqui")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        faltante.refresh_from_db()
+        self.assertEqual(faltante.faltante_recuperado, 4)
+        self.assertEqual(faltante.faltante_recuperaciones[0]["subdivision_id"], self.sub_b.id)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 4)
+
+    def test_aparecio_manual_suma_stock_y_no_pasa_de_lo_pendiente(self):
+        faltante = self._faltante_no_encontrado()
+        url = f"{BASE_URL}/items/{faltante.id}/aparecio/"
+
+        response = self.admin_client.post(url, {"subdivision_id": self.sub_b.id, "cantidad": 12}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+        response = self.admin_client.post(url, {"subdivision_id": self.sub_b.id, "cantidad": 5}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["item"]["faltante_pendiente"], 6)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 5)
+        self.assertEqual(response.data["item"]["faltante_recuperaciones"][0]["origen"], "manual")
+
+        response = self.admin_client.post(url, {"subdivision_id": self.sub_a.id, "cantidad": 6}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._faltantes(), [])
+        self.assertEqual(self._stock(), 11)
+
+        response = self.admin_client.post(url, {"subdivision_id": self.sub_a.id, "cantidad": 1}, format="json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_aparecio_en_otra_sucursal_se_rechaza(self):
+        faltante = self._faltante_no_encontrado()
+        otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
+        bodega = Bodega.objects.create(sucursal=otra, nombre="Sur")
+        division = Division.objects.create(tipo_division=self.division.tipo_division, bodega=bodega, nombre="X")
+        sub = SubDivision.objects.create(division=division, nombre="1")
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{faltante.id}/aparecio/", {"subdivision_id": sub.id, "cantidad": 1}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self._stock(), 0)

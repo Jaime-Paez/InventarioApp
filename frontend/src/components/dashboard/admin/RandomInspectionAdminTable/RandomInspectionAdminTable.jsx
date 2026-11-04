@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, PackageCheck, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
 import { Paginator } from 'primereact/paginator'
 import { Toast } from 'primereact/toast'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -12,6 +12,7 @@ import '../../movimientos/CreateSalida.css'
 import './RandomInspectionAdminTable.css'
 import InspectionCoverageMap from './InspectionCoverageMap'
 import RecountWarningDialog from './RecountWarningDialog'
+import FaltanteAparecioDialog from './FaltanteAparecioDialog'
 import CascadeDropdown from '../../common/CascadeDropdown'
 import BlockerNotice from '../../common/BlockerNotice'
 
@@ -101,6 +102,8 @@ function RandomInspectionAdminTable({
   const [itemsRows, setItemsRows] = useState([])
   const [itemsLoading, setItemsLoading] = useState(false)
   const [itemsFilter, setItemsFilter] = useState('pendiente')
+  // Faltante abierto al que se le registra "Aparecio".
+  const [aparecioItem, setAparecioItem] = useState(null)
   const [itemsPage, setItemsPage] = useState(1)
   const [itemsPageSize, setItemsPageSize] = useState(20)
   const [itemsTotalCount, setItemsTotalCount] = useState(0)
@@ -1458,6 +1461,11 @@ function RandomInspectionAdminTable({
       if (alreadyVerified) {
         notifySuccess('Este producto ya lo verifico otro administrador; se pasa al siguiente.')
       }
+      // Unidades de mas que cierran faltantes abiertos de revisiones anteriores.
+      const recuperados = Array.isArray(payload?.recupera_faltantes) ? payload.recupera_faltantes : []
+      if (recuperados.length) {
+        notifySuccess(`Cierra faltante de ${recuperados.map((entry) => `la inspección #${entry.inspeccion_id} (${entry.cantidad})`).join(', ')}.`)
+      }
       const nextDecisions = {
         ...verifyWizardDecisions,
         [itemId]: alreadyVerified
@@ -1657,6 +1665,25 @@ function RandomInspectionAdminTable({
         onResolve={(choice) => { recountConfirm?.resolve(choice); setRecountConfirm(null) }}
       />
 
+      {aparecioItem && (
+        <FaltanteAparecioDialog
+          item={aparecioItem}
+          token={token}
+          onClose={() => setAparecioItem(null)}
+          onSaved={(updated, cantidad) => {
+            setAparecioItem(null)
+            const pendiente = Number(updated?.faltante_pendiente || 0)
+            notifySuccess(
+              pendiente > 0
+                ? `Se sumaron ${cantidad} al stock; siguen faltando ${pendiente}.`
+                : `Se sumaron ${cantidad} al stock; el faltante quedó cerrado.`
+            )
+            void loadItems({ silent: true })
+            void loadSummary({ silent: true })
+          }}
+        />
+      )}
+
       <div className="inspection-admin__body">
       <div className="inspection-admin__block">
         <div className="inspection-admin__block-head">
@@ -1767,6 +1794,9 @@ function RandomInspectionAdminTable({
             <option value="pendiente">Pendientes</option>
             <option value="diferencias">Con diferencia</option>
             <option value="verificado">Verificadas</option>
+            <option value="faltantes">
+              {`Faltantes abiertos${Number(selectedBranch?.faltantes_abiertos || 0) > 0 ? ` (${Number(selectedBranch.faltantes_abiertos)})` : ''}`}
+            </option>
             <option value="todos">Todas</option>
           </select>
           </div>
@@ -1818,6 +1848,23 @@ function RandomInspectionAdminTable({
                             {row?.reubicado_a ? `No encontrado · reubicado a ${row.reubicado_a}` : 'No encontrado'}
                           </span>
                         )}
+                        {Number(row?.cantidad_faltante || 0) > 0 && (
+                          Number(row?.faltante_pendiente || 0) > 0 ? (
+                            <span className="inspection-admin__notfound-tag inspection-admin__shortfall-tag">
+                              {`Faltan ${row.faltante_pendiente} de ${row.cantidad_faltante}`}
+                              {Number(row?.faltante_recuperado || 0) > 0 ? ` · aparecieron ${row.faltante_recuperado}` : ''}
+                            </span>
+                          ) : (
+                            <span className="inspection-admin__notfound-tag inspection-admin__recovered-tag">
+                              {`Faltante cerrado: aparecieron las ${row.cantidad_faltante}`}
+                            </span>
+                          )
+                        )}
+                        {Array.isArray(row?.recupera_faltantes) && row.recupera_faltantes.map((entry) => (
+                          <span key={`recupera-${entry?.item_id}`} className="inspection-admin__notfound-tag inspection-admin__recovered-tag">
+                            {`Cierra ${entry?.cantidad ?? 0} del faltante de la inspección #${entry?.inspeccion_id ?? '-'}`}
+                          </span>
+                        ))}
                       </div>
                     </td>
                     <td>{Number.parseInt(String(row?.cantidad_esperada || 0), 10) || 0}</td>
@@ -1835,6 +1882,15 @@ function RandomInspectionAdminTable({
                         >
                           <Wrench size={13} />
                           Revisar
+                        </button>
+                      ) : canUpdate && Number(row?.faltante_pendiente || 0) > 0 ? (
+                        <button
+                          type="button"
+                          className="inspection-admin__action"
+                          onClick={() => setAparecioItem(row)}
+                        >
+                          <PackageCheck size={13} />
+                          Apareció
                         </button>
                       ) : (
                         <span className="inspection-admin__action-placeholder">Sin accion</span>
@@ -2076,7 +2132,7 @@ function RandomInspectionAdminTable({
                       {item?.no_encontrado && !decision && (
                         <div className="inspection-admin__relocate">
                           <strong>El revisor no lo encontró</strong>
-                          <p>Si sabes dónde está, elige su nueva ubicación: se mueve ahí todo su stock y el total no cambia. Si de verdad no está, ajusta la cantidad abajo.</p>
+                          <p>Si sabes dónde está, elige su nueva ubicación: se mueve ahí todo su stock y el total no cambia. Si de verdad no está, ajusta la cantidad abajo: lo que falte queda como faltante abierto (en "Faltantes abiertos") hasta que aparezca.</p>
                           <div className="inspection-admin__relocate-row">
                             {(() => {
                               // Bodega -> Division -> Subdivision con buscador (como en el resto).

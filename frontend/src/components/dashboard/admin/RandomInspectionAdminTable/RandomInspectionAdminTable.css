@@ -1743,3 +1743,71 @@ body.app-theme-dark .recount-warning__table td {
   line-height: 1.35;
   opacity: 0.8;
 }
+
+/* Faltante abierto: "Faltan X de Y" en la lista y dialogo "Aparecio" */
+.inspection-admin__shortfall-tag {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.inspection-admin__recovered-tag {
+  background: rgba(34, 197, 94, 0.14);
+  color: #166534;
+}
+
+body.app-theme-dark .inspection-admin__shortfall-tag {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fca5a5;
+}
+
+body.app-theme-dark .inspection-admin__recovered-tag {
+  background: rgba(74, 222, 128, 0.14);
+  color: #86efac;
+}
+
+.inspection-admin__row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inspection-admin__aparecio {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.inspection-admin__aparecio-history {
+  margin: 0;
+  padding: 8px 10px 8px 26px;
+  border-radius: 8px;
+  background: rgba(34, 197, 94, 0.08);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.inspection-admin__aparecio-qty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-size-sm, 13px);
+}
+
+.inspection-admin__aparecio-qty input {
+  height: 36px;
+  max-width: 160px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+body.app-theme-dark .inspection-admin__aparecio-qty input {
+  border-color: var(--color-border-dark);
+  background: var(--table-color-search-dark);
+  color: var(--color-text-title-dark);
+}
+
+.inspection-admin__aparecio-error {
+  color: #dc2626;
+  font-size: var(--font-size-sm, 13px);
+}
