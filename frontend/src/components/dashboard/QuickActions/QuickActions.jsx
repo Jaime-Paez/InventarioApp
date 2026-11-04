@@ -5069,7 +5069,7 @@ function QuickActions({
       setRandomInspectionAdd((prev) => ({
         ...prev,
         error: '',
-        mover: { paso: 'elegir', modo: '', llevar: {}, conteo: {}, error: '' },
+        mover: { paso: 'aviso', modo: '', llevar: {}, conteo: {}, error: '' },
       }))
       return
     }
@@ -6963,74 +6963,20 @@ function QuickActions({
                                     aria-label="Producto con otras ubicaciones"
                                     onMouseDown={(event) => event.stopPropagation()}
                                   >
-                                    {mover.paso === 'elegir' ? (
+                                    {mover.paso === 'aviso' ? (
                                       <>
+                                        {/* 1. Solo la advertencia: que pasa y que viene. */}
                                         <div className="quick-actions__inspection-move-warning">
                                           <i className="pi pi-exclamation-triangle" aria-hidden="true" />
                                           <div>
-                                            <strong>¿Estás seguro?</strong>
-                                            <p>{`${codigo} ya tiene cantidades en:`}</p>
+                                            <strong>{`${codigo} ya está en otra ubicación`}</strong>
+                                            <p>{`Encontraste ${found} aquí, en ${here.label}, pero en el sistema también está en:`}</p>
                                             <ul>
                                               {others.map((location) => <li key={idOf(location)}>{location.label}</li>)}
                                             </ul>
-                                            <p>{`Encontraste ${found} aquí, en ${here.label}. ¿Qué haces con ellas?`}</p>
+                                            <p>Antes de agregarlo decide qué hacer con lo que encontraste y luego vuelve a contarlo en todas sus ubicaciones.</p>
                                           </div>
                                         </div>
-
-                                        <label className={`quick-actions__inspection-move-option${mover.modo === 'llevar' ? ' is-active' : ''}`}>
-                                          <input
-                                            type="radio"
-                                            name="inspection-move-mode"
-                                            checked={mover.modo === 'llevar'}
-                                            onChange={() => setMover({ modo: 'llevar' })}
-                                            disabled={busy}
-                                          />
-                                          <span>
-                                            <strong>Llevarlas a su ubicación</strong>
-                                            <small>Escribe cuántas de las que encontraste llevas a cada ubicación.</small>
-                                          </span>
-                                        </label>
-                                        {mover.modo === 'llevar' && (
-                                          <div className="quick-actions__inspection-move-list">
-                                            {others.map((location) => (
-                                              <label key={idOf(location)} className="quick-actions__inspection-move-line">
-                                                <span>{location.label}</span>
-                                                <input
-                                                  type="text"
-                                                  inputMode="numeric"
-                                                  className="quick-actions__inspection-add-qty"
-                                                  value={mover.llevar?.[idOf(location)] ?? ''}
-                                                  onChange={(event) => setMover({
-                                                    llevar: { ...(mover.llevar || {}), [idOf(location)]: normalizeQuantityInputString(event.target.value) },
-                                                  })}
-                                                  placeholder="0"
-                                                  aria-label={`Cuántas llevas a ${location.label}`}
-                                                  disabled={busy}
-                                                />
-                                              </label>
-                                            ))}
-                                            <small className={llevadas > found ? 'is-error' : undefined}>
-                                              {llevadas > found
-                                                ? `Solo encontraste ${found}: no puedes llevar ${llevadas}.`
-                                                : `Se quedan aquí: ${found - llevadas}`}
-                                            </small>
-                                          </div>
-                                        )}
-
-                                        <label className={`quick-actions__inspection-move-option${mover.modo === 'traer' ? ' is-active' : ''}`}>
-                                          <input
-                                            type="radio"
-                                            name="inspection-move-mode"
-                                            checked={mover.modo === 'traer'}
-                                            onChange={() => setMover({ modo: 'traer' })}
-                                            disabled={busy}
-                                          />
-                                          <span>
-                                            <strong>Pasar a esta ubicación</strong>
-                                            <small>{`Esta es su nueva ubicación: trae a ${here.label} todas las unidades de las otras ubicaciones.`}</small>
-                                          </span>
-                                        </label>
-
                                         <div className="quick-actions__inspection-move-actions">
                                           <button
                                             type="button"
@@ -7039,6 +6985,92 @@ function QuickActions({
                                             disabled={busy}
                                           >
                                             Cancelar
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
+                                            onClick={() => setMover({ paso: 'elegir' })}
+                                            disabled={busy}
+                                            autoFocus
+                                          >
+                                            Continuar
+                                          </button>
+                                        </div>
+                                      </>
+                                    ) : mover.paso === 'elegir' ? (
+                                      <>
+                                        <div className="quick-actions__inspection-move-head">
+                                          <strong>{`¿Qué haces con las ${found} que encontraste?`}</strong>
+                                          <small>Elige una opción.</small>
+                                        </div>
+                                        {/* 2. Las dos opciones lado a lado; cada una es un solo boton. */}
+                                        <div className="quick-actions__inspection-move-options" role="radiogroup" aria-label="Qué hacer con lo encontrado">
+                                          <div
+                                            role="radio"
+                                            tabIndex={0}
+                                            aria-checked={mover.modo === 'llevar'}
+                                            className={`quick-actions__inspection-move-option${mover.modo === 'llevar' ? ' is-active' : ''}`}
+                                            onClick={() => { if (!busy && mover.modo !== 'llevar') setMover({ modo: 'llevar' }) }}
+                                            onKeyDown={(event) => {
+                                              if (event.target !== event.currentTarget) return
+                                              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setMover({ modo: 'llevar' }) }
+                                            }}
+                                          >
+                                            <strong>Llevarlas a su ubicación</strong>
+                                            <small>Escribe cuántas llevas a cada ubicación.</small>
+                                            <div className="quick-actions__inspection-move-list">
+                                              {others.map((location) => (
+                                                <label key={idOf(location)} className="quick-actions__inspection-move-line">
+                                                  <span>{location.label}</span>
+                                                  <input
+                                                    type="text"
+                                                    inputMode="numeric"
+                                                    className="quick-actions__inspection-add-qty"
+                                                    value={mover.llevar?.[idOf(location)] ?? ''}
+                                                    onFocus={() => { if (mover.modo !== 'llevar') setMover({ modo: 'llevar' }) }}
+                                                    onChange={(event) => setMover({
+                                                      modo: 'llevar',
+                                                      llevar: { ...(mover.llevar || {}), [idOf(location)]: normalizeQuantityInputString(event.target.value) },
+                                                    })}
+                                                    placeholder="0"
+                                                    aria-label={`Cuántas llevas a ${location.label}`}
+                                                    disabled={busy}
+                                                  />
+                                                </label>
+                                              ))}
+                                              <small className={llevadas > found ? 'is-error' : undefined}>
+                                                {llevadas > found
+                                                  ? `Solo encontraste ${found}: no puedes llevar ${llevadas}.`
+                                                  : `Se quedan aquí: ${found - llevadas}`}
+                                              </small>
+                                            </div>
+                                          </div>
+                                          <div
+                                            role="radio"
+                                            tabIndex={0}
+                                            aria-checked={mover.modo === 'traer'}
+                                            className={`quick-actions__inspection-move-option${mover.modo === 'traer' ? ' is-active' : ''}`}
+                                            onClick={() => { if (!busy) setMover({ modo: 'traer' }) }}
+                                            onKeyDown={(event) => {
+                                              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setMover({ modo: 'traer' }) }
+                                            }}
+                                          >
+                                            <strong>Pasar a esta ubicación</strong>
+                                            <small>{`Esta es su nueva ubicación: trae a ${here.label} todas las unidades de:`}</small>
+                                            <ul>
+                                              {others.map((location) => <li key={idOf(location)}>{location.label}</li>)}
+                                            </ul>
+                                          </div>
+                                        </div>
+
+                                        <div className="quick-actions__inspection-move-actions">
+                                          <button
+                                            type="button"
+                                            className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                                            onClick={() => setMover({ paso: 'aviso' })}
+                                            disabled={busy}
+                                          >
+                                            Atrás
                                           </button>
                                           <button
                                             type="button"
