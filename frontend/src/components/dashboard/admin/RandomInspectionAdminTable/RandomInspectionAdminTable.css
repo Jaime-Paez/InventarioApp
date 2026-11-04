@@ -412,16 +412,25 @@
 /* Enviar revision / Configuracion: hora, "Enviar ahora mismo" y cantidad en
    una sola fila, con campos normales (como el resto de formularios). */
 .inspection-admin__send-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
   gap: 12px 16px;
   margin-bottom: 16px;
 }
 
+@media (max-width: 560px) {
+  .inspection-admin__send-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .inspection-admin__send-qty-col {
+    grid-column: 1 / -1;
+  }
+}
+
 .inspection-admin__send-clock-col,
 .inspection-admin__send-qty-col {
-  flex: 1 1 200px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2116,4 +2125,17 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
 .inspection-admin__aparecio-error {
   color: #dc2626;
   font-size: var(--font-size-sm, 13px);
+}
+
+/* Pestanas (Aleatorio / Division / Lista) del modal: ancho fijo y las tres
+   iguales. Con el ancho comun (100% - 400px) no cabian y cada una tomaba el
+   ancho de su texto, asi que la activa (en negrita) cambiaba de tamano. */
+.inspection-admin__dialog .create-user__tabs {
+  width: min(560px, calc(100% - 32px));
+}
+
+.inspection-admin__dialog .create-user__tab {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
 }
