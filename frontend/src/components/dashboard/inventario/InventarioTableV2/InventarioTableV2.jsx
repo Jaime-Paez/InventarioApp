@@ -283,15 +283,28 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     addIfPresent('codigo', criteria?.codigo)
     addIfPresent('nombre', criteria?.nombre)
     addIfPresent('oem', criteria?.oem)
+    addIfPresent('referencia', criteria?.referencia)
     addIfPresent('descripcion', criteria?.descripcion)
     addIfPresent('casa_comercial', criteria?.casa_comercial)
+    addIfPresent('precio_min', criteria?.precio_min)
+    addIfPresent('precio_max', criteria?.precio_max)
     if (canSeeCost) {
-      addIfPresent('costo_minimo', criteria?.costo_minimo)
+      addIfPresent('costo_min', criteria?.costo_min)
+      addIfPresent('costo_max', criteria?.costo_max)
+      if (criteria?.sin_costo) params.set('sin_costo', '1')
     }
-    addIfPresent('precio', criteria?.precio)
-    addIfPresent('fecha_creacion', criteria?.fecha_creacion)
+    addIfPresent('fecha_desde', criteria?.fecha_desde)
+    addIfPresent('fecha_hasta', criteria?.fecha_hasta)
+    addIfPresent('stock', criteria?.stock)
     addIfPresent('cantidad_min', criteria?.cantidad_min)
     addIfPresent('cantidad_max', criteria?.cantidad_max)
+    if (criteria?.restock_bodega) {
+      params.set('restock_bodega', '1')
+      addIfPresent('restock_sucursal', criteria?.restock_sucursal)
+    }
+    if (criteria?.sin_precio) params.set('sin_precio', '1')
+    if (criteria?.sin_casa) params.set('sin_casa', '1')
+    if (criteria?.sin_oem) params.set('sin_oem', '1')
 
     const hasExplicitGlobalSearch = Object.prototype.hasOwnProperty.call(options || {}, 'globalSearchValue')
     const globalSearch = hasExplicitGlobalSearch
@@ -631,13 +644,24 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     codigo: '',
     nombre: '',
     oem: '',
+    referencia: '',
     descripcion: '',
     casa_comercial: '',
-    costo_minimo: '',
-    precio: '',
-    fecha_creacion: '',
+    precio_min: '',
+    precio_max: '',
+    costo_min: '',
+    costo_max: '',
+    fecha_desde: '',
+    fecha_hasta: '',
+    stock: '',
     cantidad_min: '',
     cantidad_max: '',
+    restock_bodega: false,
+    restock_sucursal: '',
+    sin_precio: false,
+    sin_costo: false,
+    sin_casa: false,
+    sin_oem: false,
   }
 
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
@@ -2145,6 +2169,17 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     handleSelectAllRows()
   }, [handleSelectAllRows, totalRecords])
   const hasSearched = Boolean(lastSearchRef.current)
+  // Filtros de la Busqueda avanzada aplicados ahora (para el contador del
+  // boton Buscar: al cerrar el modal no se ven y es facil olvidarlos).
+  const activeSearchFilterCount = Object.entries(lastSearchRef.current || {}).filter(([key, value]) => {
+    if (key === 'restock_sucursal') return false
+    if (!canSeeCost && (key === 'costo_min' || key === 'costo_max' || key === 'sin_costo')) return false
+    return typeof value === 'boolean' ? value : String(value ?? '').trim() !== ''
+  }).length
+  // Sucursales donde el usuario ve ubicaciones (el ojo rojo solo existe ahi).
+  const restockBranches = permittedBranchIds
+    ? branches.filter((branch) => permittedBranchIds.has(String(branch.id)))
+    : branches
 
   useLayoutEffect(() => {
     if (!showBulkSelectConfirm) return
@@ -2232,7 +2267,13 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           {canCreate && (
             <Button label="Crear" icon="pi pi-plus" className="users-topbtn users-topbtn--create" onClick={() => setShowCreateModal(true)} type="button" />
           )}
-          <Button label="Buscar" icon="pi pi-search" className="users-topbtn users-topbtn--search" onClick={focusSearch} type="button" />
+          <Button
+            label={activeSearchFilterCount ? `Buscar (${activeSearchFilterCount} ${activeSearchFilterCount === 1 ? 'filtro' : 'filtros'})` : 'Buscar'}
+            icon="pi pi-search"
+            className="users-topbtn users-topbtn--search"
+            onClick={focusSearch}
+            type="button"
+          />
         </div>
       </div>
 
@@ -2827,13 +2868,10 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             </header>
 
             <form className="create-user__form" onSubmit={handleSearchSubmit}>
-              <div className="create-user__body">
+              <div className="create-user__body inv-search">
                 <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <p className="create-user__eyebrow">Filtros</p>
-                      <h4>Búsqueda avanzada</h4>
-                    </div>
+                  <div className="inv-search__heading">
+                    <h4>Producto</h4>
                   </div>
 
                   <div className="create-user__grid create-user__grid--two">
@@ -2843,13 +2881,18 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                     </label>
 
                     <label className="create-user__field">
+                      <span>Descripción</span>
+                      <input name="nombre" type="text" placeholder="Ej: Filtro de aire" value={searchCriteria.nombre} onChange={handleSearchInputChange} />
+                    </label>
+
+                    <label className="create-user__field">
                       <span>OEM</span>
                       <input name="oem" type="text" placeholder="Ej: 1234-ABC" value={searchCriteria.oem} onChange={handleSearchInputChange} />
                     </label>
 
                     <label className="create-user__field">
-                      <span>Descripción</span>
-                      <input name="nombre" type="text" placeholder="Ej: Filtro de aire" value={searchCriteria.nombre} onChange={handleSearchInputChange} />
+                      <span>Referencia</span>
+                      <input name="referencia" type="text" placeholder="Ej: W712/75" value={searchCriteria.referencia} onChange={handleSearchInputChange} />
                     </label>
 
                     <label className="create-user__field">
@@ -2916,105 +2959,202 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                       </div>
                     </label>
 
-                    {canSeeCost && (
-                      <label className="create-user__field">
-                        <span>Costo minimo</span>
-                        <MoneyInput
-                          name="costo_minimo"
-                          placeholder="Ej: $10.50"
-                          value={searchCriteria.costo_minimo === '' || searchCriteria.costo_minimo == null ? null : Number(searchCriteria.costo_minimo)}
-                          onValueChange={(amount) => handleSearchInputChange({ target: { name: 'costo_minimo', value: amount == null ? '' : amount.toFixed(2) } })}
-                        />
-                      </label>
-                    )}
-
                     <label className="create-user__field">
-                      <span>Precio sugerido</span>
-                      <MoneyInput
-                        name="precio"
-                        placeholder="Ej: $60.00"
-                        value={searchCriteria.precio === '' || searchCriteria.precio == null ? null : Number(searchCriteria.precio)}
-                        onValueChange={(amount) => handleSearchInputChange({ target: { name: 'precio', value: amount == null ? '' : amount.toFixed(2) } })}
-                      />
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Fecha de creación</span>
-                      <input name="fecha_creacion" type="text" placeholder="Ej: 08/12/2025" value={searchCriteria.fecha_creacion} onChange={handleSearchInputChange} />
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Cantidad minima</span>
-                      <input
-                        name="cantidad_min"
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={searchCriteria.cantidad_min}
-                        onChange={handleSearchInputChange}
-                      />
-                    </label>
-
-                    <label className="create-user__field">
-                      <span>Cantidad maxima</span>
-                      <input
-                        name="cantidad_max"
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={searchCriteria.cantidad_max}
-                        onChange={handleSearchInputChange}
-                      />
-                    </label>
-
-                    <label className="create-user__field create-user__field--full">
                       <span>Nota</span>
                       <input name="descripcion" type="text" placeholder="Ej: Repuesto original" value={searchCriteria.descripcion} onChange={handleSearchInputChange} />
                     </label>
                   </div>
                 </section>
 
+                <section className="create-user__section">
+                  <div className="inv-search__heading">
+                    <h4>Stock</h4>
+                  </div>
+
+                  <div className="inv-search__segmented" role="radiogroup" aria-label="Stock">
+                    {[
+                      { value: '', label: 'Todos' },
+                      { value: 'con', label: 'Con stock' },
+                      { value: 'sin', label: 'Sin stock' },
+                    ].map((option) => (
+                      <button
+                        key={`stock-${option.value || 'todos'}`}
+                        type="button"
+                        role="radio"
+                        aria-checked={searchCriteria.stock === option.value}
+                        className={`inv-search__segment${searchCriteria.stock === option.value ? ' is-active' : ''}`}
+                        onClick={() => setSearchCriteria((prev) => ({ ...prev, stock: option.value }))}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Cantidad total desde</span>
+                      <input name="cantidad_min" type="number" min="0" step="1" placeholder="Ej: 1" value={searchCriteria.cantidad_min} onChange={handleSearchInputChange} />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Cantidad total hasta</span>
+                      <input name="cantidad_max" type="number" min="0" step="1" placeholder="Ej: 10" value={searchCriteria.cantidad_max} onChange={handleSearchInputChange} />
+                    </label>
+                  </div>
+
+                  <div className={`inv-search__restock${searchCriteria.restock_bodega ? ' is-active' : ''}`}>
+                    <label className="inv-search__restock-toggle">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(searchCriteria.restock_bodega)}
+                        onChange={(event) => {
+                          const checked = event.target.checked
+                          setSearchCriteria((prev) => ({ ...prev, restock_bodega: checked, restock_sucursal: checked ? prev.restock_sucursal : '' }))
+                        }}
+                      />
+                      <span className="inv-search__restock-eye" aria-hidden="true"><i className="pi pi-eye" /></span>
+                      <span className="inv-search__restock-text">
+                        <strong>Restock bodega</strong>
+                        <small>Solo los productos con el ojo rojo en la tabla: a su ubicación principal le queda 1 o menos y hay más ubicaciones en la sucursal.</small>
+                      </span>
+                    </label>
+                    {searchCriteria.restock_bodega && restockBranches.length > 1 && (
+                      <label className="create-user__field inv-search__restock-branch">
+                        <span>Sucursal</span>
+                        <select name="restock_sucursal" value={searchCriteria.restock_sucursal} onChange={handleSearchInputChange}>
+                          <option value="">Todas mis sucursales</option>
+                          {restockBranches.map((branch) => (
+                            <option key={`restock-branch-${branch.id}`} value={String(branch.id)}>{branch.nombre}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="inv-search__heading">
+                    <h4>{canSeeCost ? 'Precio y costo' : 'Precio'}</h4>
+                  </div>
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Precio desde</span>
+                      <MoneyInput
+                        name="precio_min"
+                        placeholder="Ej: $10.00"
+                        value={searchCriteria.precio_min === '' ? null : Number(searchCriteria.precio_min)}
+                        onValueChange={(amount) => setSearchCriteria((prev) => ({ ...prev, precio_min: amount == null ? '' : amount.toFixed(2) }))}
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Precio hasta</span>
+                      <MoneyInput
+                        name="precio_max"
+                        placeholder="Ej: $60.00"
+                        value={searchCriteria.precio_max === '' ? null : Number(searchCriteria.precio_max)}
+                        onValueChange={(amount) => setSearchCriteria((prev) => ({ ...prev, precio_max: amount == null ? '' : amount.toFixed(2) }))}
+                      />
+                    </label>
+                    {canSeeCost && (
+                      <>
+                        <label className="create-user__field">
+                          <span>Costo desde</span>
+                          <MoneyInput
+                            name="costo_min"
+                            placeholder="Ej: $5.00"
+                            value={searchCriteria.costo_min === '' ? null : Number(searchCriteria.costo_min)}
+                            onValueChange={(amount) => setSearchCriteria((prev) => ({ ...prev, costo_min: amount == null ? '' : amount.toFixed(2) }))}
+                          />
+                        </label>
+                        <label className="create-user__field">
+                          <span>Costo hasta</span>
+                          <MoneyInput
+                            name="costo_max"
+                            placeholder="Ej: $30.00"
+                            value={searchCriteria.costo_max === '' ? null : Number(searchCriteria.costo_max)}
+                            onValueChange={(amount) => setSearchCriteria((prev) => ({ ...prev, costo_max: amount == null ? '' : amount.toFixed(2) }))}
+                          />
+                        </label>
+                      </>
+                    )}
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="inv-search__heading">
+                    <h4>Fecha de creación</h4>
+                  </div>
+                  <div className="create-user__grid create-user__grid--two">
+                    <label className="create-user__field">
+                      <span>Desde</span>
+                      <input name="fecha_desde" type="date" value={searchCriteria.fecha_desde} max={searchCriteria.fecha_hasta || undefined} onChange={handleSearchInputChange} />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Hasta</span>
+                      <input name="fecha_hasta" type="date" value={searchCriteria.fecha_hasta} min={searchCriteria.fecha_desde || undefined} onChange={handleSearchInputChange} />
+                    </label>
+                  </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="inv-search__heading">
+                    <h4>Datos incompletos</h4>
+                    <small>Para encontrar productos que falta completar en el catálogo.</small>
+                  </div>
+                  <div className="inv-search__chips">
+                    {[
+                      { name: 'sin_precio', label: 'Sin precio' },
+                      ...(canSeeCost ? [{ name: 'sin_costo', label: 'Sin costo' }] : []),
+                      { name: 'sin_casa', label: 'Sin casa comercial' },
+                      { name: 'sin_oem', label: 'Sin OEM' },
+                    ].map((chip) => (
+                      <button
+                        key={chip.name}
+                        type="button"
+                        aria-pressed={Boolean(searchCriteria[chip.name])}
+                        className={`inv-search__chip${searchCriteria[chip.name] ? ' is-active' : ''}`}
+                        onClick={() => setSearchCriteria((prev) => ({ ...prev, [chip.name]: !prev[chip.name] }))}
+                      >
+                        {searchCriteria[chip.name] && <i className="pi pi-check" aria-hidden="true" />}
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
                 {branches.length > 0 && (
                   <section className="create-user__section">
-                    <div className="create-user__section-header">
-                      <div>
-                        <p className="create-user__eyebrow">Filtros</p>
-                        <h4>Cantidad por sucursal</h4>
-                      </div>
+                    <div className="inv-search__heading">
+                      <h4>Cantidad por sucursal</h4>
+                      <small>Se combinan: por ejemplo, mínimo en una y máximo en otra muestra solo los productos que cumplen ambas.</small>
                     </div>
-                    <p className="muted">
-                      Puedes combinar varias sucursales: por ejemplo, un mínimo en una y un máximo en otra, y solo se mostrarán los productos que cumplan ambas condiciones a la vez.
-                    </p>
-                    <div className="create-user__grid create-user__grid--three">
+                    <div className="inv-search__branches">
+                      <div className="inv-search__branches-head" aria-hidden="true">
+                        <span>Sucursal</span>
+                        <span>Mínimo</span>
+                        <span>Máximo</span>
+                      </div>
                       {branches.map((branch) => (
-                        <React.Fragment key={`branch-qty-filter-${branch.id}`}>
-                          <div className="create-user__field">
-                            <span>Sucursal</span>
-                            <strong style={{ display: 'block', paddingTop: 4 }}>{branch.nombre}</strong>
-                          </div>
-                          <label className="create-user__field">
-                            <span>Mínimo</span>
-                            <input
-                              name={`sucursal_min_${branch.id}`}
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={searchCriteria[`sucursal_min_${branch.id}`] || ''}
-                              onChange={handleSearchInputChange}
-                            />
-                          </label>
-                          <label className="create-user__field">
-                            <span>Máximo</span>
-                            <input
-                              name={`sucursal_max_${branch.id}`}
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={searchCriteria[`sucursal_max_${branch.id}`] || ''}
-                              onChange={handleSearchInputChange}
-                            />
-                          </label>
-                        </React.Fragment>
+                        <div key={`branch-qty-filter-${branch.id}`} className="inv-search__branch-row">
+                          <strong>{branch.nombre}</strong>
+                          <input
+                            name={`sucursal_min_${branch.id}`}
+                            type="number"
+                            min="0"
+                            step="1"
+                            aria-label={`Mínimo en ${branch.nombre}`}
+                            value={searchCriteria[`sucursal_min_${branch.id}`] || ''}
+                            onChange={handleSearchInputChange}
+                          />
+                          <input
+                            name={`sucursal_max_${branch.id}`}
+                            type="number"
+                            min="0"
+                            step="1"
+                            aria-label={`Máximo en ${branch.nombre}`}
+                            value={searchCriteria[`sucursal_max_${branch.id}`] || ''}
+                            onChange={handleSearchInputChange}
+                          />
+                        </div>
                       ))}
                     </div>
                   </section>

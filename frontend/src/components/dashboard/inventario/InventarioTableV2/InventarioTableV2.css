@@ -512,3 +512,272 @@
 .dashboard-shell.dark .inventario-v2__in-transit--importacion {
   color: #fbbf24;
 }
+
+/* ---------- Busqueda avanzada ---------- */
+.inv-search .create-user__section {
+  gap: 10px;
+}
+
+.inv-search__heading {
+  display: grid;
+  gap: 2px;
+}
+
+.inv-search__heading h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.inv-search__heading small {
+  color: var(--color-text-primary);
+  opacity: 0.65;
+  font-size: 0.82rem;
+}
+
+.dashboard-shell.dark .inv-search__heading small {
+  color: var(--color-text-dark);
+}
+
+/* Todos / Con stock / Sin stock */
+.inv-search__segmented {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.inv-search__segment {
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.inv-search__segment:hover:not(.is-active) {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.inv-search__segment.is-active {
+  background: var(--color-primary-dark);
+  color: #fff;
+}
+
+.dashboard-shell.dark .inv-search__segmented {
+  background: var(--color-surface-darker);
+}
+
+.dashboard-shell.dark .inv-search__segment {
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .inv-search__segment.is-active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* Restock bodega: mismo rojo que el ojo de la tabla */
+.inv-search__restock {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.inv-search__restock.is-active {
+  border-color: color-mix(in srgb, #dc2626 45%, var(--color-border));
+  background: color-mix(in srgb, #dc2626 6%, var(--color-surface));
+}
+
+.inv-search__restock-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.inv-search__restock-toggle input {
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  accent-color: #dc2626;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.inv-search__restock-eye {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, #dc2626 45%, var(--color-border));
+  background: color-mix(in srgb, #dc2626 12%, var(--color-surface));
+  color: #dc2626;
+  font-size: 0.8rem;
+}
+
+.inv-search__restock-text {
+  display: grid;
+  gap: 2px;
+}
+
+.inv-search__restock-text strong {
+  font-size: 0.92rem;
+}
+
+.inv-search__restock-text small {
+  opacity: 0.7;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.inv-search__restock-branch {
+  max-width: 320px;
+  margin-left: 26px;
+}
+
+.dashboard-shell.dark .inv-search__restock {
+  background: var(--color-surface-darker);
+}
+
+.dashboard-shell.dark .inv-search__restock.is-active {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.dashboard-shell.dark .inv-search__restock-eye {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(248, 113, 113, 0.18);
+  color: #fca5a5;
+}
+
+.dashboard-shell.dark .inv-search__restock-text {
+  color: var(--color-text-dark);
+}
+
+/* Datos incompletos */
+.inv-search__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inv-search__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.inv-search__chip .pi {
+  font-size: 0.72rem;
+}
+
+.inv-search__chip:hover:not(.is-active) {
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+}
+
+.inv-search__chip.is-active {
+  border-color: var(--color-primary-dark);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+}
+
+.dashboard-shell.dark .inv-search__chip {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .inv-search__chip.is-active {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 28%, var(--color-surface-darker));
+}
+
+/* Cantidad por sucursal: una fila por sucursal */
+.inv-search__branches {
+  display: grid;
+  gap: 6px;
+}
+
+.inv-search__branches-head,
+.inv-search__branch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.inv-search__branches-head span {
+  font-size: 0.8rem;
+  font-weight: 700;
+  opacity: 0.6;
+}
+
+.inv-search__branch-row strong {
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inv-search__branch-row input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  font: inherit;
+  color: var(--color-text-primary);
+  background: #fff;
+}
+
+.dashboard-shell.dark .inv-search__branches-head,
+.dashboard-shell.dark .inv-search__branch-row strong {
+  color: var(--color-text-dark);
+}
+
+.dashboard-shell.dark .inv-search__branch-row input {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border);
+  color: var(--color-button-primary);
+}
+
+@media (max-width: 640px) {
+  .inv-search__restock-branch {
+    margin-left: 0;
+    max-width: none;
+  }
+
+  .inv-search__branches-head,
+  .inv-search__branch-row {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 6px;
+  }
+}
+
+.inv-search__restock-eye .pi {
+  font-size: 0.85rem;
+  line-height: 1;
+}

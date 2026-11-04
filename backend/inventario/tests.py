@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from app.models import UsuarioPreferencia
@@ -414,6 +415,55 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
 
         sin_rojo = [row["codigo"] for row in self._rows(ordering=f"ubicacion_bajo_sucursal_{branch},ubicacion_sucursal_{branch}")]
         self.assertEqual(set(sin_rojo[-2:]), {"BAJO-PRINC1", "BAJO-OTRA"})
+
+    def test_filtro_restock_bodega_devuelve_solo_los_de_ojo_rojo(self):
+        self._ordenar("BAJO-OTRA", [self.sub_b, self.sub_a])
+        rojos = {row["codigo"] for row in self._rows(restock_bodega="1")}
+        esperados = {
+            row["codigo"] for row in self._rows() if self._ubicacion(row).get("tiene_stock_bajo")
+        }
+        self.assertEqual(rojos, esperados)
+        self.assertEqual(rojos, {"BAJO-PRINC1", "BAJO-OTRA"})
+        # Por sucursal: la propia da lo mismo; una sucursal ajena, nada.
+        self.assertEqual(
+            {row["codigo"] for row in self._rows(restock_bodega="1", restock_sucursal=str(self.sucursal.id))},
+            rojos,
+        )
+        otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
+        self.assertEqual(self._rows(restock_bodega="1", restock_sucursal=str(otra.id)), [])
+        # Junto con el orden de rojos (anotacion compartida) sigue funcionando.
+        branch = self.sucursal.id
+        self.assertEqual(
+            {row["codigo"] for row in self._rows(restock_bodega="1", ordering=f"-ubicacion_bajo_sucursal_{branch}")},
+            rojos,
+        )
+
+    def test_filtros_de_stock_precio_y_datos_incompletos(self):
+        from productos.models import ProductoReferencia
+
+        codigos = {row["codigo"] for row in self._rows()}
+        self.assertNotIn("BAJO-SINSTOCK", {row["codigo"] for row in self._rows(stock="con")})
+        self.assertEqual({row["codigo"] for row in self._rows(stock="sin")}, {"BAJO-SINSTOCK"})
+
+        Producto.objects.filter(codigo="BAJO-CERO").update(precio=Decimal("25.00"), costo_minimo=Decimal("10"))
+        Producto.objects.filter(codigo="BAJO-DOS").update(precio=Decimal("80.00"))
+        self.assertEqual(
+            {row["codigo"] for row in self._rows(precio_min="20", precio_max="50")}, {"BAJO-CERO"}
+        )
+        self.assertEqual(
+            {row["codigo"] for row in self._rows(costo_min="5", costo_max="15")}, {"BAJO-CERO"}
+        )
+        sin_precio = {row["codigo"] for row in self._rows(sin_precio="1")}
+        self.assertEqual(sin_precio, codigos - {"BAJO-CERO", "BAJO-DOS"})
+        self.assertEqual({row["codigo"] for row in self._rows(sin_oem="1")}, codigos)
+        self.assertEqual({row["codigo"] for row in self._rows(sin_casa="1")}, codigos)
+
+        ProductoReferencia.objects.create(producto=self.productos["BAJO-UNA"], valor="REF-XYZ-9")
+        self.assertEqual({row["codigo"] for row in self._rows(referencia="xyz-9")}, {"BAJO-UNA"})
+
+        hoy = timezone.localdate().isoformat()
+        self.assertEqual({row["codigo"] for row in self._rows(fecha_desde=hoy, fecha_hasta=hoy)}, codigos)
+        self.assertEqual(self._rows(fecha_desde="2000-01-01", fecha_hasta="2000-01-02"), [])
 
     def test_orden_rechaza_ubicaciones_de_otra_sucursal(self):
         otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")

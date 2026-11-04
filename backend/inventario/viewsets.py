@@ -749,6 +749,8 @@ class InventarioViewSet(viewsets.ModelViewSet):
             if parsed:
                 product_queryset = product_queryset.filter(creado_en__date=parsed)
 
+        product_queryset = self._apply_advanced_product_filters(product_queryset)
+
         casa_filter = (column_filters or {}).get("casa_comercial_nombre")
         if casa_filter:
             product_queryset = apply_column_filters(
@@ -842,8 +844,217 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         return product_queryset.distinct()
 
+    @staticmethod
+    def _parse_decimal_param(raw):
+        value = str(raw or "").strip()
+        if not value:
+            return None
+        try:
+            return Decimal(value)
+        except (InvalidOperation, ValueError):
+            return None
+
+    @staticmethod
+    def _is_true_param(raw):
+        return str(raw or "").strip().lower() in {"1", "true", "si", "yes"}
+
+    def _apply_advanced_product_filters(self, product_queryset):
+        """Filtros de la Busqueda avanzada de Inventario (nivel producto):
+        referencia, rangos de precio/costo, rango de fecha de creacion y
+        "datos incompletos" (sin precio, sin costo, sin casa, sin OEM)."""
+        from productos.models import ProductoReferencia
+        from usuarios.utils import is_app_admin
+
+        params = self.request.query_params
+        # El costo solo lo ve el administrador: tampoco se puede filtrar por el.
+        can_filter_cost = is_app_admin(self.request.user)
+
+        referencia = (params.get("referencia") or "").strip()
+        if referencia:
+            product_queryset = product_queryset.filter(
+                Q(referencia__unaccent__icontains=referencia)
+                | Q(
+                    id__in=ProductoReferencia.objects.filter(
+                        valor__unaccent__icontains=referencia
+                    ).values("producto_id")
+                )
+            )
+
+        ranges = [("precio_min", "precio__gte"), ("precio_max", "precio__lte")]
+        if can_filter_cost:
+            ranges += [("costo_min", "costo_minimo__gte"), ("costo_max", "costo_minimo__lte")]
+        for param, lookup in ranges:
+            value = self._parse_decimal_param(params.get(param))
+            if value is not None:
+                product_queryset = product_queryset.filter(**{lookup: value})
+
+        fecha_desde = parse_date((params.get("fecha_desde") or "").strip())
+        if fecha_desde:
+            product_queryset = product_queryset.filter(creado_en__date__gte=fecha_desde)
+        fecha_hasta = parse_date((params.get("fecha_hasta") or "").strip())
+        if fecha_hasta:
+            product_queryset = product_queryset.filter(creado_en__date__lte=fecha_hasta)
+
+        if self._is_true_param(params.get("sin_precio")):
+            product_queryset = product_queryset.filter(Q(precio__isnull=True) | Q(precio__lte=0))
+        if can_filter_cost and self._is_true_param(params.get("sin_costo")):
+            product_queryset = product_queryset.filter(
+                Q(costo_minimo__isnull=True) | Q(costo_minimo__lte=0)
+            )
+        if self._is_true_param(params.get("sin_casa")):
+            product_queryset = product_queryset.exclude(
+                id__in=Producto.casas_comerciales.through.objects.values("producto_id")
+            )
+        if self._is_true_param(params.get("sin_oem")):
+            product_queryset = product_queryset.exclude(
+                id__in=OEMProducto.objects.values("producto_id")
+            )
+
+        return product_queryset
+
+    def _restock_product_ids(self, branch_ids):
+        """Productos con el ojo en rojo en alguna de estas sucursales.
+
+        Usa exactamente la misma funcion que arma el ojo de la tabla, pero solo
+        sobre los productos que tienen 2 o mas ubicaciones en una sucursal (sin
+        eso no hay ojo). Hacerlo con anotaciones SQL por sucursal tardaba ~30 s
+        y pasaba el limite de 20 s de las consultas en produccion."""
+        if not branch_ids:
+            return []
+        candidates = (
+            Inventario.objects.filter(subdivision__division__bodega__sucursal_id__in=branch_ids)
+            .values("producto_id", "subdivision__division__bodega__sucursal_id")
+            .annotate(_ubicaciones=Count("subdivision_id", distinct=True))
+            .filter(_ubicaciones__gte=2)
+            .values_list("producto_id", flat=True)
+        )
+        payloads = self._build_branch_location_payloads(set(candidates), branch_ids)
+        return sorted(
+            product_id
+            for product_id, by_branch in payloads.items()
+            if any(payload.get("tiene_stock_bajo") for payload in by_branch.values())
+        )
+
+    def _annotate_low_stock_flag(self, queryset, branch):
+        """Anota ubicacion_bajo_sort_<sucursal> = 1 cuando el producto tiene el
+        ojo en rojo en esa sucursal (misma regla que "tiene_stock_bajo" del
+        payload): varias ubicaciones en la sucursal, alguna con stock, y a la
+        principal (la primera del orden del usuario; si no hay orden, la
+        primera por nombre con stock) le queda poco."""
+        from .models import ProductoUbicacionOrden
+
+        branch_q = Q(inventarios__subdivision__division__bodega__sucursal_id=branch.id)
+        user_principal = Subquery(
+            ProductoUbicacionOrden.objects.filter(
+                producto_id=OuterRef("id"),
+                subdivision__division__bodega__sucursal_id=branch.id,
+            )
+            .filter(
+                Exists(
+                    Inventario.objects.filter(
+                        producto_id=OuterRef("producto_id"),
+                        subdivision_id=OuterRef("subdivision_id"),
+                    )
+                )
+            )
+            .order_by(
+                "orden",
+                Lower("subdivision__division__bodega__nombre"),
+                Lower("subdivision__division__nombre"),
+                Lower("subdivision__nombre"),
+                "subdivision_id",
+            )
+            .values("subdivision_id")[:1],
+            output_field=IntegerField(),
+        )
+        fallback_principal = Subquery(
+            Inventario.objects.filter(
+                producto_id=OuterRef("id"),
+                subdivision__division__bodega__sucursal_id=branch.id,
+            )
+            .values(
+                "subdivision_id",
+                "subdivision__division__bodega__nombre",
+                "subdivision__division__nombre",
+                "subdivision__nombre",
+                "subdivision__division__bodega_id",
+                "subdivision__division_id",
+            )
+            .annotate(_total=Sum("cantidad"))
+            .filter(_total__gt=0)
+            .order_by(
+                Lower("subdivision__division__bodega__nombre"),
+                Lower("subdivision__division__nombre"),
+                Lower("subdivision__nombre"),
+                "subdivision__division__bodega_id",
+                "subdivision__division_id",
+                "subdivision_id",
+            )
+            .values("subdivision_id")[:1],
+            output_field=IntegerField(),
+        )
+        queryset = queryset.annotate(
+            **{f"_ub_princ_{branch.id}": Coalesce(user_principal, fallback_principal)}
+        ).annotate(
+            **{
+                f"_ub_princ_qty_{branch.id}": Coalesce(
+                    Subquery(
+                        Inventario.objects.filter(
+                            producto_id=OuterRef("id"),
+                            subdivision_id=OuterRef(f"_ub_princ_{branch.id}"),
+                        )
+                        .values("producto_id")
+                        .annotate(_total=Sum("cantidad"))
+                        .values("_total")[:1],
+                        output_field=IntegerField(),
+                    ),
+                    Value(0),
+                    output_field=IntegerField(),
+                ),
+                f"_ub_count_{branch.id}": Count(
+                    "inventarios__subdivision", filter=branch_q, distinct=True
+                ),
+                f"_ub_pos_{branch.id}": Count(
+                    "inventarios__id", filter=branch_q & Q(inventarios__cantidad__gt=0)
+                ),
+            }
+        )
+        return queryset.annotate(
+            **{
+                f"_ub_low_{branch.id}": Case(
+                    When(
+                        **{f"_ub_princ_qty_{branch.id}__lte": LOW_STOCK_LOCATION_THRESHOLD},
+                        then=Value(True),
+                    ),
+                    default=Value(False),
+                    output_field=BooleanField(),
+                )
+            }
+        ).annotate(
+            **{
+                f"ubicacion_bajo_sort_{branch.id}": Case(
+                    When(
+                        **{
+                            f"_ub_count_{branch.id}__gte": 2,
+                            f"_ub_pos_{branch.id}__gte": 1,
+                            f"_ub_low_{branch.id}": True,
+                        },
+                        then=Value(1),
+                    ),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            }
+        )
+
     def _apply_total_range_filters(self, queryset):
         params = self.request.query_params
+        stock = (params.get("stock") or "").strip().lower()
+        if stock == "con":
+            queryset = queryset.filter(total_general__gt=0)
+        elif stock == "sin":
+            queryset = queryset.filter(total_general__lte=0)
+
         cantidad_min = (params.get("cantidad_min") or "").strip()
         if cantidad_min:
             try:
@@ -1276,115 +1487,19 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
             bajo_field = f"ubicacion_bajo_sucursal_{branch.id}"
             if bajo_field in ordering_param:
-                # Misma regla que "tiene_stock_bajo" del payload: varias
-                # ubicaciones en la sucursal, alguna con stock, y a la
-                # principal (la primera del orden del usuario; si no hay
-                # orden, la primera por nombre con stock) le queda poco.
-                branch_q = Q(inventarios__subdivision__division__bodega__sucursal_id=branch.id)
-                from .models import ProductoUbicacionOrden
+                aggregated_queryset = self._annotate_low_stock_flag(aggregated_queryset, branch)
 
-                user_principal = Subquery(
-                    ProductoUbicacionOrden.objects.filter(
-                        producto_id=OuterRef("id"),
-                        subdivision__division__bodega__sucursal_id=branch.id,
-                    )
-                    .filter(
-                        Exists(
-                            Inventario.objects.filter(
-                                producto_id=OuterRef("producto_id"),
-                                subdivision_id=OuterRef("subdivision_id"),
-                            )
-                        )
-                    )
-                    .order_by(
-                        "orden",
-                        Lower("subdivision__division__bodega__nombre"),
-                        Lower("subdivision__division__nombre"),
-                        Lower("subdivision__nombre"),
-                        "subdivision_id",
-                    )
-                    .values("subdivision_id")[:1],
-                    output_field=IntegerField(),
-                )
-                fallback_principal = Subquery(
-                    Inventario.objects.filter(
-                        producto_id=OuterRef("id"),
-                        subdivision__division__bodega__sucursal_id=branch.id,
-                    )
-                    .values(
-                        "subdivision_id",
-                        "subdivision__division__bodega__nombre",
-                        "subdivision__division__nombre",
-                        "subdivision__nombre",
-                        "subdivision__division__bodega_id",
-                        "subdivision__division_id",
-                    )
-                    .annotate(_total=Sum("cantidad"))
-                    .filter(_total__gt=0)
-                    .order_by(
-                        Lower("subdivision__division__bodega__nombre"),
-                        Lower("subdivision__division__nombre"),
-                        Lower("subdivision__nombre"),
-                        "subdivision__division__bodega_id",
-                        "subdivision__division_id",
-                        "subdivision_id",
-                    )
-                    .values("subdivision_id")[:1],
-                    output_field=IntegerField(),
-                )
-                aggregated_queryset = aggregated_queryset.annotate(
-                    **{f"_ub_princ_{branch.id}": Coalesce(user_principal, fallback_principal)}
-                ).annotate(
-                    **{
-                        f"_ub_princ_qty_{branch.id}": Coalesce(
-                            Subquery(
-                                Inventario.objects.filter(
-                                    producto_id=OuterRef("id"),
-                                    subdivision_id=OuterRef(f"_ub_princ_{branch.id}"),
-                                )
-                                .values("producto_id")
-                                .annotate(_total=Sum("cantidad"))
-                                .values("_total")[:1],
-                                output_field=IntegerField(),
-                            ),
-                            Value(0),
-                            output_field=IntegerField(),
-                        ),
-                        f"_ub_count_{branch.id}": Count(
-                            "inventarios__subdivision", filter=branch_q, distinct=True
-                        ),
-                        f"_ub_pos_{branch.id}": Count(
-                            "inventarios__id", filter=branch_q & Q(inventarios__cantidad__gt=0)
-                        ),
-                    }
-                )
-                aggregated_queryset = aggregated_queryset.annotate(
-                    **{
-                        f"_ub_low_{branch.id}": Case(
-                            When(
-                                **{f"_ub_princ_qty_{branch.id}__lte": LOW_STOCK_LOCATION_THRESHOLD},
-                                then=Value(True),
-                            ),
-                            default=Value(False),
-                            output_field=BooleanField(),
-                        )
-                    }
-                ).annotate(
-                    **{
-                        f"ubicacion_bajo_sort_{branch.id}": Case(
-                            When(
-                                **{
-                                    f"_ub_count_{branch.id}__gte": 2,
-                                    f"_ub_pos_{branch.id}__gte": 1,
-                                    f"_ub_low_{branch.id}": True,
-                                },
-                                then=Value(1),
-                            ),
-                            default=Value(0),
-                            output_field=IntegerField(),
-                        )
-                    }
-                )
+        # Restock bodega (Busqueda avanzada): productos con el ojo en rojo en
+        # alguna de las sucursales que el usuario ve (o en la elegida).
+        if self._is_true_param(request.query_params.get("restock_bodega")):
+            restock_branch_raw = (request.query_params.get("restock_sucursal") or "").strip()
+            restock_branches = [
+                b for b in permitted_branches
+                if not restock_branch_raw.isdigit() or int(b.id) == int(restock_branch_raw)
+            ]
+            aggregated_queryset = aggregated_queryset.filter(
+                id__in=self._restock_product_ids([int(b.id) for b in restock_branches])
+            )
 
         aggregated_queryset = self._apply_total_range_filters(aggregated_queryset)
         filtered_column_filters = dict(column_filters)
