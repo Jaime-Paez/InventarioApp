@@ -4862,14 +4862,16 @@ function QuickActions({
     }
 
     if (activeRandomInspectionGroup) {
+      // Tambien las otras ubicaciones del producto (filas amarillas): todas
+      // se cuentan aqui mismo y son obligatorias.
+      const isEmptyLocation = (location) => String(location?.cantidad_contada_input ?? '').trim() === ''
       const missing = activeRandomInspectionGroup.entries.filter((entry) => (
-        entry.location
-          ? String(entry.location?.cantidad_contada_input ?? '').trim() === ''
-          : entry.row?.cantidad_reportada == null
+        (entry.location ? isEmptyLocation(entry.location) : entry.row?.cantidad_reportada == null) ||
+        (Array.isArray(entry.outsideLocations) && entry.outsideLocations.some(isEmptyLocation))
       ))
       if (missing.length) {
         setRandomInspectionError(
-          `Falta la cantidad de ${missing.length} código(s) de esta fila (${missing
+          `Falta la cantidad de ${missing.length} código(s) de esta fila o de sus otras ubicaciones (${missing
             .slice(0, 3)
             .map((entry) => entry.row?.producto_codigo || entry.row?.producto_nombre)
             .join(', ')}${missing.length > 3 ? '...' : ''}). Si no lo encuentras, toca "No lo encontré".`
@@ -4908,9 +4910,11 @@ function QuickActions({
   const handleGoBackRandomInspectionStep = useCallback(() => {
     setRandomInspectionError('')
     if (isRandomInspectionSummaryVisible) {
+      // Desde el resumen se vuelve a la ultima fila (donde se estaba).
+      const lastStep = Math.max(0, randomInspectionStepCount - 1)
       setRandomInspectionShowSummary(false)
-      setRandomInspectionStepIndex(0)
-      void saveInspectionDraftToBackend(0)
+      setRandomInspectionStepIndex(lastStep)
+      void saveInspectionDraftToBackend(lastStep)
       return
     }
     const prevStep = Math.max(0, activeRandomInspectionStepIndex - 1)
@@ -4919,6 +4923,7 @@ function QuickActions({
   }, [
     activeRandomInspectionStepIndex,
     isRandomInspectionSummaryVisible,
+    randomInspectionStepCount,
     saveInspectionDraftToBackend,
   ])
 
