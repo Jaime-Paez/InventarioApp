@@ -3694,6 +3694,18 @@
   cursor: pointer;
 }
 
+/* "Siguiente fila" con casillas vacias: se marcan en rojo. */
+.quick-actions__inspection-row-table input[data-count-input].is-missing {
+  border: 2px solid #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.quick-actions__inspection-row-table input[data-count-input].is-missing::placeholder {
+  color: #b91c1c;
+  font-weight: 700;
+  opacity: 1;
+}
+
 /* "No lo encontre": la casilla dice "No esta" (distinto de contar 0). */
 .quick-actions__inspection-row-table input.quick-actions__inspection-count--notfound,
 .quick-actions__inspection-row-table input.quick-actions__inspection-count--notfound:disabled {

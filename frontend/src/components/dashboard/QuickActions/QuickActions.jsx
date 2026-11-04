@@ -4854,6 +4854,9 @@ function QuickActions({
   // al revisar "Diferencias reportadas"). Por eso, al llegar al ultimo
   // producto, se pasa directo a un resumen neutral de lo contado -- sin
   // pedirle nada al servidor ni marcar la inspeccion como "revelada".
+  // "Siguiente fila" con casillas vacias: se marcan en rojo (en vez de un aviso abajo).
+  const [randomInspectionShowMissing, setRandomInspectionShowMissing] = useState(false)
+  useEffect(() => { setRandomInspectionShowMissing(false) }, [activeRandomInspection?.id])
   const handleAdvanceRandomInspectionStep = useCallback(() => {
     if (randomInspectionSubmitting) return
     if (!randomInspectionRows.length) {
@@ -4870,12 +4873,13 @@ function QuickActions({
         (Array.isArray(entry.outsideLocations) && entry.outsideLocations.some(isEmptyLocation))
       ))
       if (missing.length) {
-        setRandomInspectionError(
-          `Falta la cantidad de ${missing.length} código(s) de esta fila o de sus otras ubicaciones (${missing
-            .slice(0, 3)
-            .map((entry) => entry.row?.producto_codigo || entry.row?.producto_nombre)
-            .join(', ')}${missing.length > 3 ? '...' : ''}). Si no lo encuentras, toca "No lo encontré".`
-        )
+        setRandomInspectionError('')
+        setRandomInspectionShowMissing(true)
+        window.setTimeout(() => {
+          const first = document.querySelector('.quick-actions__inspection-row-table input.is-missing')
+          first?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+          first?.focus({ preventScroll: true })
+        }, 60)
         return
       }
     } else if (activeRandomInspectionRow?.cantidad_reportada == null) {
@@ -4888,6 +4892,7 @@ function QuickActions({
     }
 
     setRandomInspectionError('')
+    setRandomInspectionShowMissing(false)
 
     if (activeRandomInspectionStepIndex >= randomInspectionStepCount - 1) {
       setRandomInspectionShowSummary(true)
@@ -4909,6 +4914,7 @@ function QuickActions({
 
   const handleGoBackRandomInspectionStep = useCallback(() => {
     setRandomInspectionError('')
+    setRandomInspectionShowMissing(false)
     if (isRandomInspectionSummaryVisible) {
       // Desde el resumen se vuelve a la ultima fila (donde se estaba).
       const lastStep = Math.max(0, randomInspectionStepCount - 1)
@@ -6785,8 +6791,10 @@ function QuickActions({
                                   }}
                                   onKeyDown={handleCountEnter}
                                   maxLength={4}
-                                  placeholder={notFoundHere ? 'No está' : '-'}
-                                  className={notFoundHere ? 'quick-actions__inspection-count--notfound' : undefined}
+                                  placeholder={notFoundHere ? 'No está' : randomInspectionShowMissing && value === '' ? 'Falta' : '-'}
+                                  className={notFoundHere
+                                    ? 'quick-actions__inspection-count--notfound'
+                                    : randomInspectionShowMissing && value === '' ? 'is-missing' : undefined}
                                   disabled={randomInspectionSubmitting || notFoundHere}
                                   autoFocus={entryIndex === 0}
                                   aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'}`}
@@ -6852,8 +6860,12 @@ function QuickActions({
                                     onChange={(event) => handleRandomInspectionLocationCountChange(rowId, location.key, event.target.value)}
                                     onKeyDown={handleCountEnter}
                                     maxLength={4}
-                                    placeholder={location?.no_encontrado ? 'No está' : '-'}
-                                    className={location?.no_encontrado ? 'quick-actions__inspection-count--notfound' : undefined}
+                                    placeholder={location?.no_encontrado
+                                      ? 'No está'
+                                      : randomInspectionShowMissing && String(location?.cantidad_contada_input ?? '').trim() === '' ? 'Falta' : '-'}
+                                    className={location?.no_encontrado
+                                      ? 'quick-actions__inspection-count--notfound'
+                                      : randomInspectionShowMissing && String(location?.cantidad_contada_input ?? '').trim() === '' ? 'is-missing' : undefined}
                                     disabled={randomInspectionSubmitting || Boolean(location?.no_encontrado)}
                                     aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'} en ${String(location?.label || '').trim()}`}
                                   />
