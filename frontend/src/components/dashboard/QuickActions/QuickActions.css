@@ -3686,6 +3686,22 @@
   cursor: pointer;
 }
 
+/* "No lo encontre": la casilla dice "No esta" (distinto de contar 0). */
+.quick-actions__inspection-row-table input.quick-actions__inspection-count--notfound,
+.quick-actions__inspection-row-table input.quick-actions__inspection-count--notfound:disabled {
+  background: repeating-linear-gradient(-45deg, rgba(245, 158, 11, 0.12) 0 6px, transparent 6px 12px);
+  border-style: dashed;
+  border-color: rgba(217, 119, 6, 0.6);
+  opacity: 1;
+}
+
+.quick-actions__inspection-row-table input.quick-actions__inspection-count--notfound::placeholder {
+  color: #b45309;
+  font-weight: 700;
+  font-size: 0.8em;
+  opacity: 1;
+}
+
 /* Marcado: el mismo boton dice "No encontrado"; otro clic lo quita. */
 .quick-actions__inspection-row-notfound.is-active {
   border-color: rgba(217, 119, 6, 0.6);

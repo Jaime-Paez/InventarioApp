@@ -6670,7 +6670,8 @@ function QuickActions({
                                   }}
                                   onKeyDown={handleCountEnter}
                                   maxLength={4}
-                                  placeholder="-"
+                                  placeholder={notFoundHere ? 'No está' : '-'}
+                                  className={notFoundHere ? 'quick-actions__inspection-count--notfound' : undefined}
                                   disabled={randomInspectionSubmitting || notFoundHere}
                                   autoFocus={entryIndex === 0}
                                   aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'}`}
@@ -6736,7 +6737,8 @@ function QuickActions({
                                     onChange={(event) => handleRandomInspectionLocationCountChange(rowId, location.key, event.target.value)}
                                     onKeyDown={handleCountEnter}
                                     maxLength={4}
-                                    placeholder="-"
+                                    placeholder={location?.no_encontrado ? 'No está' : '-'}
+                                    className={location?.no_encontrado ? 'quick-actions__inspection-count--notfound' : undefined}
                                     disabled={randomInspectionSubmitting || Boolean(location?.no_encontrado)}
                                     aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'} en ${String(location?.label || '').trim()}`}
                                   />
