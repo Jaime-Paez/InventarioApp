@@ -9,11 +9,10 @@ import {
   moneyStateToNumber,
 } from '../../../utils/moneyTyping'
 
-// Campo de dinero de toda la app. Se escribe como en una calculadora normal
-// (no como caja registradora):
-//   1, 5, "."      -> $15.00   (el punto pone los centavos en .00)
-//   3, "."         -> $3.00
-//   3, ".", 5      -> $3.50    (los centavos se llenan de izquierda a derecha)
+// Campo de dinero de toda la app. Se escribe normal, como en cualquier
+// sistema (no como caja registradora): mientras se escribe se ve lo tecleado
+//   1, 2, "."      -> $12.      (al salir: $12.00)
+//   3, ".", 5      -> $3.5      (al salir: $3.50)
 // Al entrar a un campo que ya tiene valor, lo primero que se escribe lo
 // reemplaza. Fuera del campo se ve siempre $X.XX.
 //

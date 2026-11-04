@@ -1,5 +1,5 @@
-// Como se escribe un monto en los campos de dinero (ver MoneyInput):
-//   1, 5, "."   -> $15.00     3, "."  -> $3.00     3, ".", 5 -> $3.50
+// Como se escribe un monto en los campos de dinero (ver MoneyInput): se ve
+// lo tecleado ("15." , "3.5") y al salir queda $15.00 / $3.50.
 // El estado es { int, dot, dec }: parte entera, si ya se puso el punto y los
 // centavos escritos (0 a 2 digitos, se rellenan con 0 al mostrarlos).
 
@@ -28,11 +28,15 @@ export const moneyStateToNumber = (state) => {
   return Number(`${int}.${dec}`)
 }
 
+// Mientras se escribe se ve exactamente lo tecleado ("12." -> $12.,
+// "12.5" -> $12.5): los ceros que faltan se ponen recien al salir del campo
+// ($12.50). Antes el punto ponia ".00" de una y confundia.
 export const formatMoneyState = (state, { editing = false } = {}) => {
   if (!state.int && !state.dot) return ''
   const int = groupThousands(state.int || '0')
+  if (editing) return state.dot ? `$${int}.${state.dec || ''}` : `$${int}`
   if (state.dot) return `$${int}.${(state.dec || '').padEnd(2, '0')}`
-  return editing ? `$${int}` : `$${int}.00`
+  return `$${int}.00`
 }
 
 export const formatMoneyValue = (value) => formatMoneyState(moneyStateFromNumber(value))
