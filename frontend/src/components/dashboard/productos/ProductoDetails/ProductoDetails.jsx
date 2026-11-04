@@ -14,6 +14,7 @@ import InventarioEditor from '../../inventario/InventarioEditor/InventarioEditor
 import useModalAnimation from '../../common/useModalAnimation'
 import ProductoRatingTab from '../ProductoRatingTab/ProductoRatingTab'
 import ReposicionProductPanel from '../../reposicion/ReposicionProductPanel'
+import ProductoMovimientosTab from '../ProductoMovimientosTab/ProductoMovimientosTab'
 import { formatMoneyFromValue, formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
 import MoneyInput from '../../common/MoneyInput'
 import { toUpperCode } from '../../../../utils/textInput'
@@ -1699,7 +1700,7 @@ function ProductoDetails({
               </div>
             </div>
           )}
-          <div className="create-user__tabs" role="tablist" aria-label="Secciones del producto">
+          <div className="create-user__tabs producto-details__tabs" role="tablist" aria-label="Secciones del producto">
             <button
               type="button"
               className={`create-user__tab ${activeTab === 'general' ? 'create-user__tab--active' : ''}`}
@@ -1739,6 +1740,14 @@ function ProductoDetails({
               aria-selected={activeTab === 'reposicion'}
             >
               Reposición
+            </button>}
+            {!onlyGeneralTab && <button
+              type="button"
+              className={`create-user__tab ${activeTab === 'movimientos' ? 'create-user__tab--active' : ''}`}
+              onClick={() => setActiveTab('movimientos')}
+              aria-selected={activeTab === 'movimientos'}
+            >
+              Historial
             </button>}
           </div>
 
@@ -2244,6 +2253,15 @@ function ProductoDetails({
               <div className="producto-details__reposicion">
                 <ReposicionProductPanel token={token} productoId={resolvedProductoId || productoId} />
               </div>
+            )}
+
+            {activeTab === 'movimientos' && !onlyGeneralTab && (
+              <ProductoMovimientosTab
+                productoId={resolvedProductoId || productoId}
+                token={token}
+                currentUser={currentUser}
+                onError={notifyError}
+              />
             )}
 
             {activeTab === 'calificaciones' && (

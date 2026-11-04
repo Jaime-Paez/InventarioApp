@@ -15,3 +15,14 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Seis pestanas: usan casi todo el ancho para que no se corten en un modal
+   angosto (el ancho general deja 400px libres a los lados). */
+.producto-details__tabs.create-user__tabs {
+  width: min(820px, calc(100% - 32px));
+}
+
+.producto-details__tabs .create-user__tab {
+  white-space: nowrap;
+  padding: 5px 8px;
+}

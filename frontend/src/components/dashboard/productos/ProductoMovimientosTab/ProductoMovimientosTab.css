@@ -1,0 +1,160 @@
+/* Pestana Movimientos del detalle del producto: entradas y salidas. */
+.producto-movs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.producto-movs__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.producto-movs__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.producto-movs__segment {
+  display: inline-flex;
+  flex-wrap: wrap;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.producto-movs__chip {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  padding: 5px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.producto-movs__chip + .producto-movs__chip {
+  border-left: 1px solid var(--color-border);
+}
+
+.producto-movs__chip:hover:not(.is-active) {
+  background: rgba(15, 23, 42, 0.05);
+}
+
+.producto-movs__chip.is-active {
+  background: var(--color-primary);
+  color: var(--color-button-primary);
+  font-weight: 600;
+}
+
+.producto-movs__totals {
+  display: flex;
+  gap: 8px;
+}
+
+.producto-movs__total {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.producto-movs__total--in,
+.producto-movs__tag--in {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.producto-movs__total--out,
+.producto-movs__tag--out {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.producto-movs__table .create-user__locations-row {
+  grid-template-columns: 92px 76px minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1.9fr) 72px 64px;
+}
+
+.producto-movs__table .create-user__locations-row--empty {
+  grid-template-columns: 1fr;
+}
+
+.producto-movs__table .create-user__locations-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty) > span {
+  padding: 6px 8px;
+}
+
+/* Documento, sucursal y origen: texto a la izquierda y con "..." al final
+   (centrado se cortaba el inicio del documento). */
+.producto-movs__table .create-user__locations-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty) > .producto-movs__text {
+  display: block;
+  text-align: left;
+  line-height: 24px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.producto-movs__tag {
+  display: inline-block;
+  font-size: var(--font-size-xs, 0.75rem);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.producto-movs__doc {
+  font-variant-numeric: tabular-nums;
+}
+
+.producto-movs__qty {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.producto-movs__qty--in {
+  color: #15803d;
+}
+
+.producto-movs__qty--out {
+  color: #b91c1c;
+}
+
+.producto-movs__open {
+  padding: 3px 12px;
+}
+
+.producto-movs__more {
+  display: flex;
+  justify-content: center;
+}
+
+.dashboard-shell.dark .producto-movs__chip:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dashboard-shell.dark .producto-movs__total--in,
+.dashboard-shell.dark .producto-movs__tag--in {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+}
+
+.dashboard-shell.dark .producto-movs__total--out,
+.dashboard-shell.dark .producto-movs__tag--out {
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+
+.dashboard-shell.dark .producto-movs__qty--in {
+  color: #86efac;
+}
+
+.dashboard-shell.dark .producto-movs__qty--out {
+  color: #fca5a5;
+}
