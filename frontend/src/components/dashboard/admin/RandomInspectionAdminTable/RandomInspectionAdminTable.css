@@ -409,17 +409,19 @@
   gap: 8px;
 }
 
-/* Enviar revision: reloj digital a la izquierda, cantidad grande a la derecha. */
+/* Enviar revision / Configuracion: hora, "Enviar ahora mismo" y cantidad en
+   una sola fila, con campos normales (como el resto de formularios). */
 .inspection-admin__send-top {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
   margin-bottom: 16px;
-  align-items: start;
 }
 
 .inspection-admin__send-clock-col,
 .inspection-admin__send-qty-col {
+  flex: 1 1 200px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -427,87 +429,43 @@
 }
 
 .inspection-admin__send-label {
-  font-weight: 700;
+  font-weight: 600;
   font-size: var(--font-size-sm, 13px);
   color: var(--color-text-primary);
 }
 
-.inspection-admin__send-clock {
-  height: 84px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 14px;
-  background: #0f172a;
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.25), inset 0 6px 18px rgba(0, 0, 0, 0.45);
-}
-
-.inspection-admin__send-clock input {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  color: #5eead4;
-  font-family: 'Courier New', ui-monospace, monospace;
-  font-size: 2.6rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.06em;
-  text-align: center;
-  text-shadow: 0 0 10px rgba(94, 234, 212, 0.45);
-  color-scheme: dark;
-  outline: none;
-}
-
-.inspection-admin__send-clock input::-webkit-calendar-picker-indicator {
-  filter: invert(0.8);
-  cursor: pointer;
-}
-
-.inspection-admin__send-clock:focus-within {
-  box-shadow: inset 0 0 0 2px #5eead4, inset 0 6px 18px rgba(0, 0, 0, 0.45);
-}
-
-.inspection-admin__send-clock-now {
-  color: #5eead4;
-  font-family: 'Courier New', ui-monospace, monospace;
-  font-size: 2.2rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-shadow: 0 0 10px rgba(94, 234, 212, 0.45);
-}
-
+.inspection-admin__send-clock input,
 .inspection-admin__send-qty {
-  height: 84px;
   width: 100%;
+  height: 38px;
   box-sizing: border-box;
+  padding: 0 10px;
   border: 1px solid var(--color-border);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--color-surface, #fff);
   color: var(--color-text-primary);
   font: inherit;
-  font-size: 2.6rem;
-  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  text-align: center;
 }
 
+.inspection-admin__send-clock input:focus,
 .inspection-admin__send-qty:focus {
   outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
 }
 
+.inspection-admin__send-clock input:disabled,
+.inspection-admin__send-qty:disabled {
+  opacity: 0.6;
+}
+
+.dashboard-shell.dark .inspection-admin__send-clock input,
 .dashboard-shell.dark .inspection-admin__send-qty {
   background: var(--table-color-search-dark);
   border-color: var(--color-border-dark);
   color: var(--color-text-dark);
-}
-
-@media (max-width: 640px) {
-  .inspection-admin__send-top {
-    grid-template-columns: 1fr;
-  }
+  color-scheme: dark;
 }
 
 .dashboard-shell.dark .inspection-admin__head-select {
@@ -1893,10 +1851,12 @@ body.app-theme-dark .inspection-admin__notfound-tag {
 
 /* "Enviar ahora mismo" junto a la hora del recordatorio */
 .inspection-admin__send-immediate {
+  /* Misma altura que el campo de la hora, en la misma fila. */
+  flex: 0 0 auto;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
   font-size: var(--font-size-sm, 13px);
   font-weight: 600;
   cursor: pointer;

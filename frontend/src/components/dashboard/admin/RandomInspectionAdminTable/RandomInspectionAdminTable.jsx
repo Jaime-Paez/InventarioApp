@@ -2570,26 +2570,23 @@ function RandomInspectionAdminTable({
             </div>
 
             <div className="inspection-admin__dialog-body">
-              {/* Izquierda: la hora como reloj digital y debajo "Enviar ahora
-                  mismo". Derecha (solo aleatorio): la cantidad en grande. */}
+              {/* Una fila: hora, "Enviar ahora mismo" a su altura y (solo
+                  aleatorio) la cantidad. */}
               <div className="inspection-admin__send-top">
                 <div className="inspection-admin__send-clock-col">
                   <label htmlFor="inspection-send-hour" className="inspection-admin__send-label">Hora del recordatorio</label>
-                  <div className={`inspection-admin__send-clock${sendNowImmediate ? ' is-now' : ''}`}>
-                    {sendNowImmediate ? (
-                      <span className="inspection-admin__send-clock-now">AHORA</span>
-                    ) : (
-                      <input
-                        id="inspection-send-hour"
-                        type="time"
-                        value={sendNowParams.hora_recordatorio}
-                        onChange={(e) => setSendNowParams((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
-                        disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
-                        aria-label="Hora del recordatorio"
-                      />
-                    )}
+                  <div className="inspection-admin__send-clock">
+                    <input
+                      id="inspection-send-hour"
+                      type="time"
+                      value={sendNowParams.hora_recordatorio}
+                      onChange={(e) => setSendNowParams((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
+                      disabled={sendNowImmediate || sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
+                      aria-label="Hora del recordatorio"
+                    />
                   </div>
-                  <span className="inspection-admin__send-immediate">
+                </div>
+                <span className="inspection-admin__send-immediate">
                     <input
                       type="checkbox"
                       id="inspection-send-immediate"
@@ -2598,8 +2595,7 @@ function RandomInspectionAdminTable({
                       disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
                     />
                     <label htmlFor="inspection-send-immediate">Enviar ahora mismo</label>
-                  </span>
-                </div>
+                </span>
                 {sendNowMode === 'aleatorio' && (
                   <div className="inspection-admin__send-qty-col">
                     <label htmlFor="inspection-send-qty" className="inspection-admin__send-label">Productos por sucursal</label>
@@ -2613,7 +2609,6 @@ function RandomInspectionAdminTable({
                       inputMode="numeric"
                       value={sendNowParams.cantidad_productos}
                       onChange={(e) => setSendNowParams((prev) => ({ ...prev, cantidad_productos: e.target.value }))}
-                      placeholder="5"
                       disabled={sendNowLoading || sendNowDialogLoading}
                     />
                   </div>
@@ -3063,8 +3058,8 @@ function RandomInspectionAdminTable({
       )}
 
       {showAssignmentsDialog && isTabActive !== false && (() => {
-        // Mismo modal que "Enviar revision ahora": reloj digital, cantidad en
-        // grande y un interruptor claro de la revision automatica.
+        // Mismo modal que "Enviar revision ahora" (hora y cantidad en una
+        // fila) y un interruptor claro de la revision automatica.
         const locked = !isEditingAssignments || configLoading || assignmentsSaving
         const autoOn = Boolean(configData.inspeccion_automatica)
         const hora = String(configData.hora_recordatorio || '').slice(0, 5)
@@ -3163,7 +3158,6 @@ function RandomInspectionAdminTable({
                     inputMode="numeric"
                     value={configData.cantidad_productos}
                     onChange={(e) => setConfigData((prev) => ({ ...prev, cantidad_productos: e.target.value }))}
-                    placeholder="5"
                     disabled={locked}
                   />
                 </div>
