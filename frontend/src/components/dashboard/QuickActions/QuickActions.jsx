@@ -6827,7 +6827,10 @@ function QuickActions({
                         className="create-user__locations-table quick-actions__inspection-row-table"
                       >
                         <div className="create-user__locations-row create-user__locations-row--head">
-                          <span>Código</span>
+                          <span>
+                            <span className="quick-actions__inspection-head-wide">Código</span>
+                            <span className="quick-actions__inspection-head-narrow">Producto</span>
+                          </span>
                           <span>Descripción</span>
                           <span>Ubicación</span>
                           <span>Contado</span>
@@ -6847,18 +6850,6 @@ function QuickActions({
                           const undoNotFound = () => handleRandomInspectionUndoNotFound(rowId, entry.location?.key || '')
                           // Las de fuera de la division se cuentan aqui mismo (abajo).
                           const outsideLocations = Array.isArray(entry.outsideLocations) ? entry.outsideLocations : []
-                          const outsideKeys = new Set(
-                            (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
-                              .filter((location) => location?.division_id && activeRandomInspection?.division_id && !activeRandomInspection?.es_por_subdivision &&
-                                String(location.division_id) !== String(activeRandomInspection.division_id))
-                              .map((location) => location?.key)
-                          )
-                          const otherLocations = entry.location && !entry.addedElsewhere
-                            ? (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
-                              .filter((location) => location?.key !== entry.location?.key && !outsideKeys.has(location?.key))
-                              .map((location) => String(location?.label || location?.subdivision_nombre || '').trim())
-                              .filter(Boolean)
-                            : []
                           const handleCountEnter = (event) => {
                             if (event.key !== 'Enter') return
                             event.preventDefault()
@@ -6889,11 +6880,9 @@ function QuickActions({
                                 {row?.agregado_por_revisor && (
                                   <small className="quick-actions__inspection-added-tag">Agregado por ti (no estaba en la lista)</small>
                                 )}
-                                {otherLocations.length > 0 && (
-                                  <small>{`También en: ${otherLocations.join(', ')} (se cuenta aparte)`}</small>
-                                )}
                               </span>
                               <span className="quick-actions__inspection-row-location">
+                                <i className="pi pi-map-marker" aria-hidden="true" />
                                 {String(entry.location?.label || activeRandomInspectionGroup.label || '').trim() || '-'}
                               </span>
                               <span>
@@ -6973,6 +6962,7 @@ function QuickActions({
                                   {String(row?.producto_nombre || '').trim()}
                                 </span>
                                 <span className="quick-actions__inspection-row-location">
+                                  <i className="pi pi-map-marker" aria-hidden="true" />
                                   <strong>{String(location?.label || location?.subdivision_nombre || '').trim() || '-'}</strong>
                                 </span>
                                 <span>

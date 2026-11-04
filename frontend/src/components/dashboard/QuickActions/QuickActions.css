@@ -3796,26 +3796,98 @@
   color: var(--color-text-dark);
 }
 
-/* Tablet/telefono: la tabla es la misma que en computadora (Codigo,
-   Descripcion, Ubicacion, Contado y la accion); si no cabe, se desliza de lado
-   en vez de apilar cada producto. */
-@media (max-width: 760px) {
-  .create-user__locations-table.quick-actions__inspection-row-table {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+/* Tabla angosta (telefono o modal estrecho): todo cabe sin deslizar de lado.
+   Codigo, descripcion y ubicacion se apilan en una sola columna "Producto";
+   al lado quedan Contado y la accion. Mide el ancho de la tabla, no de la
+   pantalla. */
+.create-user__locations-table.quick-actions__inspection-row-table {
+  container-type: inline-size;
+}
 
+.quick-actions__inspection-head-narrow,
+.quick-actions__inspection-row-location > .pi {
+  display: none;
+}
+
+@container (max-width: 620px) {
   .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row {
-    grid-template-columns: 120px 180px 140px 88px 124px;
-    min-width: 652px;
+    grid-template-columns: minmax(0, 1fr) 72px 96px;
+    grid-template-areas:
+      "code count action"
+      "name count action"
+      "loc  count action";
   }
 
-  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head {
-    display: grid;
+  .quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(1) { grid-area: code; }
+  .quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(2) { grid-area: name; }
+  .quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(3) { grid-area: loc; }
+  .quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(4) { grid-area: count; }
+  .quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(5) { grid-area: action; }
+
+  /* Las tres piezas del producto forman una sola celda. */
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(-n + 3) {
+    border-left: 0;
+    padding-top: 2px;
+    padding-bottom: 2px;
   }
 
-  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span {
-    display: flex;
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(1) {
+    padding-top: 10px;
+  }
+
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(3) {
+    padding-bottom: 10px;
+  }
+
+  .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-code {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 0 6px;
+  }
+
+  .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-location {
+    gap: 4px;
+    color: var(--color-text-secondary, #64748b);
+  }
+
+  .quick-actions__inspection-row-table .quick-actions__inspection-row-location > .pi {
+    display: inline;
+    font-size: 0.85em;
+  }
+
+  /* Encabezado: solo "Producto", "Contado" y la accion. */
+  .quick-actions__inspection-row-table .create-user__locations-row--head {
+    grid-template-areas: "code count action";
+  }
+
+  .quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(2),
+  .quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(3),
+  .quick-actions__inspection-head-wide {
+    display: none !important;
+  }
+
+  .quick-actions__inspection-head-narrow {
+    display: inline;
+  }
+
+  .quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(4),
+  .quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(5) {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .quick-actions__inspection-row-table input[data-count-input] {
+    padding: 0 2px;
+  }
+
+  /* "No lo encontre" en dos lineas para que quepa. */
+  .quick-actions__inspection-row-notfound {
+    white-space: normal;
+    line-height: 1.2;
+    padding: 4px 8px;
+    text-align: center;
   }
 }
 
