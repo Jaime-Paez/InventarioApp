@@ -555,7 +555,42 @@ const findMatrizSucursal = (list) =>
 // contenedor que de verdad se desplaza (la tabla o, si la tabla no tiene alto
 // propio, el modal), debajo de lo que queda fijo (encabezado y fila
 // "Agregar"), y parpadea.
-const scrollRowToTopAndFlash = (rowEl) => {
+// Marca las filas (p. ej. las de un codigo repetido, todas a la vez).
+const flashRows = (rowEls) => {
+  rowEls.filter(Boolean).forEach((rowEl) => {
+    rowEl.classList.remove('imp-excel-review__row--flash')
+    void rowEl.offsetWidth
+    rowEl.classList.add('imp-excel-review__row--flash')
+  })
+}
+
+// Llama a `onSettled` cuando el desplazamiento suave termina (en tablas
+// largas tarda mas que la marca, que si no ya se apagaba al llegar).
+// `target`: scrollTop al que va, si se sabe.
+const whenScrollSettles = (container, target, onSettled) => {
+  const scroller = container || document.scrollingElement || document.documentElement
+  const goal = target == null ? null : Math.min(target, Math.max(0, scroller.scrollHeight - scroller.clientHeight))
+  let last = scroller.scrollTop
+  let moved = false
+  let stable = 0
+  let frames = 0
+  const tick = () => {
+    const pos = scroller.scrollTop
+    if (pos !== last) moved = true
+    stable = pos === last ? stable + 1 : 0
+    last = pos
+    frames += 1
+    const arrived = goal != null && Math.abs(pos - goal) <= 1
+    if (arrived || (moved && stable >= 3) || (!moved && stable >= 8) || frames > 180) {
+      onSettled()
+      return
+    }
+    window.requestAnimationFrame(tick)
+  }
+  window.requestAnimationFrame(tick)
+}
+
+const scrollRowToTopAndFlash = (rowEl, otherRows = [], onArrive) => {
   if (!rowEl) return
   let container = rowEl.parentElement
   while (container && container !== document.body) {
@@ -568,14 +603,13 @@ const scrollRowToTopAndFlash = (rowEl) => {
       .map((selector) => container.querySelector(selector))
       .filter((el) => el && window.getComputedStyle(el).position === 'sticky')
       .reduce((sum, el) => sum + el.offsetHeight, 0)
-    const top = rowEl.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - fijos
-    container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    const top = Math.max(0, rowEl.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop - fijos)
+    container.scrollTo({ top, behavior: 'smooth' })
+    whenScrollSettles(container, top, () => { flashRows([rowEl, ...otherRows]); onArrive?.() })
   } else {
     rowEl.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    whenScrollSettles(null, null, () => { flashRows([rowEl, ...otherRows]); onArrive?.() })
   }
-  rowEl.classList.remove('imp-excel-review__row--flash')
-  void rowEl.offsetWidth
-  rowEl.classList.add('imp-excel-review__row--flash')
 }
 
 // Tambien las filas <tr> de la tabla de la sugerencia (misma que el Paso 3).
@@ -4549,7 +4583,7 @@ const getDuplicateProductGroups = (rows) => {
 
 // Aviso de codigos repetidos (sugerencia y verificacion). grupos:
 // [{ codigo, nombre, filas, referencias: [] }].
-function CodigosRepetidosAviso({ grupos, etapa }) {
+function CodigosRepetidosAviso({ grupos, etapa, onIr }) {
   if (!grupos.length) return null
   return (
     <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -4561,10 +4595,21 @@ function CodigosRepetidosAviso({ grupos, etapa }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {grupos.map((grupo) => (
-          <div key={grupo.codigo} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)', padding: '4px 6px', background: '#fef3c7', borderRadius: 4, flexWrap: 'wrap', color: '#78350f' }}>
+          <div
+            key={grupo.codigo}
+            {...(onIr ? {
+              role: 'button',
+              tabIndex: 0,
+              'data-title': 'Clic: ir a sus filas y marcarlas',
+              onClick: () => onIr(grupo),
+              onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onIr(grupo) } },
+            } : {})}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)', padding: '4px 6px', background: '#fef3c7', borderRadius: 4, flexWrap: 'wrap', color: '#78350f', cursor: onIr ? 'pointer' : undefined }}
+          >
             <strong style={{ whiteSpace: 'nowrap' }}>{grupo.codigo}</strong>
             {grupo.nombre && <span>{grupo.nombre}</span>}
             <span>{grupo.referencias.length ? `Referencias: ${grupo.referencias.join(', ')}` : `${grupo.filas} filas`}</span>
+            {onIr && <span style={{ marginLeft: 'auto', fontWeight: 600, textDecoration: 'underline' }}>Ver filas</span>}
           </div>
         ))}
       </div>
@@ -4718,10 +4763,12 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
     const rowEl = wrap?.querySelector(`[data-review-pos="${reviewJump.pos}"]`)
     if (!wrap || !rowEl) return
     const headHeight = wrap.querySelector('thead')?.offsetHeight || 0
-    wrap.scrollTo({ top: Math.max(0, rowEl.offsetTop - headHeight), behavior: 'smooth' })
-    rowEl.classList.remove('imp-excel-review__row--flash')
-    void rowEl.offsetWidth
-    rowEl.classList.add('imp-excel-review__row--flash')
+    const top = Math.max(0, rowEl.offsetTop - headHeight)
+    wrap.scrollTo({ top, behavior: 'smooth' })
+    // Se marca al llegar. `tambien`: otras filas que se marcan a la vez (los
+    // codigos repetidos).
+    const tambien = (reviewJump.tambien || []).map((pos) => wrap.querySelector(`[data-review-pos="${pos}"]`))
+    whenScrollSettles(wrap, top, () => flashRows([rowEl, ...tambien]))
     setReviewJump(null)
   }, [reviewJump, reviewRenderCount])
 
@@ -4839,12 +4886,16 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
     repetidos: (r) => duplicateRowSet.has(r),
   }
   // Clic en un contador: lleva al inicio de ese grupo (los grupos van juntos).
+  // Los repetidos: lleva a la primera y marca todas sus filas a la vez.
   const jumpToReviewGroup = (key) => {
     const test = REVIEW_GROUPS[key]
-    const pos = reviewRows.findIndex(({ row }) => test(row))
-    if (pos === -1) return
-    if (pos >= reviewRenderCount) setReviewRenderCount(pos + REVIEW_ROWS_BATCH)
-    setReviewJump({ pos })
+    const posiciones = key === 'repetidos'
+      ? reviewRows.map(({ row }, i) => (test(row) ? i : -1)).filter((i) => i !== -1)
+      : [reviewRows.findIndex(({ row }) => test(row))].filter((i) => i !== -1)
+    if (!posiciones.length) return
+    const ultima = posiciones[posiciones.length - 1]
+    if (ultima >= reviewRenderCount) setReviewRenderCount(ultima + REVIEW_ROWS_BATCH)
+    setReviewJump({ pos: posiciones[0], tambien: posiciones.slice(1) })
   }
   const reviewGroupChipProps = (key, label) => ({
     role: 'button',
@@ -7837,8 +7888,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         detail: `Deja solo una fila de ${codigosRepetidosVerificacion.map((grupo) => grupo.codigo).join(', ')} (quita las demás) para pedir la confirmación.`,
         life: 6000,
       })
-      setProductSearch('')
-      jumpToDetailRow(codigosRepetidosVerificacion[0].keys[0])
+      jumpToDetailRows(codigosRepetidosVerificacion[0].keys)
       return
     }
     // Guardar se puede sin completar; para pasar a confirmacion cada producto
@@ -8041,16 +8091,20 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
   // Codigo que ya esta en la lista: en vez de no mostrarse, lleva a su fila.
   const [highlightedDetailKey, setHighlightedDetailKey] = useState('')
-  const jumpToDetailRow = useCallback((detailKey) => {
+  // La marca se pone al llegar (no al tocar): en tablas largas el
+  // desplazamiento tarda. `otherKeys`: otras filas que se marcan a la vez.
+  const jumpToDetailRow = useCallback((detailKey, otherKeys = []) => {
     if (!detailKey) return
     setShowProductDropdown(false)
     setProductQuery('')
     setProductOptions([])
-    setHighlightedDetailKey(String(detailKey))
     window.requestAnimationFrame(() => {
-      scrollRowToTopAndFlash(document.querySelector(`[data-detail-key="${CSS.escape(String(detailKey))}"]`))
+      const rowOf = (key) => document.querySelector(`[data-detail-key="${CSS.escape(String(key))}"]`)
+      scrollRowToTopAndFlash(rowOf(detailKey), otherKeys.map(rowOf), () => {
+        setHighlightedDetailKey(String(detailKey))
+        window.setTimeout(() => setHighlightedDetailKey((current) => (current === String(detailKey) ? '' : current)), 1100)
+      })
     })
-    window.setTimeout(() => setHighlightedDetailKey((current) => (current === String(detailKey) ? '' : current)), 1100)
   }, [])
   // Mismos grupos (y colores) que las filas de la verificacion.
   const verificarColorDe = (item) => (
@@ -8070,6 +8124,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       return grupo.startsWith('agregado') ? enGrupo.reverse() : enGrupo
     })
     : details
+  // Lleva a la primera fila de un codigo repetido y marca todas sus filas.
+  const jumpToDetailRows = (keys) => {
+    if (!keys.length) return
+    setProductSearch('')
+    jumpToDetailRow(keys[0], keys.slice(1))
+  }
   // Mismo codigo en mas de una fila sin quitar (p. ej. otra referencia).
   const codigosRepetidosVerificacion = (() => {
     if (!isVerificar) return []
@@ -8386,7 +8446,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                       return (
                         <>
                     {isVerificar && (
-                      <CodigosRepetidosAviso etapa="verificacion" grupos={codigosRepetidosVerificacion} />
+                      <CodigosRepetidosAviso etapa="verificacion" grupos={codigosRepetidosVerificacion} onIr={(grupo) => jumpToDetailRows(grupo.keys)} />
                     )}
                     {isVerificar && details.length > 0 && (
                       <VerificacionGroupsSummary
