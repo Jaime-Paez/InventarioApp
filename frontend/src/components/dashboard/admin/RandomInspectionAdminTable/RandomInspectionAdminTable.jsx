@@ -16,6 +16,7 @@ import './RandomInspectionAdminTable.css'
 import InspectionCoverageMap from './InspectionCoverageMap'
 import RecountWarningDialog from './RecountWarningDialog'
 import FaltanteAparecioDialog from './FaltanteAparecioDialog'
+import useResizableModal from '../../common/useResizableModal'
 import CascadeDropdown from '../../common/CascadeDropdown'
 import BlockerNotice from '../../common/BlockerNotice'
 import StaticFieldDisplay from '../../movimientos/StaticFieldDisplay'
@@ -145,6 +146,11 @@ function RandomInspectionAdminTable({
   const [itemsFilter, setItemsFilter] = useState('todos')
   const [summarySearch, setSummarySearch] = useState('')
   const [expandedRevisionId, setExpandedRevisionId] = useState('')
+  // Detalle de una revision: pestanas General / Productos y ventana que se
+  // mueve, maximiza y cambia de tamano como las demas del app.
+  const [revisionTab, setRevisionTab] = useState('general')
+  const revisionModal = useResizableModal(Boolean(expandedRevisionId))
+  useEffect(() => { setRevisionTab('general') }, [expandedRevisionId])
   const [revisionItems, setRevisionItems] = useState([])
   const [revisionItemsLoading, setRevisionItemsLoading] = useState(false)
   // Revision a desplegar cuando llega su sucursal (abierta desde un recordatorio).
@@ -1423,25 +1429,26 @@ function RandomInspectionAdminTable({
     const sortedItems = [...revisionItems].sort((a, b) => ITEM_ORDER[getItemStatus(a).key] - ITEM_ORDER[getItemStatus(b).key])
     const pendingCount = revisionItems.filter((row) => getItemStatus(row).key === 'pendiente').length
     const solvedCount = revisionItems.filter((row) => ['solucionado', 'mantenido'].includes(getItemStatus(row).key)).length
-    const width = Math.min(1000, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 24)
-    const height = Math.min(780, (typeof window !== 'undefined' ? window.innerHeight : 900) - 24)
     const close = () => setExpandedRevisionId('')
     return (
-      <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: '12px' }}>
+      <div className="create-user__overlay" role="dialog" aria-modal="true">
         <div
           className="create-user__modal create-salida__modal inspection-admin__history-modal"
-          style={{
-            width,
-            height,
-            left: Math.max(12, ((typeof window !== 'undefined' ? window.innerWidth : 1200) - width) / 2),
-            top: Math.max(12, ((typeof window !== 'undefined' ? window.innerHeight : 900) - height) / 2),
-          }}
+          style={revisionModal.style}
         >
-          <header className="create-user__header">
+          <header className="create-user__header" {...revisionModal.headerProps}>
             <div className="create-user__header-text">
               <h3>{`Revisión: ${String(revision?.codigo || `#${expandedRevisionId}`).trim()}`}</h3>
             </div>
             <div className="create-user__header-actions">
+              <button
+                type="button"
+                className="create-user__icon-button create-user__icon-button--maximize"
+                onClick={revisionModal.toggleMaximize}
+                aria-label={revisionModal.maximized ? 'Restaurar' : 'Maximizar'}
+              >
+                <i className={revisionModal.maximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
+              </button>
               <button type="button" className="create-user__icon-button" onClick={close} aria-label="Cerrar">
                 <i className="pi pi-times" />
               </button>
@@ -1449,7 +1456,17 @@ function RandomInspectionAdminTable({
           </header>
 
           <div className="create-user__form">
+            <div className="create-user__tabs create-salida__tabs" role="tablist">
+              <button type="button" className={`create-user__tab${revisionTab === 'general' ? ' create-user__tab--active' : ''}`} onClick={() => setRevisionTab('general')}>
+                General
+              </button>
+              <button type="button" className={`create-user__tab${revisionTab === 'productos' ? ' create-user__tab--active' : ''}`} onClick={() => setRevisionTab('productos')}>
+                {`Productos${revisionItems.length ? ` (${revisionItems.length})` : ''}`}
+              </button>
+            </div>
+            <div className="create-user__content create-salida__content">
             <div className="create-user__body transfer-issues-detail__body">
+              {revisionTab === 'general' && (
               <section className="create-user__section">
                 <div className="create-user__section-header">
                   <div>
@@ -1472,11 +1489,13 @@ function RandomInspectionAdminTable({
                   </div>
                 </div>
               </section>
+              )}
 
-              {revisionItemsLoading && !revisionItems.length ? (
+              {revisionTab === 'productos' && revisionItemsLoading && !revisionItems.length ? (
                 <p className="muted transfer-issues-details__hint">Cargando productos...</p>
               ) : null}
 
+              {revisionTab === 'productos' && (
               <section className="transfer-issues-branch">
                 <div className="transfer-issues-branch__list">
                   {sortedItems.map((row) => {
@@ -1542,6 +1561,8 @@ function RandomInspectionAdminTable({
                   ) : null}
                 </div>
               </section>
+              )}
+            </div>
             </div>
 
             <footer className="create-user__footer">
@@ -1559,6 +1580,14 @@ function RandomInspectionAdminTable({
               ) : null}
             </footer>
           </div>
+          {!revisionModal.maximized && (
+            <button
+              type="button"
+              aria-label="Cambiar tamaño de ventana"
+              className="create-user__resize-handle"
+              {...revisionModal.resizeHandleProps}
+            />
+          )}
         </div>
       </div>
     )
