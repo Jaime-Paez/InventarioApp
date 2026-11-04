@@ -2196,6 +2196,42 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   color: #86efac;
 }
 
+/* Detalle de la revision sin pestanas: resumen fijo arriba y la lista de
+   productos debajo con su propio scroll. */
+.create-user__body.inspection-admin__history-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  min-height: 0;
+  padding-bottom: 12px;
+}
+
+.inspection-admin__history-head {
+  flex: 0 0 auto;
+}
+
+.inspection-admin__history-products {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.inspection-admin__history-products-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--modal-color, #fff);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 800;
+}
+
+.dashboard-shell.dark .inspection-admin__history-products-title {
+  background: var(--table-color-dark);
+}
+
 /* Reconteos: puntos que dicen cuantos se han enviado (de 3). */
 .inspection-admin__recount-dots {
   display: inline-flex;

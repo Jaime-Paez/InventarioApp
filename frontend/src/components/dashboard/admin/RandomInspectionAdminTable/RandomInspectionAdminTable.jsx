@@ -161,11 +161,9 @@ function RandomInspectionAdminTable({
   const [itemsFilter, setItemsFilter] = useState('todos')
   const [summarySearch, setSummarySearch] = useState('')
   const [expandedRevisionId, setExpandedRevisionId] = useState('')
-  // Detalle de una revision: pestanas General / Productos y ventana que se
-  // mueve, maximiza y cambia de tamano como las demas del app.
-  const [revisionTab, setRevisionTab] = useState('general')
+  // Detalle de una revision: resumen arriba y productos abajo (con scroll),
+  // en una ventana que se mueve, maximiza y cambia de tamano como las demas.
   const revisionModal = useResizableModal(Boolean(expandedRevisionId))
-  useEffect(() => { setRevisionTab('general') }, [expandedRevisionId])
   const [revisionItems, setRevisionItems] = useState([])
   const [revisionItemsLoading, setRevisionItemsLoading] = useState(false)
   // Revision a desplegar cuando llega su sucursal (abierta desde un recordatorio).
@@ -1525,18 +1523,9 @@ function RandomInspectionAdminTable({
           </header>
 
           <div className="create-user__form">
-            <div className="create-user__tabs create-salida__tabs" role="tablist">
-              <button type="button" className={`create-user__tab${revisionTab === 'general' ? ' create-user__tab--active' : ''}`} onClick={() => setRevisionTab('general')}>
-                General
-              </button>
-              <button type="button" className={`create-user__tab${revisionTab === 'productos' ? ' create-user__tab--active' : ''}`} onClick={() => setRevisionTab('productos')}>
-                {`Productos${revisionItems.length ? ` (${revisionItems.length})` : ''}`}
-              </button>
-            </div>
             <div className="create-user__content create-salida__content">
-            <div className="create-user__body transfer-issues-detail__body">
-              {revisionTab === 'general' && (
-              <section className="create-user__section">
+            <div className="create-user__body transfer-issues-detail__body inspection-admin__history-body">
+              <section className="create-user__section inspection-admin__history-head">
                 <div className="create-user__section-header">
                   <div>
                     <p className="create-user__eyebrow">Resumen</p>
@@ -1558,14 +1547,13 @@ function RandomInspectionAdminTable({
                   </div>
                 </div>
               </section>
-              )}
 
-              {revisionTab === 'productos' && revisionItemsLoading && !revisionItems.length ? (
+              {revisionItemsLoading && !revisionItems.length ? (
                 <p className="muted transfer-issues-details__hint">Cargando productos...</p>
               ) : null}
 
-              {revisionTab === 'productos' && (
-              <section className="transfer-issues-branch">
+              <section className="transfer-issues-branch inspection-admin__history-products">
+                <p className="inspection-admin__history-products-title">{`Productos (${revisionItems.length})`}</p>
                 <div className="transfer-issues-branch__list">
                   {sortedItems.map((row) => {
                     const status = getItemStatus(row)
@@ -1643,7 +1631,6 @@ function RandomInspectionAdminTable({
                   ) : null}
                 </div>
               </section>
-              )}
             </div>
             </div>
 
