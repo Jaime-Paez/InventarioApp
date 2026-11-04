@@ -2112,7 +2112,14 @@ function RandomInspectionAdminTable({
                         </div>
                       )}
 
-                      {item?.agregado_por_revisor && !decision && (
+                      {item?.agregado_por_revisor && !decision && Array.isArray(item?.ubicaciones_conteo) && item.ubicaciones_conteo.length > 1 && (
+                        <div className="inspection-admin__relocate inspection-admin__relocate--found">
+                          <strong>{`No estaba en la lista: el revisor lo encontró en ${String(item?.encontrado_en?.label || 'esta fila')} y ya estaba en otras ubicaciones`}</strong>
+                          <p>Lo movió y lo volvió a contar en todas sus ubicaciones (ver la nota). "Aprobar ajuste" deja cada ubicación como la contó.</p>
+                        </div>
+                      )}
+
+                      {item?.agregado_por_revisor && !decision && !(Array.isArray(item?.ubicaciones_conteo) && item.ubicaciones_conteo.length > 1) && (
                         <div className="inspection-admin__relocate inspection-admin__relocate--found">
                           <strong>{`No estaba en la lista: el revisor lo encontró en ${String(item?.encontrado_en?.label || 'esta fila')}`}</strong>
                           {Array.isArray(item?.otras_ubicaciones) && item.otras_ubicaciones.length > 0 ? (

@@ -2743,6 +2743,8 @@ function QuickActions({
       if (!group) {
         group = {
           key,
+          // La ubicacion de la fila (para agregar ahi un producto encontrado).
+          place: location || null,
           divisionId: String(location?.division_id || ''),
           label: [location?.bodega_nombre, location?.division_nombre, location?.subdivision_nombre]
             .map((part) => String(part || '').trim())
@@ -2764,7 +2766,21 @@ function QuickActions({
     randomInspectionRows.forEach((row, rowIndex) => {
       const locations = Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : []
       if (row?.agregado_por_revisor && row?.encontrado_en) {
-        addEntry(row.encontrado_en, { row, rowIndex, location: null })
+        // Agregado por el revisor: va en la fila donde lo encontro; si tiene
+        // otras ubicaciones, se cuentan ahi mismo debajo (todas obligatorias).
+        const foundId = String(row.encontrado_en?.subdivision_id || '')
+        const here = row?.requiere_conteo_por_ubicacion
+          ? locations.find((location) => String(location?.subdivision_id || '') === foundId)
+          : null
+        addEntry({ ...row.encontrado_en, sucursal_id: row?.sucursal_id }, here
+          ? {
+            row,
+            rowIndex,
+            location: here,
+            outsideLocations: locations.filter((location) => location !== here),
+            addedElsewhere: true,
+          }
+          : { row, rowIndex, location: null })
       } else if (row?.requiere_conteo_por_ubicacion) {
         const inside = locations.filter((location) => !isOutside(location))
         const outside = locations.filter(isOutside)
@@ -5022,7 +5038,16 @@ function QuickActions({
   }, [randomInspectionAdd?.locationQuery, randomInspectionLocations.list])
 
 
-  const submitRandomInspectionAdd = useCallback(async () => {
+  // Otras ubicaciones del producto elegido (sin la fila donde se encontro).
+  const randomInspectionAddOtherLocations = useMemo(() => {
+    const hereId = String(randomInspectionAdd?.location?.subdivision_id || '')
+    return (Array.isArray(randomInspectionAdd?.selected?.ubicaciones) ? randomInspectionAdd.selected.ubicaciones : [])
+      .filter((location) => String(location?.subdivision_id || '') !== hereId)
+  }, [randomInspectionAdd?.location?.subdivision_id, randomInspectionAdd?.selected])
+
+  // `recount`: {conteo_ubicaciones, nota} cuando ya se movio y se reconto en
+  // todas las ubicaciones (modal "Este producto tiene cantidades en...").
+  const submitRandomInspectionAdd = useCallback(async (recount = null) => {
     const inspectionId = normalizeId(activeRandomInspection?.id)
     const form = randomInspectionAdd
     if (!token || !inspectionId || !form) return
@@ -5039,6 +5064,15 @@ function QuickActions({
       setRandomInspectionAdd((prev) => ({ ...prev, error: 'Escribe cuántas unidades encontraste.' }))
       return
     }
+    if (!recount && randomInspectionAddOtherLocations.length > 0) {
+      // Ya esta en otro lado: antes de agregarlo, decidir y recontar todo.
+      setRandomInspectionAdd((prev) => ({
+        ...prev,
+        error: '',
+        mover: { paso: 'elegir', modo: '', llevar: {}, conteo: {}, error: '' },
+      }))
+      return
+    }
     setRandomInspectionAdd((prev) => ({ ...prev, saving: true, error: '' }))
     try {
       // Primero lo pendiente de guardar, para no chocar con la version.
@@ -5053,6 +5087,7 @@ function QuickActions({
             subdivision_id: Number(form.location.subdivision_id),
             cantidad: quantity,
             version: randomInspectionVersionRef.current,
+            ...(recount || {}),
           }),
         },
         token
@@ -5080,9 +5115,15 @@ function QuickActions({
       }, 80)
       window.setTimeout(() => setRandomInspectionHighlightRowId((current) => (current === newRowId ? '' : current)), 2600)
     } catch (error) {
-      setRandomInspectionAdd((prev) => (prev ? { ...prev, saving: false, error: error?.message || 'No se pudo agregar el producto.' } : prev))
+      const message = error?.message || 'No se pudo agregar el producto.'
+      setRandomInspectionAdd((prev) => (prev ? {
+        ...prev,
+        saving: false,
+        error: prev.mover ? '' : message,
+        mover: prev.mover ? { ...prev.mover, error: message } : prev.mover,
+      } : prev))
     }
-  }, [activeRandomInspection?.id, flushRandomInspectionDraft, randomInspectionAdd, token])
+  }, [activeRandomInspection?.id, flushRandomInspectionDraft, randomInspectionAdd, randomInspectionAddOtherLocations, token])
   const jumpToRandomInspectionStep = useCallback((rowIndex) => {
     if (randomInspectionSubmitting) return
     let step = rowIndex
@@ -6522,7 +6563,7 @@ function QuickActions({
                                 String(location.division_id) !== String(activeRandomInspection.division_id))
                               .map((location) => location?.key)
                           )
-                          const otherLocations = entry.location
+                          const otherLocations = entry.location && !entry.addedElsewhere
                             ? (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
                               .filter((location) => location?.key !== entry.location?.key && !outsideKeys.has(location?.key))
                               .map((location) => String(location?.label || location?.subdivision_nombre || '').trim())
@@ -6615,7 +6656,11 @@ function QuickActions({
                                 </span>
                                 <span className="quick-actions__inspection-row-name">
                                   <strong>{String(location?.label || location?.subdivision_nombre || '').trim()}</strong>
-                                  <small>Fuera de esta columna: búscalo ahí y cuéntalo (obligatorio).</small>
+                                  <small>
+                                    {entry.addedElsewhere
+                                      ? 'Otra ubicación de este producto: cuéntalo ahí también (obligatorio).'
+                                      : 'Fuera de esta columna: búscalo ahí y cuéntalo (obligatorio).'}
+                                  </small>
                                 </span>
                                 <span>
                                   <input
@@ -6746,6 +6791,7 @@ function QuickActions({
                                 </div>,
                                 getAppPortalRoot()
                               )}
+                              {!randomInspectionAdd.fixedLocation && (<>
                               <button
                                 type="button"
                                 ref={randomInspectionAddLocationTriggerRef}
@@ -6820,6 +6866,7 @@ function QuickActions({
                                 </div>,
                                 getAppPortalRoot()
                               )}
+                              </>)}
                               <input
                                 type="text"
                                 inputMode="numeric"
@@ -6858,17 +6905,236 @@ function QuickActions({
                             {randomInspectionAdd.error && (
                               <p className="quick-actions__inspection-error">{randomInspectionAdd.error}</p>
                             )}
+                            {randomInspectionAdd.mover && (() => {
+                              // Ya esta en otro lado: o se lleva lo encontrado a
+                              // esas ubicaciones, o esta es la nueva y se trae
+                              // todo. En los dos casos se recuenta en todas.
+                              const mover = randomInspectionAdd.mover
+                              const here = randomInspectionAdd.location || {}
+                              const others = randomInspectionAddOtherLocations
+                              const found = toPositiveInt(randomInspectionAdd.cantidad, 0)
+                              const codigo = randomInspectionAdd.selected?.codigo || 'Este producto'
+                              const allLocations = [here, ...others]
+                              const idOf = (location) => String(location?.subdivision_id || '')
+                              const llevadas = others.reduce((total, location) => total + toPositiveInt(mover.llevar?.[idOf(location)], 0), 0)
+                              const recountFilled = allLocations.every((location) => String(mover.conteo?.[idOf(location)] ?? '').trim() !== '')
+                              const recountTotal = allLocations.reduce((total, location) => total + toPositiveInt(mover.conteo?.[idOf(location)], 0), 0)
+                              const canCount = mover.modo === 'traer' || (mover.modo === 'llevar' && llevadas > 0 && llevadas <= found)
+                              const setMover = (patch) => setRandomInspectionAdd((prev) => (prev?.mover ? { ...prev, mover: { ...prev.mover, error: '', ...patch } } : prev))
+                              const busy = Boolean(randomInspectionAdd.saving)
+                              const confirm = () => {
+                                if (!recountFilled) {
+                                  setMover({ error: 'Escribe cuántas hay en cada ubicación (0 si no queda ninguna).' })
+                                  return
+                                }
+                                if (recountTotal <= 0) {
+                                  setMover({ error: 'El recuento no puede quedar en 0 en todas: lo encontraste aquí.' })
+                                  return
+                                }
+                                const recountText = allLocations
+                                  .map((location) => `${location.label}: ${toPositiveInt(mover.conteo?.[idOf(location)], 0)}`)
+                                  .join(', ')
+                                const nota = mover.modo === 'llevar'
+                                  ? `Encontré ${found} en ${here.label} y llevé ${others
+                                    .filter((location) => toPositiveInt(mover.llevar?.[idOf(location)], 0) > 0)
+                                    .map((location) => `${toPositiveInt(mover.llevar?.[idOf(location)], 0)} a ${location.label}`)
+                                    .join(', ')}. Recuento: ${recountText}.`
+                                  : `Encontré ${found} en ${here.label}: es su nueva ubicación y traje aquí lo de ${others
+                                    .map((location) => location.label)
+                                    .join(', ')}. Recuento: ${recountText}.`
+                                void submitRandomInspectionAdd({
+                                  nota,
+                                  conteo_ubicaciones: allLocations.map((location) => ({
+                                    key: buildInspectionLocationKey(location),
+                                    subdivision_id: Number(location.subdivision_id),
+                                    cantidad: toPositiveInt(mover.conteo?.[idOf(location)], 0),
+                                  })),
+                                })
+                              }
+                              return createPortal(
+                                <div
+                                  className={`quick-actions__inspection-move-overlay${darkMode ? ' dark' : ''}`}
+                                  onMouseDown={() => { if (!busy) setRandomInspectionAdd((prev) => (prev ? { ...prev, mover: null } : prev)) }}
+                                >
+                                  <div
+                                    className="quick-actions__inspection-move-card"
+                                    role="alertdialog"
+                                    aria-modal="true"
+                                    aria-label="Producto con otras ubicaciones"
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                  >
+                                    {mover.paso === 'elegir' ? (
+                                      <>
+                                        <div className="quick-actions__inspection-move-warning">
+                                          <i className="pi pi-exclamation-triangle" aria-hidden="true" />
+                                          <div>
+                                            <strong>¿Estás seguro?</strong>
+                                            <p>{`${codigo} ya tiene cantidades en:`}</p>
+                                            <ul>
+                                              {others.map((location) => <li key={idOf(location)}>{location.label}</li>)}
+                                            </ul>
+                                            <p>{`Encontraste ${found} aquí, en ${here.label}. ¿Qué haces con ellas?`}</p>
+                                          </div>
+                                        </div>
+
+                                        <label className={`quick-actions__inspection-move-option${mover.modo === 'llevar' ? ' is-active' : ''}`}>
+                                          <input
+                                            type="radio"
+                                            name="inspection-move-mode"
+                                            checked={mover.modo === 'llevar'}
+                                            onChange={() => setMover({ modo: 'llevar' })}
+                                            disabled={busy}
+                                          />
+                                          <span>
+                                            <strong>Llevarlas a su ubicación</strong>
+                                            <small>Escribe cuántas de las que encontraste llevas a cada ubicación.</small>
+                                          </span>
+                                        </label>
+                                        {mover.modo === 'llevar' && (
+                                          <div className="quick-actions__inspection-move-list">
+                                            {others.map((location) => (
+                                              <label key={idOf(location)} className="quick-actions__inspection-move-line">
+                                                <span>{location.label}</span>
+                                                <input
+                                                  type="text"
+                                                  inputMode="numeric"
+                                                  className="quick-actions__inspection-add-qty"
+                                                  value={mover.llevar?.[idOf(location)] ?? ''}
+                                                  onChange={(event) => setMover({
+                                                    llevar: { ...(mover.llevar || {}), [idOf(location)]: normalizeQuantityInputString(event.target.value) },
+                                                  })}
+                                                  placeholder="0"
+                                                  aria-label={`Cuántas llevas a ${location.label}`}
+                                                  disabled={busy}
+                                                />
+                                              </label>
+                                            ))}
+                                            <small className={llevadas > found ? 'is-error' : undefined}>
+                                              {llevadas > found
+                                                ? `Solo encontraste ${found}: no puedes llevar ${llevadas}.`
+                                                : `Se quedan aquí: ${found - llevadas}`}
+                                            </small>
+                                          </div>
+                                        )}
+
+                                        <label className={`quick-actions__inspection-move-option${mover.modo === 'traer' ? ' is-active' : ''}`}>
+                                          <input
+                                            type="radio"
+                                            name="inspection-move-mode"
+                                            checked={mover.modo === 'traer'}
+                                            onChange={() => setMover({ modo: 'traer' })}
+                                            disabled={busy}
+                                          />
+                                          <span>
+                                            <strong>Pasar a esta ubicación</strong>
+                                            <small>{`Esta es su nueva ubicación: trae a ${here.label} todas las unidades de las otras ubicaciones.`}</small>
+                                          </span>
+                                        </label>
+
+                                        <div className="quick-actions__inspection-move-actions">
+                                          <button
+                                            type="button"
+                                            className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                                            onClick={() => setRandomInspectionAdd((prev) => (prev ? { ...prev, mover: null } : prev))}
+                                            disabled={busy}
+                                          >
+                                            Cancelar
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
+                                            onClick={() => setMover({ paso: 'contar' })}
+                                            disabled={busy || !canCount}
+                                          >
+                                            Ya lo moví: contar de nuevo
+                                          </button>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <div className="quick-actions__inspection-move-warning">
+                                          <i className="pi pi-refresh" aria-hidden="true" />
+                                          <div>
+                                            <strong>{`Cuenta de nuevo ${codigo} en todas sus ubicaciones`}</strong>
+                                            <p>Con lo que moviste, escribe cuántas hay ahora en cada una (0 si no queda ninguna).</p>
+                                          </div>
+                                        </div>
+                                        <div className="quick-actions__inspection-move-list">
+                                          {allLocations.map((location, index) => (
+                                            <label key={idOf(location)} className="quick-actions__inspection-move-line">
+                                              <span>
+                                                {location.label}
+                                                {index === 0 && <small> (aquí)</small>}
+                                              </span>
+                                              <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                className="quick-actions__inspection-add-qty"
+                                                value={mover.conteo?.[idOf(location)] ?? ''}
+                                                onChange={(event) => setMover({
+                                                  conteo: { ...(mover.conteo || {}), [idOf(location)]: normalizeQuantityInputString(event.target.value) },
+                                                })}
+                                                onKeyDown={(event) => {
+                                                  if (event.key !== 'Enter') return
+                                                  event.preventDefault()
+                                                  const inputs = Array.from(event.currentTarget.closest('.quick-actions__inspection-move-list')?.querySelectorAll('input') || [])
+                                                  const position = inputs.indexOf(event.currentTarget)
+                                                  if (position >= 0 && position < inputs.length - 1) inputs[position + 1].focus()
+                                                  else confirm()
+                                                }}
+                                                placeholder="-"
+                                                autoFocus={index === 0}
+                                                aria-label={`Cantidad en ${location.label}`}
+                                                disabled={busy}
+                                              />
+                                            </label>
+                                          ))}
+                                        </div>
+                                        <div className="quick-actions__inspection-move-actions">
+                                          <button
+                                            type="button"
+                                            className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                                            onClick={() => setMover({ paso: 'elegir' })}
+                                            disabled={busy}
+                                          >
+                                            Atrás
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
+                                            onClick={confirm}
+                                            disabled={busy || !recountFilled}
+                                          >
+                                            {busy ? 'Agregando...' : 'Agregar con este conteo'}
+                                          </button>
+                                        </div>
+                                      </>
+                                    )}
+                                    {mover.error && <p className="quick-actions__inspection-error">{mover.error}</p>}
+                                  </div>
+                                </div>,
+                                getAppPortalRoot()
+                              )
+                            })()}
                           </div>
                         ) : (
                           <button
                             type="button"
                             className="quick-actions__inspection-add-open"
                             onClick={() => {
+                              const rowIsLocation = /^\d+$/.test(String(activeRandomInspectionGroup.key))
                               setRandomInspectionAdd({
                                 groupKey: activeRandomInspectionGroup.key,
-                                location: /^\d+$/.test(String(activeRandomInspectionGroup.key))
-                                  ? { subdivision_id: Number(activeRandomInspectionGroup.key), label: activeRandomInspectionGroup.label }
+                                // Se encontro en esta fila: la ubicacion ya se sabe.
+                                fixedLocation: rowIsLocation,
+                                location: rowIsLocation
+                                  ? {
+                                    ...(activeRandomInspectionGroup.place || {}),
+                                    subdivision_id: Number(activeRandomInspectionGroup.key),
+                                    label: activeRandomInspectionGroup.label,
+                                  }
                                   : null,
+                                mover: null,
                                 locationOpen: false,
                                 locationQuery: '',
                                 open: true,
@@ -6881,7 +7147,7 @@ function QuickActions({
                                 error: '',
                               })
                               void searchRandomInspectionAddProducts('')
-                              void loadRandomInspectionLocations()
+                              if (!rowIsLocation) void loadRandomInspectionLocations()
                             }}
                             disabled={randomInspectionSubmitting}
                           >

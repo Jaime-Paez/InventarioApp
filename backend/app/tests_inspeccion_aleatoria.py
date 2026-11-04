@@ -1164,6 +1164,75 @@ class AgregarProductoEncontradoTests(InspeccionAleatoriaBaseTestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def _inspeccion_toda_la_sucursal(self):
+        InspeccionAleatoriaDiaria.objects.filter(pk=self.inspection.pk).update(cuenta_toda_la_sucursal=True)
+        self.inspection.refresh_from_db()
+
+    def _recontar(self, cantidad_aqui, cantidad_alla, nota="Lo lleve a su ubicacion"):
+        return self._agregar(
+            cantidad=None,
+            nota=nota,
+            conteo_ubicaciones=[
+                {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": cantidad_aqui},
+                {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": cantidad_alla},
+            ],
+        )
+
+    def test_buscar_trae_sus_ubicaciones_sin_cantidades(self):
+        self._inspeccion_toda_la_sucursal()
+        response = self.revisor_client.get(f"{BASE_URL}/{self.inspection.id}/buscar-producto/?q=P-1")
+        row = next(row for row in response.data["results"] if row["codigo"] == "P-1")
+        self.assertEqual([location["subdivision_id"] for location in row["ubicaciones"]], [self.sub_a.id])
+        self.assertNotIn("cantidad", row["ubicaciones"][0])
+
+    def test_lo_lleva_donde_estaba_y_recuenta_todas(self):
+        # Encontro 1 aqui y lo llevo a donde habia 10: al recontar hay 11 alla.
+        self._inspeccion_toda_la_sucursal()
+        response = self._recontar(0, 11)
+        self.assertEqual(response.status_code, 201, response.data)
+        item = self.inspection.items.get(producto=self.producto)
+        self.assertEqual(item.cantidad_reportada, 11)
+        self.assertEqual(item.observacion, "Lo lleve a su ubicacion")
+
+        detail = self.revisor_client.get(f"{BASE_URL}/{self.inspection.id}/").data["inspection"]
+        row = next(row for row in detail["items"] if row["producto_id"] == self.producto.id)
+        self.assertEqual(
+            [location["subdivision_id"] for location in row["ubicaciones_bodega"]], [self.sub_b.id, self.sub_a.id]
+        )
+
+        response = self._responder(self.inspection, {self.producto.id: 11, self.producto_2.id: 2})
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/", {"accion": "aprobar"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 11)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 0)
+
+    def test_trae_todo_a_esta_fila_y_recuenta(self):
+        # Esta es la ubicacion nueva: trajo los de alla y aqui quedan 9 (habia 8 + 1).
+        self._inspeccion_toda_la_sucursal()
+        self.assertEqual(self._recontar(9, 0, nota="Traje todo aqui").status_code, 201)
+        self._responder(self.inspection, {self.producto.id: 9, self.producto_2.id: 2})
+        item = self.inspection.items.get(producto=self.producto)
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/", {"accion": "aprobar"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 9)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 0)
+
+    def test_recuento_debe_incluir_esta_fila_y_todas_contadas(self):
+        self._inspeccion_toda_la_sucursal()
+        sin_esta = self._agregar(conteo_ubicaciones=[{"key": "a", "subdivision_id": self.sub_a.id, "cantidad": 3}])
+        self.assertEqual(sin_esta.status_code, 400)
+        incompleto = self._agregar(conteo_ubicaciones=[
+            {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": 1},
+            {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": ""},
+        ])
+        self.assertEqual(incompleto.status_code, 400)
+
     def test_buscar_producto_por_referencia(self):
         from productos.models import ProductoReferencia
 

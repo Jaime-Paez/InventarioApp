@@ -1881,7 +1881,32 @@ def _attach_random_inspection_locations(items, *, division_id=None, subdivision_
 
     for item in inspection_items:
         key = (int(item.sucursal_id), int(item.producto_id))
-        locations = stocked_map.get(key) or empty_map.get(key, [])
+        locations = list(stocked_map.get(key) or empty_map.get(key, []))
+        found_here = getattr(item, "encontrado_en", None) if getattr(item, "encontrado_en_id", None) else None
+        if (
+            getattr(item, "agregado_por_revisor", False)
+            and found_here is not None
+            and stocked_map.get(key)
+            and not any(location["subdivision_id"] == int(found_here.id) for location in locations)
+        ):
+            # Agregado por el revisor y con otras ubicaciones: la fila donde lo
+            # encontro va primero y se cuenta junto con las demas.
+            found = _serialize_found_location(found_here)
+            locations.insert(
+                0,
+                {
+                    "sucursal_id": int(item.sucursal_id),
+                    "producto_id": int(item.producto_id),
+                    "subdivision_id": found["subdivision_id"],
+                    "division_id": found["division_id"],
+                    "sucursal_nombre": _normalize_text(getattr(getattr(item, "sucursal", None), "nombre", "")),
+                    "bodega_nombre": found["bodega_nombre"],
+                    "division_nombre": found["division_nombre"],
+                    "subdivision_nombre": found["subdivision_nombre"],
+                    "cantidad": 0,
+                    "label": found["label"],
+                },
+            )
         item._inspection_location_payload = {
             "ubicacion_bodega": "\n".join(
                 f'{location["label"]} ({int(location["cantidad"])} uds)'
@@ -4209,7 +4234,10 @@ class RandomInspectionSearchProductAPIView(APIView):
 
             products = products.filter(id__in=matching_product_ids(term))
         total = products.count()
-        products = products.order_by("codigo").values("id", "codigo", "nombre")[:20]
+        products = list(products.order_by("codigo").values("id", "codigo", "nombre")[:20])
+        locations_by_product = _product_branch_locations(
+            inspection, [int(product["id"]) for product in products]
+        )
         return Response(
             {
                 "total": int(total),
@@ -4219,12 +4247,64 @@ class RandomInspectionSearchProductAPIView(APIView):
                         "codigo": _normalize_text(product["codigo"]),
                         "nombre": _normalize_text(product["nombre"]),
                         "en_lista": int(product["id"]) in existing,
+                        # Donde lo tiene el sistema (sin cantidades: el conteo
+                        # es a ciegas). Al agregarlo, el revisor decide si lo
+                        # lleva ahi o trae todo a esta fila, y recuenta todas.
+                        "ubicaciones": locations_by_product.get(int(product["id"]), []),
                     }
                     for product in products
                 ]
             },
             status=status.HTTP_200_OK,
         )
+
+
+def _product_branch_locations(inspection, product_ids):
+    """{producto_id: [ubicacion]} con stock en la sucursal de la revision
+    (dentro de su alcance), sin cantidades."""
+    division = getattr(inspection, "division", None)
+    sucursal_id = getattr(getattr(division, "bodega", None), "sucursal_id", None)
+    if not sucursal_id or not product_ids:
+        return {}
+    rows = (
+        _inspection_stock_queryset(
+            branch_ids={int(sucursal_id)},
+            product_ids=set(product_ids),
+            division_id=_inspection_division_scope(inspection),
+            subdivision_id=_inspection_subdivision_scope(inspection),
+        )
+        .values(
+            "producto_id",
+            "subdivision_id",
+            "subdivision__division_id",
+            "subdivision__division__bodega__nombre",
+            "subdivision__division__nombre",
+            "subdivision__nombre",
+        )
+        .annotate(total=Sum("cantidad"))
+        .filter(total__gt=0)
+    )
+    result = {}
+    for row in rows:
+        parts = [
+            _normalize_text(row["subdivision__division__bodega__nombre"]),
+            _normalize_text(row["subdivision__division__nombre"]),
+            _normalize_text(row["subdivision__nombre"]),
+        ]
+        result.setdefault(int(row["producto_id"]), []).append(
+            {
+                "sucursal_id": int(sucursal_id),
+                "subdivision_id": int(row["subdivision_id"]),
+                "division_id": int(row["subdivision__division_id"]),
+                "bodega_nombre": parts[0],
+                "division_nombre": parts[1],
+                "subdivision_nombre": parts[2],
+                "label": " / ".join(part for part in parts if part),
+            }
+        )
+    for locations in result.values():
+        locations.sort(key=lambda location: _natural_sort_key(location["label"]))
+    return result
 
 
 class RandomInspectionAddProductAPIView(APIView):
@@ -4269,7 +4349,34 @@ class RandomInspectionAddProductAPIView(APIView):
                     {"detail": "Elige una ubicacion de la sucursal donde lo encontraste."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            quantity = _parse_optional_quantity(request.data.get("cantidad"))
+            # Si el producto ya tenia otras ubicaciones, el revisor lo lleva
+            # alla o trae todo aqui y recuenta TODAS: [{key, subdivision_id,
+            # cantidad}] (esta fila incluida). Al aprobar, cada ubicacion queda
+            # como la conto.
+            location_counts = _parse_random_inspection_location_counts(
+                request.data.get("conteo_ubicaciones")
+            ) or []
+            if location_counts:
+                allowed = set(
+                    _inspection_branch_locations(inspection).values_list("id", flat=True)
+                )
+                counted_ids = {entry["subdivision_id"] for entry in location_counts}
+                if (
+                    any(entry["subdivision_id"] not in allowed for entry in location_counts)
+                    or int(subdivision.id) not in counted_ids
+                ):
+                    return Response(
+                        {"detail": "Una de las ubicaciones del conteo no es de esta sucursal."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if any(entry["cantidad_contada"] is None for entry in location_counts):
+                    return Response(
+                        {"detail": "Vuelve a contar el producto en todas sus ubicaciones."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                quantity = sum(entry["cantidad_contada"] for entry in location_counts)
+            else:
+                quantity = _parse_optional_quantity(request.data.get("cantidad"))
             if quantity is None or quantity <= 0:
                 return Response(
                     {"detail": "Escribe cuantas unidades encontraste (mayor a 0)."},
@@ -4286,6 +4393,16 @@ class RandomInspectionAddProductAPIView(APIView):
                 cantidad_reportada=int(quantity),
                 agregado_por_revisor=True,
                 encontrado_en=subdivision,
+                conteo_ubicaciones=[
+                    {
+                        "key": entry["key"],
+                        "subdivision_id": entry["subdivision_id"],
+                        "cantidad_contada": entry["cantidad_contada"],
+                        "no_encontrado": False,
+                    }
+                    for entry in location_counts
+                ],
+                observacion=_normalize_text(request.data.get("nota"))[:1000],
             )
             expected = _live_expected_quantities(
                 [item],
