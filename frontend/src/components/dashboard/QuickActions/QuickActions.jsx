@@ -6992,6 +6992,30 @@ function QuickActions({
                               const canCount = mover.modo === 'traer'
                                 ? traerFilled && traerTotal > 0
                                 : mover.modo === 'llevar' && found > 0 && llevadas === found
+                              // Llevarlas: lo que se escribe en una ubicacion descuenta de las
+                              // encontradas y lo que falta se pone solo en la otra (con dos
+                              // ubicaciones siempre; con mas, en la unica que no se ha tocado).
+                              const splitFoundUnits = (location, rawValue) => {
+                                const id = idOf(location)
+                                const raw = normalizeQuantityInputString(rawValue)
+                                const typed = raw === '' ? '' : String(Math.min(toPositiveInt(raw, 0), found))
+                                const touched = { ...(mover.llevarTocadas || {}), [id]: true }
+                                const next = { ...(mover.llevar || {}), [id]: typed }
+                                const rest = others.filter((other) => idOf(other) !== id)
+                                const target = rest.length === 1
+                                  ? rest[0]
+                                  : (() => {
+                                    const untouched = rest.filter((other) => !touched[idOf(other)])
+                                    return untouched.length === 1 ? untouched[0] : null
+                                  })()
+                                if (target && typed !== '') {
+                                  const assigned = others
+                                    .filter((other) => idOf(other) !== idOf(target))
+                                    .reduce((total, other) => total + toPositiveInt(next[idOf(other)], 0), 0)
+                                  next[idOf(target)] = String(Math.max(0, found - assigned))
+                                }
+                                return { modo: 'llevar', llevar: next, llevarTocadas: touched }
+                              }
                               const setMover = (patch) => setRandomInspectionAdd((prev) => (prev?.mover ? { ...prev, mover: { ...prev.mover, error: '', ...patch } } : prev))
                               const busy = Boolean(randomInspectionAdd.saving)
                               const confirm = () => {
@@ -7089,7 +7113,7 @@ function QuickActions({
                                             }}
                                           >
                                             <strong>Llevarlas a su ubicación</strong>
-                                            <small>{`Reparte las ${found} entre sus ubicaciones: aquí no se queda ninguna.`}</small>
+                                            <p className="quick-actions__inspection-move-lead">{`Reparte las ${found} entre sus ubicaciones: aquí no se queda ninguna.`}</p>
                                             <div className="quick-actions__inspection-move-list">
                                               {others.map((location) => (
                                                 <label key={idOf(location)} className="quick-actions__inspection-move-line">
@@ -7100,23 +7124,13 @@ function QuickActions({
                                                     className="quick-actions__inspection-add-qty"
                                                     value={mover.llevar?.[idOf(location)] ?? ''}
                                                     onFocus={() => { if (mover.modo !== 'llevar') setMover({ modo: 'llevar' }) }}
-                                                    onChange={(event) => setMover({
-                                                      modo: 'llevar',
-                                                      llevar: { ...(mover.llevar || {}), [idOf(location)]: normalizeQuantityInputString(event.target.value) },
-                                                    })}
+                                                    onChange={(event) => setMover(splitFoundUnits(location, event.target.value))}
                                                     placeholder="0"
                                                     aria-label={`Cuántas llevas a ${location.label}`}
                                                     disabled={busy}
                                                   />
                                                 </label>
                                               ))}
-                                              <small className={llevadas > found ? 'is-error' : llevadas === found ? 'is-ok' : undefined}>
-                                                {llevadas > found
-                                                  ? `Solo encontraste ${found}: no puedes llevar ${llevadas}.`
-                                                  : llevadas === found
-                                                    ? `Listo: repartiste las ${found}.`
-                                                    : `Faltan por repartir: ${found - llevadas}`}
-                                              </small>
                                             </div>
                                           </div>
                                           <div
@@ -7131,7 +7145,7 @@ function QuickActions({
                                             }}
                                           >
                                             <strong>Pasar a esta ubicación</strong>
-                                            <small>Esta es su nueva ubicación: escribe cuántas quedan aquí y cuántas en cada ubicación donde ya estaba.</small>
+                                            <p className="quick-actions__inspection-move-lead">Esta es su nueva ubicación: escribe cuántas quedan aquí y cuántas en cada ubicación donde ya estaba.</p>
                                             <div className="quick-actions__inspection-move-list">
                                               {allLocations.map((location, index) => (
                                                 <label key={idOf(location)} className="quick-actions__inspection-move-line">
