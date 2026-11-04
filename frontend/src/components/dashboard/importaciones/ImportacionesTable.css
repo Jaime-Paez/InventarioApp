@@ -1499,19 +1499,35 @@
   outline-offset: 2px;
 }
 
+/* Fila a la que llevo un contador: el mismo marco y fondo ambar que en la
+   verificacion (imp-row--highlight). En la tabla <table> el marco se arma
+   por celda: arriba y abajo en todas, y los lados en la primera y la ultima. */
 .imp-excel-review__row--flash td,
 .create-user__locations-row.imp-excel-review__row--flash > span {
-  animation: imp-review-row-flash 1.4s ease-out;
+  animation: imp-review-row-flash 2.4s ease-out;
+}
+
+.imp-excel-review__row--flash td:first-child {
+  animation-name: imp-review-row-flash-first;
+}
+
+.imp-excel-review__row--flash td:last-child {
+  animation-name: imp-review-row-flash-last;
 }
 
 @keyframes imp-review-row-flash {
-  0%,
-  35% {
-    box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--color-primary, #2563eb) 18%, transparent);
-  }
-  100% {
-    box-shadow: inset 0 0 0 999px transparent;
-  }
+  0%, 40% { box-shadow: inset 0 2px 0 #f59e0b, inset 0 -2px 0 #f59e0b; background-color: rgba(245, 158, 11, 0.18); }
+  100% { box-shadow: inset 0 2px 0 transparent, inset 0 -2px 0 transparent; }
+}
+
+@keyframes imp-review-row-flash-first {
+  0%, 40% { box-shadow: inset 0 2px 0 #f59e0b, inset 0 -2px 0 #f59e0b, inset 2px 0 0 #f59e0b; background-color: rgba(245, 158, 11, 0.18); }
+  100% { box-shadow: inset 0 2px 0 transparent, inset 0 -2px 0 transparent, inset 2px 0 0 transparent; }
+}
+
+@keyframes imp-review-row-flash-last {
+  0%, 40% { box-shadow: inset 0 2px 0 #f59e0b, inset 0 -2px 0 #f59e0b, inset -2px 0 0 #f59e0b; background-color: rgba(245, 158, 11, 0.18); }
+  100% { box-shadow: inset 0 2px 0 transparent, inset 0 -2px 0 transparent, inset -2px 0 0 transparent; }
 }
 
 @media (prefers-reduced-motion: reduce) {
