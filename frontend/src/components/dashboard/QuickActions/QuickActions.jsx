@@ -6682,15 +6682,13 @@ function QuickActions({
                                 {row?.agregado_por_revisor ? (
                                   <button
                                     type="button"
-                                    className="quick-actions__inspection-row-remove"
+                                    className="create-user__locations-remove"
                                     onClick={() => void removeRandomInspectionAddedProduct(row)}
                                     disabled={randomInspectionSubmitting || Boolean(randomInspectionRemovingId)}
                                     aria-label={`Quitar ${row?.producto_codigo || 'producto'} de la revisión`}
                                     data-title="Quitar este producto (lo agregaste tú)"
                                   >
-                                    {randomInspectionRemovingId === rowId
-                                      ? <i className="pi pi-spin pi-spinner" aria-hidden="true" />
-                                      : <i className="pi pi-times" aria-hidden="true" />}
+                                    {randomInspectionRemovingId === rowId ? <i className="pi pi-spin pi-spinner" aria-hidden="true" /> : 'x'}
                                   </button>
                                 ) : notFoundHere ? (
                                   <button
