@@ -4741,6 +4741,8 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
   // Clic en un contador de arriba (vinculados, sin catalogo, amarillo...):
   // salta a la siguiente fila de ese grupo en cuanto este dibujada.
   const [reviewJump, setReviewJump] = useState(null)
+  // Cada clic en "N repetidos" va al siguiente codigo repetido.
+  const repetidoSiguienteRef = useRef(0)
   useLayoutEffect(() => {
     if (!reviewJump) return
     const wrap = reviewTableWrapRef.current
@@ -4870,12 +4872,21 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
     repetidos: (r) => duplicateRowSet.has(r),
   }
   // Clic en un contador: lleva al inicio de ese grupo (los grupos van juntos).
-  // Los repetidos: lleva a la primera y marca todas sus filas a la vez.
+  // Los repetidos: cada clic va al siguiente codigo y marca sus filas.
   const jumpToReviewGroup = (key) => {
     const test = REVIEW_GROUPS[key]
-    const posiciones = key === 'repetidos'
-      ? reviewRows.map(({ row }, i) => (test(row) ? i : -1)).filter((i) => i !== -1)
-      : [reviewRows.findIndex(({ row }) => test(row))].filter((i) => i !== -1)
+    let posiciones
+    if (key === 'repetidos') {
+      const grupos = duplicateProductGroups
+        .map((grupo) => reviewRows.map(({ row }, i) => (grupo.includes(row) ? i : -1)).filter((i) => i !== -1))
+        .filter((pos) => pos.length)
+        .sort((a, b) => a[0] - b[0])
+      if (!grupos.length) return
+      posiciones = grupos[repetidoSiguienteRef.current % grupos.length]
+      repetidoSiguienteRef.current += 1
+    } else {
+      posiciones = [reviewRows.findIndex(({ row }) => test(row))].filter((i) => i !== -1)
+    }
     if (!posiciones.length) return
     const ultima = posiciones[posiciones.length - 1]
     if (ultima >= reviewRenderCount) setReviewRenderCount(ultima + REVIEW_ROWS_BATCH)
@@ -8109,6 +8120,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     })
     : details
   // Lleva a la primera fila de un codigo repetido y marca todas sus filas.
+  // Cada clic en "N repetidos" va al siguiente codigo repetido.
+  const repetidoSiguienteVerificacionRef = useRef(0)
+  const jumpToNextRepetido = (grupos) => {
+    if (!grupos.length) return
+    const grupo = grupos[repetidoSiguienteVerificacionRef.current % grupos.length]
+    repetidoSiguienteVerificacionRef.current += 1
+    jumpToDetailRows(grupo.keys)
+  }
   const jumpToDetailRows = (keys) => {
     if (!keys.length) return
     setProductSearch('')
@@ -8433,7 +8452,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                       <VerificacionGroupsSummary
                         conteo={verificarConteo}
                         repetidos={codigosRepetidosVerificacion}
-                        onIrRepetidos={() => jumpToDetailRows(codigosRepetidosVerificacion.flatMap((grupo) => grupo.keys))}
+                        onIrRepetidos={() => jumpToNextRepetido(codigosRepetidosVerificacion)}
                         chipProps={(grupo, label) => ({
                           role: 'button',
                           tabIndex: 0,
