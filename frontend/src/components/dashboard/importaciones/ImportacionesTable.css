@@ -2562,7 +2562,14 @@ body.app-theme-dark .imp-receive-footer-hint {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin: 0 0 10px;
+  margin: 0;
+}
+
+.imp-product-search__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .imp-product-search .search-input-container {

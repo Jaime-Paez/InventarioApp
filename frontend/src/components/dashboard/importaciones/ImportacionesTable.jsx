@@ -101,7 +101,8 @@ function PrecioCentavosInput({ value, onChange, disabled, title, onDoubleClick, 
   )
 }
 
-function ImportProductSearch({ value, onChange, shown, total, children }) {
+// `actions`: botones que van a la derecha, en la misma fila del buscador.
+function ImportProductSearch({ value, onChange, shown, total, children, actions }) {
   return (
     <div className="imp-product-search">
       <div className="search-input-container">
@@ -123,6 +124,7 @@ function ImportProductSearch({ value, onChange, shown, total, children }) {
           <button type="button" className="imp-product-search__clear" onClick={() => onChange('')}>Limpiar</button>
         </span>
       )}
+      {actions && <div className="imp-product-search__actions">{actions}</div>}
     </div>
   )
 }
@@ -3210,12 +3212,6 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
 
               {activeTab === 'productos' && (
                 <section className="create-user__section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <p className="create-user__eyebrow">Productos</p>
-                      <h4>Listado de productos</h4>
-                    </div>
-                  </div>
                   <ImportProductSearch
                     value={productSearch}
                     onChange={setProductSearch}
@@ -5001,16 +4997,6 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                   </div>
                 ) : (
                   <>
-                    {!readOnly && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                      <button type="button" className="create-user__ghost" onClick={() => setShowNuevoProducto(true)} style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                        + Agregar nuevo producto
-                      </button>
-                      <button type="button" className="create-user__ghost" onClick={() => setShowAceptados(true)} style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                        + Aceptados de solicitudes
-                      </button>
-                    </div>
-                    )}
                     <ImportGroupsSummary
                       vinculados={matchedCount}
                       oem={suggestedCount}
@@ -5053,6 +5039,16 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                       onChange={setReviewQuery}
                       shown={reviewHitCount}
                       total={validRows.length}
+                      actions={!readOnly && (
+                        <>
+                          <button type="button" className="create-user__ghost" onClick={() => setShowNuevoProducto(true)} style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                            + Agregar nuevo producto
+                          </button>
+                          <button type="button" className="create-user__ghost" onClick={() => setShowAceptados(true)} style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                            + Aceptados de solicitudes
+                          </button>
+                        </>
+                      )}
                     />
 
                     <div ref={reviewTableWrapRef} onScroll={handleReviewTableScroll} className={`imp-excel-review-table-wrap ${wrapClassName}`.trim()} style={{ border: '1px solid var(--color-border, #e2e8f0)', borderRadius: 8, overflow: 'auto', flex: '1 1 auto', minHeight: 160, maxHeight: compact ? 'min(360px, 45dvh)' : 'none', ...wrapStyle }}>
@@ -8316,14 +8312,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
                 {activeTab === 'productos' && !showAceptadosView && (
                   <section className="create-user__section">
-                    <div className="create-user__section-header">
-                      <div>
-                        <p className="create-user__eyebrow">Productos</p>
-                        <h4>Listado de productos</h4>
-                      </div>
-                      {/* La sugerencia trae sus propios botones (SugerenciaTabla). */}
-                      {!isSugerencia && (!isVerificarOrConfirmacion || (isVerificar && canEdit)) && (
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {(() => {
+                      // La sugerencia trae sus propios botones (SugerenciaTabla).
+                      const productActions = !isSugerencia && (!isVerificarOrConfirmacion || (isVerificar && canEdit)) && (
+                        <>
                           <button
                             type="button"
                             className="create-user__ghost"
@@ -8345,10 +8337,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                               </button>
                             </span>
                           )}
-                        </div>
-                      )}
-                    </div>
-
+                        </>
+                      )
+                      return (
+                        <>
                     {isVerificar && details.length > 0 && (
                       <VerificacionGroupsSummary
                         conteo={verificarConteo}
@@ -8373,9 +8365,18 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         onChange={setProductSearch}
                         shown={details.filter((item) => importItemMatches(item, productSearch)).length}
                         total={details.length}
-                      >
-                      </ImportProductSearch>
+                        actions={productActions}
+                      />
                     )}
+                    {/* Sin productos no hay buscador, pero los botones siguen. */}
+                    {!isSugerencia && details.length === 0 && productActions && (
+                      <div className="imp-product-search">
+                        <div className="imp-product-search__actions">{productActions}</div>
+                      </div>
+                    )}
+                        </>
+                      )
+                    })()}
                     {avisoCodigosInvalidos.length > 0 && (
                       <div className="imp-incompletos-aviso" role="alert">
                         <i className="pi pi-exclamation-triangle" aria-hidden="true" />
