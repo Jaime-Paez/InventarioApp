@@ -300,6 +300,25 @@ class DetalleMovimientoSerializer(serializers.ModelSerializer):
         write_only=True, required=False, allow_blank=True, allow_null=True
     )
 
+    # Montos con 2 decimales en la base. El navegador calcula cantidad x valor
+    # con decimales flotantes (3 x 0.1 = 0.30000000000000004) y Django los
+    # rechazaba con "Asegurese de que no haya mas de 12 digitos en total":
+    # se redondean a centavos antes de validar.
+    MONEY_FIELDS = ("valor", "valor_total", "costo", "descuento_porcentaje", "precio_anterior")
+
+    def to_internal_value(self, data):
+        if hasattr(data, "copy"):
+            data = data.copy()
+            for field in self.MONEY_FIELDS:
+                raw = data.get(field)
+                if raw in (None, "") or isinstance(raw, bool):
+                    continue
+                try:
+                    data[field] = str(Decimal(str(raw)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+                except (InvalidOperation, ValueError, TypeError):
+                    pass  # Que la validacion normal diga que no es un numero.
+        return super().to_internal_value(data)
+
     class Meta:
         model = DetalleMovimiento
         fields = [
