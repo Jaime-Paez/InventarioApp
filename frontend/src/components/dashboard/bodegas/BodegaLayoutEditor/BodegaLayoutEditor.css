@@ -20,8 +20,8 @@
 
 .bodega-layout__plan-wrapper {
   border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 12px;
+  border-radius: 8px;
+  padding: 8px;
   background: var(--color-surface);
   width: 100%;
   /* "overflow-x: hidden" solo (sin overflow-y) hace que el navegador calcule
@@ -69,8 +69,9 @@
 .bodega-layout__legend li {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
+  gap: 5px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -78,24 +79,26 @@
   margin: 0;
 }
 
+/* Como la leyenda del mapa de conteo: cuadrito con borde del color y
+   relleno translucido (los colores van en linea, por tipo). */
 .bodega-layout__legend-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 2px solid var(--color-border);
 }
 
 .bodega-layout__plan {
   position: relative;
   width: 100%;
   min-height: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px dashed var(--color-border);
   background-color: color-mix(in srgb, var(--color-surface) 80%, transparent);
   background-image:
     linear-gradient(to right, color-mix(in srgb, var(--color-border) 30%, transparent) 1px, transparent 1px),
     linear-gradient(to bottom, color-mix(in srgb, var(--color-border) 30%, transparent) 1px, transparent 1px);
-  background-size: 24px 24px;
+  background-size: 20px 20px;
   overflow: hidden;
 }
 
@@ -104,18 +107,21 @@
   cursor: not-allowed;
 }
 
+/* Como las perchas del mapa de conteo: borde de 2px del color del tipo,
+   relleno translucido y nombre en negrita compacta. */
 .bodega-layout__location {
   position: absolute;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 50%, transparent);
-  padding: 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+  border: 2px solid var(--color-primary);
+  padding: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--color-text-primary);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.15;
   overflow: hidden;
   cursor: grab;
   user-select: none;
@@ -127,8 +133,8 @@
 }
 
 .bodega-layout__location-label {
-  font-weight: 600;
-  font-size: var(--font-size-xs);
+  font-weight: 700;
+  font-size: inherit;
   color: inherit;
   text-align: center;
   overflow: hidden;
@@ -152,7 +158,7 @@
 }
 
 .dashboard-shell.dark .bodega-layout__location {
-  color: var(--color-button-primary);
+  color: var(--color-text-title-dark);
 }
 
 .bodega-layout__resize-tooltip {
@@ -180,9 +186,10 @@
   cursor: se-resize;
 }
 
+/* Seleccionada: el mismo halo que la percha elegida en el mapa de conteo
+   (el borde conserva el color de su tipo). */
 .bodega-layout__location--selected {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 55%, transparent);
 }
 
 .bodega-layout__list {
@@ -473,10 +480,15 @@
 }
 
 .dashboard-shell.dark .bodega-layout__plan {
+  border-color: var(--color-border-dark);
   background-color: color-mix(in srgb, var(--color-surface-darker) 92%, transparent);
   background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--color-text-dark) 24%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--color-text-dark) 24%, transparent) 1px, transparent 1px);
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+}
+
+.dashboard-shell.dark .bodega-layout__plan-wrapper {
+  border-color: var(--color-border-dark);
 }
 
 /* Rubber-band selection box */

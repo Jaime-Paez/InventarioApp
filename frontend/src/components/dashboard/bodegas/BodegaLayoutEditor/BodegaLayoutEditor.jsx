@@ -763,7 +763,10 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
               <li key={type}>
                 <span
                   className="bodega-layout__legend-dot"
-                  style={{ backgroundColor: resolveTypeColor(type) }}
+                  style={{
+                    borderColor: resolveTypeColor(type),
+                    backgroundColor: `color-mix(in srgb, ${resolveTypeColor(type)} 30%, transparent)`,
+                  }}
                 />
                 <span>{type}</span>
               </li>
@@ -804,8 +807,9 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                     top: `${top}%`,
                     width: `${width}%`,
                     height: `${height}%`,
+                    // Como el mapa de conteo: borde del color y relleno al 30%.
                     borderColor: locationColor,
-                    backgroundColor: `${locationColor}22`,
+                    backgroundColor: `color-mix(in srgb, ${locationColor} 30%, transparent)`,
                   }}
                   onClick={(event) => {
                     event.stopPropagation()
