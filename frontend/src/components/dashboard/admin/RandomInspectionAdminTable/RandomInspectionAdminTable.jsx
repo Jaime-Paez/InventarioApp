@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, PackageCheck, 
 import { Button } from 'primereact/button'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
-import { Toast } from 'primereact/toast'
+import Toast from '../../common/AppToast'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { formatDateTime } from '../../../../utils/dateFormat'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'

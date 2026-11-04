@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Toast } from 'primereact/toast'
+import Toast from '../../common/AppToast'
 import '../../admin/CreateUsuario/CreateUsuario.css'
 import './Configuracion.css'
 import { API_URL, authFetch } from '../../../../utils/api'

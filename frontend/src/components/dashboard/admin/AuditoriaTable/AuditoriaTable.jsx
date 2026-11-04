@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
-import { Toast } from 'primereact/toast'
+import Toast from '../../common/AppToast'
 import { Tooltip } from 'primereact/tooltip'
 import { OverlayPanel } from 'primereact/overlaypanel'
 import { Checkbox } from 'primereact/checkbox'
