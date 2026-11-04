@@ -188,6 +188,9 @@ function RandomInspectionAdminTable({
   const [sendNowDialogLoading, setSendNowDialogLoading] = useState(false)
   const [sendNowParams, setSendNowParams] = useState({ cantidad_productos: '', hora_recordatorio: '' })
   const [sendNowSelectedUserIds, setSendNowSelectedUserIds] = useState(new Set())
+  // Aleatorio: sucursal y revisor en desplegables ('' = todas / todos).
+  const [aleatorioSucursalId, setAleatorioSucursalId] = useState('')
+  const [aleatorioUsuarioId, setAleatorioUsuarioId] = useState('')
   const [sendNowMode, setSendNowMode] = useState('aleatorio')
   const [sendError, setSendError] = useState('')
   // "Enviar ahora mismo": ignora la hora elegida y usa la hora actual.
@@ -1676,6 +1679,8 @@ function RandomInspectionAdminTable({
                       .filter(Boolean)
                   )
                   setSendNowSelectedUserIds(allIds)
+                  setAleatorioSucursalId('')
+                  setAleatorioUsuarioId('')
                 } catch {
                   notifyError('Error al cargar datos para enviar recordatorios.')
                   setShowSendNowDialog(false)
@@ -2937,84 +2942,67 @@ function RandomInspectionAdminTable({
                   onAction={openAssignmentsDialog}
                 />
               ) : (() => {
-                const allReviewerIds = sendNowSummary.flatMap((b) =>
-                  b.reviewers.map((u) => normalizeId(u?.id)).filter(Boolean)
-                )
-                const allChecked = allReviewerIds.length > 0 && allReviewerIds.every((id) => sendNowSelectedUserIds.has(id))
-                const someChecked = allReviewerIds.some((id) => sendNowSelectedUserIds.has(id))
+                // Como en Division / Lista: sucursal y revisor en desplegables,
+                // con "Todas" / "Todos" (por defecto, a todos los revisores).
+                const TODAS = '__todas__'
+                const branchOptions = [{ id: TODAS, nombre: 'Todas las sucursales' }, ...sendNowSummary.map((b) => ({ id: b.id, nombre: b.nombre }))]
+                const branchesInScope = aleatorioSucursalId
+                  ? sendNowSummary.filter((b) => b.id === aleatorioSucursalId)
+                  : sendNowSummary
+                const seen = new Set()
+                const reviewersInScope = branchesInScope.flatMap((b) => b.reviewers).filter((u) => {
+                  const uid = normalizeId(u?.id)
+                  if (!uid || seen.has(uid)) return false
+                  seen.add(uid)
+                  return true
+                })
+                const reviewerOptions = [{ id: TODAS, nombre: 'Todos los revisores' }, ...reviewersInScope.map((u) => ({
+                  id: normalizeId(u?.id),
+                  nombre: String(u?.nombre_completo || u?.correo || `Usuario ${u?.id}`).trim(),
+                }))]
+                const applySelection = (sucursalId, usuarioId) => {
+                  const scope = sucursalId ? sendNowSummary.filter((b) => b.id === sucursalId) : sendNowSummary
+                  const ids = scope.flatMap((b) => b.reviewers.map((u) => normalizeId(u?.id))).filter(Boolean)
+                  setSendNowSelectedUserIds(new Set(usuarioId ? ids.filter((id) => id === usuarioId) : ids))
+                }
+                const disabled = sendNowLoading || sendNowDialogLoading
                 return (
-                  <div className="inspection-admin__sendnow-table-wrap">
-                    <table className="inspection-admin__sendnow-table">
-                      <thead>
-                        <tr>
-                          <th>Sucursal</th>
-                          <th>Revisor</th>
-                          <th>
-                            <input
-                              type="checkbox"
-                              checked={allChecked}
-                              ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked }}
-                              onChange={() => {
-                                if (allChecked) {
-                                  setSendNowSelectedUserIds(new Set())
-                                } else {
-                                  setSendNowSelectedUserIds(new Set(allReviewerIds))
-                                }
-                              }}
-                              disabled={sendNowLoading || sendNowDialogLoading}
-                              title={allChecked ? 'Deseleccionar todos' : 'Seleccionar todos'}
-                            />
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sendNowSummary.flatMap((branch) =>
-                          branch.reviewers.map((u, i) => {
-                            const uid = normalizeId(u?.id)
-                            return (
-                              <tr
-                                key={`sendnow-user-${uid}`}
-                                className={sendNowSelectedUserIds.has(uid) ? 'inspection-admin__sendnow-row--selected' : ''}
-                                onClick={() => {
-                                  if (sendNowLoading || sendNowDialogLoading) return
-                                  setSendNowSelectedUserIds((prev) => {
-                                    const next = new Set(prev)
-                                    if (next.has(uid)) next.delete(uid)
-                                    else next.add(uid)
-                                    return next
-                                  })
-                                }}
-                              >
-                                {i === 0 && (
-                                  <td rowSpan={branch.reviewers.length} className="inspection-admin__sendnow-td-branch">
-                                    {branch.nombre}
-                                  </td>
-                                )}
-                                <td>{String(u?.nombre_completo || u?.correo || `Usuario ${u?.id}`).trim()}</td>
-                                <td className="inspection-admin__sendnow-td-check">
-                                  <input
-                                    type="checkbox"
-                                    checked={sendNowSelectedUserIds.has(uid)}
-                                    onChange={() => {
-                                      setSendNowSelectedUserIds((prev) => {
-                                        const next = new Set(prev)
-                                        if (next.has(uid)) next.delete(uid)
-                                        else next.add(uid)
-                                        return next
-                                      })
-                                    }}
-                                    disabled={sendNowLoading || sendNowDialogLoading}
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-                                </td>
-                              </tr>
-                            )
-                          })
-                        )}
-                      </tbody>
-                    </table>
+                  <div className="inspection-admin__division-fields">
+                    <label className="create-user__field">
+                      <span>Sucursal</span>
+                      <CascadeDropdown
+                        placeholder="Todas las sucursales"
+                        searchPlaceholder="Buscar sucursal"
+                        options={branchOptions}
+                        valueId={aleatorioSucursalId || TODAS}
+                        getOptionLabel={(o) => o.nombre}
+                        onSelect={(o) => {
+                          const sucursalId = o.id === TODAS ? '' : o.id
+                          setAleatorioSucursalId(sucursalId)
+                          setAleatorioUsuarioId('')
+                          applySelection(sucursalId, '')
+                        }}
+                        disabled={disabled}
+                      />
+                    </label>
+                    <label className="create-user__field">
+                      <span>Revisor</span>
+                      <CascadeDropdown
+                        placeholder="Todos los revisores"
+                        searchPlaceholder="Buscar revisor"
+                        options={reviewerOptions}
+                        valueId={aleatorioUsuarioId || TODAS}
+                        getOptionLabel={(o) => o.nombre}
+                        onSelect={(o) => {
+                          const usuarioId = o.id === TODAS ? '' : o.id
+                          setAleatorioUsuarioId(usuarioId)
+                          applySelection(aleatorioSucursalId, usuarioId)
+                        }}
+                        disabled={disabled}
+                      />
+                    </label>
                     <p className="inspection-admin__sendnow-count-footer">
-                      {sendNowSelectedUserIds.size} de {allReviewerIds.length} revisores seleccionados
+                      {`Se enviará a ${sendNowSelectedUserIds.size} revisor${sendNowSelectedUserIds.size === 1 ? '' : 'es'}.`}
                     </p>
                   </div>
                 )
