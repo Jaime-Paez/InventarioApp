@@ -1504,7 +1504,7 @@
    por celda: arriba y abajo en todas, y los lados en la primera y la ultima. */
 .imp-excel-review__row--flash td,
 .create-user__locations-row.imp-excel-review__row--flash > span {
-  animation: imp-review-row-flash 2.4s ease-out;
+  animation: imp-review-row-flash 1s ease-out;
 }
 
 .imp-excel-review__row--flash td:first-child {
@@ -2532,7 +2532,7 @@
 
 /* Fila a la que se salto desde el selector */
 .importaciones-modal__products-table .imp-row--highlight {
-  animation: imp-row-flash 2.4s ease-out;
+  animation: imp-row-flash 1s ease-out;
 }
 
 @keyframes imp-row-flash {

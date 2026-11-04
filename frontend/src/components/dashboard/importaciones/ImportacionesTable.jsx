@@ -8013,7 +8013,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     window.requestAnimationFrame(() => {
       scrollRowToTopAndFlash(document.querySelector(`[data-detail-key="${CSS.escape(String(detailKey))}"]`))
     })
-    window.setTimeout(() => setHighlightedDetailKey((current) => (current === String(detailKey) ? '' : current)), 2600)
+    window.setTimeout(() => setHighlightedDetailKey((current) => (current === String(detailKey) ? '' : current)), 1100)
   }, [])
   // Mismos grupos (y colores) que las filas de la verificacion.
   const verificarColorDe = (item) => (
