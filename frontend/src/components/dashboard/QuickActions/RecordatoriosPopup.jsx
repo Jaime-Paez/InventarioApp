@@ -3214,7 +3214,7 @@ function RecordatoriosPopup({
                         : 'No hay recordatorios para este dia.'}
                     </p>
                   ) : (
-                    selectedDayReminders.map((reminder) => {
+                    selectedDayReminders.map((reminder, reminderIndex) => {
                         const baseStatus = buildReminderStatusForUser(reminder, currentUserIdSet)
                         const isSpecialReminder = isSpecialTransferDecisionReminder(reminder)
                         const isTransferIssue = isTransferIssueReminder(reminder)
@@ -3548,8 +3548,23 @@ function RecordatoriosPopup({
                         const isSolicitudWebReminderRow = isSolicitudWebReminder(reminder)
                         const solicitudClienteEstado = solicitudClienteId ? (solicitudClienteEstados[solicitudClienteId] || '') : ''
                         const isSolicitudClienteReviewed = ['revisado', 'archivado'].includes(solicitudClienteEstado)
+                        // Orden del dia por color (el mismo de la tarjeta): primero rojos,
+                        // luego amarillos, luego en proceso y al final los resueltos.
+                        const isRedCard = (
+                          displayStatus.className === 'rejected' ||
+                          displayStatus.className === 'issue' ||
+                          (isPendingInspectionAlert && !isInspectionInProgress && !isAdminSummaryReminder) ||
+                          (isGarantiaApprovalReminder(reminder) && decisionStatus === 'pendiente')
+                        )
+                        const isYellowCard = (
+                          displayStatus.className === 'pending' ||
+                          isUrgenteReminder ||
+                          (isSolicitudClienteReminder && !isSolicitudClienteReviewed && Boolean(solicitudClienteEstado))
+                        )
+                        const isInProgressCard = displayStatus.className === 'sent'
+                        const colorRank = isRedCard ? 0 : isYellowCard ? 1 : isInProgressCard ? 2 : 3
 
-                        return (
+                        return { colorRank, reminderIndex, node: (
                           <article
                             key={reminder.id}
                             ref={(node) => {
@@ -3938,8 +3953,10 @@ function RecordatoriosPopup({
                               <span className="recordatorios-popup__urgente-dot" aria-hidden="true">!</span>
                             )}
                           </article>
-                        )
+                        ) }
                     })
+                      .sort((a, b) => (a.colorRank - b.colorRank) || (a.reminderIndex - b.reminderIndex))
+                      .map((entry) => entry.node)
                   )}
                 </div>
               </>
