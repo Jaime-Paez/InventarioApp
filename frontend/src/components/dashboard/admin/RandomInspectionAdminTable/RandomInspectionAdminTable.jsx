@@ -2548,8 +2548,8 @@ function RandomInspectionAdminTable({
             </div>
 
             <div className="inspection-admin__dialog-body">
-              {/* Una fila: hora, "Enviar ahora mismo" a su altura y (solo
-                  aleatorio) la cantidad. */}
+              {/* Izquierda: la hora y debajo "Enviar ahora mismo". Derecha
+                  (solo aleatorio): la cantidad, del alto de las dos. */}
               <div className="inspection-admin__send-top">
                 <div className="inspection-admin__send-clock-col">
                   <label htmlFor="inspection-send-hour" className="inspection-admin__send-label">Hora del recordatorio</label>
@@ -2563,17 +2563,17 @@ function RandomInspectionAdminTable({
                       aria-label="Hora del recordatorio"
                     />
                   </div>
+                  <span className="inspection-admin__send-immediate">
+                      <input
+                        type="checkbox"
+                        id="inspection-send-immediate"
+                        checked={sendNowImmediate}
+                        onChange={(e) => setSendNowImmediate(e.target.checked)}
+                        disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
+                      />
+                      <label htmlFor="inspection-send-immediate">Enviar ahora mismo</label>
+                  </span>
                 </div>
-                <span className="inspection-admin__send-immediate">
-                    <input
-                      type="checkbox"
-                      id="inspection-send-immediate"
-                      checked={sendNowImmediate}
-                      onChange={(e) => setSendNowImmediate(e.target.checked)}
-                      disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
-                    />
-                    <label htmlFor="inspection-send-immediate">Enviar ahora mismo</label>
-                </span>
                 {sendNowMode === 'aleatorio' && (
                   <div className="inspection-admin__send-qty-col">
                     <label htmlFor="inspection-send-qty" className="inspection-admin__send-label">Productos por sucursal</label>
