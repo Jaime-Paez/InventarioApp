@@ -679,6 +679,11 @@
   border-color: color-mix(in srgb, #0b4f79 38%, var(--color-border));
 }
 
+.quick-actions__dock.dark .quick-actions__pending-reviews-trigger {
+  background: color-mix(in srgb, #7c3aed 24%, rgba(17, 24, 39, 0.92));
+  border-color: color-mix(in srgb, #7c3aed 38%, var(--color-border));
+}
+
 .quick-actions__dock.dark .quick-actions__pending-shipments-count {
   background: #f94a15;
   color: #fff;
@@ -2898,6 +2903,40 @@
    pildora queda compacta (icono + numero) en vez del texto. */
 .quick-actions__pending-shipments-icon {
   display: none;
+}
+
+/* Revision pendiente (inspecciones aleatorias): tono violeta para
+   distinguirla de las de envios. */
+.quick-actions__pending-reviews-trigger {
+  border-color: color-mix(in srgb, #7c3aed 34%, var(--color-border));
+  background: color-mix(in srgb, #7c3aed 14%, var(--color-surface));
+}
+
+/* Muchas pildoras a la vez (en cualquier pantalla): pasan a solo icono +
+   numero, igual que en el telefono. */
+.quick-actions__dock.is-compact .quick-actions__pending-shipments-trigger {
+  min-height: 32px;
+  min-width: 36px;
+  padding: 4px 9px;
+  justify-content: center;
+}
+
+.quick-actions__dock.is-compact .quick-actions__pending-shipments-label {
+  display: none;
+}
+
+.quick-actions__dock.is-compact .quick-actions__pending-shipments-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.quick-actions__dock.is-compact .quick-actions__pending-shipments-count {
+  top: -7px;
+  right: -7px;
+  min-width: 18px;
+  height: 18px;
+  font-size: 0.68rem;
 }
 
 @media (max-width: 640px) {

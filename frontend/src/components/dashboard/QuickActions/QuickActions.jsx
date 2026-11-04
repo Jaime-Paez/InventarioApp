@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowUpDown, Bell, Check, ChevronDown, Loader2, Moon, PackageCheck, Search, SunMedium, Truck, X } from 'lucide-react'
+import { ArrowUpDown, Bell, Check, ChevronDown, ClipboardCheck, Loader2, Moon, PackageCheck, Search, SunMedium, Truck, X } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import Toast from '../common/AppToast'
 import './QuickActions.css'
@@ -75,6 +75,8 @@ const REMINDERS_POLL_MS = 4000
 // Envios pendientes/en camino cambian poco: no hace falta pedirlos cada 4s
 // (al volver a la pestana o enfocarla se piden al instante igual).
 const SHIPMENTS_POLL_MS = 15000
+// Desde cuantas pildoras a la vez el dock pasa a solo iconos.
+const DOCK_COMPACT_MIN_PILLS = 3
 // Las pestanas ocultas no consultan al servidor: cada pestana abierta sumaba
 // varias consultas por segundo aunque nadie la estuviera mirando.
 const isDocumentHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
@@ -3912,6 +3914,71 @@ function QuickActions({
     ]
   )
 
+  // Pildora "Revision pendiente": inspecciones aleatorias (por hacer o por
+  // verificar) que ya llegaron a su hora y siguen pendientes para el usuario.
+  // El resumen administrativo es solo informativo y no cuenta.
+  const pendingReviewReminders = useMemo(
+    () => randomInspectionReminders.filter(
+      (reminder) => normalizeId(reminder?.kind) !== RANDOM_INSPECTION_ADMIN_SUMMARY_KIND
+    ),
+    [randomInspectionReminders]
+  )
+  const hasPendingReviews = pendingReviewReminders.length > 0
+  const pendingReviewsRef = useRef(null)
+  const [isPendingReviewsOpen, setIsPendingReviewsOpen] = useState(false)
+
+  useEffect(() => {
+    if (hasPendingReviews) return
+    setIsPendingReviewsOpen(false)
+  }, [hasPendingReviews])
+
+  useEffect(() => {
+    if (!isPendingReviewsOpen) return undefined
+    const handleClickOutside = (event) => {
+      if (pendingReviewsRef.current?.contains(event.target)) return
+      setIsPendingReviewsOpen(false)
+    }
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsPendingReviewsOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside, true)
+    document.addEventListener('touchstart', handleClickOutside, { passive: true })
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside, true)
+      document.removeEventListener('touchstart', handleClickOutside)
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [isPendingReviewsOpen])
+
+  const handlePendingReviewsClick = useCallback(() => {
+    // Con una sola revision se abre directo; con varias se elige en la lista.
+    if (pendingReviewReminders.length === 1) {
+      setIsPendingReviewsOpen(false)
+      void handleOpenRandomInspectionFromReminder(pendingReviewReminders[0])
+      return
+    }
+    setIsInTransitShipmentsOpen(false)
+    setIsPendingShipmentsOpen(false)
+    setIsPendingReviewsOpen((open) => !open)
+  }, [handleOpenRandomInspectionFromReminder, pendingReviewReminders])
+
+  // Con muchas pildoras a la vez (Por ubicar, envios, revision...) el dock
+  // pasa a modo compacto: solo icono + numero, igual que en el telefono.
+  const [isDockCompact, setIsDockCompact] = useState(false)
+  useEffect(() => {
+    const dock = dockRef.current
+    if (!dock || typeof MutationObserver === 'undefined') return undefined
+    const update = () => {
+      const pills = dock.querySelectorAll(':scope > .quick-actions__pending-shipments').length
+      setIsDockCompact(pills >= DOCK_COMPACT_MIN_PILLS)
+    }
+    update()
+    const observer = new MutationObserver(update)
+    observer.observe(dock, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(
     () => () => {
       Object.values(receiveLocationSearchDebounceRef.current || {}).forEach((timerId) => {
@@ -6161,7 +6228,7 @@ function QuickActions({
           }}
         />
       )}
-      <div ref={dockRef} className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}`}>
+      <div ref={dockRef} className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''}${isDockCompact ? ' is-compact' : ''}`}>
         {canViewInTransitShipments && (
           <PorGuardar
             token={token}
@@ -6353,6 +6420,63 @@ function QuickActions({
                       )
                     })
                   )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {hasPendingReviews && (
+          <div
+            ref={pendingReviewsRef}
+            className={`quick-actions__pending-shipments quick-actions__pending-reviews${isPendingReviewsOpen ? ' is-open' : ''}`}
+          >
+            <button
+              type="button"
+              className="quick-actions__pending-shipments-trigger quick-actions__pending-reviews-trigger"
+              onClick={handlePendingReviewsClick}
+              aria-label="Revisión pendiente"
+            >
+              <ClipboardCheck className="quick-actions__pending-shipments-icon" aria-hidden="true" />
+              <span className="quick-actions__pending-shipments-label">Revisión pendiente</span>
+              <span className="quick-actions__pending-shipments-count">{pendingReviewReminders.length}</span>
+            </button>
+
+            {isPendingReviewsOpen && (
+              <div className="quick-actions__pending-shipments-panel" role="dialog" aria-label="Revisiones pendientes">
+                <div className="quick-actions__pending-shipments-head">
+                  <strong>Revisiones pendientes</strong>
+                </div>
+                <div className="quick-actions__pending-shipments-list">
+                  {pendingReviewReminders.map((reminder) => {
+                    const reminderId = normalizeId(reminder?.id)
+                    const isVerify = normalizeId(reminder?.kind) === RANDOM_INSPECTION_VERIFY_KIND
+                    const description = String(reminder?.description || '').trim()
+                    const timestamp = getReminderTimestamp(reminder)
+                    return (
+                      <button
+                        key={`pending-review-${reminderId}`}
+                        type="button"
+                        className="quick-actions__pending-shipments-item"
+                        onClick={() => {
+                          setIsPendingReviewsOpen(false)
+                          void handleOpenRandomInspectionFromReminder(reminder)
+                        }}
+                      >
+                        <span className="quick-actions__pending-shipments-item-title">
+                          {isVerify ? 'Verificar inspección' : 'Inspección aleatoria'}
+                        </span>
+                        {description && (
+                          <span className="quick-actions__pending-shipments-item-meta">{description}</span>
+                        )}
+                        {Number.isFinite(timestamp) && (
+                          <span className="quick-actions__pending-shipments-item-meta">
+                            Fecha: {formatDate(new Date(timestamp).toISOString())}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             )}
