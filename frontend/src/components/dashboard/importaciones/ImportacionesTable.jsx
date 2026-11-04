@@ -3863,7 +3863,6 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuev
   const noEncontrados = sinCatalogo
   if (!completos && !noEncontrados) return null
   const caja = { display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }
-  const titulo = { fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }
   const chip = { borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
@@ -3894,8 +3893,7 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuev
         </div>
       )}
       {noEncontrados > 0 && (
-        <div style={caja}>
-          <span style={titulo}>{noEncontrados} sin código</span>
+        <div style={{ ...caja, justifyContent: 'center' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {sinCatalogo > 0 && (
               <span {...chipProps('sinCatalogo', 'los productos sin código')} title="Clic: ir a los productos sin código" style={{ ...chip, background: '#f1f5f9', color: '#64748b' }}>
