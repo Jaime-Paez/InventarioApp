@@ -285,6 +285,130 @@
   font: inherit;
 }
 
+/* Configuracion: mismo modal que Enviar revision, mas ancho por la tabla. */
+.inspection-admin__dialog.inspection-admin__dialog--wide {
+  width: min(980px, 100%);
+}
+
+.inspection-admin__auto-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 2px solid var(--color-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, #94a3b8 8%, transparent);
+}
+
+.inspection-admin__auto-card.is-on {
+  border-color: rgba(34, 197, 94, 0.55);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.inspection-admin__auto-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.inspection-admin__auto-text strong {
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.inspection-admin__auto-text strong .is-on {
+  color: #15803d;
+}
+
+.inspection-admin__auto-text strong .is-off {
+  color: #b91c1c;
+}
+
+.inspection-admin__auto-text small {
+  font-size: var(--font-size-sm, 13px);
+  color: var(--color-text-secondary);
+}
+
+.inspection-admin__auto-text .inspection-admin__auto-hint {
+  font-style: italic;
+}
+
+/* Interruptor grande (on/off). */
+.inspection-admin__switch {
+  flex: 0 0 auto;
+  position: relative;
+  width: 64px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #cbd5e1;
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+.inspection-admin__switch.is-on {
+  background: #22c55e;
+}
+
+.inspection-admin__switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+.inspection-admin__switch:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+.inspection-admin__switch-knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
+  transition: transform 0.18s ease;
+}
+
+.inspection-admin__switch.is-on .inspection-admin__switch-knob {
+  transform: translateX(30px);
+}
+
+.inspection-admin__config-reviewers {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inspection-admin__config-reviewers h5 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.inspection-admin__config-reviewers p {
+  margin: 2px 0 0;
+}
+
+.inspection-admin__config-search {
+  min-width: 240px;
+}
+
+.inspection-admin__dialog-actions.inspection-admin__dialog-actions--split {
+  justify-content: space-between;
+}
+
+.inspection-admin__dialog-actions-left {
+  display: flex;
+  gap: 8px;
+}
+
 /* Enviar revision: reloj digital a la izquierda, cantidad grande a la derecha. */
 .inspection-admin__send-top {
   display: grid;

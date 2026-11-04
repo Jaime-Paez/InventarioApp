@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, PackageCheck, Pencil, Send, Settings, Wrench, X } from 'lucide-react'
 import { Button } from 'primereact/button'
@@ -57,9 +57,6 @@ const formatPercent = (value) => {
   return `${numeric.toFixed(1)}%`
 }
 
-const ASSIGNMENTS_MODAL_MIN_WIDTH = 720
-const ASSIGNMENTS_MODAL_MIN_HEIGHT = 520
-const ASSIGNMENTS_VIEWPORT_PADDING = 12
 const detectDarkTheme = () => {
   if (typeof document === 'undefined') return false
   return Boolean(
@@ -229,38 +226,6 @@ function RandomInspectionAdminTable({
   const listProductTriggerRef = useRef(null)
   const listProductPanelRef = useRef(null)
   const [listSending, setListSending] = useState(false)
-  const [assignmentsModalPosition, setAssignmentsModalPosition] = useState({ x: 0, y: 0 })
-  const [assignmentsModalSize, setAssignmentsModalSize] = useState({
-    width: ASSIGNMENTS_MODAL_MIN_WIDTH,
-    height: ASSIGNMENTS_MODAL_MIN_HEIGHT,
-  })
-  const [assignmentsModalMaximized, setAssignmentsModalMaximized] = useState(false)
-
-  const assignmentsModalRef = useRef(null)
-  const assignmentsDragRef = useRef({ active: false, offsetX: 0, offsetY: 0 })
-  const assignmentsResizeRef = useRef({
-    active: false,
-    startX: 0,
-    startY: 0,
-    startWidth: 0,
-    startHeight: 0,
-  })
-  const assignmentsRestoreRef = useRef(null)
-  const assignmentsSizeRef = useRef(assignmentsModalSize)
-  const assignmentsPositionRef = useRef(assignmentsModalPosition)
-
-  const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
-  const getAssignmentsViewportMetrics = useCallback(() => {
-    const availableWidth = Math.max(0, window.innerWidth - ASSIGNMENTS_VIEWPORT_PADDING * 2)
-    const availableHeight = Math.max(0, window.innerHeight - ASSIGNMENTS_VIEWPORT_PADDING * 2)
-    return {
-      availableWidth,
-      availableHeight,
-      minWidth: Math.min(ASSIGNMENTS_MODAL_MIN_WIDTH, availableWidth),
-      minHeight: Math.min(ASSIGNMENTS_MODAL_MIN_HEIGHT, availableHeight),
-    }
-  }, [])
-
   const notifyError = useCallback((detail) => {
     if (!detail) return
     toast.current?.show({
@@ -1063,93 +1028,6 @@ function RandomInspectionAdminTable({
     pendingExpandRevisionRef.current = ''
   }, [selectedBranchId])
 
-  useEffect(() => {
-    assignmentsSizeRef.current = assignmentsModalSize
-  }, [assignmentsModalSize])
-
-  useEffect(() => {
-    assignmentsPositionRef.current = assignmentsModalPosition
-  }, [assignmentsModalPosition])
-
-  useLayoutEffect(() => {
-    if (!showAssignmentsDialog) return
-
-    const { availableWidth, availableHeight } = getAssignmentsViewportMetrics()
-    const width = Math.min(ASSIGNMENTS_MODAL_MIN_WIDTH, availableWidth)
-    const height = Math.min(ASSIGNMENTS_MODAL_MIN_HEIGHT, availableHeight)
-    const centeredX = Math.max((window.innerWidth - width) / 2, ASSIGNMENTS_VIEWPORT_PADDING)
-    const centeredY = Math.max((window.innerHeight - height) / 2, ASSIGNMENTS_VIEWPORT_PADDING)
-
-    setAssignmentsModalMaximized(false)
-    assignmentsRestoreRef.current = null
-    setAssignmentsModalSize({ width, height })
-    setAssignmentsModalPosition({ x: centeredX, y: centeredY })
-  }, [getAssignmentsViewportMetrics, showAssignmentsDialog])
-
-  useEffect(() => {
-    if (!showAssignmentsDialog) return undefined
-
-    const handleMouseMove = (event) => {
-      if (!assignmentsDragRef.current.active) return
-      event.preventDefault()
-      const newX = event.clientX - assignmentsDragRef.current.offsetX
-      const newY = event.clientY - assignmentsDragRef.current.offsetY
-      const maxX = window.innerWidth - assignmentsSizeRef.current.width - ASSIGNMENTS_VIEWPORT_PADDING
-      const maxY = window.innerHeight - assignmentsSizeRef.current.height - ASSIGNMENTS_VIEWPORT_PADDING
-      setAssignmentsModalPosition({
-        x: Math.min(Math.max(newX, ASSIGNMENTS_VIEWPORT_PADDING), Math.max(maxX, ASSIGNMENTS_VIEWPORT_PADDING)),
-        y: Math.min(Math.max(newY, ASSIGNMENTS_VIEWPORT_PADDING), Math.max(maxY, ASSIGNMENTS_VIEWPORT_PADDING)),
-      })
-    }
-
-    const handleMouseUp = () => {
-      assignmentsDragRef.current.active = false
-    }
-
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [showAssignmentsDialog])
-
-  useEffect(() => {
-    if (!showAssignmentsDialog) return undefined
-
-    const handleWindowResize = () => {
-      const { minWidth, minHeight, availableWidth, availableHeight } = getAssignmentsViewportMetrics()
-
-      if (assignmentsModalMaximized) {
-        setAssignmentsModalSize({ width: availableWidth, height: availableHeight })
-        setAssignmentsModalPosition({ x: ASSIGNMENTS_VIEWPORT_PADDING, y: ASSIGNMENTS_VIEWPORT_PADDING })
-        return
-      }
-
-      setAssignmentsModalSize((prev) => {
-        const width = clamp(prev.width, minWidth, availableWidth)
-        const height = clamp(prev.height, minHeight, availableHeight)
-
-        setAssignmentsModalPosition((prevPosition) => ({
-          x: Math.min(
-            Math.max(prevPosition.x, ASSIGNMENTS_VIEWPORT_PADDING),
-            Math.max(window.innerWidth - width - ASSIGNMENTS_VIEWPORT_PADDING, ASSIGNMENTS_VIEWPORT_PADDING)
-          ),
-          y: Math.min(
-            Math.max(prevPosition.y, ASSIGNMENTS_VIEWPORT_PADDING),
-            Math.max(window.innerHeight - height - ASSIGNMENTS_VIEWPORT_PADDING, ASSIGNMENTS_VIEWPORT_PADDING)
-          ),
-        }))
-
-        return { width, height }
-      })
-    }
-
-    window.addEventListener('resize', handleWindowResize)
-    return () => window.removeEventListener('resize', handleWindowResize)
-  }, [assignmentsModalMaximized, getAssignmentsViewportMetrics, showAssignmentsDialog])
-
   const selectedBranch = useMemo(() => (
     summaryRows.find((row) => normalizeId(row?.sucursal_id) === normalizeId(selectedBranchId)) || null
   ), [selectedBranchId, summaryRows])
@@ -1246,115 +1124,6 @@ function RandomInspectionAdminTable({
     void loadAssignments()
     void loadConfig()
   }, [loadAssignments, loadConfig])
-
-  const handleAssignmentsHeaderMouseDown = useCallback((event) => {
-    if (assignmentsModalMaximized) {
-      const restore = assignmentsRestoreRef.current
-      const fallbackSize = assignmentsSizeRef.current
-      const restoredSize = restore?.size || fallbackSize
-      const restoredPosition = restore?.position || {
-        x: Math.max((window.innerWidth - restoredSize.width) / 2, ASSIGNMENTS_VIEWPORT_PADDING),
-        y: Math.max((window.innerHeight - restoredSize.height) / 2, ASSIGNMENTS_VIEWPORT_PADDING),
-      }
-
-      assignmentsSizeRef.current = restoredSize
-      assignmentsPositionRef.current = restoredPosition
-      setAssignmentsModalSize(restoredSize)
-      setAssignmentsModalPosition(restoredPosition)
-      setAssignmentsModalMaximized(false)
-
-      const offsetX = Math.min(
-        Math.max(event.clientX - restoredPosition.x, 24),
-        Math.max(restoredSize.width - 24, 24)
-      )
-      const offsetY = Math.min(
-        Math.max(event.clientY - restoredPosition.y, 12),
-        56
-      )
-      assignmentsDragRef.current = {
-        active: true,
-        offsetX,
-        offsetY,
-      }
-      return
-    }
-
-    if (!assignmentsModalRef.current) return
-    const rect = assignmentsModalRef.current.getBoundingClientRect()
-    assignmentsDragRef.current = {
-      active: true,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-    }
-  }, [assignmentsModalMaximized])
-
-  const handleAssignmentsResizeMouseDown = useCallback((event) => {
-    if (assignmentsModalMaximized) return
-    event.preventDefault()
-    event.stopPropagation()
-    const { minWidth, minHeight } = getAssignmentsViewportMetrics()
-    assignmentsResizeRef.current = {
-      active: true,
-      startX: event.clientX,
-      startY: event.clientY,
-      startWidth: assignmentsSizeRef.current.width,
-      startHeight: assignmentsSizeRef.current.height,
-    }
-
-    const handleResizeMove = (moveEvent) => {
-      if (!assignmentsResizeRef.current.active) return
-      const deltaX = moveEvent.clientX - assignmentsResizeRef.current.startX
-      const deltaY = moveEvent.clientY - assignmentsResizeRef.current.startY
-      const maxWidth = Math.max(
-        minWidth,
-        window.innerWidth - assignmentsPositionRef.current.x - ASSIGNMENTS_VIEWPORT_PADDING
-      )
-      const maxHeight = Math.max(
-        minHeight,
-        window.innerHeight - assignmentsPositionRef.current.y - ASSIGNMENTS_VIEWPORT_PADDING
-      )
-      const width = clamp(assignmentsResizeRef.current.startWidth + deltaX, minWidth, maxWidth)
-      const height = clamp(assignmentsResizeRef.current.startHeight + deltaY, minHeight, maxHeight)
-      setAssignmentsModalSize({ width, height })
-    }
-
-    const handleResizeUp = () => {
-      assignmentsResizeRef.current.active = false
-      window.removeEventListener('mousemove', handleResizeMove)
-      window.removeEventListener('mouseup', handleResizeUp)
-    }
-
-    window.addEventListener('mousemove', handleResizeMove)
-    window.addEventListener('mouseup', handleResizeUp)
-  }, [assignmentsModalMaximized, getAssignmentsViewportMetrics])
-
-  const toggleAssignmentsMaximize = useCallback(() => {
-    if (assignmentsModalMaximized) {
-      const restore = assignmentsRestoreRef.current
-      if (restore?.size && restore?.position) {
-        setAssignmentsModalSize(restore.size)
-        setAssignmentsModalPosition(restore.position)
-      }
-      setAssignmentsModalMaximized(false)
-      return
-    }
-
-    assignmentsRestoreRef.current = {
-      size: assignmentsSizeRef.current,
-      position: assignmentsPositionRef.current,
-    }
-
-    const { availableWidth, availableHeight } = getAssignmentsViewportMetrics()
-    setAssignmentsModalSize({
-      width: availableWidth,
-      height: availableHeight,
-    })
-    setAssignmentsModalPosition({
-      x: ASSIGNMENTS_VIEWPORT_PADDING,
-      y: ASSIGNMENTS_VIEWPORT_PADDING,
-    })
-    setAssignmentsModalMaximized(true)
-  }, [assignmentsModalMaximized, getAssignmentsViewportMetrics])
 
   const handleToggleEdit = useCallback(() => {
     if (assignmentsLoading || assignmentsSaving) return
@@ -3293,245 +3062,231 @@ function RandomInspectionAdminTable({
         </div>
       )}
 
-      {showAssignmentsDialog && isTabActive !== false && typeof document !== 'undefined' && createPortal(
-        <div
-          className={`create-user__overlay inspection-admin__reviewers-overlay${isDarkTheme ? ' inspection-admin__reviewers-overlay--dark' : ''}`}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Configuracion de inspeccion aleatoria"
-        >
+      {showAssignmentsDialog && isTabActive !== false && (() => {
+        // Mismo modal que "Enviar revision ahora": reloj digital, cantidad en
+        // grande y un interruptor claro de la revision automatica.
+        const locked = !isEditingAssignments || configLoading || assignmentsSaving
+        const autoOn = Boolean(configData.inspeccion_automatica)
+        const hora = String(configData.hora_recordatorio || '').slice(0, 5)
+        const [hh, mm] = hora.split(':').map((part) => Number.parseInt(part, 10))
+        const now = new Date()
+        const startsToday = Number.isFinite(hh) && Number.isFinite(mm) && (hh * 60 + mm) > (now.getHours() * 60 + now.getMinutes())
+        const horaLabel = Number.isFinite(hh) && Number.isFinite(mm)
+          ? new Date(2000, 0, 1, hh, mm).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })
+          : '--:--'
+        return (
+        <div className="inspection-admin__dialog-overlay" onMouseDown={() => !assignmentsSaving && closeAssignmentsDialog()}>
           <div
-            ref={assignmentsModalRef}
-            className="create-user__modal"
-            style={{
-              top: assignmentsModalPosition.y,
-              left: assignmentsModalPosition.x,
-              width: assignmentsModalSize.width,
-              height: assignmentsModalSize.height,
-            }}
+            className="inspection-admin__dialog inspection-admin__dialog--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Configuracion de inspeccion aleatoria"
+            onMouseDown={(event) => event.stopPropagation()}
           >
-            <header className="create-user__header" onMouseDown={handleAssignmentsHeaderMouseDown}>
-              <div className="create-user__header-text">
-                <h3>Configuracion</h3>
+            {(assignmentsLoading || configLoading) && (
+              <div className="inspection-admin__dialog-loading">
+                <div className="inspection-admin__dialog-loading-content">
+                  <Loader2 className="inspection-admin__dialog-loading-spinner" size={24} />
+                  <span>Cargando datos...</span>
+                </div>
               </div>
-              <div className="create-user__header-actions">
-                <button
-                  type="button"
-                  className="create-user__icon-button create-user__icon-button--maximize"
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={toggleAssignmentsMaximize}
-                  aria-label={assignmentsModalMaximized ? 'Restaurar' : 'Maximizar'}
-                >
-                  <i className={assignmentsModalMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="create-user__icon-button"
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={closeAssignmentsDialog}
-                  aria-label="Cerrar"
-                >
-                  <i className="pi pi-times" aria-hidden="true" />
-                </button>
+            )}
+            <header className="inspection-admin__dialog-head">
+              <div>
+                <h4>Configuracion</h4>
+                <p>Revision automatica diaria y revisores de cada sucursal.</p>
               </div>
+              <button
+                type="button"
+                className="inspection-admin__dialog-close"
+                onClick={closeAssignmentsDialog}
+                disabled={assignmentsSaving}
+                aria-label="Cerrar"
+              >
+                <X size={16} />
+              </button>
             </header>
 
-            <div className="create-user__form" style={{ position: 'relative' }}>
-              {(assignmentsLoading || configLoading) && (
-                <div className="create-user__loading-overlay" role="status" aria-live="polite">
-                  <i className="pi pi-spin pi-spinner" aria-hidden="true" />
-                  <span>Cargando...</span>
-                </div>
-              )}
-              <div className="create-user__body create-user__body--permissions inspection-admin__assignments-body">
-                <section className="create-user__section create-user__section--permissions inspection-admin__assignments-section">
-                  <div className="create-user__section-header">
-                    <div>
-                      <h4>Parametros generales</h4>
-                    </div>
-                  </div>
-
-                  <div className="inspection-admin__config-fields">
-                    <label className="create-user__field">
-                      <span>Productos a revisar por inspeccion</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="200"
-                        step="1"
-                        value={configData.cantidad_productos}
-                        onChange={(e) => setConfigData((prev) => ({ ...prev, cantidad_productos: e.target.value }))}
-                        placeholder="Ej: 5"
-                        disabled={!isEditingAssignments || configLoading || assignmentsSaving}
-                      />
-                    </label>
-                    <label className="create-user__field">
-                      <span>Hora de envio del recordatorio</span>
-                      <input
-                        type="time"
-                        value={configData.hora_recordatorio}
-                        onChange={(e) => setConfigData((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
-                        disabled={!isEditingAssignments || configLoading || assignmentsSaving}
-                      />
-                    </label>
-                    <label className="create-user__field inspection-admin__auto-toggle">
-                      <span>Inspeccion automatica diaria</span>
-                      <span className="inspection-admin__auto-toggle-row">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(configData.inspeccion_automatica)}
-                          onChange={(e) => setConfigData((prev) => ({ ...prev, inspeccion_automatica: e.target.checked }))}
-                          disabled={!isEditingAssignments || configLoading || assignmentsSaving}
-                        />
-                        <small>
-                          {configData.inspeccion_automatica
-                            ? 'Activada: cada dia el sistema le crea una inspeccion a cada revisor.'
-                            : 'Apagada: solo existen las inspecciones que se envian desde aqui.'}
-                        </small>
-                      </span>
-                    </label>
-                  </div>
-
-                  <div className="create-user__section-header" style={{ marginTop: '16px' }}>
-                    <div>
-                      <h4>Revisores por sucursal</h4>
-                      <p className="create-user__hint">
-                        Escoge por sucursal que usuarios deben hacer la revision diaria. Al asignar una sucursal, tambien se sincroniza Ver inventario.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="inspection-admin__reviewers-toolbar">
-                    <label className="create-user__field inspection-admin__reviewers-search">
-                      <span>Buscar usuario</span>
-                      <input
-                        type="text"
-                        value={assignmentSearch}
-                        onChange={(event) => setAssignmentSearch(String(event.target.value || ''))}
-                        placeholder="Buscar por nombre o correo"
-                      />
-                    </label>
-                  </div>
-
-                  <div className="inspection-admin__reviewers-table-card">
-                    <div className="inspection-admin__table-wrap inspection-admin__table-wrap--modal">
-                      <table className="inspection-admin__table inspection-admin__table--assignments">
-                        <thead>
-                          <tr>
-                            <th>Usuario</th>
-                            {assignmentBranches.map((branch) => (
-                              <th key={`inspection-assignment-branch-${normalizeId(branch?.id)}`}>
-                                {String(branch?.nombre || `Sucursal ${branch?.id || '-'}`).trim()}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {!filteredAssignmentRows.length ? (
-                            <tr className="inspection-admin__empty-row">
-                              <td colSpan={Math.max(1 + assignmentBranches.length, 2)} />
-                            </tr>
-                          ) : filteredAssignmentRows.map((row) => {
-                            const rowId = normalizeId(row?.id)
-                            return (
-                              <tr key={`inspection-assignment-${rowId}`}>
-                                <td>
-                                  <div className="inspection-admin__product-cell">
-                                    <strong>{String(row?.nombre_completo || `Usuario ${row?.id || '-'}`).trim()}</strong>
-                                    <span className="inspection-admin__product-cell__email">{String(row?.correo || '-').trim()}</span>
-                                    <span className="inspection-admin__product-cell__type">{row?.es_administrador ? 'Administrador' : 'Usuario interno'}</span>
-                                  </div>
-                                </td>
-                                {assignmentBranches.map((branch) => {
-                                  const branchId = normalizeId(branch?.id)
-                                  return (
-                                    <td key={`inspection-assignment-${rowId}-branch-${branchId}`}>
-                                      <label className="inspection-admin__assignment-toggle">
-                                        <input
-                                          type="checkbox"
-                                          checked={(localAssignmentMap[rowId] || []).includes(branchId)}
-                                          onChange={() => handleCheckboxChange(rowId, branchId)}
-                                          disabled={!isEditingAssignments || assignmentsSaving || assignmentsLoading}
-                                        />
-                                      </label>
-                                    </td>
-                                  )
-                                })}
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-
-                      {assignmentsLoading && (
-                        <p className="inspection-admin__loading">
-                          <Loader2 size={14} />
-                          Cargando usuarios...
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </section>
-              </div>
-
-              <div className="create-user__footer">
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    type="button"
-                    className="create-user__action create-user__action--cancel"
-                    onClick={closeAssignmentsDialog}
-                  >
-                    Cerrar
-                  </button>
-                  {canUpdate && (
-                    <button
-                      type="button"
-                      className={`create-user__action inspection-admin__edit-toggle${isEditingAssignments ? ' inspection-admin__edit-toggle--active' : ''}`}
-                      onClick={handleToggleEdit}
-                      disabled={assignmentsLoading || assignmentsSaving}
-                    >
-                      {(assignmentsLoading || configLoading) ? (
-                        <>
-                          <span className="inspection-admin__toggle-icon" aria-hidden="true"><Loader2 size={15} className="inspection-admin__dialog-loading-spinner" /></span>
-                          <span>Cargando...</span>
-                        </>
-                      ) : isEditingAssignments ? (
-                        <>
-                          <span className="inspection-admin__toggle-icon" aria-hidden="true"><Eye size={15} /></span>
-                          <span>Solo lectura</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="inspection-admin__toggle-icon" aria-hidden="true"><Pencil size={15} /></span>
-                          <span>Editar</span>
-                        </>
-                      )}
-                    </button>
+            <div className="inspection-admin__dialog-body">
+              {/* La revision automatica: estado claro y cuando empieza. */}
+              <div className={`inspection-admin__auto-card${autoOn ? ' is-on' : ''}`}>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoOn}
+                  aria-label="Revision automatica diaria"
+                  className={`inspection-admin__switch${autoOn ? ' is-on' : ''}`}
+                  onClick={() => setConfigData((prev) => ({ ...prev, inspeccion_automatica: !prev.inspeccion_automatica }))}
+                  disabled={locked}
+                >
+                  <span className="inspection-admin__switch-knob" />
+                </button>
+                <div className="inspection-admin__auto-text">
+                  <strong>
+                    {'En este momento la revisión de inventario automática está '}
+                    <span className={autoOn ? 'is-on' : 'is-off'}>{autoOn ? 'activada' : 'desactivada'}</span>
+                  </strong>
+                  <small>
+                    {autoOn
+                      ? `Las inspecciones aleatorias automáticas van a empezar ${startsToday ? 'hoy' : 'mañana'} a las ${horaLabel}. Cada día se le crea una a cada revisor.`
+                      : 'Solo existen las revisiones que se envían con "Enviar revisión ahora".'}
+                  </small>
+                  {!isEditingAssignments && canUpdate && (
+                    <small className="inspection-admin__auto-hint">Presiona Editar para cambiarla.</small>
                   )}
                 </div>
-                {isEditingAssignments && (
-                  <button
-                    type="button"
-                    className="create-user__action create-user__action--primary"
-                    onClick={() => void saveAssignments()}
-                    disabled={assignmentsLoading || assignmentsSaving}
-                  >
-                    {assignmentsSaving ? 'Guardando...' : 'Actualizar'}
-                  </button>
-                )}
+              </div>
+
+              <div className="inspection-admin__send-top">
+                <div className="inspection-admin__send-clock-col">
+                  <label htmlFor="inspection-config-hour" className="inspection-admin__send-label">Hora de envío del recordatorio</label>
+                  <div className="inspection-admin__send-clock">
+                    <input
+                      id="inspection-config-hour"
+                      type="time"
+                      value={configData.hora_recordatorio}
+                      onChange={(e) => setConfigData((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
+                      disabled={locked}
+                      aria-label="Hora de envío del recordatorio"
+                    />
+                  </div>
+                </div>
+                <div className="inspection-admin__send-qty-col">
+                  <label htmlFor="inspection-config-qty" className="inspection-admin__send-label">Productos a revisar por inspección</label>
+                  <input
+                    id="inspection-config-qty"
+                    className="inspection-admin__send-qty"
+                    type="number"
+                    min="1"
+                    max="200"
+                    step="1"
+                    inputMode="numeric"
+                    value={configData.cantidad_productos}
+                    onChange={(e) => setConfigData((prev) => ({ ...prev, cantidad_productos: e.target.value }))}
+                    placeholder="5"
+                    disabled={locked}
+                  />
+                </div>
+              </div>
+
+              <div className="inspection-admin__config-reviewers">
+                <div>
+                  <h5>Revisores por sucursal</h5>
+                  <p className="create-user__hint">
+                    Escoge por sucursal que usuarios deben hacer la revision diaria. Al asignar una sucursal, tambien se sincroniza Ver inventario.
+                  </p>
+                </div>
+                <div className="search-input-container inspection-admin__config-search">
+                  <input
+                    type="text"
+                    className="search-input"
+                    value={assignmentSearch}
+                    onChange={(event) => setAssignmentSearch(String(event.target.value || ''))}
+                    placeholder="Buscar por nombre o correo"
+                  />
+                  <i className="pi pi-search search-input-icon" />
+                </div>
+              </div>
+
+              <div className="inspection-admin__reviewers-table-card">
+                <div className="inspection-admin__table-wrap inspection-admin__table-wrap--modal">
+                  <table className="inspection-admin__table inspection-admin__table--assignments">
+                    <thead>
+                      <tr>
+                        <th>Usuario</th>
+                        {assignmentBranches.map((branch) => (
+                          <th key={`inspection-assignment-branch-${normalizeId(branch?.id)}`}>
+                            {String(branch?.nombre || `Sucursal ${branch?.id || '-'}`).trim()}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {!filteredAssignmentRows.length ? (
+                        <tr className="inspection-admin__empty-row">
+                          <td colSpan={Math.max(1 + assignmentBranches.length, 2)} />
+                        </tr>
+                      ) : filteredAssignmentRows.map((row) => {
+                        const rowId = normalizeId(row?.id)
+                        return (
+                          <tr key={`inspection-assignment-${rowId}`}>
+                            <td>
+                              <div className="inspection-admin__product-cell">
+                                <strong>{String(row?.nombre_completo || `Usuario ${row?.id || '-'}`).trim()}</strong>
+                                <span className="inspection-admin__product-cell__email">{String(row?.correo || '-').trim()}</span>
+                                <span className="inspection-admin__product-cell__type">{row?.es_administrador ? 'Administrador' : 'Usuario interno'}</span>
+                              </div>
+                            </td>
+                            {assignmentBranches.map((branch) => {
+                              const branchId = normalizeId(branch?.id)
+                              return (
+                                <td key={`inspection-assignment-${rowId}-branch-${branchId}`}>
+                                  <label className="inspection-admin__assignment-toggle">
+                                    <input
+                                      type="checkbox"
+                                      checked={(localAssignmentMap[rowId] || []).includes(branchId)}
+                                      onChange={() => handleCheckboxChange(rowId, branchId)}
+                                      disabled={!isEditingAssignments || assignmentsSaving || assignmentsLoading}
+                                    />
+                                  </label>
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
 
-            <button
-              type="button"
-              aria-label="Cambiar tamaño de ventana"
-              className="create-user__resize-handle"
-              onMouseDown={handleAssignmentsResizeMouseDown}
-            />
+            <footer className="inspection-admin__dialog-actions inspection-admin__dialog-actions--split">
+              <div className="inspection-admin__dialog-actions-left">
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--secondary"
+                  onClick={closeAssignmentsDialog}
+                  disabled={assignmentsSaving}
+                >
+                  Cerrar
+                </button>
+                {canUpdate && (
+                  <button
+                    type="button"
+                    className={`create-user__action inspection-admin__edit-toggle${isEditingAssignments ? ' inspection-admin__edit-toggle--active' : ''}`}
+                    onClick={handleToggleEdit}
+                    disabled={assignmentsLoading || assignmentsSaving}
+                  >
+                    {isEditingAssignments ? (
+                      <>
+                        <span className="inspection-admin__toggle-icon" aria-hidden="true"><Eye size={15} /></span>
+                        <span>Solo lectura</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="inspection-admin__toggle-icon" aria-hidden="true"><Pencil size={15} /></span>
+                        <span>Editar</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+              {isEditingAssignments && (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={() => void saveAssignments()}
+                  disabled={assignmentsLoading || assignmentsSaving}
+                >
+                  {assignmentsSaving ? 'Guardando...' : 'Actualizar'}
+                </button>
+              )}
+            </footer>
           </div>
-        </div>,
-        getAppPortalRoot()
-      )}
+        </div>
+        )
+      })()}
     </section>
   )
 }
