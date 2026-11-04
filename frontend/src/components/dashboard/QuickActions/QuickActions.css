@@ -3835,14 +3835,27 @@
 }
 
 /* Agregar un producto encontrado que no estaba en la lista */
+/* Encabezado de la fila: titulo a la izquierda, "+ Agregar..." a la derecha. */
+.quick-actions__inspection-rowhead--actions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.quick-actions__inspection-rowhead-text {
+  min-width: 0;
+  flex: 1 1 320px;
+}
+
 .quick-actions__inspection-add-open {
-  align-self: flex-start;
-  margin-top: 10px;
-  padding: 6px 12px;
-  border: 1px dashed var(--color-primary);
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: transparent;
-  color: var(--color-primary);
+  background: var(--color-surface, #fff);
+  color: var(--color-text-primary);
   font: inherit;
   font-size: var(--font-size-sm, 13px);
   font-weight: 600;
@@ -4242,4 +4255,10 @@
 
 .quick-actions__inspection-overlay.dark .quick-actions__inspection-row-other {
   color: var(--color-text-dark);
+}
+
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-add-open {
+  border-color: var(--color-border-dark);
+  background: transparent;
+  color: var(--color-text-title-dark);
 }

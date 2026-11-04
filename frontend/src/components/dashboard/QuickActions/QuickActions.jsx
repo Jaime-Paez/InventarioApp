@@ -6634,7 +6634,10 @@ function QuickActions({
                         </div>
                       </div>
 
-                      <div className="quick-actions__inspection-rowhead">
+                      {/* Titulo de la fila a la izquierda y "Agregar producto" a la
+                          derecha, como en el resto de pantallas. */}
+                      <div className="quick-actions__inspection-rowhead quick-actions__inspection-rowhead--actions">
+                        <div className="quick-actions__inspection-rowhead-text">
                         <p className="quick-actions__inspection-stage-kicker">
                           {`Fila ${activeRandomInspectionStepIndex + 1} de ${randomInspectionStepCount}`}
                         </p>
@@ -6644,6 +6647,44 @@ function QuickActions({
                             ? `Esta ubicación está fuera de ${String(activeRandomInspection?.division_nombre || 'la columna enviada').trim()}, pero estos productos también están aquí: búscalos y cuéntalos (es obligatorio).`
                             : 'Cuenta todos los códigos de esta fila y escribe lo que encontraste de cada uno.'}
                         </p>
+                        </div>
+                        {randomInspectionAdd?.groupKey !== activeRandomInspectionGroup.key && (
+                            <button
+                              type="button"
+                              className="quick-actions__inspection-add-open"
+                              onClick={() => {
+                                const rowIsLocation = /^\d+$/.test(String(activeRandomInspectionGroup.key))
+                                setRandomInspectionAdd({
+                                  groupKey: activeRandomInspectionGroup.key,
+                                  // Se encontro en esta fila: la ubicacion ya se sabe.
+                                  fixedLocation: rowIsLocation,
+                                  location: rowIsLocation
+                                    ? {
+                                      ...(activeRandomInspectionGroup.place || {}),
+                                      subdivision_id: Number(activeRandomInspectionGroup.key),
+                                      label: activeRandomInspectionGroup.label,
+                                    }
+                                    : null,
+                                  mover: null,
+                                  locationOpen: false,
+                                  locationQuery: '',
+                                  open: true,
+                                  query: '',
+                                  results: [],
+                                  selected: null,
+                                  cantidad: '',
+                                  searching: true,
+                                  saving: false,
+                                  error: '',
+                                })
+                                void searchRandomInspectionAddProducts('')
+                                if (!rowIsLocation) void loadRandomInspectionLocations()
+                              }}
+                              disabled={randomInspectionSubmitting}
+                            >
+                              + Agregar un producto que no está en la lista
+                            </button>
+                        )}
                       </div>
 
                       <div
@@ -7331,43 +7372,7 @@ function QuickActions({
                               )
                             })()}
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="quick-actions__inspection-add-open"
-                            onClick={() => {
-                              const rowIsLocation = /^\d+$/.test(String(activeRandomInspectionGroup.key))
-                              setRandomInspectionAdd({
-                                groupKey: activeRandomInspectionGroup.key,
-                                // Se encontro en esta fila: la ubicacion ya se sabe.
-                                fixedLocation: rowIsLocation,
-                                location: rowIsLocation
-                                  ? {
-                                    ...(activeRandomInspectionGroup.place || {}),
-                                    subdivision_id: Number(activeRandomInspectionGroup.key),
-                                    label: activeRandomInspectionGroup.label,
-                                  }
-                                  : null,
-                                mover: null,
-                                locationOpen: false,
-                                locationQuery: '',
-                                open: true,
-                                query: '',
-                                results: [],
-                                selected: null,
-                                cantidad: '',
-                                searching: true,
-                                saving: false,
-                                error: '',
-                              })
-                              void searchRandomInspectionAddProducts('')
-                              if (!rowIsLocation) void loadRandomInspectionLocations()
-                            }}
-                            disabled={randomInspectionSubmitting}
-                          >
-                            + Agregar un producto que no está en la lista
-                          </button>
-                        )
+                        ) : null
                       )}
                     </div>
                   )}
