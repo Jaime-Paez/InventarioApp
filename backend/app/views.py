@@ -1601,11 +1601,15 @@ def _inspection_division_scope(inspection):
     Una revision por subdivision NO se limita: sus productos se buscan en
     todas sus ubicaciones de la sucursal (aunque esten fuera de esa
     subdivision), asi que lo esperado y el ajuste son de toda la sucursal.
+    Las revisiones por division nuevas tampoco (`cuenta_toda_la_sucursal`):
+    si un producto de la division tambien esta en otra ubicacion, se cuenta
+    ahi tambien. Solo las anteriores siguen limitadas a la division.
     """
     if (
         inspection is not None
         and getattr(inspection, "es_por_division", False)
         and not getattr(inspection, "es_por_subdivision", False)
+        and not getattr(inspection, "cuenta_toda_la_sucursal", False)
     ):
         return getattr(inspection, "division_id", None)
     return None
@@ -1771,6 +1775,7 @@ def _serialize_found_location(subdivision):
     bodega = getattr(division, "bodega", None)
     return {
         "subdivision_id": int(subdivision.id),
+        "division_id": int(division.id) if division is not None else None,
         "bodega_nombre": _normalize_text(getattr(bodega, "nombre", "")),
         "division_nombre": _normalize_text(getattr(division, "nombre", "")),
         "subdivision_nombre": _normalize_text(getattr(subdivision, "nombre", "")),
@@ -1819,6 +1824,7 @@ def _attach_random_inspection_locations(items, *, division_id=None, subdivision_
             "subdivision_id",
             "subdivision__division__bodega__sucursal_id",
             "subdivision__division__bodega__sucursal__nombre",
+            "subdivision__division_id",
             "subdivision__division__bodega__nombre",
             "subdivision__division__nombre",
             "subdivision__nombre",
@@ -1863,6 +1869,7 @@ def _attach_random_inspection_locations(items, *, division_id=None, subdivision_
                 "sucursal_id": branch_id,
                 "producto_id": product_id,
                 "subdivision_id": _normalize_int(row.get("subdivision_id"), 0) or None,
+                "division_id": _normalize_int(row.get("subdivision__division_id"), 0) or None,
                 "sucursal_nombre": sucursal_nombre,
                 "bodega_nombre": bodega_nombre,
                 "division_nombre": division_nombre,
@@ -5871,6 +5878,7 @@ class RandomInspectionSendDivisionAPIView(APIView):
                     es_por_division=True,
                     subdivision=subdivision,
                     es_por_subdivision=subdivision is not None,
+                    cuenta_toda_la_sucursal=True,
                     fecha_programada=scheduled_date,
                     estado=InspeccionAleatoriaDiaria.Estados.PENDIENTE,
                     total_items=len(new_items),

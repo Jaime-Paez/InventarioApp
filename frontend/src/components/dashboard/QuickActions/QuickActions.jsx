@@ -2733,6 +2733,7 @@ function QuickActions({
       if (!group) {
         group = {
           key,
+          divisionId: String(location?.division_id || ''),
           label: [location?.bodega_nombre, location?.division_nombre, location?.subdivision_nombre]
             .map((part) => String(part || '').trim())
             .filter(Boolean)
@@ -2760,8 +2761,16 @@ function QuickActions({
     if (chosenKey) {
       groups.sort((left, right) => Number(right.key === chosenKey) - Number(left.key === chosenKey))
     }
+    // Por division: primero las filas de la division enviada; despues las
+    // otras ubicaciones de la sucursal donde tambien estan esos productos
+    // (se cuentan ahi tambien, son obligatorias).
+    const chosenDivisionId = activeRandomInspection?.es_por_subdivision ? '' : String(activeRandomInspection?.division_id || '')
+    if (chosenDivisionId) {
+      groups.forEach((group) => { group.outside = Boolean(group.divisionId) && group.divisionId !== chosenDivisionId })
+      groups.sort((left, right) => Number(left.outside) - Number(right.outside))
+    }
     return groups
-  }, [activeRandomInspection?.es_por_subdivision, activeRandomInspection?.subdivision_id, isRandomInspectionTableMode, randomInspectionRows])
+  }, [activeRandomInspection?.es_por_subdivision, activeRandomInspection?.subdivision_id, activeRandomInspection?.division_id, isRandomInspectionTableMode, randomInspectionRows])
   const randomInspectionStepCount = isRandomInspectionTableMode
     ? randomInspectionGroups.length
     : randomInspectionRows.length
@@ -6417,7 +6426,9 @@ function QuickActions({
                         </p>
                         <h5>{activeRandomInspectionGroup.label}</h5>
                         <p className="quick-actions__inspection-stage-help">
-                          Cuenta todos los códigos de esta fila y escribe lo que encontraste de cada uno.
+                          {activeRandomInspectionGroup.outside
+                            ? `Esta ubicación está fuera de ${String(activeRandomInspection?.division_nombre || 'la columna enviada').trim()}, pero estos productos también están aquí: búscalos y cuéntalos (es obligatorio).`
+                            : 'Cuenta todos los códigos de esta fila y escribe lo que encontraste de cada uno.'}
                         </p>
                       </div>
 

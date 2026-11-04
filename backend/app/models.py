@@ -142,6 +142,10 @@ class InspeccionAleatoriaDiaria(models.Model):
     # subdivision de esa division. `es_por_subdivision` (y no solo
     # `subdivision`) define la unicidad, igual que es_por_division.
     es_por_subdivision = models.BooleanField(default=False, db_default=False)
+    # Revision por division que cuenta cada producto en TODAS sus ubicaciones
+    # de la sucursal (tambien las de fuera de la division), obligatorio en
+    # cada una. Las anteriores a este cambio quedan en False: solo la division.
+    cuenta_toda_la_sucursal = models.BooleanField(default=False, db_default=False)
     subdivision = models.ForeignKey(
         "inventario.SubDivision",
         on_delete=models.SET_NULL,

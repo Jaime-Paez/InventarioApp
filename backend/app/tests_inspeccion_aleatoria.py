@@ -404,7 +404,8 @@ class InspeccionPorDivisionTests(InspeccionAleatoriaBaseTestCase):
         cantidades[self.producto_2.id] = 4
         self.assertEqual(self._responder(division_inspection, cantidades).status_code, 200)
 
-    def test_esperado_por_division_solo_cuenta_esa_division(self):
+    def test_division_tambien_cuenta_las_otras_ubicaciones_del_producto(self):
+        # P-1 esta en la division enviada (10) y tambien en otra division (3).
         Inventario.objects.create(producto=self.producto, subdivision=self.sub_b, cantidad=3)
         response = self.admin_client.post(
             f"{BASE_URL}/enviar-division/",
@@ -412,6 +413,29 @@ class InspeccionPorDivisionTests(InspeccionAleatoriaBaseTestCase):
             format="json",
         )
         inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
+        self.assertTrue(inspection.cuenta_toda_la_sucursal)
+
+        detail = self.revisor_client.get(f"{BASE_URL}/{inspection.id}/").data["inspection"]
+        item = next(row for row in detail["items"] if row["producto_id"] == self.producto.id)
+        ubicaciones = {row["subdivision_id"]: row["division_id"] for row in item["ubicaciones_bodega"]}
+        self.assertEqual(ubicaciones, {self.sub_a.id: self.division.id, self.sub_b.id: self.division_b.id})
+
+        # Si solo cuenta la division, falta lo de la otra ubicacion: es diferencia.
+        self._responder(inspection, {self.producto.id: 10, self.producto_2.id: 4})
+        self.assertEqual(
+            inspection.items.get(producto=self.producto).estado_revision, "no_coincide"
+        )
+        self.assertEqual(inspection.items.get(producto=self.producto).cantidad_esperada, 13)
+
+    def test_revision_de_division_anterior_sigue_solo_en_su_division(self):
+        Inventario.objects.create(producto=self.producto, subdivision=self.sub_b, cantidad=3)
+        response = self.admin_client.post(
+            f"{BASE_URL}/enviar-division/",
+            {"division_id": self.division.id, "usuario_id": self.revisor.id, "hora_recordatorio": "23:59"},
+            format="json",
+        )
+        inspection = InspeccionAleatoriaDiaria.objects.get(pk=response.data["inspeccion_id"])
+        InspeccionAleatoriaDiaria.objects.filter(pk=inspection.pk).update(cuenta_toda_la_sucursal=False)
         response = self._responder(inspection, {self.producto.id: 10, self.producto_2.id: 4})
         self.assertEqual(self._diferencias(inspection), 0)
 
