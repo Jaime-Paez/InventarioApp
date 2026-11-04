@@ -226,7 +226,7 @@
 .reposicion__bar-part.is-seguridad, .reposicion__dot.is-seguridad { background: #16a34a; }
 .reposicion__bar-part.is-en_camino, .reposicion__dot.is-en_camino { background: #0ea5e9; }
 .reposicion__bar-part.is-exceso, .reposicion__dot.is-exceso { background: #f59e0b; }
-.reposicion__bar-part.is-lento, .reposicion__dot.is-lento { background: #a855f7; }
+.reposicion__bar-part.is-lento, .reposicion__dot.is-lento { background: #64748b; }
 .reposicion__bar-part.is-obsoleto, .reposicion__dot.is-obsoleto { background: #dc2626; }
 
 .reposicion__causes {
@@ -369,7 +369,7 @@
 .reposicion__status.is-pedir { background: rgba(245, 158, 11, 0.18); color: #92400e; }
 .reposicion__status.is-ok { background: rgba(22, 163, 74, 0.14); color: #15803d; }
 .reposicion__status.is-exceso { background: rgba(245, 158, 11, 0.12); color: #b45309; }
-.reposicion__status.is-esporadico { background: rgba(168, 85, 247, 0.14); color: #7e22ce; }
+.reposicion__status.is-esporadico { background: rgba(100, 116, 139, 0.14); color: #475569; }
 .reposicion__status.is-obsoleto { background: rgba(220, 38, 38, 0.1); color: #991b1b; }
 
 .reposicion__empty {
@@ -726,7 +726,7 @@ body.app-theme-dark .reposicion__status.is-agotado { color: #fca5a5; }
 body.app-theme-dark .reposicion__status.is-pedir { color: #fcd34d; }
 body.app-theme-dark .reposicion__status.is-ok { color: #86efac; }
 body.app-theme-dark .reposicion__status.is-exceso { color: #fbbf24; }
-body.app-theme-dark .reposicion__status.is-esporadico { color: #d8b4fe; }
+body.app-theme-dark .reposicion__status.is-esporadico { color: #cbd5e1; }
 body.app-theme-dark .reposicion__status.is-obsoleto { color: #fca5a5; }
 body.app-theme-dark .reposicion__class.is-A { color: #93c5fd; }
 body.app-theme-dark .reposicion__class.is-B { color: #7dd3fc; }

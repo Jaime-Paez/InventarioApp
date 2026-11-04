@@ -213,14 +213,14 @@
 
 /* Historial (colores de Inconvenientes + "En curso" en azul). */
 .transfer-issues-state.transfer-issues-state--encurso {
-  color: #3730a3;
-  background: rgba(99, 102, 241, 0.14);
-  border-color: rgba(99, 102, 241, 0.35);
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.35);
 }
 
 .dashboard-shell.dark .transfer-issues-state.transfer-issues-state--encurso {
-  color: #c7d2fe;
-  background: rgba(129, 140, 248, 0.18);
+  color: #bfdbfe;
+  background: rgba(96, 165, 250, 0.16);
 }
 
 .inspection-admin__row-actions {
@@ -270,8 +270,8 @@
 }
 
 .inspection-admin__revision-state--curso {
-  background: #e0e7ff;
-  color: #3730a3;
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
 }
 
 .inspection-admin__head-select {
@@ -529,8 +529,8 @@
 }
 
 .dashboard-shell.dark .inspection-admin__revision-state--curso {
-  background: rgba(129, 140, 248, 0.18);
-  color: #c7d2fe;
+  background: rgba(96, 165, 250, 0.16);
+  color: #bfdbfe;
 }
 
 .inspection-admin__loading {
@@ -2270,19 +2270,19 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid #6366f1;
+  border: 2px solid var(--color-primary);
   background: transparent;
 }
 
 .inspection-admin__recount-dots > i.is-on {
-  background: #6366f1;
+  background: var(--color-primary);
 }
 
 .inspection-admin__recount-dots > small {
   margin-left: 4px;
   font-size: var(--font-size-xs, 12px);
   font-weight: 700;
-  color: #4338ca;
+  color: var(--color-primary);
 }
 
 .inspection-admin__recount-last {
@@ -2296,16 +2296,7 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   font-weight: 600;
 }
 
-.inspection-admin__verify-recount {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-color: rgba(99, 102, 241, 0.55);
-  color: #4338ca;
-}
-
 .dashboard-shell.dark .inspection-admin__recount-dots > small,
-.quick-actions__inspection-overlay.dark .inspection-admin__recount-dots > small,
-.quick-actions__inspection-overlay.dark .inspection-admin__verify-recount {
-  color: #c7d2fe;
+.quick-actions__inspection-overlay.dark .inspection-admin__recount-dots > small {
+  color: var(--color-text-dark);
 }
