@@ -6586,6 +6586,7 @@ function QuickActions({
                         <div className="create-user__locations-row create-user__locations-row--head">
                           <span>Código</span>
                           <span>Descripción</span>
+                          <span>Ubicación</span>
                           <span>Contado</span>
                           <span />
                         </div>
@@ -6650,6 +6651,9 @@ function QuickActions({
                                 {otherLocations.length > 0 && (
                                   <small>{`También en: ${otherLocations.join(', ')} (se cuenta aparte)`}</small>
                                 )}
+                              </span>
+                              <span className="quick-actions__inspection-row-location">
+                                {String(entry.location?.label || activeRandomInspectionGroup.label || '').trim() || '-'}
                               </span>
                               <span>
                                 <input
@@ -6717,16 +6721,15 @@ function QuickActions({
                                 key={`inspection-rowtable-${rowId}-fuera-${location.key}`}
                                 className="create-user__locations-row quick-actions__inspection-row--outside"
                               >
+                                {/* Otra ubicacion del mismo producto (en amarillo): se cuenta aqui mismo. */}
                                 <span className="quick-actions__inspection-row-code">
-                                  <small>↳ También aquí</small>
+                                  <strong>{row?.producto_codigo || `Producto ${rowId}`}</strong>
                                 </span>
                                 <span className="quick-actions__inspection-row-name">
-                                  <strong>{String(location?.label || location?.subdivision_nombre || '').trim()}</strong>
-                                  <small>
-                                    {entry.addedElsewhere
-                                      ? 'Otra ubicación de este producto: cuéntalo ahí también (obligatorio).'
-                                      : 'Fuera de esta columna: búscalo ahí y cuéntalo (obligatorio).'}
-                                  </small>
+                                  {String(row?.producto_nombre || '').trim()}
+                                </span>
+                                <span className="quick-actions__inspection-row-location">
+                                  <strong>{String(location?.label || location?.subdivision_nombre || '').trim() || '-'}</strong>
                                 </span>
                                 <span>
                                   <input

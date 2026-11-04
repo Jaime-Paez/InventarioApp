@@ -3627,7 +3627,7 @@
 }
 
 .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row {
-  grid-template-columns: minmax(110px, 0.9fr) minmax(0, 2fr) 96px 128px;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1.6fr) minmax(120px, 1fr) 96px 128px;
 }
 
 .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span {
@@ -3636,7 +3636,8 @@
 
 .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-code,
 .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-name,
-.quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(-n + 2) {
+.quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-location,
+.quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(-n + 3) {
   justify-content: flex-start;
   text-align: left;
 }
@@ -3648,6 +3649,13 @@
   align-items: flex-start;
   gap: 2px;
   white-space: normal;
+}
+
+/* Ubicacion de cada fila (y de las otras ubicaciones del producto). */
+.quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .quick-actions__inspection-row-location {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-sm, 13px);
 }
 
 .quick-actions__inspection-row-name small {
@@ -3770,6 +3778,7 @@
     grid-template-areas:
       "code count"
       "name count"
+      "location count"
       "action count";
   }
 
@@ -3786,15 +3795,20 @@
   }
 
   .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(3) {
-    grid-area: count;
+    grid-area: location;
   }
 
   .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(4) {
+    grid-area: count;
+  }
+
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(5) {
     grid-area: action;
   }
 
   .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(2),
-  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(4) {
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(3),
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row--head > span:nth-child(5) {
     display: none;
   }
 
@@ -3803,11 +3817,11 @@
     border-left: 0;
   }
 
-  .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(3) {
+  .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(4) {
     border-left: 1px solid var(--color-border);
   }
 
-  .quick-actions__inspection-overlay.dark .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(3) {
+  .quick-actions__inspection-overlay.dark .quick-actions__inspection-quiz .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row > span:nth-child(4) {
     border-left-color: var(--color-border-dark);
   }
 
@@ -3817,10 +3831,15 @@
 
   .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(2) {
     padding-top: 2px;
+    padding-bottom: 0;
+  }
+
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(3) {
+    padding-top: 2px;
     padding-bottom: 4px;
   }
 
-  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(4) {
+  .create-user__locations-table.quick-actions__inspection-row-table .create-user__locations-row:not(.create-user__locations-row--head) > span:nth-child(5) {
     justify-content: flex-start;
     padding-top: 0;
   }
