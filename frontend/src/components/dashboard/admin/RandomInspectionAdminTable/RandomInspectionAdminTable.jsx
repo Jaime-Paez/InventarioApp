@@ -1848,6 +1848,11 @@ function RandomInspectionAdminTable({
                             {row?.reubicado_a ? `No encontrado · reubicado a ${row.reubicado_a}` : 'No encontrado'}
                           </span>
                         )}
+                        {!row?.no_encontrado && getVerifiableLocations(row).some((location) => location?.no_encontrado) && (
+                          <span className="inspection-admin__notfound-tag">
+                            {`No encontrado en ${getVerifiableLocations(row).filter((location) => location?.no_encontrado).map((location) => location.label).join(', ')}`}
+                          </span>
+                        )}
                         {Number(row?.cantidad_faltante || 0) > 0 && (
                           Number(row?.faltante_pendiente || 0) > 0 ? (
                             <span className="inspection-admin__notfound-tag inspection-admin__shortfall-tag">
@@ -2052,6 +2057,9 @@ function RandomInspectionAdminTable({
                                     <div>
                                       <small>Ubicación</small>
                                       <strong>{String(location?.label || '-').trim()}</strong>
+                                      {location?.no_encontrado && !item?.no_encontrado && (
+                                        <span className="inspection-admin__notfound-tag">No lo encontró aquí</span>
+                                      )}
                                     </div>
                                     <div>
                                       <small>Sistema</small>

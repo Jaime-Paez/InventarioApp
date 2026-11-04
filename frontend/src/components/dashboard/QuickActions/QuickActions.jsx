@@ -184,6 +184,7 @@ const buildRandomInspectionItemDraftPayload = (row) => {
         cantidad: String(location?.cantidad_contada_input ?? '').trim() === ''
           ? null
           : toPositiveInt(location?.cantidad_contada_input, 0),
+        no_encontrado: Boolean(location?.no_encontrado),
       }))
   }
   return payload
@@ -2630,15 +2631,24 @@ function QuickActions({
         )
           ? draft.cantidad_reportada_por_ubicacion
           : {}
+        // "No lo encontre" en una sola ubicacion: esa queda en 0 y marcada.
+        const locationNotFoundDraft = (
+          draft?.ubicaciones_no_encontradas &&
+          typeof draft.ubicaciones_no_encontradas === 'object'
+        )
+          ? draft.ubicaciones_no_encontradas
+          : {}
         const locationInputs = useLocationInputs
           ? locations.map((location) => {
-            const rawInput = notFound
+            const notFoundHere = notFound || Boolean(locationNotFoundDraft?.[location.key])
+            const rawInput = notFoundHere
               ? '0'
               : Object.prototype.hasOwnProperty.call(locationCountDraft, location.key)
                 ? String(locationCountDraft?.[location.key] || '')
                 : ''
             return {
               ...location,
+              no_encontrado: notFoundHere,
               cantidad_contada_input: rawInput,
               cantidad_contada: rawInput ? toPositiveInt(rawInput, 0) : null,
             }
@@ -3545,19 +3555,26 @@ function QuickActions({
     return rows.reduce((acc, item) => {
       const itemId = normalizeId(item?.id)
       if (!itemId) return acc
-      const locationCounts = (Array.isArray(item?.conteo_ubicaciones) ? item.conteo_ubicaciones : [])
+      const savedLocations = Array.isArray(item?.conteo_ubicaciones) ? item.conteo_ubicaciones : []
+      const locationCounts = savedLocations
         .reduce((counts, entry) => {
           const key = String(entry?.key || '').trim()
           if (!key || entry?.cantidad_contada == null) return counts
           counts[key] = String(toPositiveInt(entry.cantidad_contada, 0))
           return counts
         }, {})
+      const locationsNotFound = savedLocations.reduce((marks, entry) => {
+        const key = String(entry?.key || '').trim()
+        if (key && entry?.no_encontrado) marks[key] = true
+        return marks
+      }, {})
       acc[itemId] = {
         id: itemId,
         cantidad_reportada_input: item?.cantidad_reportada == null
           ? ''
           : String(toPositiveInt(item?.cantidad_reportada, 0)),
         cantidad_reportada_por_ubicacion: locationCounts,
+        ubicaciones_no_encontradas: locationsNotFound,
         observacion: String(item?.observacion || '').trim(),
       }
       return acc
@@ -5153,12 +5170,16 @@ function QuickActions({
         ? current.cantidad_reportada_por_ubicacion
         : {}
 
+      // Escribir una cantidad quita el "no lo encontre" de esa ubicacion.
+      const currentMarks = { ...(current?.ubicaciones_no_encontradas || {}) }
+      delete currentMarks[normalizedLocationKey]
       return {
         ...prev,
         [normalizedItemId]: {
           ...current,
           id: normalizedItemId,
           no_encontrado: false,
+          ubicaciones_no_encontradas: currentMarks,
           cantidad_reportada_por_ubicacion: {
             ...currentLocationCounts,
             [normalizedLocationKey]: normalizeQuantityInputString(value),
@@ -5168,6 +5189,36 @@ function QuickActions({
     })
     markRandomInspectionItemDirty(normalizedItemId)
   }, [markRandomInspectionItemDirty])
+
+  // "No lo encontre" en una ubicacion del producto: esa queda en 0 y marcada
+  // (administracion lo ve igual). Si se marcan todas, es "no lo encontre".
+  const handleRandomInspectionLocationNotFound = useCallback((row, locationKey) => {
+    const itemId = normalizeId(row?.row_id || row?.id)
+    const key = String(locationKey || '').trim()
+    if (randomInspectionSubmitting || !itemId || !key) return
+    const allKeys = (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
+      .map((location) => String(location?.key || '').trim())
+      .filter(Boolean)
+    setRandomInspectionDraftByItemId((prev) => {
+      const current = prev?.[itemId] || {}
+      const marks = { ...(current?.ubicaciones_no_encontradas || {}), [key]: true }
+      return {
+        ...prev,
+        [itemId]: {
+          ...current,
+          id: itemId,
+          no_encontrado: allKeys.length > 0 && allKeys.every((locationKey2) => marks[locationKey2]),
+          ubicaciones_no_encontradas: marks,
+          cantidad_reportada_por_ubicacion: {
+            ...(current?.cantidad_reportada_por_ubicacion || {}),
+            [key]: '0',
+          },
+        },
+      }
+    })
+    markRandomInspectionItemDirty(itemId)
+    setRandomInspectionError('')
+  }, [markRandomInspectionItemDirty, randomInspectionSubmitting])
 
   const handleSubmitRandomInspection = useCallback(
     async () => {
@@ -6537,13 +6588,16 @@ function QuickActions({
                                 />
                               </span>
                               <span>
-                                {row?.no_encontrado ? (
+                                {/* Con varias ubicaciones, "no lo encontre" es de esta ubicacion. */}
+                                {(entry.location ? entry.location?.no_encontrado : row?.no_encontrado) ? (
                                   <span className="quick-actions__inspection-notfound-tag">No encontrado</span>
                                 ) : (
                                   <button
                                     type="button"
                                     className="quick-actions__inspection-row-notfound"
-                                    onClick={() => handleRandomInspectionNotFound(row, { advance: false })}
+                                    onClick={() => (entry.location
+                                      ? handleRandomInspectionLocationNotFound(row, entry.location?.key)
+                                      : handleRandomInspectionNotFound(row, { advance: false }))}
                                     disabled={randomInspectionSubmitting}
                                   >
                                     No lo encontré
@@ -6577,7 +6631,20 @@ function QuickActions({
                                     aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'} en ${String(location?.label || '').trim()}`}
                                   />
                                 </span>
-                                <span />
+                                <span>
+                                  {location?.no_encontrado ? (
+                                    <span className="quick-actions__inspection-notfound-tag">No encontrado</span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="quick-actions__inspection-row-notfound"
+                                      onClick={() => handleRandomInspectionLocationNotFound(row, location.key)}
+                                      disabled={randomInspectionSubmitting}
+                                    >
+                                      No lo encontré
+                                    </button>
+                                  )}
+                                </span>
                               </div>
                             ))}
                             </React.Fragment>

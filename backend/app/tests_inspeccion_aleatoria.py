@@ -1436,3 +1436,77 @@ class FaltanteAbiertoTests(InspeccionAleatoriaBaseTestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self._stock(), 0)
+
+
+class NoEncontradoPorUbicacionTests(InspeccionAleatoriaBaseTestCase):
+    """'No lo encontre' en una sola ubicacion del producto."""
+
+    def setUp(self):
+        super().setUp()
+        Inventario.objects.filter(pk=self.inv_a.pk).update(cantidad=5)
+        Inventario.objects.create(producto=self.producto, subdivision=self.sub_b, cantidad=3)
+
+    def _responder(self, inspection, ubicaciones):
+        item = inspection.items.get()
+        return self.revisor_client.post(
+            f"{BASE_URL}/{inspection.id}/responder/",
+            {"items": [{"id": item.id, "cantidad_por_ubicacion": ubicaciones}]},
+            format="json",
+        )
+
+    def test_no_encontrado_en_una_ubicacion_es_diferencia_y_admin_lo_ve(self):
+        inspection = self._crear_inspeccion()
+        response = self._responder(inspection, [
+            {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": 5},
+            {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": 7, "no_encontrado": True},
+        ])
+        self.assertEqual(response.status_code, 200, response.data)
+        item = inspection.items.get()
+        self.assertEqual(item.estado_revision, "no_coincide")
+        self.assertFalse(item.no_encontrado)
+        self.assertEqual(item.cantidad_reportada, 5)
+        por_sub = {entry["subdivision_id"]: entry for entry in item.conteo_ubicaciones}
+        self.assertTrue(por_sub[self.sub_b.id]["no_encontrado"])
+        self.assertEqual(por_sub[self.sub_b.id]["cantidad_contada"], 0)
+        self.assertFalse(por_sub[self.sub_a.id]["no_encontrado"])
+
+        rows = self.admin_client.get(
+            f"{BASE_URL}/admin/items/?sucursal_id={self.sucursal.id}&estado=pendiente"
+        ).data["results"]
+        ubicaciones = {row["subdivision_id"]: row["no_encontrado"] for row in rows[0]["ubicaciones_conteo"]}
+        self.assertEqual(ubicaciones, {self.sub_a.id: False, self.sub_b.id: True})
+
+        # Al aprobar, lo que falta queda abierto como cualquier faltante.
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{item.id}/verificar/", {"accion": "aprobar", "cantidad_confirmada": 5}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertEqual(item.cantidad_faltante, 3)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 0)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 5)
+
+    def test_no_encontrado_en_todas_es_no_encontrado(self):
+        inspection = self._crear_inspeccion()
+        self._responder(inspection, [
+            {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": None, "no_encontrado": True},
+            {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": None, "no_encontrado": True},
+        ])
+        item = inspection.items.get()
+        self.assertTrue(item.no_encontrado)
+        self.assertEqual(item.cantidad_reportada, 0)
+
+    def test_borrador_guarda_no_encontrado_por_ubicacion(self):
+        inspection = self._crear_inspeccion()
+        item = inspection.items.get()
+        response = self.revisor_client.patch(
+            f"{BASE_URL}/{inspection.id}/borrador/",
+            {"items": [{"id": item.id, "cantidad_por_ubicacion": [
+                {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": None, "no_encontrado": True},
+            ]}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        item.refresh_from_db()
+        self.assertTrue(item.conteo_ubicaciones[0]["no_encontrado"])
+        self.assertEqual(item.conteo_ubicaciones[0]["cantidad_contada"], 0)

@@ -2023,6 +2023,7 @@ def _serialize_random_inspection_admin_item(item, subdivision_labels=None):
                 "label": label or "Ubicacion",
                 "cantidad_contada": entry.get("cantidad_contada"),
                 "cantidad_sistema": entry.get("cantidad_sistema"),
+                "no_encontrado": bool(entry.get("no_encontrado")),
             }
         )
     serialized["ubicaciones_conteo"] = location_counts
@@ -2820,8 +2821,17 @@ def _parse_random_inspection_location_counts(raw_value):
             quantity = _normalize_int(raw_qty, -1)
             if quantity < 0:
                 quantity = None
+        # "No lo encontre" en esta ubicacion: cuenta como 0 ahi.
+        not_found = bool(entry.get("no_encontrado"))
+        if not_found:
+            quantity = 0
         parsed.append(
-            {"key": key, "subdivision_id": subdivision_id, "cantidad_contada": quantity}
+            {
+                "key": key,
+                "subdivision_id": subdivision_id,
+                "cantidad_contada": quantity,
+                "no_encontrado": not_found,
+            }
         )
     return parsed
 
@@ -3721,10 +3731,16 @@ class RandomInspectionRespondAPIView(APIView):
                 reported = _parse_optional_quantity(row.get("cantidad_reportada"))
                 if locations_complete:
                     reported = sum(entry["cantidad_contada"] for entry in location_counts)
+                # Si lo marco "no lo encontre" en cada una de sus ubicaciones,
+                # es igual que no encontrarlo.
+                if len(location_counts) > 1 and all(entry.get("no_encontrado") for entry in location_counts):
+                    not_found = True
                 if not_found:
                     # "No lo encontre" cuenta como 0 en todas las ubicaciones.
                     reported = 0
-                    location_counts = [{**entry, "cantidad_contada": 0} for entry in location_counts]
+                    location_counts = [
+                        {**entry, "cantidad_contada": 0, "no_encontrado": True} for entry in location_counts
+                    ]
                     locations_complete = len(location_counts) > 1
                 if reported is None:
                     legacy_state = _normalize_random_inspection_review_state(
@@ -3817,6 +3833,7 @@ class RandomInspectionRespondAPIView(APIView):
                             "key": entry.get("key", ""),
                             "subdivision_id": subdivision_id,
                             "cantidad_contada": entry.get("cantidad_contada"),
+                            "no_encontrado": bool(entry.get("no_encontrado")),
                             "cantidad_sistema": (
                                 subdivision_stock.get((int(subdivision_id), int(item.producto_id)), 0)
                                 if subdivision_id and parsed["locations_complete"]
