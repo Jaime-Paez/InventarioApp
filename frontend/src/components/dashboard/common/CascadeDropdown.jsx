@@ -42,8 +42,8 @@ export default function CascadeDropdown({ placeholder, searchPlaceholder, option
         setQuery('')
       }
     }
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('mousedown', handleOutsideClick, true)
+    return () => document.removeEventListener('mousedown', handleOutsideClick, true)
   }, [open])
 
   useCloseDropdownsOnTabSwitch(

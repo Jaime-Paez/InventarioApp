@@ -1301,8 +1301,8 @@ function SalidasTable({
         setShowClienteDropdown(false)
       }
     }
-    window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
+    window.addEventListener('mousedown', handleClick, true)
+    return () => window.removeEventListener('mousedown', handleClick, true)
   }, [showClienteDropdown])
 
   const handleClienteDropdownToggle = () => {

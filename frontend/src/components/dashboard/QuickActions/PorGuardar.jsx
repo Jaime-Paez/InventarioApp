@@ -50,11 +50,11 @@ function ReceiveDropdown({ label, value, placeholder, options, onSelect, disable
       if (panelRef.current?.contains(event.target)) return
       setRect(null)
     }
-    document.addEventListener('mousedown', close)
+    document.addEventListener('mousedown', close, true)
     window.addEventListener('scroll', closeOnScroll, true)
     window.addEventListener('resize', closeOnScroll)
     return () => {
-      document.removeEventListener('mousedown', close)
+      document.removeEventListener('mousedown', close, true)
       window.removeEventListener('scroll', closeOnScroll, true)
       window.removeEventListener('resize', closeOnScroll)
     }

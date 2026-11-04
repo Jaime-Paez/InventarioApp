@@ -1520,11 +1520,11 @@ function QuickActions({
       setIsPendingShipmentsOpen(false)
     }
 
-    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('mousedown', handleClickOutside, true)
     document.addEventListener('touchstart', handleClickOutside, { passive: true })
     window.addEventListener('keydown', handleEscape)
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('mousedown', handleClickOutside, true)
       document.removeEventListener('touchstart', handleClickOutside)
       window.removeEventListener('keydown', handleEscape)
     }
@@ -1543,12 +1543,12 @@ function QuickActions({
       setIsInTransitShipmentsOpen(false)
     }
 
-    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('mousedown', handleClickOutside, true)
     document.addEventListener('touchstart', handleClickOutside, { passive: true })
     window.addEventListener('keydown', handleEscape)
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('mousedown', handleClickOutside, true)
       document.removeEventListener('touchstart', handleClickOutside)
       window.removeEventListener('keydown', handleEscape)
     }
@@ -3199,8 +3199,8 @@ function QuickActions({
         setReceiveShipmentSortOpen(false)
       }
     }
-    window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
+    window.addEventListener('mousedown', handleClick, true)
+    return () => window.removeEventListener('mousedown', handleClick, true)
   }, [receiveShipmentSortOpen])
 
   useEffect(() => {
@@ -3874,8 +3874,8 @@ function QuickActions({
       setActiveReceiveLocationDropdown({ productId: '', field: '' })
     }
 
-    document.addEventListener('mousedown', handleMouseDown)
-    return () => document.removeEventListener('mousedown', handleMouseDown)
+    document.addEventListener('mousedown', handleMouseDown, true)
+    return () => document.removeEventListener('mousedown', handleMouseDown, true)
   }, [
     activeReceiveLocationDropdown,
     buildReceiveLocationDropdownKey,
@@ -4951,11 +4951,11 @@ function QuickActions({
     }
     window.addEventListener('resize', place)
     window.addEventListener('scroll', place, true)
-    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('mousedown', handlePointer, true)
     return () => {
       window.removeEventListener('resize', place)
       window.removeEventListener('scroll', place, true)
-      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('mousedown', handlePointer, true)
     }
   }, [randomInspectionAddPanelKind])
 

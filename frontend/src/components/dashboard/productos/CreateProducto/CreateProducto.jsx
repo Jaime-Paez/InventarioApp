@@ -810,8 +810,8 @@ function CreateProducto({
         setShowLocationSubdivisionDropdown(false)
       }
     }
-    window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
+    window.addEventListener('mousedown', handleClick, true)
+    return () => window.removeEventListener('mousedown', handleClick, true)
   }, [
     showAlternoDropdown,
     showCasaDropdown,

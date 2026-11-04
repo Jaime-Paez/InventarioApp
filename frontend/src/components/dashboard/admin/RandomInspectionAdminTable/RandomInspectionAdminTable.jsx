@@ -596,8 +596,8 @@ function RandomInspectionAdminTable({
       if (listProductPanelRef.current?.contains(event.target)) return
       setShowListProductDropdown(false)
     }
-    document.addEventListener('mousedown', handleOutside)
-    return () => document.removeEventListener('mousedown', handleOutside)
+    document.addEventListener('mousedown', handleOutside, true)
+    return () => document.removeEventListener('mousedown', handleOutside, true)
   }, [showListProductDropdown])
 
   const handleListAddDraft = useCallback(() => {

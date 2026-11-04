@@ -188,8 +188,8 @@ const TypeSelect = ({
     const handleClickOutside = (event) => {
       if (!containerRef.current?.contains(event.target)) setIsOpen(false)
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('mousedown', handleClickOutside, true)
+    return () => document.removeEventListener('mousedown', handleClickOutside, true)
   }, [isOpen])
 
   const filtered = options.filter((option) =>

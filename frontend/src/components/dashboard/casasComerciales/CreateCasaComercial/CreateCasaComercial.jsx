@@ -247,8 +247,8 @@ function CreateCasaComercial({ open, onClose, onCreated, token, onError }) {
         setShowCountryDropdown(false)
       }
     }
-    window.addEventListener('mousedown', handleClickOutside)
-    return () => window.removeEventListener('mousedown', handleClickOutside)
+    window.addEventListener('mousedown', handleClickOutside, true)
+    return () => window.removeEventListener('mousedown', handleClickOutside, true)
   }, [showCountryDropdown])
 
   useEffect(() => {

@@ -711,8 +711,8 @@ function CasasComercialesTable({ token, onSelect, moduleActions, permissionIndex
         setShowSearchPaisDropdown(false)
       }
     }
-    window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
+    window.addEventListener('mousedown', handleClick, true)
+    return () => window.removeEventListener('mousedown', handleClick, true)
   }, [showSearchModal, showSearchPaisDropdown])
 
   useEffect(() => {

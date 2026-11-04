@@ -233,8 +233,8 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
       const inPanel = panelRef.current?.contains(e.target)
       if (!inWrap && !inPanel) setOpen(false)
     }
-    document.addEventListener('mousedown', onDocMouseDown)
-    return () => document.removeEventListener('mousedown', onDocMouseDown)
+    document.addEventListener('mousedown', onDocMouseDown, true)
+    return () => document.removeEventListener('mousedown', onDocMouseDown, true)
   }, [open])
 
   const selectCode = (raw) => {
@@ -880,8 +880,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   useEffect(() => {
     if (!showReceiveExcelDropdown) return
     const handle = (e) => { if (!receiveExcelDropdownRef.current?.contains(e.target)) setShowReceiveExcelDropdown(false) }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
+    document.addEventListener('mousedown', handle, true)
+    return () => document.removeEventListener('mousedown', handle, true)
   }, [showReceiveExcelDropdown])
 
   const [cellHover, setCellHover] = useState(null)
@@ -4164,8 +4164,8 @@ function SugerenciaProductPicker({ token, casaNombre, value, onSelect, listed = 
       if (triggerRef.current?.contains(event.target) || panelRef.current?.contains(event.target)) return
       setOpen(false)
     }
-    document.addEventListener('mousedown', handleMouseDown)
-    return () => document.removeEventListener('mousedown', handleMouseDown)
+    document.addEventListener('mousedown', handleMouseDown, true)
+    return () => document.removeEventListener('mousedown', handleMouseDown, true)
   }, [open])
 
   useEffect(() => {
@@ -5855,10 +5855,10 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
       if (!inCasa) setShowCasaDropdown(false)
     }
     const handleKeyDown = (e) => { if (e.key === 'Escape') excelRequestCloseRef.current?.() }
-    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('mousedown', handleMouseDown, true)
     window.addEventListener('keydown', handleKeyDown)
     return () => {
-      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('mousedown', handleMouseDown, true)
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [onClose])
@@ -6671,8 +6671,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   useEffect(() => {
     if (!showVerificarExcelDropdown) return
     const handle = (e) => { if (!verificarExcelDropdownRef.current?.contains(e.target)) setShowVerificarExcelDropdown(false) }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
+    document.addEventListener('mousedown', handle, true)
+    return () => document.removeEventListener('mousedown', handle, true)
   }, [showVerificarExcelDropdown])
 
   useLayoutEffect(() => {
@@ -6861,9 +6861,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       if (!inProduct) setShowProductDropdown(false)
     }
     const handleKeyDown = (event) => { if (event.key === 'Escape') onClose?.() }
-    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('mousedown', handleMouseDown, true)
     window.addEventListener('keydown', handleKeyDown)
-    return () => { document.removeEventListener('mousedown', handleMouseDown); window.removeEventListener('keydown', handleKeyDown) }
+    return () => { document.removeEventListener('mousedown', handleMouseDown, true); window.removeEventListener('keydown', handleKeyDown) }
   }, [open, onClose])
 
   useEffect(() => {
@@ -9184,8 +9184,8 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   useEffect(() => {
     if (!showCreateMenu) return
     const handler = (e) => { if (!createMenuRef.current?.contains(e.target)) setShowCreateMenu(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('mousedown', handler, true)
+    return () => document.removeEventListener('mousedown', handler, true)
   }, [showCreateMenu])
 
   useEffect(() => {
@@ -9627,8 +9627,8 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         setShowSearchImportaciones(false)
       }
     }
-    window.addEventListener('mousedown', handleClickOutside)
-    return () => window.removeEventListener('mousedown', handleClickOutside)
+    window.addEventListener('mousedown', handleClickOutside, true)
+    return () => window.removeEventListener('mousedown', handleClickOutside, true)
   }, [showSearchImportaciones])
 
   const handleOpenSearchResult = useCallback(async (resultId) => {

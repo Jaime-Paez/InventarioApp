@@ -740,8 +740,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         setShowSearchCasaDropdown(false)
       }
     }
-    window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
+    window.addEventListener('mousedown', handleClick, true)
+    return () => window.removeEventListener('mousedown', handleClick, true)
   }, [showSearchModal, showSearchCasaDropdown])
 
   const handleSearchSubmit = async (event) => {

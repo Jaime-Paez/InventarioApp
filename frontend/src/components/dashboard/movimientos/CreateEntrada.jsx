@@ -2289,8 +2289,8 @@ function CreateEntrada({
         setLocationDebouncedQuery('')
       }
     }
-    window.addEventListener('mousedown', handleClick)
-    return () => window.removeEventListener('mousedown', handleClick)
+    window.addEventListener('mousedown', handleClick, true)
+    return () => window.removeEventListener('mousedown', handleClick, true)
   }, [locationDropdownField, locationDropdownProductId, open, showCasaComercialDropdown, showClienteDropdown, showProductDropdown])
 
   useCloseDropdownsOnTabSwitch(

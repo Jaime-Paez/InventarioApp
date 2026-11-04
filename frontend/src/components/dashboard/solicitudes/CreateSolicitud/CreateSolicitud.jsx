@@ -801,8 +801,8 @@ function CreateSolicitud({
         }
       }
     }
-    window.addEventListener('mousedown', handleClickOutside)
-    return () => window.removeEventListener('mousedown', handleClickOutside)
+    window.addEventListener('mousedown', handleClickOutside, true)
+    return () => window.removeEventListener('mousedown', handleClickOutside, true)
   }, [showCasaComercialDropdown, showClienteDropdown, showCodigoDropdown, showOemDropdown, showReferenciaDropdown])
 
   useCloseDropdownsOnTabSwitch(

@@ -304,8 +304,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
       }
     }
 
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('mousedown', handleOutsideClick, true)
+    return () => document.removeEventListener('mousedown', handleOutsideClick, true)
   }, [
     showLocationBranchDropdown,
     showLocationBodegaDropdown,
@@ -329,8 +329,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         setRowDropdownQuery('')
       }
     }
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('mousedown', handleOutsideClick, true)
+    return () => document.removeEventListener('mousedown', handleOutsideClick, true)
   }, [openRowDropdown])
 
   useEffect(() => {
@@ -343,8 +343,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         setTransferDropdownQuery('')
       }
     }
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('mousedown', handleOutsideClick, true)
+    return () => document.removeEventListener('mousedown', handleOutsideClick, true)
   }, [openTransferDropdown])
 
   useCloseDropdownsOnTabSwitch(

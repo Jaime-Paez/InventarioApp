@@ -455,12 +455,12 @@ function Workspace({
       setIsMovementBranchMenuOpen(false)
     }
 
-    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('mousedown', handleClickOutside, true)
     document.addEventListener('touchstart', handleClickOutside, { passive: true })
     window.addEventListener('keydown', handleEscape)
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('mousedown', handleClickOutside, true)
       document.removeEventListener('touchstart', handleClickOutside)
       window.removeEventListener('keydown', handleEscape)
     }
