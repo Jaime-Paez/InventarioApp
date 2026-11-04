@@ -2058,21 +2058,21 @@
 
 /* Confirmacion rows in the main importaciones DataTable */
 .users-datatable .p-datatable-tbody > tr.imp-row--confirmacion > td {
-  background: color-mix(in srgb, #db2777 10%, var(--table-color)) !important;
+  background: color-mix(in srgb, #7c3aed 10%, var(--table-color)) !important;
   border-bottom-color: color-mix(in srgb, #6d28d9 22%, transparent) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.imp-row--confirmacion:hover > td {
-  background: color-mix(in srgb, #db2777 18%, var(--table-color-hover)) !important;
+  background: color-mix(in srgb, #7c3aed 18%, var(--table-color-hover)) !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.imp-row--confirmacion > td {
-  background: color-mix(in srgb, #db2777 14%, var(--table-color-dark)) !important;
-  border-bottom-color: color-mix(in srgb, #db2777 28%, var(--color-border-dark)) !important;
+  background: color-mix(in srgb, #7c3aed 14%, var(--table-color-dark)) !important;
+  border-bottom-color: color-mix(in srgb, #7c3aed 28%, var(--color-border-dark)) !important;
 }
 
 .dashboard-shell.dark .users-datatable .p-datatable-tbody > tr.imp-row--confirmacion:hover > td {
-  background: color-mix(in srgb, #db2777 22%, var(--table-color-dark-hover)) !important;
+  background: color-mix(in srgb, #7c3aed 22%, var(--table-color-dark-hover)) !important;
 }
 
 .users-datatable .p-datatable-tbody > tr.imp-row--confirmacion-realizada > td {
@@ -2107,8 +2107,8 @@
 
 /* Pedir cotización button */
 .imp-cotizacion-btn {
-  background: #db2777;
-  border-color: #db2777;
+  background: #7c3aed;
+  border-color: #7c3aed;
   color: #fff;
 }
 
