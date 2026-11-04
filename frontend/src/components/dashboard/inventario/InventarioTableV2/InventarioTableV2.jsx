@@ -89,14 +89,6 @@ const INVENTARIO_V2_FILTER_DEFAULT_MODES = {
   precio_con_iva: FilterMatchMode.EQUALS,
   total_general: FilterMatchMode.EQUALS,
 }
-// Orden de las columnas "Ub. <sucursal>": ademas de ascendente (1) y
-// descendente (-1), al seguir tocando el titulo se pasa por "rojos primero"
-// y "sin rojo primero" (ubicaciones con poco stock, ojo en rojo).
-const LOCATION_SORT_RED_FIRST = 2
-const LOCATION_SORT_NO_RED_FIRST = 3
-const isLocationSortField = (field) => /^ubicacion_sucursal_\d+$/.test(String(field || ''))
-const isLocationRedSortOrder = (order) =>
-  order === LOCATION_SORT_RED_FIRST || order === LOCATION_SORT_NO_RED_FIRST
 
 const INVENTARIO_V2_ORDERING_MAP = {
   codigo: 'codigo',
@@ -349,16 +341,10 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     branches.forEach((branch) => {
       orderingMap[`ubicacion_sucursal_${branch.id}`] = `ubicacion_sucursal_${branch.id}`
     })
-    if (isLocationSortField(tableSortField) && isLocationRedSortOrder(Number(tableSortOrder))) {
-      const redField = String(tableSortField).replace('ubicacion_sucursal_', 'ubicacion_bajo_sucursal_')
-      params.set(
-        'ordering',
-        `${Number(tableSortOrder) === LOCATION_SORT_RED_FIRST ? '-' : ''}${redField},${tableSortField}`
-      )
-    } else {
-      const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, orderingMap)
-      if (ordering) params.set('ordering', ordering)
-    }
+    // Columnas "Ub. <sucursal>": se ordenan por la cantidad de la ubicacion
+    // que se muestra en la celda (la principal).
+    const ordering = buildPrimeOrdering(tableSortField, tableSortOrder, orderingMap)
+    if (ordering) params.set('ordering', ordering)
 
     return `${API_URL}/inventario/inventario/tabla/?${params.toString()}`
   }, [canSeeCost, branches])
@@ -775,7 +761,17 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       clearTimeout(globalSearchDebounceRef.current)
     }
     setIsGlobalSearchPending(false)
-    lastSearchRef.current = { ...searchCriteria }
+    const nextCriteria = { ...searchCriteria }
+    if (nextCriteria.restock_bodega) {
+      nextCriteria.restock_sucursal = nextCriteria.restock_sucursal || defaultRestockBranchId
+      // Que se vea la columna Ub. de esa sucursal: ahi esta el ojo rojo.
+      const locationField = `ubicacion_sucursal_${nextCriteria.restock_sucursal}`
+      if (nextCriteria.restock_sucursal && !selectedBranchColumns.includes(locationField)) {
+        setSelectedBranchColumns((prev) => (prev.includes(locationField) ? prev : [...prev, locationField]))
+      }
+      setSearchCriteria(nextCriteria)
+    }
+    lastSearchRef.current = nextCriteria
     setShowSearchModal(false)
     setIsRefreshing(true)
     await fetchProducts(lastSearchRef.current, 1, pageSize, {
@@ -1195,7 +1191,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             <button
               type="button"
               className={`inventario-v2__location-eye${hasLowStock ? ' inventario-v2__location-eye--low' : ''}`}
-              aria-label={`Ver otras ubicaciones en ${branch.nombre}${hasLowStock ? ' (la principal tiene poco stock)' : ''}`}
+              aria-label={`Ver otras ubicaciones en ${branch.nombre}${hasLowStock ? ' (otra ubicacion tiene mas que la principal)' : ''}`}
               onClick={(event) => {
                 event.preventDefault()
                 event.stopPropagation()
@@ -2026,24 +2022,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
 
   const handleSortChange = async (event) => {
     const rawSortOrder = Number(event?.sortOrder)
-    let normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
-    let nextSortField = normalizedSortOrder ? event?.sortField || null : null
-    // Columnas de ubicacion: ascendente -> descendente -> rojos primero ->
-    // sin rojo primero -> sin orden. Quitar el orden solo ocurre al tocar la
-    // columna ya ordenada, asi que sin sortField en el evento es la misma.
-    const clickedField = event?.sortField || sortField
-    if (isLocationSortField(clickedField) && clickedField === sortField) {
-      if (sortOrder === -1) {
-        nextSortField = clickedField
-        normalizedSortOrder = LOCATION_SORT_RED_FIRST
-      } else if (sortOrder === LOCATION_SORT_RED_FIRST) {
-        nextSortField = clickedField
-        normalizedSortOrder = LOCATION_SORT_NO_RED_FIRST
-      } else if (sortOrder === LOCATION_SORT_NO_RED_FIRST) {
-        nextSortField = null
-        normalizedSortOrder = null
-      }
-    }
+    const normalizedSortOrder = rawSortOrder === 1 || rawSortOrder === -1 ? rawSortOrder : null
+    const nextSortField = normalizedSortOrder ? event?.sortField || null : null
     setSortField(nextSortField)
     setSortOrder(normalizedSortOrder)
     setPageFirst(0)
@@ -2180,6 +2160,12 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   const restockBranches = permittedBranchIds
     ? branches.filter((branch) => permittedBranchIds.has(String(branch.id)))
     : branches
+  // Restock es siempre de UNA sucursal (si no, salian filas cuyo ojo rojo
+  // estaba en otra columna). Por defecto, la de la columna Ub. que se ve.
+  const visibleLocationBranchId = selectedBranchColumns
+    .map((field) => /^ubicacion_sucursal_(\d+)$/.exec(String(field))?.[1])
+    .find((id) => id && restockBranches.some((branch) => String(branch.id) === id))
+  const defaultRestockBranchId = visibleLocationBranchId || (restockBranches[0] ? String(restockBranches[0].id) : '')
 
   useLayoutEffect(() => {
     if (!showBulkSelectConfirm) return
@@ -2335,8 +2321,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           rowsPerPageOptions={[5, 10, 20, 25, 50]}
           onPage={handlePageChange}
           removableSort
-          sortField={(isLocationRedSortOrder(sortOrder) ? null : sortField) || undefined}
-          sortOrder={isLocationRedSortOrder(sortOrder) ? 0 : sortOrder || 0}
+          sortField={sortField || undefined}
+          sortOrder={sortOrder || 0}
           onSort={handleSortChange}
           filters={filters}
           onValueChange={(value) => setProcessedRows(value ?? [])}
@@ -2484,20 +2470,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                 <Column
                   key={`branch_location_${branch.id}`}
                   field={field}
-                  header={
-                    sortField === field && isLocationRedSortOrder(sortOrder) ? (
-                      <span className="inventario-v2__location-sort-header">
-                        {`Ub. ${abbreviateBranchName(branch.nombre)}`}
-                        <span
-                          className={`inventario-v2__location-sort-badge${
-                            sortOrder === LOCATION_SORT_RED_FIRST ? ' inventario-v2__location-sort-badge--red' : ''
-                          }`}
-                        >
-                          {sortOrder === LOCATION_SORT_RED_FIRST ? 'Rojos primero' : 'Sin rojo primero'}
-                        </span>
-                      </span>
-                    ) : `Ub. ${abbreviateBranchName(branch.nombre)}`
-                  }
+                  header={`Ub. ${abbreviateBranchName(branch.nombre)}`}
                   sortable
                   reorderable
                   className="column-max-min-width inventario-v2__location-col"
@@ -3008,20 +2981,23 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                         checked={Boolean(searchCriteria.restock_bodega)}
                         onChange={(event) => {
                           const checked = event.target.checked
-                          setSearchCriteria((prev) => ({ ...prev, restock_bodega: checked, restock_sucursal: checked ? prev.restock_sucursal : '' }))
+                          setSearchCriteria((prev) => ({
+                            ...prev,
+                            restock_bodega: checked,
+                            restock_sucursal: checked ? (prev.restock_sucursal || defaultRestockBranchId) : '',
+                          }))
                         }}
                       />
                       <span className="inv-search__restock-eye" aria-hidden="true"><i className="pi pi-eye" /></span>
                       <span className="inv-search__restock-text">
                         <strong>Restock bodega</strong>
-                        <small>Solo los productos con el ojo rojo en la tabla: a su ubicación principal le queda 1 o menos y hay más ubicaciones en la sucursal.</small>
+                        <small>Solo los productos con el ojo rojo en la sucursal elegida: alguna ubicación secundaria (por ejemplo la bodega) tiene más que la principal.</small>
                       </span>
                     </label>
-                    {searchCriteria.restock_bodega && restockBranches.length > 1 && (
+                    {searchCriteria.restock_bodega && restockBranches.length > 0 && (
                       <label className="create-user__field inv-search__restock-branch">
                         <span>Sucursal</span>
-                        <select name="restock_sucursal" value={searchCriteria.restock_sucursal} onChange={handleSearchInputChange}>
-                          <option value="">Todas mis sucursales</option>
+                        <select name="restock_sucursal" value={searchCriteria.restock_sucursal || defaultRestockBranchId} onChange={handleSearchInputChange}>
                           {restockBranches.map((branch) => (
                             <option key={`restock-branch-${branch.id}`} value={String(branch.id)}>{branch.nombre}</option>
                           ))}

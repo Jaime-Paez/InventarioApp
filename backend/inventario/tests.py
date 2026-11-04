@@ -311,9 +311,9 @@ class InventarioTablaBusquedaSufijoGuionTests(APITestCase):
 
 
 class InventarioTablaUbicacionesStockBajoTests(APITestCase):
-    """Ojo en rojo cuando a la ubicacion PRINCIPAL (la primera del orden
-    elegido; sin orden, la primera por nombre con stock) le queda 1 o menos,
-    de cualquier bodega. Orden "rojos primero" / "sin rojo primero"."""
+    """Ojo en rojo cuando alguna ubicacion SECUNDARIA tiene mas que la
+    principal. Las de bodega ("Bodega Norte") siempre son secundarias. Las
+    columnas Ub. se ordenan por la cantidad de la principal."""
 
     def setUp(self):
         User = get_user_model()
@@ -340,12 +340,15 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
             self.productos[codigo] = item
             return item
 
-        producto("BAJO-PRINC1", [1, 20, None])     # principal (A) en 1 -> rojo
-        producto("BAJO-OTRA", [50, 1, None])       # la baja no es la principal -> normal
-        producto("BAJO-CERO", [0, 20, None])       # sin orden: la de 0 nunca es principal -> normal
-        producto("BAJO-DOS", [2, 50, None])        # principal en 2 -> normal
+        # Columnas: A y B (almacen), C (bodega).
+        producto("BAJO-PRINC1", [1, 20, None])     # principal A=1, B tiene mas -> rojo
+        producto("BAJO-OTRA", [50, 1, None])       # principal A=50 -> normal
+        producto("BAJO-CERO", [0, 20, None])       # sin orden: principal B=20 (con stock) -> normal
+        producto("BAJO-DOS", [2, 50, None])        # principal A=2, B tiene mas -> rojo
         producto("BAJO-UNA", [1, None, None])      # una sola ubicacion -> sin ojo, normal
         producto("BAJO-SINSTOCK", [0, 0, None])    # sin stock -> celda vacia
+        producto("BAJO-BOD", [3, None, 10])        # la bodega tiene mas que el almacen -> rojo
+        producto("BAJO-SOLOBOD", [0, None, 5])     # almacen vacio, todo en bodega -> rojo
 
     def _rows(self, **params):
         response = self.client.get("/inventario/inventario/tabla/", params)
@@ -371,30 +374,29 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
         )
         self.assertEqual(response.status_code, 200, response.data)
 
-    def test_rojo_solo_si_la_principal_tiene_poco(self):
+    def test_rojo_cuando_una_secundaria_tiene_mas_que_la_principal(self):
         rows = self._payloads()
-        self.assertTrue(rows["BAJO-PRINC1"]["tiene_stock_bajo"])
+        rojos = {codigo for codigo, payload in rows.items() if payload.get("tiene_stock_bajo")}
+        self.assertEqual(rojos, {"BAJO-PRINC1", "BAJO-DOS", "BAJO-BOD", "BAJO-SOLOBOD"})
         self.assertTrue(rows["BAJO-PRINC1"]["principal"]["stock_bajo"])
-        self.assertFalse(rows["BAJO-OTRA"]["tiene_stock_bajo"])
-        self.assertFalse(rows["BAJO-CERO"]["tiene_stock_bajo"])
         self.assertEqual(rows["BAJO-CERO"]["principal"]["cantidad"], 20)
-        self.assertFalse(rows["BAJO-DOS"]["tiene_stock_bajo"])
-        self.assertFalse(rows["BAJO-UNA"]["tiene_stock_bajo"])
         self.assertEqual(rows["BAJO-SINSTOCK"], {})
+        # La bodega nunca es principal: aunque tenga mas, la principal es del almacen.
+        self.assertEqual(rows["BAJO-BOD"]["principal"]["bodega_nombre"], "Almacén Norte")
+        self.assertEqual(rows["BAJO-SOLOBOD"]["principal"]["cantidad"], 0)
         # Solo la principal se marca; las demas son respaldo.
         self.assertEqual(
-            [loc["stock_bajo"] for loc in rows["BAJO-OTRA"]["ubicaciones_adicionales"]], [False]
+            [loc["stock_bajo"] for loc in rows["BAJO-PRINC1"]["ubicaciones_adicionales"]], [False]
         )
 
-    def test_el_orden_elegido_decide_la_principal_de_cualquier_bodega(self):
-        # La de 0 puesta primera: es la principal y se ve en rojo.
+    def test_el_orden_elegido_decide_la_principal_pero_la_bodega_sigue_secundaria(self):
+        # La de 0 puesta primera: es la principal y la otra tiene mas -> rojo.
         self._ordenar("BAJO-CERO", [self.sub_a, self.sub_b])
-        # La baja de la otra fila puesta primera: ahora si es rojo.
+        # La de 1 puesta primera: rojo.
         self._ordenar("BAJO-OTRA", [self.sub_b, self.sub_a])
-        # La principal en la BODEGA (no almacen) con poco: tambien rojo.
-        Inventario.objects.create(producto=self.productos["BAJO-DOS"], subdivision=self.sub_c, cantidad=1)
-        self._ordenar("BAJO-DOS", [self.sub_c, self.sub_a, self.sub_b])
-        # La baja puesta al final: deja de ser rojo.
+        # La bodega puesta primera: igual queda secundaria.
+        self._ordenar("BAJO-BOD", [self.sub_c, self.sub_a])
+        # La de mas cantidad puesta primera: deja de ser rojo.
         self._ordenar("BAJO-PRINC1", [self.sub_b, self.sub_a])
 
         rows = self._payloads()
@@ -402,39 +404,36 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
         self.assertEqual(rows["BAJO-CERO"]["principal"]["cantidad"], 0)
         self.assertTrue(rows["BAJO-OTRA"]["tiene_stock_bajo"])
         self.assertEqual(rows["BAJO-OTRA"]["ubicacion_principal"], rows["BAJO-OTRA"]["principal"]["ubicacion"])
-        self.assertTrue(rows["BAJO-DOS"]["tiene_stock_bajo"])
-        self.assertEqual(rows["BAJO-DOS"]["principal"]["bodega_nombre"], "Bodega Norte")
+        self.assertEqual(rows["BAJO-BOD"]["principal"]["bodega_nombre"], "Almacén Norte")
+        self.assertTrue(rows["BAJO-BOD"]["tiene_stock_bajo"])
         self.assertFalse(rows["BAJO-PRINC1"]["tiene_stock_bajo"])
         self.assertEqual(rows["BAJO-PRINC1"]["principal"]["cantidad"], 20)
 
-    def test_orden_rojos_primero_y_sin_rojo_primero(self):
-        self._ordenar("BAJO-OTRA", [self.sub_b, self.sub_a])
+    def test_orden_por_cantidad_de_la_principal_y_vacias_al_final(self):
         branch = self.sucursal.id
-        rojos = [row["codigo"] for row in self._rows(ordering=f"-ubicacion_bajo_sucursal_{branch},ubicacion_sucursal_{branch}")]
-        self.assertEqual(set(rojos[:2]), {"BAJO-PRINC1", "BAJO-OTRA"})
-
-        sin_rojo = [row["codigo"] for row in self._rows(ordering=f"ubicacion_bajo_sucursal_{branch},ubicacion_sucursal_{branch}")]
-        self.assertEqual(set(sin_rojo[-2:]), {"BAJO-PRINC1", "BAJO-OTRA"})
+        asc = [row["codigo"] for row in self._rows(ordering=f"ubicacion_sucursal_{branch}")]
+        self.assertEqual(asc[0], "BAJO-SOLOBOD")
+        self.assertEqual(set(asc[1:3]), {"BAJO-PRINC1", "BAJO-UNA"})
+        self.assertEqual(asc[3:], ["BAJO-DOS", "BAJO-BOD", "BAJO-CERO", "BAJO-OTRA", "BAJO-SINSTOCK"])
+        desc = [row["codigo"] for row in self._rows(ordering=f"-ubicacion_sucursal_{branch}")]
+        self.assertEqual(desc[:4], ["BAJO-OTRA", "BAJO-CERO", "BAJO-BOD", "BAJO-DOS"])
+        self.assertEqual(desc[-2:], ["BAJO-SOLOBOD", "BAJO-SINSTOCK"])
 
     def test_filtro_restock_bodega_devuelve_solo_los_de_ojo_rojo(self):
-        self._ordenar("BAJO-OTRA", [self.sub_b, self.sub_a])
-        rojos = {row["codigo"] for row in self._rows(restock_bodega="1")}
+        branch = str(self.sucursal.id)
+        rojos = {row["codigo"] for row in self._rows(restock_bodega="1", restock_sucursal=branch)}
         esperados = {
             row["codigo"] for row in self._rows() if self._ubicacion(row).get("tiene_stock_bajo")
         }
         self.assertEqual(rojos, esperados)
-        self.assertEqual(rojos, {"BAJO-PRINC1", "BAJO-OTRA"})
-        # Por sucursal: la propia da lo mismo; una sucursal ajena, nada.
-        self.assertEqual(
-            {row["codigo"] for row in self._rows(restock_bodega="1", restock_sucursal=str(self.sucursal.id))},
-            rojos,
-        )
+        self.assertEqual(rojos, {"BAJO-PRINC1", "BAJO-DOS", "BAJO-BOD", "BAJO-SOLOBOD"})
         otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
         self.assertEqual(self._rows(restock_bodega="1", restock_sucursal=str(otra.id)), [])
-        # Junto con el orden de rojos (anotacion compartida) sigue funcionando.
-        branch = self.sucursal.id
+        # Junto con el orden por cantidad sigue funcionando.
         self.assertEqual(
-            {row["codigo"] for row in self._rows(restock_bodega="1", ordering=f"-ubicacion_bajo_sucursal_{branch}")},
+            {row["codigo"] for row in self._rows(
+                restock_bodega="1", restock_sucursal=branch, ordering=f"-ubicacion_sucursal_{branch}"
+            )},
             rojos,
         )
 

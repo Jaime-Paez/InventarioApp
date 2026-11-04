@@ -1239,7 +1239,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
             <GripVertical size={14} aria-hidden="true" />
             <span>
               Arrastra las filas para elegir la ubicacion <strong>principal</strong> de cada sucursal (la primera).
-              Es la que se muestra en la tabla y la que pone el ojo en rojo cuando le queda poco stock.
+              Es la que se muestra en la tabla; el ojo se pone en rojo cuando otra ubicacion tiene mas que ella. Las de bodega siempre quedan como secundarias.
             </span>
           </p>
         )}
