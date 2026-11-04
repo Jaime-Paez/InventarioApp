@@ -91,7 +91,6 @@ from .serializers import (
     SALIDA_SUBTYPE_PREFIXES,
 )
 from .historial import build_movement_history
-from .historial_producto import build_product_movement_history
 from .inconveniente_borrador import parse_borrador_items
 from .stock_availability import get_available_transfer_quantities_by_product
 from .transfer_helpers import (
@@ -2863,34 +2862,6 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         traslado, envios de la compra local e inconvenientes."""
         instance = self.get_object()
         return Response({"eventos": build_movement_history(instance)})
-
-    @action(detail=False, methods=["get"], url_path="historial-producto")
-    def historial_producto(self, request):
-        """Entradas y salidas de un producto, mas recientes primero.
-
-        Query: producto_id (obligatorio), tipo (entrada|salida), sucursal_id,
-        page, page_size."""
-        params = request.query_params
-
-        def _int(value, default=None):
-            try:
-                return int(str(value).strip())
-            except (TypeError, ValueError):
-                return default
-
-        producto_id = _int(params.get("producto_id"))
-        if not producto_id:
-            return Response({"detail": "Falta producto_id."}, status=status.HTTP_400_BAD_REQUEST)
-        tipo = (params.get("tipo") or "").strip().lower()
-        return Response(
-            build_product_movement_history(
-                producto_id,
-                tipo=tipo,
-                sucursal_id=_int(params.get("sucursal_id")),
-                page=_int(params.get("page"), 1),
-                page_size=_int(params.get("page_size"), 50),
-            )
-        )
 
     @action(detail=True, methods=["get", "post", "patch"], url_path="distribucion-compra")
     def distribucion_compra(self, request, pk=None):
