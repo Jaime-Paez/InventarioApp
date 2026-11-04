@@ -3847,10 +3847,12 @@ const deriveSuggestedCodigo = (row, casaCodigo) => {
 // sugerencia (ImportGroupsSummary) y los colores de las filas. Cada chip lleva
 // a la siguiente fila de ese grupo. conteo: { catalogo, noExiste,
 // agregadoExiste, agregadoNuevo, quitado }.
-function VerificacionGroupsSummary({ conteo, chipProps }) {
+// `repetidos`: codigos en mas de una fila ([{ codigo, referencias, keys }]);
+// `onIrRepetidos`: lleva a esas filas (como en la sugerencia).
+function VerificacionGroupsSummary({ conteo, chipProps, repetidos = [], onIrRepetidos }) {
   const enLista = (conteo.catalogo || 0) + (conteo.noExiste || 0) + (conteo.agregadoExiste || 0) + (conteo.agregadoNuevo || 0)
   const quitados = conteo.quitado || 0
-  if (!enLista && !quitados) return null
+  if (!enLista && !quitados && !repetidos.length) return null
   const caja = { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }
   const chip = { borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }
   const plural = (n, uno, varios) => `${n} ${n !== 1 ? varios : uno}`
@@ -3870,6 +3872,29 @@ function VerificacionGroupsSummary({ conteo, chipProps }) {
                 {texto}
               </span>
             ))}
+          </div>
+        </div>
+      )}
+      {repetidos.length > 0 && (
+        <div style={caja}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span
+              role="button"
+              tabIndex={0}
+              className="imp-excel-review__group-chip"
+              aria-label="Ir a los productos repetidos"
+              onClick={() => onIrRepetidos?.()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onIrRepetidos?.()
+                }
+              }}
+              data-title={`Clic: ir a los repetidos (${repetidos.map((grupo) => (grupo.referencias.length ? `${grupo.codigo}: ${grupo.referencias.join(', ')}` : grupo.codigo)).join(' · ')}). Para pedir la confirmación deja solo una fila de cada código.`}
+              style={{ ...chip, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
+            >
+              {plural(repetidos.length, 'repetido', 'repetidos')}
+            </span>
           </div>
         </div>
       )}
@@ -4579,47 +4604,6 @@ const getDuplicateProductGroups = (rows) => {
     byCode.get(key).push(row)
   })
   return [...byCode.values()].filter((group) => group.length > 1)
-}
-
-// Aviso de codigos repetidos (sugerencia y verificacion). grupos:
-// [{ codigo, nombre, filas, referencias: [] }].
-function CodigosRepetidosAviso({ grupos, etapa, onIr }) {
-  if (!grupos.length) return null
-  return (
-    <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <i className="pi pi-exclamation-triangle" style={{ color: '#b45309', fontSize: 'var(--font-size-base)' }} />
-        <strong style={{ fontSize: 'var(--font-size-sm)', color: '#78350f' }}>
-          {grupos.length === 1 ? '1 código está repetido' : `${grupos.length} códigos están repetidos`} con referencias distintas
-        </strong>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {grupos.map((grupo) => (
-          <div
-            key={grupo.codigo}
-            {...(onIr ? {
-              role: 'button',
-              tabIndex: 0,
-              'data-title': 'Clic: ir a sus filas y marcarlas',
-              onClick: () => onIr(grupo),
-              onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onIr(grupo) } },
-            } : {})}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 'var(--font-size-sm)', padding: '4px 6px', background: '#fef3c7', borderRadius: 4, flexWrap: 'wrap', color: '#78350f', cursor: onIr ? 'pointer' : undefined }}
-          >
-            <strong style={{ whiteSpace: 'nowrap' }}>{grupo.codigo}</strong>
-            {grupo.nombre && <span>{grupo.nombre}</span>}
-            <span>{grupo.referencias.length ? `Referencias: ${grupo.referencias.join(', ')}` : `${grupo.filas} filas`}</span>
-            {onIr && <span style={{ marginLeft: 'auto', fontWeight: 600, textDecoration: 'underline' }}>Ver filas</span>}
-          </div>
-        ))}
-      </div>
-      <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: '#78350f' }}>
-        {etapa === 'verificacion'
-          ? 'Para pedir la confirmación deja solo una de cada código: quita las demás.'
-          : 'Puedes crear la sugerencia y pedir la cotización así; antes de pedir la confirmación hay que dejar solo una de cada código.'}
-      </p>
-    </div>
-  )
 }
 
 // Sugerencia guardada <-> filas de SugerenciaTabla: los detalles guardados se
@@ -8445,12 +8429,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                       )
                       return (
                         <>
-                    {isVerificar && (
-                      <CodigosRepetidosAviso etapa="verificacion" grupos={codigosRepetidosVerificacion} onIr={(grupo) => jumpToDetailRows(grupo.keys)} />
-                    )}
                     {isVerificar && details.length > 0 && (
                       <VerificacionGroupsSummary
                         conteo={verificarConteo}
+                        repetidos={codigosRepetidosVerificacion}
+                        onIrRepetidos={() => jumpToDetailRows(codigosRepetidosVerificacion.flatMap((grupo) => grupo.keys))}
                         chipProps={(grupo, label) => ({
                           role: 'button',
                           tabIndex: 0,
