@@ -175,7 +175,6 @@ function RandomInspectionAdminTable({
   const [assignmentSearch, setAssignmentSearch] = useState('')
   const [localAssignmentMap, setLocalAssignmentMap] = useState({})
   const [assignmentsSaving, setAssignmentsSaving] = useState(false)
-  const [isEditingAssignments, setIsEditingAssignments] = useState(false)
   const [configData, setConfigData] = useState({ hora_recordatorio: '', cantidad_productos: '', inspeccion_automatica: false })
   const [configLoading, setConfigLoading] = useState(false)
   const [showSendNowDialog, setShowSendNowDialog] = useState(false)
@@ -1116,7 +1115,6 @@ function RandomInspectionAdminTable({
     const closeAssignmentsDialog = useCallback(() => {
     setShowAssignmentsDialog(false)
     setAssignmentSearch('')
-    setIsEditingAssignments(false)
   }, [])
 
   const openAssignmentsDialog = useCallback(() => {
@@ -1124,25 +1122,6 @@ function RandomInspectionAdminTable({
     void loadAssignments()
     void loadConfig()
   }, [loadAssignments, loadConfig])
-
-  const handleToggleEdit = useCallback(() => {
-    if (assignmentsLoading || assignmentsSaving) return
-    if (isEditingAssignments) {
-      const map = {}
-      assignmentRows.forEach((row) => {
-        const id = normalizeId(row?.id)
-        if (id) {
-          map[id] = Array.isArray(row?.inspeccion_aleatoria_sucursales)
-            ? row.inspeccion_aleatoria_sucursales.map((v) => normalizeId(v))
-            : []
-        }
-      })
-      setLocalAssignmentMap(map)
-      setIsEditingAssignments(false)
-    } else {
-      setIsEditingAssignments(true)
-    }
-  }, [assignmentsLoading, assignmentsSaving, isEditingAssignments, assignmentRows])
 
   const handleCheckboxChange = useCallback((rowId, branchId) => {
     setLocalAssignmentMap((prev) => {
@@ -1216,7 +1195,6 @@ function RandomInspectionAdminTable({
       }
 
       notifySuccess('Cambios guardados correctamente.')
-      setIsEditingAssignments(false)
       await Promise.all([loadAssignments(), loadConfig()])
     } catch (error) {
       notifyError(error?.message || 'No se pudieron guardar los cambios.')
@@ -3060,7 +3038,8 @@ function RandomInspectionAdminTable({
       {showAssignmentsDialog && isTabActive !== false && (() => {
         // Mismo modal que "Enviar revision ahora" (hora y cantidad en una
         // fila) y un interruptor claro de la revision automatica.
-        const locked = !isEditingAssignments || configLoading || assignmentsSaving
+        // Se edita directo (sin boton Editar) si tiene permiso.
+        const locked = !canUpdate || configLoading || assignmentsSaving
         const autoOn = Boolean(configData.inspeccion_automatica)
         const hora = String(configData.hora_recordatorio || '').slice(0, 5)
         const [hh, mm] = hora.split(':').map((part) => Number.parseInt(part, 10))
@@ -3126,9 +3105,6 @@ function RandomInspectionAdminTable({
                       ? `Las inspecciones aleatorias automáticas van a empezar ${startsToday ? 'hoy' : 'mañana'} a las ${horaLabel}. Cada día se le crea una a cada revisor.`
                       : 'Solo existen las revisiones que se envían con "Enviar revisión ahora".'}
                   </small>
-                  {!isEditingAssignments && canUpdate && (
-                    <small className="inspection-admin__auto-hint">Presiona Editar para cambiarla.</small>
-                  )}
                 </div>
               </div>
 
@@ -3220,7 +3196,7 @@ function RandomInspectionAdminTable({
                                       type="checkbox"
                                       checked={(localAssignmentMap[rowId] || []).includes(branchId)}
                                       onChange={() => handleCheckboxChange(rowId, branchId)}
-                                      disabled={!isEditingAssignments || assignmentsSaving || assignmentsLoading}
+                                      disabled={!canUpdate || assignmentsSaving || assignmentsLoading}
                                     />
                                   </label>
                                 </td>
@@ -3235,38 +3211,9 @@ function RandomInspectionAdminTable({
               </div>
             </div>
 
-            <footer className="inspection-admin__dialog-actions inspection-admin__dialog-actions--split">
-              <div className="inspection-admin__dialog-actions-left">
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--secondary"
-                  onClick={closeAssignmentsDialog}
-                  disabled={assignmentsSaving}
-                >
-                  Cerrar
-                </button>
-                {canUpdate && (
-                  <button
-                    type="button"
-                    className={`create-user__action inspection-admin__edit-toggle${isEditingAssignments ? ' inspection-admin__edit-toggle--active' : ''}`}
-                    onClick={handleToggleEdit}
-                    disabled={assignmentsLoading || assignmentsSaving}
-                  >
-                    {isEditingAssignments ? (
-                      <>
-                        <span className="inspection-admin__toggle-icon" aria-hidden="true"><Eye size={15} /></span>
-                        <span>Solo lectura</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="inspection-admin__toggle-icon" aria-hidden="true"><Pencil size={15} /></span>
-                        <span>Editar</span>
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-              {isEditingAssignments && (
+            {/* Sin Cerrar ni Editar: se cierra con la X y se edita directo. */}
+            {canUpdate && (
+            <footer className="inspection-admin__dialog-actions">
                 <button
                   type="button"
                   className="create-user__action create-user__action--primary"
@@ -3275,8 +3222,8 @@ function RandomInspectionAdminTable({
                 >
                   {assignmentsSaving ? 'Guardando...' : 'Actualizar'}
                 </button>
-              )}
             </footer>
+            )}
           </div>
         </div>
         )
