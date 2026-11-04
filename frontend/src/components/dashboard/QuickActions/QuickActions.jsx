@@ -6670,9 +6670,8 @@ function QuickActions({
                                   }}
                                   onKeyDown={handleCountEnter}
                                   maxLength={4}
-                                  placeholder={notFoundHere ? 'No está' : '-'}
-                                  className={notFoundHere ? 'quick-actions__inspection-count--notfound' : undefined}
-                                  disabled={randomInspectionSubmitting}
+                                  placeholder="-"
+                                  disabled={randomInspectionSubmitting || notFoundHere}
                                   autoFocus={entryIndex === 0}
                                   aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'}`}
                                 />
@@ -6690,26 +6689,24 @@ function QuickActions({
                                   >
                                     {randomInspectionRemovingId === rowId ? <i className="pi pi-spin pi-spinner" aria-hidden="true" /> : 'x'}
                                   </button>
-                                ) : notFoundHere ? (
-                                  <button
-                                    type="button"
-                                    className="quick-actions__inspection-notfound-tag quick-actions__inspection-notfound-undo"
-                                    onClick={undoNotFound}
-                                    disabled={randomInspectionSubmitting}
-                                    data-title="Deshacer: volver a escribir la cantidad (0 si la ubicación está bien pero vacía)"
-                                  >
-                                    No encontrado · <u>Deshacer</u>
-                                  </button>
                                 ) : (
+                                  // Un solo boton: "No lo encontre" <-> "No encontrado".
+                                  // Otro clic lo quita y deja escribir la cantidad.
                                   <button
                                     type="button"
-                                    className="quick-actions__inspection-row-notfound"
-                                    onClick={() => (entry.location
-                                      ? handleRandomInspectionLocationNotFound(row, entry.location?.key)
-                                      : handleRandomInspectionNotFound(row, { advance: false }))}
+                                    className={`quick-actions__inspection-row-notfound${notFoundHere ? ' is-active' : ''}`}
+                                    onClick={() => {
+                                      if (notFoundHere) {
+                                        undoNotFound()
+                                        return
+                                      }
+                                      if (entry.location) handleRandomInspectionLocationNotFound(row, entry.location?.key)
+                                      else handleRandomInspectionNotFound(row, { advance: false })
+                                    }}
                                     disabled={randomInspectionSubmitting}
+                                    aria-pressed={notFoundHere}
                                   >
-                                    No lo encontré
+                                    {notFoundHere ? 'No encontrado' : 'No lo encontré'}
                                   </button>
                                 )}
                               </span>
@@ -6739,33 +6736,23 @@ function QuickActions({
                                     onChange={(event) => handleRandomInspectionLocationCountChange(rowId, location.key, event.target.value)}
                                     onKeyDown={handleCountEnter}
                                     maxLength={4}
-                                    placeholder={location?.no_encontrado ? 'No está' : '-'}
-                                    className={location?.no_encontrado ? 'quick-actions__inspection-count--notfound' : undefined}
-                                    disabled={randomInspectionSubmitting}
+                                    placeholder="-"
+                                    disabled={randomInspectionSubmitting || Boolean(location?.no_encontrado)}
                                     aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'} en ${String(location?.label || '').trim()}`}
                                   />
                                 </span>
                                 <span>
-                                  {location?.no_encontrado ? (
-                                    <button
-                                      type="button"
-                                      className="quick-actions__inspection-notfound-tag quick-actions__inspection-notfound-undo"
-                                      onClick={() => handleRandomInspectionLocationCountChange(rowId, location.key, '')}
-                                      disabled={randomInspectionSubmitting}
-                                      data-title="Deshacer: volver a escribir la cantidad (0 si la ubicación está bien pero vacía)"
-                                    >
-                                      No encontrado · <u>Deshacer</u>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      className="quick-actions__inspection-row-notfound"
-                                      onClick={() => handleRandomInspectionLocationNotFound(row, location.key)}
-                                      disabled={randomInspectionSubmitting}
-                                    >
-                                      No lo encontré
-                                    </button>
-                                  )}
+                                  <button
+                                    type="button"
+                                    className={`quick-actions__inspection-row-notfound${location?.no_encontrado ? ' is-active' : ''}`}
+                                    onClick={() => (location?.no_encontrado
+                                      ? handleRandomInspectionLocationCountChange(rowId, location.key, '')
+                                      : handleRandomInspectionLocationNotFound(row, location.key))}
+                                    disabled={randomInspectionSubmitting}
+                                    aria-pressed={Boolean(location?.no_encontrado)}
+                                  >
+                                    {location?.no_encontrado ? 'No encontrado' : 'No lo encontré'}
+                                  </button>
                                 </span>
                               </div>
                             ))}

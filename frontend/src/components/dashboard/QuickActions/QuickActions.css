@@ -3686,6 +3686,13 @@
   cursor: pointer;
 }
 
+/* Marcado: el mismo boton dice "No encontrado"; otro clic lo quita. */
+.quick-actions__inspection-row-notfound.is-active {
+  border-color: rgba(217, 119, 6, 0.6);
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+
 .quick-actions__inspection-row-notfound:disabled {
   opacity: 0.55;
   cursor: default;
@@ -4029,29 +4036,6 @@
 .quick-actions__inspection-move-list > small.is-error {
   color: #b91c1c;
   font-weight: 600;
-}
-
-/* "No lo encontre" se ve distinto de un 0 contado (ubicacion vacia). */
-.quick-actions__inspection-row-table input.quick-actions__inspection-count--notfound {
-  background: repeating-linear-gradient(-45deg, rgba(245, 158, 11, 0.12) 0 6px, transparent 6px 12px);
-  border-style: dashed;
-  border-color: rgba(217, 119, 6, 0.6);
-}
-
-.quick-actions__inspection-row-table input.quick-actions__inspection-count--notfound::placeholder {
-  color: #b45309;
-  font-weight: 700;
-  font-size: 0.8em;
-}
-
-.quick-actions__inspection-notfound-undo {
-  border: 0;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.quick-actions__inspection-notfound-undo:hover:not(:disabled) {
-  background: rgba(245, 158, 11, 0.28);
 }
 
 .quick-actions__inspection-move-list > small.is-ok {
