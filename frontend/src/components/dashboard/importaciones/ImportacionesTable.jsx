@@ -8023,19 +8023,24 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     })
     window.setTimeout(() => setHighlightedDetailKey((current) => (current === String(detailKey) ? '' : current)), 2600)
   }, [])
-  // Orden en pantalla de la verificacion: lo agregado en esta etapa va arriba
-  // (el ultimo primero) y el resto en su orden; un producto quitado se queda
-  // en su lugar, tachado. Solo cambia como se muestra, no el orden guardado.
-  const esAgregadoAqui = (item) => String(item.comentario || '').includes(NOTA_AGREGADO_VERIFICACION)
-  const shownDetails = isVerificar
-    ? [...details.filter(esAgregadoAqui).reverse(), ...details.filter((item) => !esAgregadoAqui(item))]
-    : details
   // Mismos grupos (y colores) que las filas de la verificacion.
   const verificarColorDe = (item) => (
     item.quitado ? 'quitado'
       : esAgregadoVerificacion(item) ? (item.producto?.id ? 'agregadoExiste' : 'agregadoNuevo')
         : item.producto?.id ? 'catalogo' : 'noExiste'
   )
+  // Orden en pantalla de la verificacion: cada grupo junto, como en la
+  // sugerencia, para que su contador lleve a su seccion. Lo agregado en esta
+  // etapa va arriba (el ultimo primero), despues los del catalogo, los que no
+  // existen y al final los quitados. Solo cambia como se muestra, no el orden
+  // guardado.
+  const VERIFICAR_ORDEN_GRUPOS = ['agregadoExiste', 'agregadoNuevo', 'catalogo', 'noExiste', 'quitado']
+  const shownDetails = isVerificar
+    ? VERIFICAR_ORDEN_GRUPOS.flatMap((grupo) => {
+      const enGrupo = details.filter((item) => verificarColorDe(item) === grupo)
+      return grupo.startsWith('agregado') ? enGrupo.reverse() : enGrupo
+    })
+    : details
   const verificarConteo = isVerificar
     ? shownDetails.reduce((acc, item) => ({ ...acc, [verificarColorDe(item)]: (acc[verificarColorDe(item)] || 0) + 1 }), {})
     : {}
@@ -8084,16 +8089,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const sugerenciaViewRef = useRef({})
   const sugerenciaJumpToRef = useRef(null)
 
-  // Cada clic en un contador lleva a la siguiente fila de ese grupo.
-  const verificarJumpRef = useRef({ grupo: '', idx: -1 })
+  // Clic en un contador: lleva al inicio de ese grupo (los grupos van juntos),
+  // igual que en la sugerencia.
   const jumpToVerificarGrupo = (grupo) => {
-    const keys = shownDetails.filter((item) => verificarColorDe(item) === grupo).map((item) => item._key)
-    if (!keys.length) return
-    const last = verificarJumpRef.current
-    const idx = last.grupo === grupo && last.idx + 1 < keys.length ? last.idx + 1 : 0
-    verificarJumpRef.current = { grupo, idx }
+    const first = shownDetails.find((item) => verificarColorDe(item) === grupo)
+    if (!first) return
     setProductSearch('')
-    jumpToDetailRow(keys[idx])
+    jumpToDetailRow(first._key)
   }
   const listedMatches = useMemo(() => {
     const term = String(productQuery || '').trim().toLowerCase()
