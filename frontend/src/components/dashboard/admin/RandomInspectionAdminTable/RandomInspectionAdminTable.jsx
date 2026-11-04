@@ -180,7 +180,6 @@ function RandomInspectionAdminTable({
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
   const [assignmentSearch, setAssignmentSearch] = useState('')
   const [localAssignmentMap, setLocalAssignmentMap] = useState({})
-  const [assignmentsSaving, setAssignmentsSaving] = useState(false)
   const [configData, setConfigData] = useState({ hora_recordatorio: '', cantidad_productos: '', inspeccion_automatica: false })
   const [configLoading, setConfigLoading] = useState(false)
   const [showSendNowDialog, setShowSendNowDialog] = useState(false)
@@ -1132,85 +1131,101 @@ function RandomInspectionAdminTable({
     void loadConfig()
   }, [loadAssignments, loadConfig])
 
-  const handleCheckboxChange = useCallback((rowId, branchId) => {
-    setLocalAssignmentMap((prev) => {
-      const current = prev[rowId] || []
-      const has = current.includes(branchId)
-      return {
-        ...prev,
-        [rowId]: has ? current.filter((id) => id !== branchId) : [...current, branchId],
-      }
-    })
-  }, [])
+  // Configuracion: cada cambio se guarda solo (sin boton Actualizar).
+  // configSaveState: '' | 'saving' | 'saved' | 'error' (aviso arriba).
+  const [configSaveState, setConfigSaveState] = useState('')
+  const [assignmentPending, setAssignmentPending] = useState(() => new Set())
+  const [confirmAutoToggle, setConfirmAutoToggle] = useState(false)
+  const configEditedRef = useRef(false)
 
-  const saveAssignments = useCallback(async () => {
-    if (!token || !canUpdate) return
-
-    if (!String(configData.hora_recordatorio || '').trim()) {
-      notifyError('La hora de envio del recordatorio es requerida.')
-      return
-    }
-
-    const changes = []
-    assignmentRows.forEach((row) => {
-      const rowId = normalizeId(row?.id)
-      if (!rowId) return
-      const original = Array.isArray(row?.inspeccion_aleatoria_sucursales)
-        ? row.inspeccion_aleatoria_sucursales.map((v) => normalizeId(v))
-        : []
-      const local = localAssignmentMap[rowId] || []
-      assignmentBranches.forEach((branch) => {
-        const branchId = normalizeId(branch?.id)
-        if (!branchId) return
-        const was = original.includes(branchId)
-        const is = local.includes(branchId)
-        if (was !== is) changes.push({ rowId, branchId, habilitado: is })
-      })
-    })
-
-    setAssignmentsSaving(true)
+  const saveConfig = useCallback(async (data) => {
+    if (!token || !canUpdate) return false
+    const hora = String(data?.hora_recordatorio || '').trim()
+    const cantidad = Number.parseInt(String(data?.cantidad_productos ?? ''), 10)
+    // A medio escribir no se guarda: se guarda cuando quede valido.
+    if (!hora || !Number.isFinite(cantidad) || cantidad < 1 || cantidad > 200) return false
+    setConfigSaveState('saving')
     try {
-      const configResponse = await authFetch(
+      const response = await authFetch(
         `${API_URL}/recordatorios/inspeccion-aleatoria/configuracion/`,
-        { method: 'PATCH', body: JSON.stringify(configData) },
+        { method: 'PATCH', body: JSON.stringify(data) },
         token
       )
-      if (!configResponse.ok) {
-        const p = await configResponse.json().catch(() => ({}))
-        throw new Error(String(p?.detail || '').trim() || 'No se pudo guardar la configuracion.')
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar la configuracion.')
       }
-
-      if (changes.length) {
-        const results = await Promise.allSettled(
-          changes.map((change) =>
-            authFetch(
-              `${API_URL}/usuarios/listado/${encodeURIComponent(change.rowId)}/inspeccion-aleatoria-asignacion/`,
-              {
-                method: 'PATCH',
-                body: JSON.stringify({ sucursal_id: change.branchId, habilitado: change.habilitado }),
-              },
-              token
-            ).then(async (res) => {
-              const payload = await res.json().catch(() => ({}))
-              if (!res.ok) throw new Error(String(payload?.detail || '').trim() || 'Error al actualizar.')
-              return payload
-            })
-          )
-        )
-        const failed = results.filter((r) => r.status === 'rejected')
-        if (failed.length) {
-          notifyError(`${failed.length} cambio(s) de revisores no se pudieron guardar.`)
-        }
-      }
-
-      notifySuccess('Cambios guardados correctamente.')
-      await Promise.all([loadAssignments(), loadConfig()])
+      setConfigSaveState('saved')
+      return true
     } catch (error) {
-      notifyError(error?.message || 'No se pudieron guardar los cambios.')
-    } finally {
-      setAssignmentsSaving(false)
+      setConfigSaveState('error')
+      notifyError(error?.message || 'No se pudo guardar la configuracion.')
+      void loadConfig()
+      return false
     }
-  }, [token, canUpdate, assignmentRows, assignmentBranches, localAssignmentMap, configData, loadAssignments, loadConfig, notifyError, notifySuccess])
+  }, [token, canUpdate, notifyError, loadConfig])
+
+  // Hora y cantidad: se guardan un momento despues de dejar de escribir.
+  useEffect(() => {
+    if (!configEditedRef.current || !showAssignmentsDialog) return undefined
+    const timer = window.setTimeout(() => {
+      configEditedRef.current = false
+      void saveConfig(configData)
+    }, 700)
+    return () => window.clearTimeout(timer)
+  }, [configData, saveConfig, showAssignmentsDialog])
+
+  const editConfig = useCallback((patch) => {
+    configEditedRef.current = true
+    setConfigData((prev) => ({ ...prev, ...patch }))
+  }, [])
+
+  // Revision automatica: despues de confirmar, se guarda al momento.
+  const applyAutoToggle = useCallback(async () => {
+    setConfirmAutoToggle(false)
+    const next = { ...configData, inspeccion_automatica: !configData.inspeccion_automatica }
+    setConfigData(next)
+    const ok = await saveConfig(next)
+    if (ok) notifySuccess(next.inspeccion_automatica ? 'Revision automatica activada.' : 'Revision automatica desactivada.')
+  }, [configData, saveConfig, notifySuccess])
+
+  // Revisores: cada casilla se guarda al momento; si falla, vuelve atras.
+  const handleCheckboxChange = useCallback(async (rowId, branchId) => {
+    if (!token || !canUpdate) return
+    const cellKey = `${rowId}:${branchId}`
+    if (assignmentPending.has(cellKey)) return
+    const habilitado = !(localAssignmentMap[rowId] || []).includes(branchId)
+    const withBranch = (list, on) => (on
+      ? [...list.filter((id) => id !== branchId), branchId]
+      : list.filter((id) => id !== branchId))
+    setLocalAssignmentMap((prev) => ({ ...prev, [rowId]: withBranch(prev[rowId] || [], habilitado) }))
+    setAssignmentPending((prev) => new Set(prev).add(cellKey))
+    setConfigSaveState('saving')
+    try {
+      const response = await authFetch(
+        `${API_URL}/usuarios/listado/${encodeURIComponent(rowId)}/inspeccion-aleatoria-asignacion/`,
+        { method: 'PATCH', body: JSON.stringify({ sucursal_id: branchId, habilitado }) },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar el revisor.')
+      // Lo guardado pasa a ser el estado de esa fila.
+      setAssignmentRows((prev) => prev.map((row) => (normalizeId(row?.id) === rowId
+        ? { ...row, inspeccion_aleatoria_sucursales: withBranch((row?.inspeccion_aleatoria_sucursales || []).map((v) => normalizeId(v)), habilitado) }
+        : row)))
+      setConfigSaveState('saved')
+    } catch (error) {
+      setLocalAssignmentMap((prev) => ({ ...prev, [rowId]: withBranch(prev[rowId] || [], !habilitado) }))
+      setConfigSaveState('error')
+      notifyError(error?.message || 'No se pudo guardar el revisor.')
+    } finally {
+      setAssignmentPending((prev) => {
+        const next = new Set(prev)
+        next.delete(cellKey)
+        return next
+      })
+    }
+  }, [token, canUpdate, assignmentPending, localAssignmentMap, notifyError])
 
   // "No lo encontre": ubicaciones de la sucursal para reubicar el producto.
   const [relocateOptionsByBranch, setRelocateOptionsByBranch] = useState({})
@@ -3001,9 +3016,6 @@ function RandomInspectionAdminTable({
                         disabled={disabled}
                       />
                     </label>
-                    <p className="inspection-admin__sendnow-count-footer">
-                      {`Se enviará a ${sendNowSelectedUserIds.size} revisor${sendNowSelectedUserIds.size === 1 ? '' : 'es'}.`}
-                    </p>
                   </div>
                 )
               })()}
@@ -3056,7 +3068,7 @@ function RandomInspectionAdminTable({
         // Mismo modal que "Enviar revision ahora" (hora y cantidad en una
         // fila) y un interruptor claro de la revision automatica.
         // Se edita directo (sin boton Editar) si tiene permiso.
-        const locked = !canUpdate || configLoading || assignmentsSaving
+        const locked = !canUpdate || configLoading
         const autoOn = Boolean(configData.inspeccion_automatica)
         const hora = String(configData.hora_recordatorio || '').slice(0, 5)
         const [hh, mm] = hora.split(':').map((part) => Number.parseInt(part, 10))
@@ -3066,7 +3078,7 @@ function RandomInspectionAdminTable({
           ? new Date(2000, 0, 1, hh, mm).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' })
           : '--:--'
         return (
-        <div className="inspection-admin__dialog-overlay" onMouseDown={() => !assignmentsSaving && closeAssignmentsDialog()}>
+        <div className="inspection-admin__dialog-overlay" onMouseDown={() => closeAssignmentsDialog()}>
           <div
             className="inspection-admin__dialog inspection-admin__dialog--wide"
             role="dialog"
@@ -3085,13 +3097,16 @@ function RandomInspectionAdminTable({
             <header className="inspection-admin__dialog-head">
               <div>
                 <h4>Configuracion</h4>
-                <p>Revision automatica diaria y revisores de cada sucursal.</p>
+                <p>
+                  Revision automatica diaria y revisores de cada sucursal.
+                  {configSaveState === 'saving' && <span className="inspection-admin__save-state">{' · Guardando...'}</span>}
+                  {configSaveState === 'saved' && <span className="inspection-admin__save-state is-saved">{' · Cambios guardados'}</span>}
+                </p>
               </div>
               <button
                 type="button"
                 className="inspection-admin__dialog-close"
                 onClick={closeAssignmentsDialog}
-                disabled={assignmentsSaving}
                 aria-label="Cerrar"
               >
                 <X size={16} />
@@ -3107,7 +3122,7 @@ function RandomInspectionAdminTable({
                   aria-checked={autoOn}
                   aria-label="Revision automatica diaria"
                   className={`inspection-admin__switch${autoOn ? ' is-on' : ''}`}
-                  onClick={() => setConfigData((prev) => ({ ...prev, inspeccion_automatica: !prev.inspeccion_automatica }))}
+                  onClick={() => setConfirmAutoToggle(true)}
                   disabled={locked}
                 >
                   <span className="inspection-admin__switch-knob" />
@@ -3133,7 +3148,7 @@ function RandomInspectionAdminTable({
                       id="inspection-config-hour"
                       type="time"
                       value={configData.hora_recordatorio}
-                      onChange={(e) => setConfigData((prev) => ({ ...prev, hora_recordatorio: e.target.value }))}
+                      onChange={(e) => editConfig({ hora_recordatorio: e.target.value })}
                       disabled={locked}
                       aria-label="Hora de envío del recordatorio"
                     />
@@ -3150,7 +3165,7 @@ function RandomInspectionAdminTable({
                     step="1"
                     inputMode="numeric"
                     value={configData.cantidad_productos}
-                    onChange={(e) => setConfigData((prev) => ({ ...prev, cantidad_productos: e.target.value }))}
+                    onChange={(e) => editConfig({ cantidad_productos: e.target.value })}
                     disabled={locked}
                   />
                 </div>
@@ -3212,8 +3227,8 @@ function RandomInspectionAdminTable({
                                     <input
                                       type="checkbox"
                                       checked={(localAssignmentMap[rowId] || []).includes(branchId)}
-                                      onChange={() => handleCheckboxChange(rowId, branchId)}
-                                      disabled={!canUpdate || assignmentsSaving || assignmentsLoading}
+                                      onChange={() => void handleCheckboxChange(rowId, branchId)}
+                                      disabled={!canUpdate || assignmentsLoading || assignmentPending.has(`${rowId}:${branchId}`)}
                                     />
                                   </label>
                                 </td>
@@ -3228,20 +3243,34 @@ function RandomInspectionAdminTable({
               </div>
             </div>
 
-            {/* Sin Cerrar ni Editar: se cierra con la X y se edita directo. */}
-            {canUpdate && (
-            <footer className="inspection-admin__dialog-actions">
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--primary"
-                  onClick={() => void saveAssignments()}
-                  disabled={assignmentsLoading || assignmentsSaving}
-                >
-                  {assignmentsSaving ? 'Guardando...' : 'Actualizar'}
-                </button>
-            </footer>
-            )}
+            {/* Sin botones: cada cambio se guarda solo y se cierra con la X. */}
           </div>
+          {confirmAutoToggle && (
+            <div
+              className="unsaved-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Confirmar revision automatica"
+              onMouseDown={(event) => { event.stopPropagation(); if (event.target === event.currentTarget) setConfirmAutoToggle(false) }}
+            >
+              <div className="unsaved-dialog__card">
+                <h4>{autoOn ? '¿Desactivar la revisión automática?' : '¿Activar la revisión automática?'}</h4>
+                <p>
+                  {autoOn
+                    ? 'Ya no se va a crear una revisión aleatoria cada día. Solo quedarán las que envíes con "Enviar revisión ahora".'
+                    : `Cada día se le va a crear una revisión aleatoria a cada revisor asignado, a las ${horaLabel}.`}
+                </p>
+                <div className="unsaved-dialog__actions">
+                  <button type="button" className="unsaved-dialog__btn" onClick={() => setConfirmAutoToggle(false)}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="unsaved-dialog__btn unsaved-dialog__btn--save" onClick={() => void applyAutoToggle()}>
+                    {autoOn ? 'Sí, desactivar' : 'Sí, activar'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         )
       })()}

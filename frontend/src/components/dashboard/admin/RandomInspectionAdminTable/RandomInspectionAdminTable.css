@@ -2180,3 +2180,18 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   min-width: 0;
   white-space: nowrap;
 }
+
+/* Configuracion: aviso de guardado automatico junto a la descripcion. */
+.inspection-admin__save-state {
+  color: var(--color-text-secondary);
+  font-size: inherit;
+  font-style: italic;
+}
+
+.inspection-admin__save-state.is-saved {
+  color: #15803d;
+}
+
+.dashboard-shell.dark .inspection-admin__save-state.is-saved {
+  color: #86efac;
+}
