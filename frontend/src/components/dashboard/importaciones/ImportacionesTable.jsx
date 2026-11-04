@@ -3817,8 +3817,7 @@ function VerificacionGroupsSummary({ conteo, chipProps }) {
   const enLista = (conteo.catalogo || 0) + (conteo.noExiste || 0) + (conteo.agregadoExiste || 0) + (conteo.agregadoNuevo || 0)
   const quitados = conteo.quitado || 0
   if (!enLista && !quitados) return null
-  const caja = { display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }
-  const titulo = { fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)' }
+  const caja = { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, padding: '8px 12px', border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }
   const chip = { borderRadius: 20, padding: '2px 10px', fontSize: 'var(--font-size-sm)', fontWeight: 600 }
   const plural = (n, uno, varios) => `${n} ${n !== 1 ? varios : uno}`
   const chips = [
@@ -3831,7 +3830,6 @@ function VerificacionGroupsSummary({ conteo, chipProps }) {
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
       {enLista > 0 && (
         <div style={{ ...caja, flex: '1 1 auto' }}>
-          <span style={titulo}>{enLista} en la lista</span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {chips.filter(([key]) => conteo[key] > 0).map(([key, texto, label, colores]) => (
               <span key={key} {...chipProps(key, label)} title={`Clic: ir a ${label}`} style={{ ...chip, ...colores }}>
@@ -3843,7 +3841,6 @@ function VerificacionGroupsSummary({ conteo, chipProps }) {
       )}
       {quitados > 0 && (
         <div style={caja}>
-          <span style={titulo}>{plural(quitados, 'quitado', 'quitados')}</span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <span {...chipProps('quitado', 'los quitados')} title="Clic: ir a los quitados (no pasan a confirmación)" style={{ ...chip, background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' }}>
               {plural(quitados, 'no pasa a confirmación', 'no pasan a confirmación')}
