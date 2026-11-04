@@ -286,17 +286,39 @@
 }
 
 /* Configuracion: mismo modal que Enviar revision, mas ancho por la tabla. */
+/* La tabla de revisores ocupa todo el alto que queda (antes quedaba en una
+   caja de 260px y lo de arriba se llevaba el espacio). */
 .inspection-admin__dialog.inspection-admin__dialog--wide {
   width: min(980px, 100%);
+  height: calc(100dvh - 40px);
+}
+
+.inspection-admin__dialog--wide .inspection-admin__dialog-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.inspection-admin__dialog--wide .inspection-admin__reviewers-table-card {
+  flex: 1 1 auto;
+  min-height: 240px;
+}
+
+.inspection-admin__dialog--wide .inspection-admin__table-wrap--modal {
+  min-height: 0;
+}
+
+.inspection-admin__dialog--wide .inspection-admin__send-top {
+  margin-bottom: 0;
 }
 
 .inspection-admin__auto-card {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px 18px;
-  border: 2px solid var(--color-border);
-  border-radius: 14px;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
   background: color-mix(in srgb, #94a3b8 8%, transparent);
 }
 
@@ -308,12 +330,12 @@
 .inspection-admin__auto-text {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
 .inspection-admin__auto-text strong {
-  font-size: 1.05rem;
+  font-size: var(--font-size-sm, 13px);
   line-height: 1.3;
 }
 
@@ -338,8 +360,8 @@
 .inspection-admin__switch {
   flex: 0 0 auto;
   position: relative;
-  width: 64px;
-  height: 34px;
+  width: 46px;
+  height: 26px;
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -364,10 +386,10 @@
 
 .inspection-admin__switch-knob {
   position: absolute;
-  top: 4px;
-  left: 4px;
-  width: 26px;
-  height: 26px;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
@@ -375,7 +397,7 @@
 }
 
 .inspection-admin__switch.is-on .inspection-admin__switch-knob {
-  transform: translateX(30px);
+  transform: translateX(20px);
 }
 
 .inspection-admin__config-reviewers {
