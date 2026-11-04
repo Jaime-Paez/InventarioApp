@@ -200,6 +200,146 @@
   background: #f9fbfc;
 }
 
+.inspection-admin__empty-text {
+  display: block;
+  text-align: center;
+  color: var(--color-text-secondary, #64748b);
+}
+
+/* Diferencias: una fila por revision; al abrirla se ven sus productos. */
+.inspection-admin__table--revisions {
+  min-width: 860px;
+}
+
+.inspection-admin__revision-row {
+  cursor: pointer;
+}
+
+.inspection-admin__revision-row:hover {
+  background: #f6fbff;
+}
+
+.inspection-admin__revision-row.is-expanded {
+  background: #edf6ff;
+}
+
+.inspection-admin__revision-row.is-expanded > td {
+  border-bottom-color: transparent;
+}
+
+.inspection-admin__revision-toggle {
+  width: 32px;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.inspection-admin__revision-toggle svg {
+  display: block;
+  transition: transform 0.15s ease;
+}
+
+.inspection-admin__revision-toggle svg.is-open {
+  transform: rotate(90deg);
+}
+
+.inspection-admin__revision-detail > td {
+  padding: 4px 10px 14px 40px;
+  background: #edf6ff;
+}
+
+.inspection-admin__revision-detail .inspection-admin__table--items {
+  border: 1px solid #d4dae2;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--table-color, #fff);
+}
+
+.inspection-admin__revision-state {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.inspection-admin__revision-state--pendiente {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.inspection-admin__revision-state--verificada {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.inspection-admin__revision-state--ok {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.inspection-admin__revision-state--curso {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.inspection-admin__head-select {
+  border: 1px solid #aeb5be;
+  border-radius: 10px;
+  padding: 7px 11px;
+  min-width: 170px;
+  max-width: 100%;
+  background: #fff;
+  color: #1f2937;
+  font: inherit;
+}
+
+.inspection-admin__send-name {
+  margin-bottom: 12px;
+}
+
+.inspection-admin__send-name small {
+  color: var(--color-text-secondary, #64748b);
+}
+
+.dashboard-shell.dark .inspection-admin__revision-row:hover {
+  background: rgba(96, 165, 250, 0.08);
+}
+
+.dashboard-shell.dark .inspection-admin__revision-row.is-expanded,
+.dashboard-shell.dark .inspection-admin__revision-detail > td {
+  background: rgba(96, 165, 250, 0.12);
+}
+
+.dashboard-shell.dark .inspection-admin__revision-detail .inspection-admin__table--items {
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .inspection-admin__head-select {
+  background: var(--color-surface-dark, #1e293b);
+  color: inherit;
+  border-color: var(--color-border);
+}
+
+.dashboard-shell.dark .inspection-admin__revision-state--pendiente {
+  background: rgba(251, 191, 36, 0.16);
+  color: #fcd34d;
+}
+
+.dashboard-shell.dark .inspection-admin__revision-state--verificada {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.dashboard-shell.dark .inspection-admin__revision-state--ok {
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+}
+
+.dashboard-shell.dark .inspection-admin__revision-state--curso {
+  background: rgba(129, 140, 248, 0.18);
+  color: #c7d2fe;
+}
+
 .inspection-admin__loading {
   margin: 0;
   padding: 10px;
@@ -1630,7 +1770,14 @@ body.app-theme-dark .inspection-admin__found-tag {
 .inspection-admin__head.users-page__actions {
   flex: 0 0 auto;
   align-items: center;
-  justify-content: flex-start;
+  /* Pantallas (Sucursales / Diferencias) a la izquierda; acciones a la derecha. */
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.inspection-admin__head.users-page__actions .inspection-admin__head-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .inspection-admin__body {

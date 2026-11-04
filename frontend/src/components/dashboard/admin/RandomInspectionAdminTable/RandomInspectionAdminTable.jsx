@@ -9,6 +9,7 @@ import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import '../CreateUsuario/CreateUsuario.css'
 import '../../QuickActions/QuickActions.css'
 import '../../movimientos/CreateSalida.css'
+import '../../movimientos/TrasladosInconvenientesTable.css'
 import './RandomInspectionAdminTable.css'
 import InspectionCoverageMap from './InspectionCoverageMap'
 import RecountWarningDialog from './RecountWarningDialog'
@@ -99,9 +100,21 @@ function RandomInspectionAdminTable({
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [selectedBranchId, setSelectedBranchId] = useState('')
 
+  // Pantalla: 'sucursales' (resumen + enviar/configurar) o 'diferencias'
+  // (las revisiones de la sucursal con sus diferencias juntas).
+  const [view, setView] = useState('sucursales')
+  // `itemsRows` son las REVISIONES de la sucursal (no producto por producto);
+  // los productos con diferencia se ven al abrir una (`expandedRevisionId`).
   const [itemsRows, setItemsRows] = useState([])
   const [itemsLoading, setItemsLoading] = useState(false)
   const [itemsFilter, setItemsFilter] = useState('pendiente')
+  const [expandedRevisionId, setExpandedRevisionId] = useState('')
+  const [revisionItems, setRevisionItems] = useState([])
+  const [revisionItemsLoading, setRevisionItemsLoading] = useState(false)
+  // Revision a desplegar cuando llega su sucursal (abierta desde un recordatorio).
+  const pendingExpandRevisionRef = useRef('')
+  // Nombre con el que se envia una revision (lo ve administracion en Diferencias).
+  const [sendNowNombre, setSendNowNombre] = useState('')
   // Faltante abierto al que se le registra "Aparecio".
   const [aparecioItem, setAparecioItem] = useState(null)
   const [itemsPage, setItemsPage] = useState(1)
@@ -286,7 +299,7 @@ function RandomInspectionAdminTable({
     try {
       const response = await authFetch(
         `${API_URL}/recordatorios/inspeccion-aleatoria/enviar-ahora/`,
-        { method: 'POST', body: JSON.stringify({ ...sendNowParams, hora_recordatorio: hora, usuario_ids: [...sendNowSelectedUserIds] }) },
+        { method: 'POST', body: JSON.stringify({ ...sendNowParams, nombre: sendNowNombre.trim(), hora_recordatorio: hora, usuario_ids: [...sendNowSelectedUserIds] }) },
         token
       )
       const payload = await response.json().catch(() => ({}))
@@ -299,7 +312,7 @@ function RandomInspectionAdminTable({
     } finally {
       setSendNowLoading(false)
     }
-  }, [token, sendNowParams, sendNowSelectedUserIds, notifyError, notifySuccess, resolveSendNowHour])
+  }, [token, sendNowNombre, sendNowParams, sendNowSelectedUserIds, notifyError, notifySuccess, resolveSendNowHour])
 
   useEffect(() => {
     if (!token || sendNowMode !== 'division' || !divisionSucursalId) {
@@ -435,6 +448,7 @@ function RandomInspectionAdminTable({
             ...(divisionSubdivisionId ? { subdivision_id: divisionSubdivisionId } : {}),
             usuario_id: divisionUsuarioId,
             hora_recordatorio: hora,
+            nombre: sendNowNombre.trim(),
           }),
         },
         token
@@ -452,7 +466,7 @@ function RandomInspectionAdminTable({
     } finally {
       setDivisionSending(false)
     }
-  }, [token, divisionId, divisionSubdivisionId, divisionUsuarioId, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
+  }, [token, divisionId, divisionSubdivisionId, divisionUsuarioId, sendNowNombre, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
 
   // Ubicaciones (Bodega / Division / Subdivision) del producto dentro de la
   // sucursal elegida, para la columna "Ubicacion" de la lista.
@@ -681,6 +695,7 @@ function RandomInspectionAdminTable({
             usuario_id: listUsuarioId,
             producto_ids: idsToSend,
             hora_recordatorio: hora,
+            nombre: sendNowNombre.trim(),
           }),
         },
         token
@@ -697,7 +712,7 @@ function RandomInspectionAdminTable({
     } finally {
       setListSending(false)
     }
-  }, [token, listSucursalId, listUsuarioId, listProducts, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
+  }, [token, listSucursalId, listUsuarioId, listProducts, sendNowNombre, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
 
   // Desde el mapa: mandar a revisar los productos que faltan de una percha.
   const sendProductListToReviewer = useCallback(async ({ sucursalId, usuarioId, productIds: requestedIds, divisionId }) => {
@@ -812,6 +827,11 @@ function RandomInspectionAdminTable({
         const branchId = normalizeId(
           (withDifference || items[0])?.sucursal_id || payload?.inspection?.sucursal_id
         )
+        // Se abre Diferencias con esa revision desplegada.
+        setView('diferencias')
+        setItemsFilter('todos')
+        pendingExpandRevisionRef.current = inspectionId
+        setExpandedRevisionId(inspectionId)
         if (branchId) setSelectedBranchId(branchId)
       } catch (error) {
         if (!cancelled) notifyError(error?.message || 'No se pudo abrir la inspección.')
@@ -863,7 +883,42 @@ function RandomInspectionAdminTable({
     }
   }, [canRead, notifyError, token])
 
-  const loadItems = useCallback(async ({ silent = false } = {}) => {
+  // Productos con diferencia de la revision abierta en "Diferencias".
+  const loadRevisionItems = useCallback(async ({ silent = false } = {}) => {
+    const branchId = normalizeId(selectedBranchId)
+    const revisionId = normalizeId(expandedRevisionId)
+    if (!token || !canRead || !branchId || !revisionId) {
+      setRevisionItems([])
+      return []
+    }
+    if (!silent) setRevisionItemsLoading(true)
+    try {
+      const endpoint = new URL(`${API_URL}/recordatorios/inspeccion-aleatoria/admin/items/`)
+      endpoint.searchParams.set('sucursal_id', branchId)
+      endpoint.searchParams.set('inspeccion_id', revisionId)
+      endpoint.searchParams.set('estado', 'diferencias')
+      endpoint.searchParams.set('page', '1')
+      endpoint.searchParams.set('page_size', '100')
+      const response = await authFetch(endpoint.toString(), {}, token)
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(String(payload?.detail || '').trim() || 'No se pudieron cargar los productos de la revisión.')
+      }
+      const rows = parseApiList(payload)
+      setRevisionItems(rows)
+      return rows
+    } catch (error) {
+      if (silent) return []
+      setRevisionItems([])
+      notifyError(error?.message || 'No se pudieron cargar los productos de la revisión.')
+      return []
+    } finally {
+      if (!silent) setRevisionItemsLoading(false)
+    }
+  }, [canRead, expandedRevisionId, notifyError, selectedBranchId, token])
+
+  // Revisiones de la sucursal con sus diferencias juntas.
+  const loadRevisions = useCallback(async ({ silent = false } = {}) => {
     const branchId = normalizeId(selectedBranchId)
     if (!token || !canRead || !branchId) {
       setItemsRows([])
@@ -873,7 +928,7 @@ function RandomInspectionAdminTable({
 
     if (!silent) setItemsLoading(true)
     try {
-      const endpoint = new URL(`${API_URL}/recordatorios/inspeccion-aleatoria/admin/items/`)
+      const endpoint = new URL(`${API_URL}/recordatorios/inspeccion-aleatoria/admin/revisiones/`)
       endpoint.searchParams.set('sucursal_id', branchId)
       endpoint.searchParams.set('estado', itemsFilter)
       endpoint.searchParams.set('page', String(itemsPage))
@@ -882,7 +937,7 @@ function RandomInspectionAdminTable({
       const response = await authFetch(endpoint.toString(), {}, token)
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
-        throw new Error(String(payload?.detail || '').trim() || 'No se pudieron cargar las diferencias.')
+        throw new Error(String(payload?.detail || '').trim() || 'No se pudieron cargar las revisiones.')
       }
       const rows = parseApiList(payload)
       const nextPage = Number.parseInt(String(payload?.page || itemsPage), 10)
@@ -897,20 +952,29 @@ function RandomInspectionAdminTable({
       if (silent) return []
       setItemsRows([])
       setItemsTotalCount(0)
-      notifyError(error?.message || 'No se pudieron cargar las diferencias.')
+      notifyError(error?.message || 'No se pudieron cargar las revisiones.')
       return []
     } finally {
       if (!silent) setItemsLoading(false)
     }
   }, [canRead, itemsFilter, itemsPage, itemsPageSize, notifyError, selectedBranchId, token])
 
+  // Refresca las revisiones y los productos de la que esta abierta.
+  const loadItems = useCallback(async (options = {}) => {
+    await Promise.all([loadRevisions(options), loadRevisionItems(options)])
+  }, [loadRevisionItems, loadRevisions])
+
   useEffect(() => {
     void loadSummary()
   }, [loadSummary])
 
   useEffect(() => {
-    void loadItems()
-  }, [loadItems])
+    void loadRevisions()
+  }, [loadRevisions])
+
+  useEffect(() => {
+    void loadRevisionItems()
+  }, [loadRevisionItems])
 
   // Si dos administradores tienen esta pantalla abierta a la vez, uno puede
   // verificar una diferencia mientras el otro sigue viendo la lista vieja.
@@ -956,6 +1020,13 @@ function RandomInspectionAdminTable({
   useEffect(() => {
     setItemsPage(1)
   }, [selectedBranchId, itemsFilter])
+
+  // Otra sucursal: la revision abierta era de la anterior (salvo la que se
+  // pidio abrir desde un recordatorio).
+  useEffect(() => {
+    setExpandedRevisionId(pendingExpandRevisionRef.current || '')
+    pendingExpandRevisionRef.current = ''
+  }, [selectedBranchId])
 
   useEffect(() => {
     assignmentsSizeRef.current = assignmentsModalSize
@@ -1077,9 +1148,10 @@ function RandomInspectionAdminTable({
     void loadItems()
   }, [loadItems, loadSummary])
 
-  // Trae todas las diferencias pendientes de la sucursal (hasta 100 por vez)
-  // y abre el wizard en la elegida (o en la primera).
-  const openVerifyWizard = useCallback(async (startItemId = '') => {
+  // Trae las diferencias pendientes de la sucursal, o solo las de una
+  // revision (`inspeccionId`), hasta 100 por vez, y abre el wizard en la
+  // elegida (o en la primera).
+  const openVerifyWizard = useCallback(async (startItemId = '', inspeccionId = '') => {
     const branchId = normalizeId(selectedBranchId)
     if (!token || !branchId) return
     setVerifyWizardOpen(true)
@@ -1092,6 +1164,7 @@ function RandomInspectionAdminTable({
       endpoint.searchParams.set('estado', 'pendiente')
       endpoint.searchParams.set('page', '1')
       endpoint.searchParams.set('page_size', '100')
+      if (normalizeId(inspeccionId)) endpoint.searchParams.set('inspeccion_id', normalizeId(inspeccionId))
       const response = await authFetch(endpoint.toString(), {}, token)
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) {
@@ -1573,8 +1646,29 @@ function RandomInspectionAdminTable({
       {/* Barra fija de acciones (como en el resto de pantallas); debajo, una
           tarjeta con Sucursales y Diferencias que se desplaza por dentro. */}
       <header className="users-page__actions inspection-admin__head">
+        {/* Como en importaciones: arriba se elige la pantalla. */}
+        <div className="transfer-issues-page__type-filter" role="group" aria-label="Pantalla">
+          {[
+            { key: 'sucursales', label: 'Sucursales' },
+            {
+              key: 'diferencias',
+              label: summaryRows.reduce((total, row) => total + (Number(row?.pendientes_verificacion) || 0), 0) > 0
+                ? `Diferencias (${summaryRows.reduce((total, row) => total + (Number(row?.pendientes_verificacion) || 0), 0)})`
+                : 'Diferencias',
+            },
+          ].map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={`p-button users-topbtn transfer-issues-page__type-btn${view === option.key ? ' transfer-issues-page__type-btn--active' : ''}`}
+              onClick={() => setView(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <div className="inspection-admin__head-actions">
-          {canUpdate && (
+          {view === 'sucursales' && canUpdate && (
             <button
               type="button"
               className="inspection-admin__manage"
@@ -1587,6 +1681,7 @@ function RandomInspectionAdminTable({
                 setShowSendNowDialog(true)
                 setSendNowDialogLoading(true)
                 setSendNowMode('aleatorio')
+                setSendNowNombre('')
                 setSendNowImmediate(false)
                 setDivisionSucursalId('')
                 setDivisionBodegaId('')
@@ -1634,7 +1729,7 @@ function RandomInspectionAdminTable({
               Enviar revision ahora
             </button>
           )}
-          {canUpdate && (
+          {view === 'sucursales' && canUpdate && (
             <button
               type="button"
               className="inspection-admin__manage"
@@ -1644,6 +1739,38 @@ function RandomInspectionAdminTable({
               <Settings size={14} />
               Configuracion
             </button>
+          )}
+          {view === 'diferencias' && (
+            <>
+              <select
+                className="inspection-admin__head-select"
+                value={normalizeId(selectedBranchId)}
+                onChange={(event) => setSelectedBranchId(normalizeId(event.target.value))}
+                aria-label="Sucursal"
+              >
+                {summaryRows.map((row) => (
+                  <option key={`diff-branch-${normalizeId(row?.sucursal_id)}`} value={normalizeId(row?.sucursal_id)}>
+                    {`${String(row?.sucursal_nombre || `Sucursal ${row?.sucursal_id}`).trim()}${Number(row?.pendientes_verificacion) > 0 ? ` (${Number(row.pendientes_verificacion)})` : ''}`}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="inspection-admin__head-select"
+                value={itemsFilter}
+                onChange={(event) => setItemsFilter(String(event.target.value || 'pendiente'))}
+                disabled={itemsLoading}
+                aria-label="Mostrar"
+              >
+                <option value="pendiente">Por verificar</option>
+                <option value="diferencias">Con diferencias</option>
+                <option value="verificado">Verificadas</option>
+                <option value="faltantes">
+                  {`Con faltantes abiertos${Number(selectedBranch?.faltantes_abiertos || 0) > 0 ? ` (${Number(selectedBranch.faltantes_abiertos)})` : ''}`}
+                </option>
+                <option value="en_curso">En curso</option>
+                <option value="todos">Todas</option>
+              </select>
+            </>
           )}
         </div>
       </header>
@@ -1685,6 +1812,7 @@ function RandomInspectionAdminTable({
       )}
 
       <div className="inspection-admin__body">
+      {view === 'sucursales' && (
       <div className="inspection-admin__block">
         <div className="inspection-admin__block-head">
           <h4>Sucursales</h4>
@@ -1727,7 +1855,12 @@ function RandomInspectionAdminTable({
                   <tr
                     key={`inspection-branch-${rowId}`}
                     className={`inspection-admin__summary-row${selected ? ' is-selected' : ''}`}
-                    onClick={() => setSelectedBranchId(rowId)}
+                    data-title="Ver las revisiones de esta sucursal en Diferencias"
+                    onClick={() => {
+                      // La sucursal se abre en Diferencias con sus revisiones.
+                      setSelectedBranchId(rowId)
+                      setView('diferencias')
+                    }}
                   >
                     <td>{String(row?.sucursal_nombre || `Sucursal ${row?.sucursal_id || '-'}`).trim()}</td>
                     <td>{Number.parseInt(String(row?.total_productos_inventario || 0), 10) || 0}</td>
@@ -1768,11 +1901,13 @@ function RandomInspectionAdminTable({
           )}
         </div>
       </div>
+      )}
 
+      {view === 'diferencias' && (
       <div className="inspection-admin__block">
         <div className="inspection-admin__subhead">
           <h4>
-            Diferencias reportadas
+            Revisiones
             {selectedBranch ? ` - ${String(selectedBranch?.sucursal_nombre || '').trim()}` : ''}
           </h4>
           <div className="inspection-admin__subhead-actions">
@@ -1783,26 +1918,115 @@ function RandomInspectionAdminTable({
               onClick={() => void openVerifyWizard()}
             >
               <Wrench size={14} />
-              {`Revisar diferencias (${Number(selectedBranch?.pendientes_verificacion || 0)})`}
+              {`Verificar todas (${Number(selectedBranch?.pendientes_verificacion || 0)})`}
             </button>
           )}
-          <select
-            value={itemsFilter}
-            onChange={(event) => setItemsFilter(String(event.target.value || 'pendiente'))}
-            disabled={itemsLoading}
+          <button
+            type="button"
+            className="rounded-icon-btn"
+            onClick={() => {
+              void loadSummary()
+              void loadItems()
+            }}
+            disabled={summaryLoading || itemsLoading}
+            aria-label="Actualizar"
           >
-            <option value="pendiente">Pendientes</option>
-            <option value="diferencias">Con diferencia</option>
-            <option value="verificado">Verificadas</option>
-            <option value="faltantes">
-              {`Faltantes abiertos${Number(selectedBranch?.faltantes_abiertos || 0) > 0 ? ` (${Number(selectedBranch.faltantes_abiertos)})` : ''}`}
-            </option>
-            <option value="todos">Todas</option>
-          </select>
+            <i className={`pi ${summaryLoading || itemsLoading ? 'pi-spin pi-spinner' : 'pi-refresh'}`} />
+          </button>
           </div>
         </div>
 
         <div className="inspection-admin__table-wrap">
+          <table className="inspection-admin__table inspection-admin__table--revisions">
+            <thead>
+              <tr>
+                <th aria-label="Abrir" />
+                <th>Revisión</th>
+                <th>Fecha</th>
+                <th>Revisor</th>
+                <th>Productos</th>
+                <th>Diferencias</th>
+                <th>Por verificar</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!itemsRows.length ? (
+                <tr className="inspection-admin__empty-row">
+                  <td colSpan={9}>
+                    {!itemsLoading && (
+                      <span className="inspection-admin__empty-text">
+                        {itemsFilter === 'pendiente'
+                          ? 'No hay revisiones con diferencias por verificar en esta sucursal.'
+                          : 'No hay revisiones con este filtro.'}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ) : itemsRows.map((revision) => {
+                const revisionId = normalizeId(revision?.id)
+                const expanded = revisionId === normalizeId(expandedRevisionId)
+                const completed = String(revision?.estado || '').trim().toLowerCase() === 'completada'
+                const pending = Number(revision?.pendientes || 0)
+                const differences = Number(revision?.diferencias || 0)
+                const stateLabel = !completed
+                  ? 'En curso'
+                  : pending > 0 ? 'Por verificar' : differences > 0 ? 'Verificada' : 'Sin diferencias'
+                const stateKey = !completed ? 'curso' : pending > 0 ? 'pendiente' : differences > 0 ? 'verificada' : 'ok'
+                const toggle = () => setExpandedRevisionId(expanded ? '' : revisionId)
+                return (
+                  <React.Fragment key={`inspection-revision-${revisionId}`}>
+                  <tr
+                    className={`inspection-admin__revision-row${expanded ? ' is-expanded' : ''}`}
+                    onClick={toggle}
+                    aria-expanded={expanded}
+                  >
+                    <td className="inspection-admin__revision-toggle">
+                      <ChevronRight size={16} className={expanded ? 'is-open' : ''} />
+                    </td>
+                    <td>
+                      <div className="inspection-admin__product-cell">
+                        <strong>{String(revision?.nombre || `Revisión #${revisionId}`).trim()}</strong>
+                        <span>{`#${revisionId}`}</span>
+                        {Number(revision?.faltantes || 0) > 0 && (
+                          <span className="inspection-admin__notfound-tag inspection-admin__shortfall-tag">
+                            {`${Number(revision.faltantes)} faltante(s) abierto(s)`}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td>{formatDateTime(revision?.completada_en || revision?.ultima_actividad || revision?.fecha_programada)}</td>
+                    <td>{String(revision?.usuario_nombre || '-').trim() || '-'}</td>
+                    <td>{Number(revision?.productos || 0)}</td>
+                    <td>{differences}</td>
+                    <td>{pending}</td>
+                    <td>
+                      <span className={`inspection-admin__revision-state inspection-admin__revision-state--${stateKey}`}>
+                        {stateLabel}
+                      </span>
+                    </td>
+                    <td>
+                      {canUpdate && pending > 0 ? (
+                        <button
+                          type="button"
+                          className="inspection-admin__action"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void openVerifyWizard('', revisionId)
+                          }}
+                        >
+                          <Wrench size={13} />
+                          {`Verificar (${pending})`}
+                        </button>
+                      ) : (
+                        <span className="inspection-admin__action-placeholder">{expanded ? 'Ocultar' : 'Ver'}</span>
+                      )}
+                    </td>
+                  </tr>
+                  {expanded && (
+                  <tr className="inspection-admin__revision-detail">
+                    <td colSpan={9}>
           <table className="inspection-admin__table inspection-admin__table--items">
             <thead>
               <tr>
@@ -1813,16 +2037,20 @@ function RandomInspectionAdminTable({
                 <th>Confirmada</th>
                 <th>Revision</th>
                 <th>Verificacion</th>
-                <th>Inspeccion de</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {!itemsRows.length ? (
+              {!revisionItems.length && (
                 <tr className="inspection-admin__empty-row">
-                  <td colSpan={9} />
+                  <td colSpan={8}>
+                    <span className="inspection-admin__empty-text">
+                      {revisionItemsLoading ? 'Cargando productos...' : 'Esta revisión no tiene productos con diferencia.'}
+                    </span>
+                  </td>
                 </tr>
-              ) : itemsRows.map((row) => {
+              )}
+              {revisionItems.map((row) => {
                 const canFix = (
                   canUpdate &&
                   String(row?.estado_revision || '').trim().toLowerCase() === 'no_coincide' &&
@@ -1877,13 +2105,12 @@ function RandomInspectionAdminTable({
                     <td>{row?.cantidad_confirmada == null ? '-' : Number.parseInt(String(row?.cantidad_confirmada || 0), 10) || 0}</td>
                     <td>{formatReviewState(row?.estado_revision)}</td>
                     <td>{formatVerificationState(row?.verificacion_estado)}</td>
-                    <td>{String(row?.inspeccion_usuario_nombre || '-').trim() || '-'}</td>
                     <td>
                       {canFix ? (
                         <button
                           type="button"
                           className="inspection-admin__action"
-                          onClick={() => void openVerifyWizard(normalizeId(row?.id))}
+                          onClick={() => void openVerifyWizard(normalizeId(row?.id), revisionId)}
                         >
                           <Wrench size={13} />
                           Revisar
@@ -1906,11 +2133,19 @@ function RandomInspectionAdminTable({
               })}
             </tbody>
           </table>
+                    </td>
+                  </tr>
+                  )}
+                  </React.Fragment>
+                )
+              })}
+            </tbody>
+          </table>
 
           {itemsLoading && (
             <p className="inspection-admin__loading">
               <Loader2 size={14} />
-              Cargando diferencias...
+              Cargando revisiones...
             </p>
           )}
         </div>
@@ -1932,6 +2167,7 @@ function RandomInspectionAdminTable({
           }}
         />
       </div>
+      )}
       </div>
 
       {verifyWizardOpen && (() => {
@@ -1984,6 +2220,7 @@ function RandomInspectionAdminTable({
                   <h4>Verificación de diferencias</h4>
                   <p>
                     {String(selectedBranch?.sucursal_nombre || 'Sucursal').trim()}
+                    {String(item?.inspeccion_nombre || '').trim() ? ` · ${String(item.inspeccion_nombre).trim()}` : ''}
                     {total ? ` · ${decidedCount} de ${total} revisada(s)` : ''}
                   </p>
                 </div>
@@ -2514,6 +2751,22 @@ function RandomInspectionAdminTable({
             </div>
 
             <div className="inspection-admin__dialog-body">
+              <label className="create-user__field inspection-admin__send-name">
+                <span>Nombre de la revisión</span>
+                <input
+                  type="text"
+                  value={sendNowNombre}
+                  onChange={(event) => setSendNowNombre(event.target.value)}
+                  maxLength={120}
+                  placeholder={sendNowMode === 'division'
+                    ? 'Ej: Columna B13 lunes (si lo dejas vacío se usa la columna)'
+                    : sendNowMode === 'lista'
+                      ? 'Ej: Repuestos de alta rotación (si lo dejas vacío: "Lista de productos")'
+                      : 'Ej: Revisión semanal (si lo dejas vacío: "Revisión aleatoria")'}
+                  disabled={sendNowLoading || sendNowDialogLoading || divisionSending || listSending}
+                />
+                <small>Con este nombre la verás en Diferencias.</small>
+              </label>
               <div className="inspection-admin__config-fields" style={{ marginBottom: '12px' }}>
                 {sendNowMode === 'aleatorio' && (
                   <label className="create-user__field">

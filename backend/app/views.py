@@ -2096,6 +2096,7 @@ def _serialize_random_inspection_admin_item(item, subdivision_labels=None):
     serialized.update(
         {
             "inspeccion_id": int(item.inspeccion_id),
+            "inspeccion_nombre": _inspection_display_name(inspection),
             "fecha_programada": (
                 inspection.fecha_programada.isoformat()
                 if inspection is not None and getattr(inspection, "fecha_programada", None)
@@ -5500,6 +5501,142 @@ class RandomInspectionAdminSummaryAPIView(APIView):
         )
 
 
+def _inspection_display_name(inspection):
+    """Nombre de la revision: el que se le puso al enviarla o, en las que no
+    tienen (anteriores), uno armado con lo que se reviso."""
+    if inspection is None:
+        return ""
+    own = _normalize_text(getattr(inspection, "nombre", ""))
+    if own:
+        return own
+    if getattr(inspection, "es_por_subdivision", False) and getattr(inspection, "subdivision_id", None):
+        return f"Fila {_subdivision_label(inspection.subdivision)}"
+    if getattr(inspection, "es_por_division", False) and getattr(inspection, "division_id", None):
+        division = inspection.division
+        bodega = getattr(division, "bodega", None)
+        return "Columna " + " / ".join(
+            part
+            for part in (_normalize_text(getattr(bodega, "nombre", "")), _normalize_text(division.nombre))
+            if part
+        )
+    if getattr(inspection, "es_por_lista", False):
+        origin = _normalize_text(getattr(inspection, "nota_general", ""))
+        if int(getattr(inspection, "total_items", 0) or 0) == 1 and origin and inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA:
+            return f"Conteo: {origin}"[:120]
+        return "Lista de productos"
+    return "Revision aleatoria"
+
+
+class RandomInspectionAdminRevisionsAPIView(APIView):
+    """Revisiones de una sucursal con sus diferencias juntas (no producto por
+    producto): cuantos productos, cuantas diferencias y cuantas faltan verificar."""
+
+    permission_classes = [IsAuthenticated]
+
+    FILTERS = ("pendiente", "diferencias", "verificado", "faltantes", "en_curso", "todos")
+
+    def get(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para consultar inspecciones aleatorias."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        sucursal_id = _normalize_int(request.query_params.get("sucursal_id"), 0)
+        if sucursal_id <= 0:
+            return Response(
+                {"detail": "Debes enviar un `sucursal_id` valido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        allowed_branch_ids = _get_allowed_inventory_branch_ids_for_user(request.user)
+        if allowed_branch_ids is not None and sucursal_id not in allowed_branch_ids:
+            return Response(
+                {"detail": "No tienes acceso a esta sucursal."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        estado = _normalize_text(request.query_params.get("estado")).lower() or "pendiente"
+        if estado not in self.FILTERS:
+            return Response(
+                {"detail": f"El parametro `estado` debe ser uno de: {', '.join(self.FILTERS)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        page = max(1, _normalize_int(request.query_params.get("page"), 1))
+        page_size = min(100, max(1, _normalize_int(request.query_params.get("page_size"), 20)))
+
+        in_branch = Q(items__sucursal_id=sucursal_id)
+        mismatch = in_branch & Q(items__estado_revision=InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE)
+        queryset = (
+            InspeccionAleatoriaDiaria.objects.filter(items__sucursal_id=sucursal_id)
+            .select_related("usuario", "division__bodega", "subdivision__division__bodega")
+            .annotate(
+                n_productos=Count("items", filter=in_branch, distinct=True),
+                n_diferencias=Count("items", filter=mismatch, distinct=True),
+                n_pendientes=Count(
+                    "items",
+                    filter=mismatch & Q(items__verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE),
+                    distinct=True,
+                ),
+                n_faltantes=Count(
+                    "items",
+                    filter=in_branch
+                    & Q(
+                        items__verificacion_estado=InspeccionAleatoriaItem.EstadosVerificacion.APROBADA,
+                        items__cantidad_faltante__gt=F("items__faltante_recuperado"),
+                    ),
+                    distinct=True,
+                ),
+                ultima_actividad=Max("items__revisado_en", filter=in_branch),
+            )
+            .distinct()
+            .order_by("-fecha_programada", "-id")
+        )
+        if estado == "pendiente":
+            queryset = queryset.filter(n_pendientes__gt=0)
+        elif estado == "diferencias":
+            queryset = queryset.filter(n_diferencias__gt=0)
+        elif estado == "verificado":
+            queryset = queryset.filter(n_diferencias__gt=0, n_pendientes=0)
+        elif estado == "faltantes":
+            queryset = queryset.filter(n_faltantes__gt=0)
+        elif estado == "en_curso":
+            queryset = queryset.exclude(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA)
+
+        total_count = queryset.count()
+        total_pages = max(1, ((total_count - 1) // page_size) + 1) if total_count else 1
+        current_page = min(page, total_pages)
+        offset = (current_page - 1) * page_size
+        rows = list(queryset[offset : offset + page_size])
+        return Response(
+            {
+                "results": [
+                    {
+                        "id": int(inspection.id),
+                        "nombre": _inspection_display_name(inspection),
+                        "nombre_propio": _normalize_text(inspection.nombre),
+                        "fecha_programada": inspection.fecha_programada.isoformat()
+                        if inspection.fecha_programada
+                        else "",
+                        "completada_en": _parse_iso_timestamp(inspection.completada_en),
+                        "ultima_actividad": _parse_iso_timestamp(inspection.ultima_actividad),
+                        "estado": str(inspection.estado or ""),
+                        "usuario_nombre": _format_user_display_name(inspection.usuario),
+                        "productos": int(inspection.n_productos or 0),
+                        "diferencias": int(inspection.n_diferencias or 0),
+                        "pendientes": int(inspection.n_pendientes or 0),
+                        "faltantes": int(inspection.n_faltantes or 0),
+                    }
+                    for inspection in rows
+                ],
+                "count": int(total_count),
+                "page": int(current_page),
+                "page_size": int(page_size),
+                "total_pages": int(total_pages),
+                "sucursal_id": int(sucursal_id),
+                "estado": estado,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class RandomInspectionAdminItemsAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -5537,6 +5674,8 @@ class RandomInspectionAdminItemsAPIView(APIView):
             InspeccionAleatoriaItem.objects.select_related(
                 "inspeccion",
                 "inspeccion__usuario",
+                "inspeccion__division__bodega",
+                "inspeccion__subdivision__division__bodega",
                 "sucursal",
                 "producto",
                 "verificado_por",
@@ -5544,6 +5683,10 @@ class RandomInspectionAdminItemsAPIView(APIView):
             .filter(sucursal_id=sucursal_id)
             .order_by("-updated_at", "-revisado_en", "-id")
         )
+        # Solo los productos de una revision (pantalla de Diferencias).
+        inspeccion_id = _normalize_int(request.query_params.get("inspeccion_id"), 0)
+        if inspeccion_id > 0:
+            queryset = queryset.filter(inspeccion_id=inspeccion_id).order_by("id")
 
         if estado == "pendiente":
             queryset = queryset.filter(
@@ -5816,6 +5959,7 @@ class RandomInspectionSendNowAPIView(APIView):
                         )
 
                         inspection = InspeccionAleatoriaDiaria.objects.create(
+                            nombre=_normalize_text(request.data.get("nombre"))[:120],
                             usuario=user,
                             sucursal_id=branch_id,
                             fecha_programada=scheduled_date,
@@ -6006,6 +6150,7 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 )
 
                 inspection = InspeccionAleatoriaDiaria.objects.create(
+                    nombre=_normalize_text(request.data.get("nombre"))[:120],
                     usuario=user,
                     sucursal_id=sucursal_id,
                     division=division,
@@ -6237,6 +6382,7 @@ class RandomInspectionSendListAPIView(APIView):
                 _stocked_candidate_keys(_collect_branch_inspection_candidates(sucursal_id)),
             )
             inspection = InspeccionAleatoriaDiaria.objects.create(
+                nombre=_normalize_text(request.data.get("nombre"))[:120],
                 usuario=user,
                 sucursal_id=sucursal_id,
                 es_por_lista=True,

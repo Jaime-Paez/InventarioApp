@@ -154,6 +154,10 @@ class InspeccionAleatoriaDiaria(models.Model):
         related_name="inspecciones_aleatorias_diarias",
     )
     fecha_programada = models.DateField(db_index=True)
+    # Nombre con el que administracion identifica la revision (lo escribe al
+    # enviarla). Vacio en las anteriores: se muestra uno armado (ver
+    # `_inspection_display_name`).
+    nombre = models.CharField(max_length=120, blank=True, default="", db_default="")
     estado = models.CharField(
         max_length=20,
         choices=Estados.choices,
