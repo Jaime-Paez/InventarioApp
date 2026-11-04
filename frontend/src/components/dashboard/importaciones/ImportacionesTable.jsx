@@ -8788,12 +8788,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                 )}
               </div>
               <div className="user-details__footer-right">
-                {isSugerencia && details.length > 0 && (
-                  <button type="button" className="create-user__action create-user__action--cancel" onClick={handleDownloadSugerenciaExcel}>
-                    <i className="pi pi-download" style={{ marginRight: 6 }} />
-                    Descargar Excel
-                  </button>
-                )}
                 {(isSugerencia || isVerificarOrConfirmacion) && (
                   <div className="imp-verificar-excel-dropdown" ref={verificarExcelDropdownRef}>
                     <button
