@@ -72,6 +72,28 @@ def is_bodega_location(location):
     return nombre.startswith("bodega")
 
 
+def location_label_sort_key(label):
+    """Orden de las ubicaciones al ordenar la columna Ub.: primero las de
+    pasillo con letra ("1A:01"), luego las numericas (01:01 ... 14:01), despues
+    las de nombre (ALMACEN, MOSTRADOR, B01...) y SIN UBICACION al final. Dentro
+    de cada grupo, orden natural (01:02 antes que 01:10)."""
+    text = strip_accents(str(label or "")).strip().upper()
+    first = text.split(":", 1)[0].strip()
+    if text.startswith("SIN UBICACION"):
+        group = 3
+    elif re.fullmatch(r"\d+[A-Z]+", first):
+        group = 0
+    elif first[:1].isdigit():
+        group = 1
+    else:
+        group = 2
+    natural = tuple(
+        (0, int(part), "") if part.isdigit() else (1, 0, part)
+        for part in re.findall(r"\d+|[^\d]+", text)
+    )
+    return (group, natural)
+
+
 def needs_restock(principal, others):
     """Ojo en rojo: alguna ubicacion secundaria tiene MAS que la principal
     (hay que pasar mercaderia a la principal)."""
@@ -944,21 +966,25 @@ class InventarioViewSet(viewsets.ModelViewSet):
             if any(payload.get("tiene_stock_bajo") for payload in by_branch.values())
         )
 
-    def _principal_qty_by_product(self, branch_id):
-        """{producto_id: cantidad de la ubicacion principal} en la sucursal,
-        con la misma regla que la celda de la tabla (solo productos con stock
-        en alguna ubicacion de la sucursal)."""
+    def _principal_by_product(self, branch_id):
+        """{producto_id: (ubicacion, cantidad)} de la ubicacion principal en la
+        sucursal, con la misma regla que la celda de la tabla (solo productos
+        con stock en alguna ubicacion de la sucursal)."""
         product_ids = set(
             Inventario.objects.filter(
                 subdivision__division__bodega__sucursal_id=branch_id, cantidad__gt=0
             ).values_list("producto_id", flat=True)
         )
         payloads = self._build_branch_location_payloads(product_ids, [branch_id])
-        return {
-            product_id: int(((by_branch.get(int(branch_id)) or {}).get("principal") or {}).get("cantidad") or 0)
-            for product_id, by_branch in payloads.items()
-            if by_branch.get(int(branch_id))
-        }
+        result = {}
+        for product_id, by_branch in payloads.items():
+            principal = (by_branch.get(int(branch_id)) or {}).get("principal")
+            if principal:
+                result[product_id] = (
+                    str(principal.get("ubicacion") or ""),
+                    int(principal.get("cantidad") or 0),
+                )
+        return result
 
     def _apply_total_range_filters(self, queryset):
         params = self.request.query_params
@@ -1021,8 +1047,12 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     continue
                 if target_key.startswith("ubicacion_sort_"):
                     # Sin ubicacion en la sucursal (celda vacia): al final en
-                    # ambos sentidos.
+                    # ambos sentidos; dentro de la misma ubicacion, la de mas
+                    # unidades primero.
                     resolved.append(target_key.replace("ubicacion_sort_", "ubicacion_vacia_"))
+                    resolved.append(f"-{target_key}" if descending else target_key)
+                    resolved.append("-" + target_key.replace("ubicacion_sort_", "ubicacion_cant_"))
+                    continue
                 resolved.append(f"-{target_key}" if descending else target_key)
 
         if not resolved:
@@ -1372,22 +1402,32 @@ class InventarioViewSet(viewsets.ModelViewSet):
             ub_field = f"ubicacion_sucursal_{branch.id}"
             if not re.search(rf"(^|,)-?{ub_field}(,|$)", ordering_param):
                 continue
-            # Orden por la cantidad de la ubicacion principal (la de la celda).
-            # Se calcula con la misma regla de la tabla y se agrupa por cantidad
-            # para que el CASE quede corto.
+            # Orden por el nombre de la ubicacion principal (la de la celda):
+            # 1A primero, luego 01..14, despues las de nombre (ALMACEN,
+            # MOSTRADOR...) y SIN UBICACION al final. Se calcula con la misma
+            # regla de la tabla y se agrupa para que el CASE quede corto.
+            principals = self._principal_by_product(int(branch.id))
+            labels = sorted({label for label, _ in principals.values()}, key=location_label_sort_key)
+            rank_of = {label: index for index, label in enumerate(labels)}
+            ids_by_rank = defaultdict(list)
             ids_by_qty = defaultdict(list)
-            for product_id, qty in self._principal_qty_by_product(int(branch.id)).items():
+            for product_id, (label, qty) in principals.items():
+                ids_by_rank[rank_of[label]].append(product_id)
                 ids_by_qty[qty].append(product_id)
-            with_location = [pid for ids in ids_by_qty.values() for pid in ids]
             aggregated_queryset = aggregated_queryset.annotate(
                 **{
                     f"ubicacion_sort_{branch.id}": Case(
+                        *[When(id__in=ids, then=Value(rank)) for rank, ids in ids_by_rank.items()],
+                        default=Value(None),
+                        output_field=IntegerField(),
+                    ),
+                    f"ubicacion_cant_{branch.id}": Case(
                         *[When(id__in=ids, then=Value(qty)) for qty, ids in ids_by_qty.items()],
                         default=Value(None),
                         output_field=IntegerField(),
                     ),
                     f"ubicacion_vacia_{branch.id}": Case(
-                        When(id__in=with_location, then=Value(0)),
+                        When(id__in=list(principals), then=Value(0)),
                         default=Value(1),
                         output_field=IntegerField(),
                     ),

@@ -409,15 +409,26 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
         self.assertFalse(rows["BAJO-PRINC1"]["tiene_stock_bajo"])
         self.assertEqual(rows["BAJO-PRINC1"]["principal"]["cantidad"], 20)
 
-    def test_orden_por_cantidad_de_la_principal_y_vacias_al_final(self):
+    def test_orden_por_nombre_de_la_principal_y_vacias_al_final(self):
+        from .viewsets import location_label_sort_key
+
+        labels = ["01:10:02", "SIN UBICACION:SIN UBICACION", "1A:10:05", "MOSTRADOR:01", "01:02:01", "1A:01:03", "14:01"]
+        self.assertEqual(
+            sorted(labels, key=location_label_sort_key),
+            ["1A:01:03", "1A:10:05", "01:02:01", "01:10:02", "14:01", "MOSTRADOR:01", "SIN UBICACION:SIN UBICACION"],
+        )
         branch = self.sucursal.id
+        # Principales: Percha:A (PRINC1 1, OTRA 50, DOS 2, UNA 1, BOD 3,
+        # SOLOBOD 0) y Percha:B (CERO 20); SINSTOCK sin celda.
         asc = [row["codigo"] for row in self._rows(ordering=f"ubicacion_sucursal_{branch}")]
-        self.assertEqual(asc[0], "BAJO-SOLOBOD")
-        self.assertEqual(set(asc[1:3]), {"BAJO-PRINC1", "BAJO-UNA"})
-        self.assertEqual(asc[3:], ["BAJO-DOS", "BAJO-BOD", "BAJO-CERO", "BAJO-OTRA", "BAJO-SINSTOCK"])
+        # Misma ubicacion: la de mas unidades primero.
+        self.assertEqual(asc[:3], ["BAJO-OTRA", "BAJO-BOD", "BAJO-DOS"])
+        self.assertEqual(set(asc[3:5]), {"BAJO-PRINC1", "BAJO-UNA"})
+        self.assertEqual(asc[5], "BAJO-SOLOBOD")
+        self.assertEqual(asc[-2:], ["BAJO-CERO", "BAJO-SINSTOCK"])
         desc = [row["codigo"] for row in self._rows(ordering=f"-ubicacion_sucursal_{branch}")]
-        self.assertEqual(desc[:4], ["BAJO-OTRA", "BAJO-CERO", "BAJO-BOD", "BAJO-DOS"])
-        self.assertEqual(desc[-2:], ["BAJO-SOLOBOD", "BAJO-SINSTOCK"])
+        self.assertEqual(desc[0], "BAJO-CERO")
+        self.assertEqual(desc[-1], "BAJO-SINSTOCK")
 
     def test_filtro_restock_bodega_devuelve_solo_los_de_ojo_rojo(self):
         branch = str(self.sucursal.id)
