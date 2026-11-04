@@ -34,6 +34,7 @@ import {
   normalizeMovementProducts,
 } from './movementTableProducts'
 import { isPhoneViewport } from '../../../utils/viewport'
+import MoneyInput from '../common/MoneyInput'
 
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
 const normalizeValue = (value) =>
@@ -1967,27 +1968,21 @@ function SalidasTable({
 
                     <label className="create-user__field">
                       <span>Total mínimo</span>
-                      <input
+                      <MoneyInput
                         name="total_min"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="Ej: 100"
-                        value={searchCriteria.total_min}
-                        onChange={handleSearchInputChange}
+                        placeholder="Ej: $100"
+                        value={searchCriteria.total_min === '' || searchCriteria.total_min == null ? null : Number(searchCriteria.total_min)}
+                        onValueChange={(amount) => handleSearchInputChange({ target: { name: 'total_min', value: amount == null ? '' : amount.toFixed(2) } })}
                       />
                     </label>
 
                     <label className="create-user__field">
                       <span>Total máximo</span>
-                      <input
+                      <MoneyInput
                         name="total_max"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="Ej: 1000"
-                        value={searchCriteria.total_max}
-                        onChange={handleSearchInputChange}
+                        placeholder="Ej: $1000"
+                        value={searchCriteria.total_max === '' || searchCriteria.total_max == null ? null : Number(searchCriteria.total_max)}
+                        onValueChange={(amount) => handleSearchInputChange({ target: { name: 'total_max', value: amount == null ? '' : amount.toFixed(2) } })}
                       />
                     </label>
 

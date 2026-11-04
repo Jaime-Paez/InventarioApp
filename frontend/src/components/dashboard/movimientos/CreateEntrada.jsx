@@ -14,6 +14,7 @@ import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import SubTipoButtonSelector from './SubTipoButtonSelector'
 import StaticFieldDisplay from './StaticFieldDisplay'
+import MoneyInput from '../common/MoneyInput'
 import BlockerNotice from '../common/BlockerNotice'
 import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
 import { matchesFirst, productDetailMatches } from '../common/productDetailMatches'
@@ -303,15 +304,6 @@ const calculateCostoConIva = (costo, descuentoPorcentaje, ivaRate) => {
 // "0.00", para que escribir "5" de $0.00 pase a $0.05, "50" a $0.50, etc. —
 // sin arrastrar un valor previo que haya que borrar primero. Desc. (%) no usa
 // este formato porque no es dinero.
-const formatCentavos = (centsStr) => {
-  const digits = String(centsStr || '').replace(/\D/g, '')
-  if (!digits) return '0.00'
-  const n = parseInt(digits, 10)
-  const intPart = Math.floor(n / 100)
-  const decPart = n % 100
-  return `${intPart.toLocaleString('en-US')}.${String(decPart).padStart(2, '0')}`
-}
-
 const centavosToNumber = (centsStr) => {
   const digits = String(centsStr || '').replace(/\D/g, '')
   if (!digits) return 0
@@ -2703,27 +2695,6 @@ function CreateEntrada({
     }
   }
 
-  const handleDraftCentavosKeyDown = (field, currentDigits, { maxValue } = {}) => (event) => {
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-      handleRowArrowKeyDown(event)
-      return
-    }
-    if (event.key === 'Backspace') {
-      event.preventDefault()
-      setDetailDraft((prev) => ({
-        ...prev,
-        [field]: String(currentDigits || '').replace(/\D/g, '').slice(0, -1),
-      }))
-      return
-    }
-    if (/^\d$/.test(event.key)) {
-      event.preventDefault()
-      const nextDigits = String(currentDigits || '').replace(/\D/g, '') + event.key
-      if (Number.isFinite(maxValue) && centavosToNumber(nextDigits) > maxValue) return
-      setDetailDraft((prev) => ({ ...prev, [field]: nextDigits }))
-    }
-  }
-
   const handleProductSelect = (producto) => {
     if (!producto?.id) return
     const normalizedProductId = String(producto.id || '').trim()
@@ -3038,9 +3009,8 @@ function CreateEntrada({
     )
   }
 
-  // Costo y PVP Nuevo (compra local) se editan tecla por tecla
-  // como centavos (igual que en Importaciones): Backspace quita el ultimo
-  // digito, cada digito nuevo se agrega al final, y se formatea como "0.00".
+  // Costo y PVP Nuevo (compra local): se escriben con MoneyInput (1, 5, "."
+  // -> $15.00) y se guardan como centavos ('1500').
   const applyDetailCentavos = (uid, field, nextDigits) => {
     clearDetailFieldError(uid, field)
     setDetails((prev) =>
@@ -3053,24 +3023,6 @@ function CreateEntrada({
         return { ...detail, [field]: nextDigits }
       })
     )
-  }
-
-  const handleDetailCentavosKeyDown = (uid, field, currentDigits, { maxValue } = {}) => (event) => {
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-      handleRowArrowKeyDown(event)
-      return
-    }
-    if (event.key === 'Backspace') {
-      event.preventDefault()
-      applyDetailCentavos(uid, field, String(currentDigits || '').replace(/\D/g, '').slice(0, -1))
-      return
-    }
-    if (/^\d$/.test(event.key)) {
-      event.preventDefault()
-      const nextDigits = String(currentDigits || '').replace(/\D/g, '') + event.key
-      if (Number.isFinite(maxValue) && centavosToNumber(nextDigits) > maxValue) return
-      applyDetailCentavos(uid, field, nextDigits)
-    }
   }
 
   const handleResetDetailPrecio = (uid) => {
@@ -4551,14 +4503,11 @@ function CreateEntrada({
                       {isCompraEntrada && (
                         <>
                           <span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              readOnly
+                            <MoneyInput
                               className="create-salida__numeric-input"
-                              value={formatCentavos(detailDraft.costo)}
-                              onChange={() => {}}
-                              onKeyDown={handleDraftCentavosKeyDown('costo', detailDraft.costo)}
+                              value={String(detailDraft.costo ?? '').trim() === '' ? null : centavosToNumber(detailDraft.costo)}
+                              onValueChange={(amount) => setDetailDraft((prev) => ({ ...prev, costo: amount == null ? '' : String(Math.round(amount * 100)) }))}
+                              onKeyDown={handleRowArrowKeyDown}
                               disabled={loading || !selectedDraftProductId}
                             />
                           </span>
@@ -4595,14 +4544,11 @@ function CreateEntrada({
                       )}
                       <span>
                         {isCompraEntrada ? (
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            readOnly
+                          <MoneyInput
                             className="create-salida__numeric-input"
-                            value={formatCentavos(detailDraft.valor)}
-                            onChange={() => {}}
-                            onKeyDown={handleDraftCentavosKeyDown('valor', detailDraft.valor)}
+                            value={String(detailDraft.valor ?? '').trim() === '' ? null : centavosToNumber(detailDraft.valor)}
+                            onValueChange={(amount) => setDetailDraft((prev) => ({ ...prev, valor: amount == null ? '' : String(Math.round(amount * 100)) }))}
+                            onKeyDown={handleRowArrowKeyDown}
                             disabled={loading || !selectedDraftProductId}
                           />
                         ) : (
@@ -4715,14 +4661,11 @@ function CreateEntrada({
                           {isCompraEntrada && (
                             <>
                               <span>
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  readOnly
+                                <MoneyInput
                                   className={`create-salida__numeric-input${detailFieldErrors[detail.uid]?.costo ? ' create-salida__input--error' : ''}`}
-                                  value={formatCentavos(detail.costo)}
-                                  onChange={() => {}}
-                                  onKeyDown={handleDetailCentavosKeyDown(detail.uid, 'costo', detail.costo)}
+                                  value={String(detail.costo ?? '').trim() === '' ? null : centavosToNumber(detail.costo)}
+                                  onValueChange={(amount) => applyDetailCentavos(detail.uid, 'costo', amount == null ? '' : String(Math.round(amount * 100)))}
+                                  onKeyDown={handleRowArrowKeyDown}
                                   disabled={loading}
                                 />
                               </span>
@@ -4746,18 +4689,15 @@ function CreateEntrada({
                           )}
                           <span>
                             {isCompraEntrada ? (
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                readOnly
-                                className={`create-salida__numeric-input${detailFieldErrors[detail.uid]?.valor ? ' create-salida__input--error' : ''}`}
-                                value={formatCentavos(detail.valor)}
-                                onChange={() => {}}
-                                onKeyDown={handleDetailCentavosKeyDown(detail.uid, 'valor', detail.valor)}
-                                onDoubleClick={() => handleResetDetailPrecio(detail.uid)}
-                                title="Doble clic para restaurar el precio guardado en la base de datos"
-                                disabled={loading}
-                              />
+                              <MoneyInput
+                                  className={`create-salida__numeric-input${detailFieldErrors[detail.uid]?.valor ? ' create-salida__input--error' : ''}`}
+                                  value={String(detail.valor ?? '').trim() === '' ? null : centavosToNumber(detail.valor)}
+                                  onValueChange={(amount) => applyDetailCentavos(detail.uid, 'valor', amount == null ? '' : String(Math.round(amount * 100)))}
+                                  onKeyDown={handleRowArrowKeyDown}
+                                  onDoubleClick={() => handleResetDetailPrecio(detail.uid)}
+                                  data-title="Doble clic para restaurar el precio guardado en la base de datos"
+                                  disabled={loading}
+                                />
                             ) : (
                               <span className="create-salida__table-static-value">
                                 {formatCurrency(detail.valor)}

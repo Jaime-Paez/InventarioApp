@@ -3,7 +3,8 @@ import '../../admin/CreateUsuario/CreateUsuario.css'
 import { API_URL, authFetch } from '../../../../utils/api'
 import useModalAnimation from '../../common/useModalAnimation'
 import BlockerNotice from '../../common/BlockerNotice'
-import { formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
+import { formatMoneyFromValue, formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
+import MoneyInput from '../../common/MoneyInput'
 import { toUpperCode } from '../../../../utils/textInput'
 import { toggleCasaSelection } from '../../../../utils/casasComerciales'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
@@ -2154,13 +2155,12 @@ function CreateProducto({
                         <span>Costo</span>
                         <div className="create-user__money">
                           <span>$</span>
-                          <input
+                          <MoneyInput
                             name="costo_minimo"
-                            type="text"
-                            inputMode="decimal"
+                            symbol={false}
                             placeholder="Costo al comprar"
-                            value={formData.costo_minimo}
-                            onChange={handleChange}
+                            value={parseMoneyInput(formData.costo_minimo)}
+                            onValueChange={(amount) => setFormData((prev) => ({ ...prev, costo_minimo: amount == null ? '' : formatMoneyFromValue(amount) }))}
                             disabled={loading}
                           />
                         </div>
@@ -2171,16 +2171,15 @@ function CreateProducto({
                       <span>Precio</span>
                       <div className={`create-user__money${precioInvalid ? ' create-user__money--invalid' : ''}`}>
                         <span>$</span>
-                        <input
-                          name="precio"
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="Precio al que se pretende vender"
-                          value={formData.precio}
-                          onChange={handleChange}
-                          required
-                          disabled={loading}
-                        />
+                        <MoneyInput
+                            name="precio"
+                            symbol={false}
+                            placeholder="Precio al que se pretende vender"
+                            required
+                            value={parseMoneyInput(formData.precio)}
+                            onValueChange={(amount) => setFormData((prev) => ({ ...prev, precio: amount == null ? '' : formatMoneyFromValue(amount) }))}
+                            disabled={loading}
+                          />
                       </div>
                       {precioInvalid && <small className="create-user__field-error">Define un precio valido.</small>}
                     </label>

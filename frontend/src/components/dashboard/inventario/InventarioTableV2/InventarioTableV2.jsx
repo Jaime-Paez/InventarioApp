@@ -29,6 +29,7 @@ import { tableLayoutStore } from '../../../../utils/tableLayoutStore'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../../utils/autoFitColumns'
 import { memoryStore } from '../../../../utils/memoryStore'
 import { isPhoneViewport } from '../../../../utils/viewport'
+import MoneyInput from '../../common/MoneyInput'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -2918,13 +2919,23 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                     {canSeeCost && (
                       <label className="create-user__field">
                         <span>Costo minimo</span>
-                        <input name="costo_minimo" type="text" placeholder="Ej: 10.50" value={searchCriteria.costo_minimo} onChange={handleSearchInputChange} />
+                        <MoneyInput
+                          name="costo_minimo"
+                          placeholder="Ej: $10.50"
+                          value={searchCriteria.costo_minimo === '' || searchCriteria.costo_minimo == null ? null : Number(searchCriteria.costo_minimo)}
+                          onValueChange={(amount) => handleSearchInputChange({ target: { name: 'costo_minimo', value: amount == null ? '' : amount.toFixed(2) } })}
+                        />
                       </label>
                     )}
 
                     <label className="create-user__field">
                       <span>Precio sugerido</span>
-                      <input name="precio" type="text" placeholder="Ej: 60.00" value={searchCriteria.precio} onChange={handleSearchInputChange} />
+                      <MoneyInput
+                        name="precio"
+                        placeholder="Ej: $60.00"
+                        value={searchCriteria.precio === '' || searchCriteria.precio == null ? null : Number(searchCriteria.precio)}
+                        onValueChange={(amount) => handleSearchInputChange({ target: { name: 'precio', value: amount == null ? '' : amount.toFixed(2) } })}
+                      />
                     </label>
 
                     <label className="create-user__field">

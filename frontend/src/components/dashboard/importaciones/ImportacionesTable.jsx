@@ -28,6 +28,7 @@ import { matchesFirst } from '../common/productDetailMatches'
 import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
 import { UnsavedChangesDialog } from '../common/unsavedChanges/unsavedChanges'
 import { isPhoneViewport } from '../../../utils/viewport'
+import MoneyInput from '../common/MoneyInput'
 import { REMINDERS_TRANSFER_NOTIFICATION_EVENT } from '../common/reminders/remindersStorage'
 
 const getPortalRoot = () => getAppPortalRoot()
@@ -59,44 +60,20 @@ const importItemMatches = (item, query) => {
   return terms.every((term) => text.includes(term))
 }
 
-// Precio que se escribe como un numero normal: "120", luego "." y los
-// centavos. Guarda el valor en centavos (string de digitos, '' si queda
-// vacio), igual que el resto de la verificacion/confirmacion.
-const centavosToText = (centsStr) => {
-  const digits = String(centsStr || '').replace(/\D/g, '')
-  if (!digits) return ''
-  return (parseInt(digits, 10) / 100).toFixed(2)
-}
-
+// Precio de la verificacion/confirmacion: guarda el valor en centavos
+// (string de digitos, '' si queda vacio).
 function PrecioCentavosInput({ value, onChange, disabled, title, onDoubleClick, invalid = false }) {
-  const [draft, setDraft] = useState(null)
+  // Se escribe como en el resto de campos de dinero (1, 5, "." -> $15.00) y
+  // se sigue guardando en centavos ('1500').
+  const digits = String(value ?? '').replace(/\D/g, '')
   return (
-    <input
-      type="text"
-      inputMode="decimal"
+    <MoneyInput
       disabled={disabled}
-      title={title}
-      placeholder="0.00"
+      data-title={title}
       style={invalid ? { borderColor: '#ef4444' } : undefined}
-      value={draft ?? centavosToText(value)}
-      onFocus={(e) => {
-        const text = centavosToText(value)
-        setDraft(text && Number(text) === 0 ? '' : text)
-        e.target.select()
-      }}
-      onBlur={() => setDraft(null)}
+      value={digits ? parseInt(digits, 10) / 100 : null}
       onDoubleClick={onDoubleClick}
-      onChange={(e) => {
-        const text = e.target.value.replace(',', '.').replace(/[^\d.]/g, '')
-        if (!/^\d*(\.\d{0,2})?$/.test(text)) return
-        setDraft(text)
-        if (!text || text === '.') {
-          onChange('')
-          return
-        }
-        const [entero, dec = ''] = text.split('.')
-        onChange(String(parseInt(entero || '0', 10) * 100 + parseInt(dec.padEnd(2, '0'), 10)))
-      }}
+      onValueChange={(amount) => onChange(amount == null ? '' : String(Math.round(amount * 100)))}
     />
   )
 }
@@ -2500,7 +2477,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     </label>
                     <label className={`create-user__field create-user__field--required${formErrors.precio ? ' create-user__field--invalid' : ''}`}>
                       <span>Precio</span>
-                      <input type="number" min="0" step="0.01" placeholder="0.00" value={form.precio} onChange={(e) => setForm(f => ({ ...f, precio: e.target.value }))} />
+                      <MoneyInput value={form.precio === '' || form.precio == null ? null : Number(form.precio)} onValueChange={(amount) => setForm(f => ({ ...f, precio: amount == null ? '' : String(amount) }))} />
                       {formErrors.precio && <small style={{ color: '#dc2626' }}>{formErrors.precio}</small>}
                     </label>
                     <label className={`create-user__field create-user__field--required${(formErrors.referencia || dupStatus['single-referencia']?.error) ? ' create-user__field--invalid' : ''}`}>
@@ -2564,7 +2541,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                           </label>
                           <label className={`create-user__field create-user__field--required${kitFormErrors[idx]?.precio ? ' create-user__field--invalid' : ''}`}>
                             <span>Precio</span>
-                            <input type="number" min="0" step="0.01" placeholder="0.00" value={item.precio} onChange={(e) => updateKitForm(idx, 'precio', e.target.value)} />
+                            <MoneyInput value={item.precio === '' || item.precio == null ? null : Number(item.precio)} onValueChange={(amount) => updateKitForm(idx, 'precio', amount == null ? '' : String(amount))} />
                             {kitFormErrors[idx]?.precio && <small style={{ color: '#dc2626' }}>{kitFormErrors[idx].precio}</small>}
                           </label>
                           <label className={`create-user__field create-user__field--required${(kitFormErrors[idx]?.referencia || dupStatus[`kit-${item._key}-referencia`]?.error) ? ' create-user__field--invalid' : ''}`}>
@@ -4361,6 +4338,15 @@ function SugerenciaNuevoProductoPopup({ onClose, onAdd, notify }) {
     return (
       <label className={`create-user__field${error || invalid ? ' create-user__field--invalid' : ''}`}>
         <span>{label}</span>
+        {type === 'money' ? (
+          // Dinero: como en el resto (1, 5, "." -> $15.00).
+          <MoneyInput
+            value={draft[field] === '' || draft[field] == null ? null : Number(draft[field])}
+            onValueChange={(amount) => setCampo(field, amount == null ? '' : String(amount))}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd() } }}
+            autoFocus={autoFocus}
+          />
+        ) : (
         <input
           type={type}
           {...(type === 'number' ? { min: '0', step: '0.01' } : {})}
@@ -4371,6 +4357,7 @@ function SugerenciaNuevoProductoPopup({ onClose, onAdd, notify }) {
           autoComplete="off"
           autoFocus={autoFocus}
         />
+        )}
         {error && <small style={{ color: '#dc2626' }}>{error}</small>}
       </label>
     )
@@ -4396,7 +4383,7 @@ function SugerenciaNuevoProductoPopup({ onClose, onAdd, notify }) {
               <small style={{ color: '#dc2626', gridColumn: '1 / -1', marginTop: -6 }}>{errors.identificador}</small>
             )}
             {campo('nombre', 'Descripción (opcional)', { placeholder: 'Se sugiere desde el catálogo si la dejas vacía' })}
-            {campo('precio', 'Precio (opcional)', { type: 'number', placeholder: '0.00' })}
+            {campo('precio', 'Precio (opcional)', { type: 'money' })}
           </div>
         </div>
         <div className="imp-aceptados-popup__footer">

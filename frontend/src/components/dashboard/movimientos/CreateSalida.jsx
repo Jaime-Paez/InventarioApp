@@ -16,6 +16,7 @@ import BlockerNotice from '../common/BlockerNotice'
 import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
 import { matchesFirst, productDetailMatches } from '../common/productDetailMatches'
 import StaticFieldDisplay from './StaticFieldDisplay'
+import MoneyInput from '../common/MoneyInput'
 import {
   buildTransferHistoryEntry,
   createReminderId,
@@ -989,11 +990,10 @@ function CreateSalida({
     event.target.select()
   }
 
-  const handleTotalChange = (event) => {
-    const sanitized = sanitizeDecimalRawInput(event.target.value)
-    setTotalRawInput(sanitized)
-    const parsed = parseNumber(sanitized)
-    if (parsed !== null) applyDesiredTotal(parsed)
+  // El total se escribe con MoneyInput (1, 5, "." -> $15.00): llega como numero.
+  const handleTotalChange = (amount) => {
+    setTotalRawInput(amount == null ? '' : String(amount))
+    if (amount != null) applyDesiredTotal(amount)
   }
 
   const handleTotalBlur = () => {
@@ -4472,12 +4472,10 @@ function CreateSalida({
                         <span className="create-salida__totals-label">Total con IVA ({ivaPercent}%)</span>
                         <span className="create-salida__totals-value">
                           {isVenta && subtotalConBorrador > 0 ? (
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={totalRawInput}
+                            <MoneyInput
+                              value={parseNumber(totalRawInput)}
                               onFocus={handleTotalFocus}
-                              onChange={handleTotalChange}
+                              onValueChange={handleTotalChange}
                               onBlur={handleTotalBlur}
                               disabled={loading}
                               className="create-salida__total-inline-input"

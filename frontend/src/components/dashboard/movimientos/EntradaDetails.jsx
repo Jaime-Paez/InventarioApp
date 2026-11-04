@@ -11,6 +11,7 @@ import useModalAnimation from '../common/useModalAnimation'
 import useTableCellHover from '../common/useTableCellHover.jsx'
 import MovementHistoryTab from '../common/history/MovementHistoryTab'
 import StaticFieldDisplay from './StaticFieldDisplay'
+import MoneyInput from '../common/MoneyInput'
 import BlockerNotice from '../common/BlockerNotice'
 import TrasladoRechazados from '../common/TrasladoRechazados'
 import ProductListSearch, { ProductSearchEmptyRow } from '../common/ProductListSearch'
@@ -3458,13 +3459,10 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                         {isCompraEntrada && (
                           <>
                             <span>
-                              <input
+                              <MoneyInput
                                 name="costo"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={detailDraft.costo}
-                                onChange={handleDetailChange}
+                                value={parseNumber(detailDraft.costo)}
+                                onValueChange={(amount) => handleDetailChange({ target: { name: 'costo', value: amount == null ? '' : String(amount) } })}
                                 disabled={editorDisabled}
                               />
                             </span>

@@ -12,6 +12,7 @@ import ReposicionImportDialog from './ReposicionImportDialog'
 import CascadeDropdown from '../common/CascadeDropdown'
 import ReposicionHint from './ReposicionHint'
 import { ESTADO_LABEL, causaInfo, claseInfo, estadoInfo } from './reposicionConstants'
+import MoneyInput from '../common/MoneyInput'
 
 // Reposicion de inventario por producto y sucursal (modelo de Willems):
 // revision continua (R, Q) para A/B y stock base periodico (B) para C.
@@ -597,6 +598,12 @@ function ReposicionTable({ token }) {
               {CONFIG_FIELDS.map((field) => (
                 <label key={field.key} className="reposicion__field" title={field.hint}>
                   <span>{field.label}</span>
+                  {field.key === 'costo_pedido' ? (
+                    <MoneyInput
+                      value={configDraft[field.key] === '' || configDraft[field.key] == null ? null : Number(configDraft[field.key])}
+                      onValueChange={(amount) => setConfigDraft((prev) => ({ ...prev, [field.key]: amount == null ? '' : String(amount) }))}
+                    />
+                  ) : (
                   <input
                     type="number"
                     step="any"
@@ -606,6 +613,7 @@ function ReposicionTable({ token }) {
                       setConfigDraft((prev) => ({ ...prev, [field.key]: value }))
                     }}
                   />
+                  )}
                   {field.hint && <small>{field.hint}</small>}
                 </label>
               ))}

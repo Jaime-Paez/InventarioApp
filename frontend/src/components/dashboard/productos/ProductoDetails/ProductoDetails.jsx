@@ -15,6 +15,7 @@ import useModalAnimation from '../../common/useModalAnimation'
 import ProductoRatingTab from '../ProductoRatingTab/ProductoRatingTab'
 import ReposicionProductPanel from '../../reposicion/ReposicionProductPanel'
 import { formatMoneyFromValue, formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
+import MoneyInput from '../../common/MoneyInput'
 import { toUpperCode } from '../../../../utils/textInput'
 import { toggleCasaSelection } from '../../../../utils/casasComerciales'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
@@ -2045,12 +2046,11 @@ function ProductoDetails({
                         <span>Costo</span>
                         <div className="create-user__money">
                           <span>$</span>
-                          <input
+                          <MoneyInput
                             name="costo_minimo"
-                            type="text"
-                            inputMode="decimal"
-                            value={formData.costo_minimo}
-                            onChange={handleChange}
+                            symbol={false}
+                            value={parseMoneyInput(formData.costo_minimo)}
+                            onValueChange={(amount) => setFormData((prev) => ({ ...prev, costo_minimo: amount == null ? '' : formatMoneyFromValue(amount) }))}
                             disabled={editorDisabled}
                           />
                         </div>
@@ -2061,15 +2061,14 @@ function ProductoDetails({
                       <span>Precio</span>
                       <div className={`create-user__money${precioInvalid ? ' create-user__money--invalid' : ''}`}>
                         <span>$</span>
-                        <input
-                          name="precio"
-                          type="text"
-                          inputMode="decimal"
-                          value={formData.precio}
-                          onChange={handleChange}
-                          required
-                          disabled={editorDisabled}
-                        />
+                        <MoneyInput
+                            name="precio"
+                            symbol={false}
+                            required
+                            value={parseMoneyInput(formData.precio)}
+                            onValueChange={(amount) => setFormData((prev) => ({ ...prev, precio: amount == null ? '' : formatMoneyFromValue(amount) }))}
+                            disabled={editorDisabled}
+                          />
                       </div>
                     </label>
                   </div>
