@@ -6592,9 +6592,17 @@ function QuickActions({
                         {activeRandomInspectionGroup.entries.map((entry, entryIndex) => {
                           const row = entry.row
                           const rowId = normalizeId(row?.row_id || row?.id)
-                          const value = entry.location
-                            ? String(entry.location?.cantidad_contada_input ?? '')
-                            : String(row?.cantidad_reportada_input ?? '')
+                          // "No lo encontre" no es lo mismo que contar 0 (ubicacion
+                          // correcta pero vacia): la casilla queda vacia y en gris.
+                          const notFoundHere = entry.location ? Boolean(entry.location?.no_encontrado) : Boolean(row?.no_encontrado)
+                          const value = notFoundHere
+                            ? ''
+                            : entry.location
+                              ? String(entry.location?.cantidad_contada_input ?? '')
+                              : String(row?.cantidad_reportada_input ?? '')
+                          const undoNotFound = () => (entry.location
+                            ? handleRandomInspectionLocationCountChange(rowId, entry.location?.key, '')
+                            : handleRandomInspectionDraftFieldChange(rowId, 'cantidad_reportada', ''))
                           // Las de fuera de la division se cuentan aqui mismo (abajo).
                           const outsideLocations = Array.isArray(entry.outsideLocations) ? entry.outsideLocations : []
                           const outsideKeys = new Set(
@@ -6662,7 +6670,8 @@ function QuickActions({
                                   }}
                                   onKeyDown={handleCountEnter}
                                   maxLength={4}
-                                  placeholder="-"
+                                  placeholder={notFoundHere ? 'No está' : '-'}
+                                  className={notFoundHere ? 'quick-actions__inspection-count--notfound' : undefined}
                                   disabled={randomInspectionSubmitting}
                                   autoFocus={entryIndex === 0}
                                   aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'}`}
@@ -6683,8 +6692,16 @@ function QuickActions({
                                       ? <i className="pi pi-spin pi-spinner" aria-hidden="true" />
                                       : <i className="pi pi-times" aria-hidden="true" />}
                                   </button>
-                                ) : (entry.location ? entry.location?.no_encontrado : row?.no_encontrado) ? (
-                                  <span className="quick-actions__inspection-notfound-tag">No encontrado</span>
+                                ) : notFoundHere ? (
+                                  <button
+                                    type="button"
+                                    className="quick-actions__inspection-notfound-tag quick-actions__inspection-notfound-undo"
+                                    onClick={undoNotFound}
+                                    disabled={randomInspectionSubmitting}
+                                    data-title="Deshacer: volver a escribir la cantidad (0 si la ubicación está bien pero vacía)"
+                                  >
+                                    No encontrado · <u>Deshacer</u>
+                                  </button>
                                 ) : (
                                   <button
                                     type="button"
@@ -6720,18 +6737,27 @@ function QuickActions({
                                     type="text"
                                     inputMode="numeric"
                                     data-count-input
-                                    value={String(location?.cantidad_contada_input ?? '')}
+                                    value={location?.no_encontrado ? '' : String(location?.cantidad_contada_input ?? '')}
                                     onChange={(event) => handleRandomInspectionLocationCountChange(rowId, location.key, event.target.value)}
                                     onKeyDown={handleCountEnter}
                                     maxLength={4}
-                                    placeholder="-"
+                                    placeholder={location?.no_encontrado ? 'No está' : '-'}
+                                    className={location?.no_encontrado ? 'quick-actions__inspection-count--notfound' : undefined}
                                     disabled={randomInspectionSubmitting}
                                     aria-label={`Cantidad contada de ${row?.producto_codigo || 'producto'} en ${String(location?.label || '').trim()}`}
                                   />
                                 </span>
                                 <span>
                                   {location?.no_encontrado ? (
-                                    <span className="quick-actions__inspection-notfound-tag">No encontrado</span>
+                                    <button
+                                      type="button"
+                                      className="quick-actions__inspection-notfound-tag quick-actions__inspection-notfound-undo"
+                                      onClick={() => handleRandomInspectionLocationCountChange(rowId, location.key, '')}
+                                      disabled={randomInspectionSubmitting}
+                                      data-title="Deshacer: volver a escribir la cantidad (0 si la ubicación está bien pero vacía)"
+                                    >
+                                      No encontrado · <u>Deshacer</u>
+                                    </button>
                                   ) : (
                                     <button
                                       type="button"

@@ -4031,6 +4031,29 @@
   font-weight: 600;
 }
 
+/* "No lo encontre" se ve distinto de un 0 contado (ubicacion vacia). */
+.quick-actions__inspection-row-table input.quick-actions__inspection-count--notfound {
+  background: repeating-linear-gradient(-45deg, rgba(245, 158, 11, 0.12) 0 6px, transparent 6px 12px);
+  border-style: dashed;
+  border-color: rgba(217, 119, 6, 0.6);
+}
+
+.quick-actions__inspection-row-table input.quick-actions__inspection-count--notfound::placeholder {
+  color: #b45309;
+  font-weight: 700;
+  font-size: 0.8em;
+}
+
+.quick-actions__inspection-notfound-undo {
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.quick-actions__inspection-notfound-undo:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.28);
+}
+
 /* Quitar un producto que agrego el revisor. */
 .quick-actions__inspection-row-remove {
   width: 40px;
