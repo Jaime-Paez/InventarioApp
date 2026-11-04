@@ -7128,8 +7128,9 @@ function QuickActions({
                                 const id = idOf(location)
                                 const raw = normalizeQuantityInputString(rawValue)
                                 const typed = raw === '' ? '' : String(Math.min(toPositiveInt(raw, 0), found))
-                                const touched = { ...(mover.llevarTocadas || {}), [id]: true }
-                                const next = { ...(mover.llevar || {}), [id]: typed }
+                                const sameMode = mover.modo === 'llevar'
+                                const touched = { ...(sameMode ? (mover.llevarTocadas || {}) : {}), [id]: true }
+                                const next = { ...(sameMode ? (mover.llevar || {}) : {}), [id]: typed }
                                 const rest = others.filter((other) => idOf(other) !== id)
                                 const target = rest.length === 1
                                   ? rest[0]
@@ -7143,7 +7144,12 @@ function QuickActions({
                                     .reduce((total, other) => total + toPositiveInt(next[idOf(other)], 0), 0)
                                   next[idOf(target)] = String(Math.max(0, found - assigned))
                                 }
-                                return { modo: 'llevar', llevar: next, llevarTocadas: touched }
+                                return { modo: 'llevar', llevar: next, llevarTocadas: touched, traer: {} }
+                              }
+                              // Cambiar de opcion borra lo escrito en la otra (vuelve a "-").
+                              const chooseMode = (modo) => {
+                                if (mover.modo === modo) return
+                                setMover({ modo, llevar: {}, llevarTocadas: {}, traer: {} })
                               }
                               const setMover = (patch) => setRandomInspectionAdd((prev) => (prev?.mover ? { ...prev, mover: { ...prev.mover, error: '', ...patch } } : prev))
                               const busy = Boolean(randomInspectionAdd.saving)
@@ -7235,10 +7241,10 @@ function QuickActions({
                                             tabIndex={0}
                                             aria-checked={mover.modo === 'llevar'}
                                             className={`quick-actions__inspection-move-option${mover.modo === 'llevar' ? ' is-active' : ''}`}
-                                            onClick={() => { if (!busy && mover.modo !== 'llevar') setMover({ modo: 'llevar' }) }}
+                                            onClick={() => { if (!busy) chooseMode('llevar') }}
                                             onKeyDown={(event) => {
                                               if (event.target !== event.currentTarget) return
-                                              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setMover({ modo: 'llevar' }) }
+                                              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseMode('llevar') }
                                             }}
                                           >
                                             <strong>Llevarlas a su ubicación</strong>
@@ -7252,7 +7258,7 @@ function QuickActions({
                                                     inputMode="numeric"
                                                     className="quick-actions__inspection-add-qty"
                                                     value={mover.llevar?.[idOf(location)] ?? ''}
-                                                    onFocus={() => { if (mover.modo !== 'llevar') setMover({ modo: 'llevar' }) }}
+                                                    onFocus={() => chooseMode('llevar')}
                                                     onChange={(event) => setMover(splitFoundUnits(location, event.target.value))}
                                                     placeholder="0"
                                                     aria-label={`Cuántas llevas a ${location.label}`}
@@ -7267,10 +7273,10 @@ function QuickActions({
                                             tabIndex={0}
                                             aria-checked={mover.modo === 'traer'}
                                             className={`quick-actions__inspection-move-option${mover.modo === 'traer' ? ' is-active' : ''}`}
-                                            onClick={() => { if (!busy && mover.modo !== 'traer') setMover({ modo: 'traer' }) }}
+                                            onClick={() => { if (!busy) chooseMode('traer') }}
                                             onKeyDown={(event) => {
                                               if (event.target !== event.currentTarget) return
-                                              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setMover({ modo: 'traer' }) }
+                                              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); chooseMode('traer') }
                                             }}
                                           >
                                             <strong>Pasar a esta ubicación</strong>
@@ -7287,10 +7293,12 @@ function QuickActions({
                                                     inputMode="numeric"
                                                     className="quick-actions__inspection-add-qty"
                                                     value={mover.traer?.[idOf(location)] ?? ''}
-                                                    onFocus={() => { if (mover.modo !== 'traer') setMover({ modo: 'traer' }) }}
+                                                    onFocus={() => chooseMode('traer')}
                                                     onChange={(event) => setMover({
                                                       modo: 'traer',
-                                                      traer: { ...(mover.traer || {}), [idOf(location)]: normalizeQuantityInputString(event.target.value) },
+                                                      llevar: {},
+                                                      llevarTocadas: {},
+                                                      traer: { ...(mover.modo === 'traer' ? (mover.traer || {}) : {}), [idOf(location)]: normalizeQuantityInputString(event.target.value) },
                                                     })}
                                                     placeholder="-"
                                                     aria-label={`Cuántas quedan en ${location.label}`}
