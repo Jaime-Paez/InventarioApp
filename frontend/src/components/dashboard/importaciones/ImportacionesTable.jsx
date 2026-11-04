@@ -3868,10 +3868,7 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuev
   return (
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'stretch' }}>
       {completos > 0 && (
-        <div style={{ ...caja, flex: '1 1 auto' }}>
-          <span style={titulo} title="Vinculados al catálogo + coinciden por OEM o referencia + con código nuevo">
-            {completos} completo{completos !== 1 ? 's' : ''}
-          </span>
+        <div style={{ ...caja, flex: '1 1 auto', justifyContent: 'center' }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {vinculados > 0 && (
               <span {...chipProps('vinculados', 'los vinculados al catálogo')} title="Clic: ir a los vinculados al catálogo" style={{ ...chip, background: '#dcfce7', color: '#15803d' }}>
