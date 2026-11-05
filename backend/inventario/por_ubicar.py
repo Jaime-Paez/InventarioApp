@@ -72,6 +72,15 @@ def _special_subdivision(sucursal_id, nombre, *, create):
     return subdivision
 
 
+def exclude_por_ubicar(inventario_qs):
+    """Filas de Inventario sin las de POR UBICAR: un producto que solo esta
+    ahi todavia no tiene ubicacion propia en la sucursal."""
+    return inventario_qs.exclude(
+        subdivision__division__nombre__iexact=POR_UBICAR_NOMBRE,
+        subdivision__nombre__iexact=POR_UBICAR_NOMBRE,
+    )
+
+
 def add_stock(subdivision_id, producto_id, cantidad):
     qty = int(cantidad or 0)
     if qty <= 0:

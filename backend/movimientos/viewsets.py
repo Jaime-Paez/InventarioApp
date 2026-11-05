@@ -6657,11 +6657,17 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             action_key="puede_leer",
         )
 
+        # Si solo esta en POR UBICAR no tiene ubicacion propia: se pide la
+        # inicial para que la entrada no se sume en POR UBICAR.
+        from inventario.por_ubicar import exclude_por_ubicar
+
         product_ids_with_location = sorted(
             set(
-                Inventario.objects.filter(
-                    subdivision__division__bodega__sucursal_id=sucursal_id,
-                    producto_id__in=product_ids,
+                exclude_por_ubicar(
+                    Inventario.objects.filter(
+                        subdivision__division__bodega__sucursal_id=sucursal_id,
+                        producto_id__in=product_ids,
+                    )
                 )
                 .values_list("producto_id", flat=True)
                 .distinct()

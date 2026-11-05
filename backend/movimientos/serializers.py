@@ -1652,14 +1652,18 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 {"sucursal_id": "No se pudo resolver la sucursal de la entrada."}
             )
 
+        from inventario.por_ubicar import exclude_por_ubicar
+
         detail_product_ids = set(int(product_id) for product_id in quantities.keys())
+        # Los que solo estan en POR UBICAR cuentan como sin ubicacion: piden
+        # la inicial y la compra se suma ahi, no en POR UBICAR.
         existing_product_ids = set(
-            Inventario.objects.select_for_update()
-            .filter(
-                subdivision__division__bodega__sucursal_id=sucursal_id,
-                producto_id__in=sorted(detail_product_ids),
-            )
-            .values_list("producto_id", flat=True)
+            exclude_por_ubicar(
+                Inventario.objects.select_for_update().filter(
+                    subdivision__division__bodega__sucursal_id=sucursal_id,
+                    producto_id__in=sorted(detail_product_ids),
+                )
+            ).values_list("producto_id", flat=True)
         )
         missing_product_ids = sorted(detail_product_ids - existing_product_ids)
         if not missing_product_ids:
