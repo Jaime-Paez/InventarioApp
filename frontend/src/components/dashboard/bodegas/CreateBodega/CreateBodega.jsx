@@ -5,6 +5,7 @@ import BodegaLayoutEditor from '../BodegaLayoutEditor/BodegaLayoutEditor'
 import useModalAnimation from '../../common/useModalAnimation'
 import BlockerNotice from '../../common/BlockerNotice'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
+import { isReferenceType } from '../BodegaLayoutEditor/referenceTypes'
 
 const MIN_WIDTH = 720
 const MIN_HEIGHT = 540
@@ -175,6 +176,8 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
     locations.forEach((location) => {
       const name = String(location?.nombre ?? '').trim()
       if (!name) return
+      // Solo de referencia en el mapa: no se crea division.
+      if (isReferenceType(location?.tipo)) return
       const key = normalizeKey(name)
       if (!aggregated.has(key)) {
         aggregated.set(key, {
@@ -401,7 +404,9 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
 
     // Cada division necesita al menos una subdivision (lo escrito sin
     // "Agregar" tambien cuenta).
+    // Las de referencia (puerta, pasillo, columna...) no llevan subdivisiones.
     const sinSubdivision = (formData.ubicaciones || []).filter((location) => (
+      !isReferenceType(location?.tipo) &&
       !(Array.isArray(location?.subdivisions_list) && location.subdivisions_list.length) &&
       !String(location?.subdivision_draft ?? '').trim()
     ))

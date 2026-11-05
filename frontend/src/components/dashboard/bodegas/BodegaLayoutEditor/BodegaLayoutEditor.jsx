@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './BodegaLayoutEditor.css'
+import { REFERENCE_TYPES, REFERENCE_TYPE_COLORS, isReferenceType } from './referenceTypes'
 
 const buildId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
@@ -11,7 +12,7 @@ const normalizeNumber = (value) => {
 const DEFAULT_COLOR = '#4f8df8'
 const MIN_SIZE_METERS = 0.5
 const VERTICAL_LABEL_RATIO = 1.6
-const DEFAULT_TYPES = ['Estantería', 'Cajonera', 'Muebles']
+const DEFAULT_TYPES = ['Estantería', 'Cajonera', 'Muebles', ...REFERENCE_TYPES]
 const TYPE_COLORS = ['#4f8df8', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14b8a6']
 const OVERLAP_TOLERANCE = 0.05
 // Pasos (en metros) del panel de ajuste fino: mover y cambiar tamaño sin arrastrar.
@@ -320,7 +321,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   const [types, setTypes] = useState(DEFAULT_TYPES)
   const [typeColors, setTypeColors] = useState(() =>
     DEFAULT_TYPES.reduce((acc, type, index) => {
-      acc[type] = TYPE_COLORS[index % TYPE_COLORS.length]
+      acc[type] = REFERENCE_TYPE_COLORS[type] || TYPE_COLORS[index % TYPE_COLORS.length]
       return acc
     }, {})
   )
@@ -936,7 +937,12 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                 />
               </label>
             </div>
-            {typeof renderLocationFooter === 'function' ? renderLocationFooter(location, index) : null}
+            {typeof renderLocationFooter === 'function' && !isReferenceType(location.tipo)
+              ? renderLocationFooter(location, index)
+              : null}
+            {isReferenceType(location.tipo) && (
+              <p className="bodega-layout__hint">Solo de referencia en el mapa: no lleva subdivisiones ni productos.</p>
+            )}
           </div>
         ))}
       </div>

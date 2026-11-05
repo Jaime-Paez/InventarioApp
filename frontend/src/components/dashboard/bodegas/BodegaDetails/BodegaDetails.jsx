@@ -7,6 +7,7 @@ import BodegaLayoutEditor from '../BodegaLayoutEditor/BodegaLayoutEditor'
 import useModalAnimation from '../../common/useModalAnimation'
 import BlockerNotice from '../../common/BlockerNotice'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
+import { isReferenceType } from '../BodegaLayoutEditor/referenceTypes'
 
 const MIN_WIDTH = 820
 const MIN_HEIGHT = 540
@@ -608,8 +609,10 @@ function BodegaDetails({
       return
     }
 
-    // Cada division del plano necesita al menos una subdivision.
+    // Cada division del plano necesita al menos una subdivision (menos las de
+    // referencia: puerta, pasillo, columna, pared, escritorio).
     const sinSubdivision = (formData.ubicaciones || []).filter((location) => {
+      if (isReferenceType(location?.tipo)) return false
       const key = normalizeDivisionKey(location?.nombre)
       const division = key ? divisionByName.get(key) : null
       return !division || !(subdivisionsByDivision.get(division.id) || []).length
