@@ -118,27 +118,137 @@
   color: #991b1b;
 }
 
-.producto-movs__table .create-user__locations-row {
-  grid-template-columns: 92px 76px minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1.9fr) 72px 64px;
+/* Kardex: tabla con grupos Entradas / Salidas / Totales como el sistema
+   anterior. Se desplaza a lo ancho si no cabe. */
+.producto-movs__kardex-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
 }
 
-.producto-movs__table .create-user__locations-row--empty {
-  grid-template-columns: 1fr;
+.producto-movs__kardex {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
 }
 
-.producto-movs__table .create-user__locations-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty) > span {
+.producto-movs__kardex th,
+.producto-movs__kardex td {
   padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
 }
 
-/* Documento, sucursal y origen: texto a la izquierda y con "..." al final
-   (centrado se cortaba el inicio del documento). */
-.producto-movs__table .create-user__locations-row:not(.create-user__locations-row--head):not(.create-user__locations-row--empty) > .producto-movs__text {
-  display: block;
-  text-align: left;
-  line-height: 24px;
+.producto-movs__kardex thead th {
+  background: rgba(15, 23, 42, 0.04);
+  font-weight: 600;
+  font-size: var(--font-size-xs, 0.75rem);
+}
+
+.producto-movs__kardex .producto-movs__group th {
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+/* Lineas verticales que separan Entradas, Salidas y Totales. */
+.producto-movs__kardex .sep {
+  border-left: 1px solid var(--color-border);
+}
+
+.producto-movs__group-in {
+  color: #166534;
+}
+
+.producto-movs__group-out {
+  color: #991b1b;
+}
+
+.producto-movs__kardex .num {
+  text-align: right;
+}
+
+.producto-movs__kardex .strong {
+  font-weight: 700;
+}
+
+.producto-movs__kardex tbody tr:not(.producto-movs__saldo):not(.producto-movs__empty):hover td {
+  background: rgba(15, 23, 42, 0.03);
+}
+
+.producto-movs__saldo td {
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.producto-movs__kardex tfoot .producto-movs__saldo td {
+  border-bottom: 0;
+}
+
+.producto-movs__empty td {
+  text-align: center;
+  color: var(--color-text-secondary, #64748b);
+  padding: 14px 8px;
+}
+
+.producto-movs__origen {
+  max-width: 260px;
   overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.producto-movs__doc .producto-movs__tag {
+  margin-right: 6px;
+  padding: 1px 6px;
+}
+
+.producto-movs__neg {
+  color: #b91c1c;
+}
+
+.producto-movs__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: var(--font-size-sm);
+}
+
+.producto-movs__warning svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.dashboard-shell.dark .producto-movs__kardex thead th,
+.dashboard-shell.dark .producto-movs__saldo td {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dashboard-shell.dark .producto-movs__kardex tbody tr:not(.producto-movs__saldo):not(.producto-movs__empty):hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.dashboard-shell.dark .producto-movs__group-in {
+  color: #86efac;
+}
+
+.dashboard-shell.dark .producto-movs__group-out,
+.dashboard-shell.dark .producto-movs__neg {
+  color: #fca5a5;
+}
+
+.dashboard-shell.dark .producto-movs__warning {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
 }
 
 .producto-movs__tag {

@@ -11,7 +11,11 @@ En un movimiento, `sucursal` es la sucursal del propio movimiento y
 entrada, a donde va en una salida).
 """
 
-from django.db.models import Max, Q, Sum
+from decimal import ROUND_HALF_UP, Decimal
+
+from django.db.models import Case, DecimalField, F, Max, Q, Sum, Value, When
+from django.db.models.functions import Coalesce
+from django.utils.dateparse import parse_date
 
 from .models import DetalleMovimiento, MovimientoInventario
 
@@ -140,6 +144,37 @@ def history_branch_options(allowed_ids=None, assigned_ids=None):
     return branches, default_id
 
 
+# Entradas que traen su propio costo (compras). Las demas entradas (traslado,
+# devolucion) entran al costo promedio que ya tenia el producto.
+_ENTRADAS_CON_COSTO = {"compra_local", "importacion"}
+
+_Q4 = Decimal("0.0001")
+
+
+def _money(value):
+    return str(Decimal(value or 0).quantize(_Q4, rounding=ROUND_HALF_UP))
+
+
+def _subtipo_key_nombre(nombre):
+    name = _norm(nombre)
+    if name.startswith("import"):
+        return "importacion"
+    if name.startswith("compra"):
+        return "compra_local"
+    return name
+
+
+def _stock_actual(producto_id, sucursal_id, allowed_sucursal_ids):
+    from inventario.models import Inventario
+
+    queryset = Inventario.objects.filter(producto_id=producto_id)
+    if sucursal_id:
+        queryset = queryset.filter(subdivision__division__bodega__sucursal_id=sucursal_id)
+    elif allowed_sucursal_ids is not None:
+        queryset = queryset.filter(subdivision__division__bodega__sucursal_id__in=sorted(allowed_sucursal_ids))
+    return int(queryset.aggregate(total=Sum("cantidad"))["total"] or 0)
+
+
 def build_product_movement_history(
     producto_id,
     *,
@@ -151,49 +186,131 @@ def build_product_movement_history(
     page=1,
     page_size=PAGE_SIZE_DEFAULT,
 ):
-    """allowed_sucursal_ids None = todas; si no, solo movimientos de esas
+    """Kardex del producto: movimientos del mas antiguo al mas reciente con
+    saldo anterior, entradas, salidas y el acumulado (cantidad y costo) despues
+    de cada movimiento. Costo promedio ponderado: las compras entran a su
+    valor, las demas entradas y todas las salidas al costo promedio del momento.
+
+    El acumulado se calcula desde el primer movimiento, asi que el saldo
+    anterior (todo lo de antes de fecha_desde) y los acumulados son los mismos
+    con o sin filtro de tipo; el filtro de tipo solo oculta filas.
+
+    allowed_sucursal_ids None = todas; si no, solo movimientos de esas
     sucursales (sucursal_id ya debe estar entre ellas)."""
+    if isinstance(fecha_desde, str):
+        fecha_desde = parse_date(fecha_desde)
+    if isinstance(fecha_hasta, str):
+        fecha_hasta = parse_date(fecha_hasta)
     detalles = DetalleMovimiento.objects.filter(
         producto_id=producto_id,
         movimiento_inventario__in=_base_movements(),
     )
     if allowed_sucursal_ids is not None:
         detalles = detalles.filter(movimiento_inventario__sucursal_id__in=sorted(allowed_sucursal_ids))
-
-    # Totales y sucursales sin filtrar por tipo (para el resumen y el filtro).
-    scope = detalles
     if sucursal_id:
-        scope = scope.filter(movimiento_inventario__sucursal_id=sucursal_id)
-    # Rango de fechas (incluye ambos dias): filtra la tabla y los totales.
-    if fecha_desde:
-        scope = scope.filter(movimiento_inventario__fecha__gte=fecha_desde)
+        detalles = detalles.filter(movimiento_inventario__sucursal_id=sucursal_id)
     if fecha_hasta:
-        scope = scope.filter(movimiento_inventario__fecha__lte=fecha_hasta)
-    totales = {"entradas": 0, "salidas": 0}
-    for row in scope.values("movimiento_inventario__tipo_movimiento__nombre").annotate(total=Sum("cantidad")):
-        key = "salidas" if _norm(row["movimiento_inventario__tipo_movimiento__nombre"]).startswith("sal") else "entradas"
-        totales[key] += int(row["total"] or 0)
-
-    filtered = scope
-    if tipo in {"entrada", "salida"}:
-        filtered = filtered.filter(
-            movimiento_inventario__tipo_movimiento__nombre__istartswith="sal" if tipo == "salida" else "ent"
-        )
+        detalles = detalles.filter(movimiento_inventario__fecha__lte=fecha_hasta)
 
     grouped = (
-        filtered.values("movimiento_inventario_id")
+        detalles.values("movimiento_inventario_id")
         .annotate(
+            # Va primero: mas abajo "cantidad" y "valor_total" pasan a ser las
+            # sumas y F() ya no veria los campos de cada linea.
+            # En compras locales `valor` es el PVP; el costo real es `costo`
+            # menos el descuento negociado. Sin costo (importaciones, compras
+            # del sistema anterior) se usa el valor de la linea.
+            costo_compra=Sum(
+                Case(
+                    When(
+                        costo__isnull=False,
+                        then=F("costo") * F("cantidad") * (Value(100) - Coalesce("descuento_porcentaje", Value(0))) / Value(100),
+                    ),
+                    default=F("valor_total"),
+                    output_field=DecimalField(max_digits=20, decimal_places=6),
+                )
+            ),
             cantidad=Sum("cantidad"),
             valor_total=Sum("valor_total"),
             fecha=Max("movimiento_inventario__fecha"),
+            tipo_nombre=Max("movimiento_inventario__tipo_movimiento__nombre"),
+            subtipo_nombre=Max("movimiento_inventario__sub_tipo_movimiento__nombre"),
         )
-        .order_by("-fecha", "-movimiento_inventario_id")
+        .order_by("fecha", "movimiento_inventario_id")
     )
-    total_rows = grouped.count()
+
+    acum_cant = 0
+    acum_costo = Decimal("0")
+    saldo_anterior = {"cantidad": 0, "costo": Decimal("0")}
+    totales = {
+        "entradas": 0,
+        "salidas": 0,
+        "entradas_total": Decimal("0"),
+        "salidas_total": Decimal("0"),
+    }
+    visibles = []
+    for row in grouped:
+        es_salida = _norm(row["tipo_nombre"]).startswith("sal")
+        cantidad = int(row["cantidad"] or 0)
+        valor_total = Decimal(row["valor_total"] or 0)
+        promedio = (acum_costo / acum_cant) if acum_cant > 0 else None
+        if es_salida:
+            unitario = promedio if promedio is not None else Decimal("0")
+            # Si se lleva justo lo que hay, se lleva todo el costo (sin
+            # centavos sueltos por redondeo).
+            total = acum_costo if cantidad == acum_cant else unitario * cantidad
+            acum_cant -= cantidad
+            acum_costo -= total
+            if acum_cant <= 0:
+                acum_costo = Decimal("0")
+        else:
+            con_costo = _subtipo_key_nombre(row["subtipo_nombre"]) in _ENTRADAS_CON_COSTO
+            costo_compra = Decimal(row["costo_compra"] or 0)
+            if con_costo and cantidad and costo_compra:
+                total = costo_compra
+                unitario = costo_compra / cantidad
+            elif promedio is None and cantidad and valor_total:
+                total = valor_total
+                unitario = valor_total / cantidad
+            else:
+                unitario = promedio if promedio is not None else Decimal("0")
+                total = unitario * cantidad
+            if acum_cant < 0:
+                # Venia en negativo (faltan movimientos viejos): lo que queda
+                # vale al costo de esta entrada.
+                acum_cant += cantidad
+                acum_costo = unitario * max(acum_cant, 0)
+            else:
+                acum_cant += cantidad
+                acum_costo += total
+            if acum_cant <= 0:
+                acum_costo = Decimal("0")
+
+        if fecha_desde and row["fecha"] and row["fecha"] < fecha_desde:
+            saldo_anterior = {"cantidad": acum_cant, "costo": acum_costo}
+            continue
+        key = "salidas" if es_salida else "entradas"
+        totales[key] += cantidad
+        totales[f"{key}_total"] += total
+        if tipo in {"entrada", "salida"} and (tipo == "salida") != es_salida:
+            continue
+        visibles.append(
+            {
+                "movimiento_inventario_id": row["movimiento_inventario_id"],
+                "cantidad": cantidad,
+                "valor_total": valor_total,
+                "costo_unitario": unitario,
+                "costo_total": total,
+                "acum_cantidad": acum_cant,
+                "acum_costo": acum_costo,
+            }
+        )
+
+    total_rows = len(visibles)
     page_size = max(1, min(int(page_size or PAGE_SIZE_DEFAULT), PAGE_SIZE_MAX))
     total_pages = max(1, (total_rows + page_size - 1) // page_size)
     page = max(1, min(int(page or 1), total_pages))
-    page_rows = list(grouped[(page - 1) * page_size: page * page_size])
+    page_rows = visibles[(page - 1) * page_size: page * page_size]
 
     ids = [row["movimiento_inventario_id"] for row in page_rows]
     movements = MovimientoInventario.objects.filter(id__in=ids).select_related(
@@ -214,7 +331,6 @@ def build_product_movement_history(
         tipo_key = _tipo_key(mov)
         subtipo = _subtipo_key(mov)
         importacion = importaciones.get(mov.id)
-        cantidad = int(row["cantidad"] or 0)
         results.append(
             {
                 "movimiento_id": mov.id,
@@ -228,8 +344,12 @@ def build_product_movement_history(
                 "sucursal": str(mov.sucursal) if mov.sucursal_id else "",
                 "origen": _origen_texto(mov, tipo_key, subtipo, importacion),
                 "importacion": importacion,
-                "cantidad": cantidad,
-                "valor_total": str(row["valor_total"] or 0),
+                "cantidad": row["cantidad"],
+                "valor_total": str(row["valor_total"]),
+                "costo_unitario": _money(row["costo_unitario"]),
+                "costo_total": _money(row["costo_total"]),
+                "acum_cantidad": row["acum_cantidad"],
+                "acum_costo": _money(row["acum_costo"]),
                 "es_legado": bool(mov.es_legado),
             }
         )
@@ -240,5 +360,16 @@ def build_product_movement_history(
         "page": page,
         "page_size": page_size,
         "total_pages": total_pages,
-        "totales": totales,
+        "totales": {
+            "entradas": totales["entradas"],
+            "salidas": totales["salidas"],
+            "entradas_total": _money(totales["entradas_total"]),
+            "salidas_total": _money(totales["salidas_total"]),
+        },
+        "saldo_anterior": {
+            "cantidad": saldo_anterior["cantidad"],
+            "costo": _money(saldo_anterior["costo"]),
+        },
+        "saldo_actual": {"cantidad": acum_cant, "costo": _money(acum_costo)},
+        "stock_actual": _stock_actual(producto_id, sucursal_id, allowed_sucursal_ids),
     }

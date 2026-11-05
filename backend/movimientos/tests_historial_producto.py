@@ -71,7 +71,7 @@ class HistorialProductoTests(APITestCase):
 
         data = build_product_movement_history(self.producto.id)
 
-        self.assertEqual([row["no_documento"] for row in data["results"]], ["V-1", "TR-1", "CL-1", "IMP-1"])
+        self.assertEqual([row["no_documento"] for row in data["results"]], ["IMP-1", "CL-1", "TR-1", "V-1"])
         rows = {row["no_documento"]: row for row in data["results"]}
         self.assertEqual(rows["IMP-1"]["origen"], "Importación IMP-77 · ACME")
         self.assertEqual(rows["IMP-1"]["importacion"]["codigo"], "IMP-77")
@@ -79,14 +79,71 @@ class HistorialProductoTests(APITestCase):
         self.assertEqual(rows["CL-1"]["origen"], "Compra local · ACME")
         self.assertEqual(rows["TR-1"]["origen"], "Traslado a Norte")
         self.assertEqual(rows["V-1"]["origen"], "Venta · JUAN")
-        self.assertEqual(data["totales"], {"entradas": 15, "salidas": 5})
+        self.assertEqual((data["totales"]["entradas"], data["totales"]["salidas"]), (15, 5))
 
         salidas = build_product_movement_history(self.producto.id, tipo="salida")
-        self.assertEqual([row["no_documento"] for row in salidas["results"]], ["V-1", "TR-1"])
+        self.assertEqual([row["no_documento"] for row in salidas["results"]], ["TR-1", "V-1"])
 
         rango = build_product_movement_history(self.producto.id, fecha_desde="2026-10-02", fecha_hasta="2026-10-03")
-        self.assertEqual([row["no_documento"] for row in rango["results"]], ["TR-1", "CL-1"])
-        self.assertEqual(rango["totales"], {"entradas": 5, "salidas": 4})
+        self.assertEqual([row["no_documento"] for row in rango["results"]], ["CL-1", "TR-1"])
+        self.assertEqual((rango["totales"]["entradas"], rango["totales"]["salidas"]), (5, 4))
+        # Antes del 2 de octubre solo estaba la importacion de 10.
+        self.assertEqual(rango["saldo_anterior"]["cantidad"], 10)
+        self.assertEqual([row["acum_cantidad"] for row in rango["results"]], [15, 11])
+
+    def _mov_valor(self, sub, doc, fecha, cantidad, valor, **extra):
+        mov = self._mov(sub, doc, fecha, [], **extra)
+        DetalleMovimiento.objects.create(
+            movimiento_inventario=mov,
+            producto=self.producto,
+            cantidad=cantidad,
+            estado_producto=self.estado_producto,
+            valor=valor,
+            valor_total=valor * cantidad,
+        )
+        return mov
+
+    def test_kardex_costo_promedio(self):
+        """Saldo anterior, salidas al costo promedio y compras a su valor,
+        como el Kardex del sistema anterior."""
+        devol = SubTipoMovimiento.objects.get_or_create(tipo_movimiento=self.entrada, nombre="Devolucion")[0]
+        self._mov_valor(self.sub["compra"], "CL-0", "2026-09-01", 9, Decimal("120.00"))
+        self._mov_valor(self.sub["venta"], "V-1", "2026-10-06", 1, Decimal("200"))
+        self._mov_valor(self.sub["venta"], "V-2", "2026-10-21", 1, Decimal("200"))
+        self._mov_valor(self.sub["compra"], "CL-1", "2026-10-23", 6, Decimal("109.57"))
+        self._mov_valor(devol, "D-1", "2026-10-24", 1, Decimal("999"))
+
+        data = build_product_movement_history(self.producto.id, fecha_desde="2026-10-01", fecha_hasta="2026-11-30")
+
+        self.assertEqual(data["saldo_anterior"], {"cantidad": 9, "costo": "1080.0000"})
+        rows = {row["no_documento"]: row for row in data["results"]}
+        self.assertEqual(rows["V-1"]["costo_unitario"], "120.0000")
+        self.assertEqual(rows["V-1"]["acum_cantidad"], 8)
+        self.assertEqual(rows["V-1"]["acum_costo"], "960.0000")
+        self.assertEqual(rows["CL-1"]["costo_total"], "657.4200")
+        self.assertEqual(rows["CL-1"]["acum_cantidad"], 13)
+        self.assertEqual(rows["CL-1"]["acum_costo"], "1497.4200")
+        # La devolucion entra al costo promedio, no a su precio.
+        self.assertEqual(rows["D-1"]["costo_unitario"], "115.1862")
+        self.assertEqual(data["saldo_actual"]["cantidad"], 14)
+        self.assertEqual(data["totales"]["salidas_total"], "240.0000")
+
+    def test_kardex_compra_local_usa_costo_con_descuento_y_parte_de_negativo(self):
+        # Venta sin entradas previas: el acumulado queda en -1.
+        self._mov_valor(self.sub["venta"], "V-0", "2026-10-01", 1, Decimal("200"))
+        compra = self._mov_valor(self.sub["compra"], "CL-1", "2026-10-02", 3, Decimal("200"))
+        DetalleMovimiento.objects.filter(movimiento_inventario=compra).update(
+            costo=Decimal("100"), descuento_porcentaje=Decimal("10")
+        )
+
+        data = build_product_movement_history(self.producto.id)
+
+        rows = {row["no_documento"]: row for row in data["results"]}
+        self.assertEqual(rows["V-0"]["acum_cantidad"], -1)
+        # El PVP (valor) es 200; el costo es 100 menos 10 %.
+        self.assertEqual(rows["CL-1"]["costo_unitario"], "90.0000")
+        self.assertEqual(rows["CL-1"]["acum_cantidad"], 2)
+        self.assertEqual(rows["CL-1"]["acum_costo"], "180.0000")
 
     def test_endpoint(self):
         self._mov(self.sub["compra"], "CL-9", "2026-10-02", [(self.producto, 2)])
