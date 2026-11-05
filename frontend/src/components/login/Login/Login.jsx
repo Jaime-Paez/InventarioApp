@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './Login.css'
 import wallpaperLight from '../../../assets/login/login_wallpaper(light).png'
 import wallpaperDark from '../../../assets/login/login_wallpaper(dark).png'
@@ -65,21 +65,19 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
   const [isMobile, setIsMobile] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
-  const [loginData, setLoginData] = useState({
-    email: '',
-    password: '',
-  })
-
   const headers = useMemo(() => ({ 'Content-Type': 'application/json' }), [])
   const server = useServerStatus()
   const { status: serverStatus, markDown } = server
-  // Login enviado mientras el servidor no respondia: se manda solo al volver.
-  const [pendingLogin, setPendingLogin] = useState(false)
   const [loginSlow, setLoginSlow] = useState(false)
-  const loginDataRef = useRef(loginData)
-  loginDataRef.current = loginData
 
-  const doLogin = useCallback(async () => {
+  // Tras una recarga por servidor caido vuelve el correo (la contrasena no se guarda).
+  const [loginData, setLoginData] = useState(() => ({
+    email: server.savedEmail,
+    password: '',
+  }))
+
+  const handleLogin = async (event) => {
+    event.preventDefault()
     setLoading(true)
     setAuthError('')
     setStatusMessage('')
@@ -93,14 +91,13 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
         {
           method: 'POST',
           headers,
-          body: JSON.stringify(loginDataRef.current),
+          body: JSON.stringify(loginData),
           signal: controller.signal,
         },
         null
       )
       if (SERVER_DOWN_STATUSES.has(response.status)) {
-        markDown()
-        setPendingLogin(true)
+        markDown(loginData.email)
         return
       }
       const data = await response.json().catch(() => ({}))
@@ -110,6 +107,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
         return
       }
 
+      server.cancel()
       const permisos = Array.isArray(data.permisos) ? data.permisos : null
       onLoginSuccess(data.usuario, data.token, permisos, data.usuario_interno_id)
       setStatusMessage('¡Bienvenido de nuevo!')
@@ -118,32 +116,14 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
     } catch (error) {
       // Sin respuesta o tardo demasiado: el servidor esta caido o reiniciando.
       console.error('Error al iniciar sesión:', error)
-      markDown()
-      setPendingLogin(true)
+      markDown(loginData.email)
     } finally {
       window.clearTimeout(timer)
       window.clearTimeout(slowTimer)
       setLoginSlow(false)
       setLoading(false)
     }
-  }, [headers, markDown, onLoginSuccess])
-
-  const handleLogin = async (event) => {
-    event.preventDefault()
-    if (serverStatus === 'down') {
-      setAuthError('')
-      setPendingLogin(true)
-      return
-    }
-    await doLogin()
   }
-
-  // Volvio el servidor: enviar el login que quedo esperando.
-  useEffect(() => {
-    if (serverStatus !== 'up' || !pendingLogin || loading) return
-    setPendingLogin(false)
-    void doLogin()
-  }, [serverStatus, pendingLogin, loading, doLogin])
 
   const handleToggleTheme = () => {
     // “splash” liquid del botón
@@ -239,8 +219,8 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
               </div>
             </div>
 
-            <button type="submit" className="primary-button" disabled={loading || pendingLogin}>
-              {loading ? 'Validando...' : pendingLogin ? 'Esperando al servidor...' : 'Iniciar Sesión'}
+            <button type="submit" className="primary-button" disabled={loading}>
+              {loading ? 'Validando...' : 'Iniciar Sesión'}
             </button>
           </form>
 
@@ -250,34 +230,35 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
               <span>Conectando con el servidor… puede tardar si se estaba reiniciando.</span>
             </div>
           )}
+          {serverStatus === 'checking' && (
+            <div className="server-status server-status--slow" role="status">
+              <span className="server-status__spinner" aria-hidden />
+              <span>Comprobando si el servidor ya responde…</span>
+            </div>
+          )}
           {serverStatus === 'down' && (
             <div className="server-status server-status--down" role="alert">
               <strong>El servidor no está respondiendo</strong>
               <span>
-                Puede estar reiniciándose. Se vuelve a intentar solo cada {RETRY_SECONDS} segundos; no hace falta recargar la página.
+                Puede estar reiniciándose. La página se actualiza sola cada {RETRY_SECONDS} segundos hasta que vuelva.
               </span>
               <span className="server-status__meta">
-                {server.secondsLeft > 0 ? `Próximo intento en ${server.secondsLeft} s` : 'Probando…'}
+                {server.secondsLeft > 0 ? `Se actualiza en ${server.secondsLeft} s` : 'Actualizando…'}
                 {server.attempts > 1 ? ` · intento ${server.attempts}` : ''}
               </span>
-              {pendingLogin && (
-                <span>Tu inicio de sesión se enviará en cuanto responda.</span>
-              )}
               <div className="server-status__actions">
-                <button type="button" className="server-status__btn" onClick={() => void server.check()}>
-                  Reintentar ahora
+                <button type="button" className="server-status__btn" onClick={server.reloadNow}>
+                  Actualizar ahora
                 </button>
-                {pendingLogin && (
-                  <button type="button" className="server-status__btn server-status__btn--ghost" onClick={() => setPendingLogin(false)}>
-                    Cancelar inicio de sesión
-                  </button>
-                )}
+                <button type="button" className="server-status__btn server-status__btn--ghost" onClick={server.cancel}>
+                  Dejar de intentar
+                </button>
               </div>
             </div>
           )}
           {serverStatus === 'up' && server.recovered && (
             <div className="server-status server-status--up" role="status">
-              <span>Servidor disponible.</span>
+              <span>Servidor disponible. Ya puedes iniciar sesión.</span>
             </div>
           )}
 
