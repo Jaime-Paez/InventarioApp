@@ -375,9 +375,9 @@
   font-size: inherit;
 }
 
+/* "Saldo actual": linea entre el titulo y sus valores (obligatoria). */
 .producto-movs__kardex tfoot .producto-movs__saldo--title td {
-  border-bottom: 0;
-  padding-bottom: 0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .producto-movs__saldo-note {
