@@ -228,8 +228,8 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
               </tr>
               <tr>
                 <th>Fecha</th>
-                <th>Documento</th>
-                <th>De dónde / a dónde</th>
+                <th className="sep">Documento</th>
+                <th className="sep">De dónde / a dónde</th>
                 <th className="num sep">Cantidad</th>
                 <th className="num">P. Unitario</th>
                 <th className="num">Total</th>
@@ -281,13 +281,13 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
                 return (
                   <tr key={isAjuste ? `ajuste-${row.ajuste_id}` : `${row.tipo}-${row.movimiento_id}`}>
                     <td className="nowrap">{formatDate(row.fecha)}</td>
-                    <td className="producto-movs__doc nowrap">
+                    <td className="producto-movs__doc nowrap sep">
                       <span className={`producto-movs__tag ${tagClass}`}>
                         {isAjuste ? 'A' : isEntrada ? 'E' : 'S'}
                       </span>
                       {isAjuste ? `Ajuste ${Number(row.diferencia) > 0 ? '+' : '−'}${row.cantidad}` : (row.no_documento || '-')}
                     </td>
-                    <td className="producto-movs__origen" data-title={detalle}>{origen}</td>
+                    <td className="producto-movs__origen sep" data-title={detalle}>{origen}</td>
                     {isEntrada ? (
                       <>
                         <td className="num sep producto-movs__qty--in">{row.cantidad}</td>
