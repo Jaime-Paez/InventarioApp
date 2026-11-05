@@ -368,6 +368,9 @@
   position: sticky;
   left: 8px;
   display: inline-block;
+  /* Mismo tamano que el resto de la tabla (una regla global de span lo
+     agrandaba a 11px). */
+  font-size: inherit;
 }
 
 .producto-movs__kardex tfoot .producto-movs__saldo--title td {
@@ -376,6 +379,7 @@
 }
 
 .producto-movs__saldo-note {
+  font-size: inherit;
   font-weight: 500;
   color: var(--color-text-secondary, #64748b);
 }
