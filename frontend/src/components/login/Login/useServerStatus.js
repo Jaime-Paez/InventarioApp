@@ -5,15 +5,16 @@ export const RETRY_SECONDS = 15
 const PING_TIMEOUT_MS = 10000
 const SLOW_AFTER_MS = 2500
 
-// Estado del backend para el login: si no responde (caido, reiniciando o sin
-// base de datos) se vuelve a probar solo cada RETRY_SECONDS hasta que responda.
-// status: 'checking' | 'slow' (tarda, p. ej. despertando) | 'up' | 'down'
+// Estado del backend para el login. No se prueba nada al abrir la pantalla:
+// solo cuando un intento de login falla por el servidor (markDown). Desde ahi
+// se vuelve a probar solo cada RETRY_SECONDS hasta que responda.
+// status: 'idle' (sin probar) | 'checking' | 'slow' | 'up' | 'down'
 export default function useServerStatus() {
-  const [status, setStatus] = useState('checking')
+  const [status, setStatus] = useState('idle')
   const [secondsLeft, setSecondsLeft] = useState(0)
   const [attempts, setAttempts] = useState(0)
   const [recovered, setRecovered] = useState(false)
-  const statusRef = useRef('checking')
+  const statusRef = useRef('idle')
   const inFlightRef = useRef(false)
   const wasDownRef = useRef(false)
 
@@ -62,10 +63,6 @@ export default function useServerStatus() {
     update('down')
     setSecondsLeft(RETRY_SECONDS)
   }, [])
-
-  useEffect(() => {
-    void check()
-  }, [check])
 
   // Cuenta regresiva mientras este caido; al llegar a 0 se reintenta.
   useEffect(() => {

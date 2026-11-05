@@ -10,6 +10,7 @@ import { API_URL, authFetch } from '../../../utils/api'
 import useServerStatus, { RETRY_SECONDS } from './useServerStatus'
 
 const LOGIN_TIMEOUT_MS = 25000
+const LOGIN_SLOW_MS = 2500
 // Respuestas que significan "el servidor no esta" (no credenciales malas).
 const SERVER_DOWN_STATUSES = new Set([502, 503, 504])
 
@@ -74,6 +75,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
   const { status: serverStatus, markDown } = server
   // Login enviado mientras el servidor no respondia: se manda solo al volver.
   const [pendingLogin, setPendingLogin] = useState(false)
+  const [loginSlow, setLoginSlow] = useState(false)
   const loginDataRef = useRef(loginData)
   loginDataRef.current = loginData
 
@@ -83,6 +85,8 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
     setStatusMessage('')
     const controller = new AbortController()
     const timer = window.setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS)
+    // Solo despues de intentar: si tarda, avisar que se esta conectando.
+    const slowTimer = window.setTimeout(() => setLoginSlow(true), LOGIN_SLOW_MS)
     try {
       const response = await authFetch(
         `${API_URL}/auth/login/`,
@@ -118,6 +122,8 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
       setPendingLogin(true)
     } finally {
       window.clearTimeout(timer)
+      window.clearTimeout(slowTimer)
+      setLoginSlow(false)
       setLoading(false)
     }
   }, [headers, markDown, onLoginSuccess])
@@ -238,7 +244,7 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
             </button>
           </form>
 
-          {serverStatus === 'slow' && (
+          {loginSlow && serverStatus !== 'down' && (
             <div className="server-status server-status--slow" role="status">
               <span className="server-status__spinner" aria-hidden />
               <span>Conectando con el servidor… puede tardar si se estaba reiniciando.</span>
