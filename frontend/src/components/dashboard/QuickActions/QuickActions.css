@@ -4371,3 +4371,47 @@
   background: transparent;
   color: var(--color-text-title-dark);
 }
+
+/* Producto que el revisor paso todo a otra fila: en su fila de antes queda
+   en gris con "Movido a ..." (ya no se cuenta ahi). */
+.quick-actions__inspection-row-table .quick-actions__inspection-row--moved {
+  background: rgba(100, 116, 139, 0.08);
+  color: var(--color-text-secondary, #64748b);
+}
+
+.quick-actions__inspection-row-table .quick-actions__inspection-row--moved .quick-actions__inspection-row-code strong {
+  text-decoration: line-through;
+}
+
+.quick-actions__inspection-moved-to {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs, 12px);
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-row-table .quick-actions__inspection-row--moved {
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--color-text-dark);
+}
+
+.quick-actions__inspection-overlay.dark .quick-actions__inspection-moved-to {
+  color: #93c5fd;
+}
+
+/* Aviso dentro del modal de agregar: el producto ya esta en otra fila. */
+.quick-actions__inspection-move-inline {
+  margin-top: 10px;
+}
+
+.quick-actions__inspection-move-inline .quick-actions__inspection-btn {
+  margin-top: 8px;
+}
+
+.quick-actions__inspection-add-overlay.dark .quick-actions__inspection-move-warning {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.1);
+  color: #fde68a;
+}

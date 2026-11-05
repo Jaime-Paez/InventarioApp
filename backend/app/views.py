@@ -1760,7 +1760,8 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
         "no_encontrado": bool(getattr(item, "no_encontrado", False)),
         "cambio_ubicacion": bool(getattr(item, "cambio_ubicacion", False)) and not hide_expected,
         "agregado_por_revisor": bool(getattr(item, "agregado_por_revisor", False)),
-        "encontrado_en": _serialize_found_location(getattr(item, "encontrado_en", None))
+        "movido_por_revisor": bool(getattr(item, "movido_por_revisor", False)),
+        "encontrado_en":_serialize_found_location(getattr(item, "encontrado_en", None))
         if getattr(item, "encontrado_en_id", None)
         else None,
         "reubicado_a": (
@@ -1888,7 +1889,7 @@ def _attach_random_inspection_locations(items, *, division_id=None, subdivision_
         locations = list(stocked_map.get(key) or empty_map.get(key, []))
         found_here = getattr(item, "encontrado_en", None) if getattr(item, "encontrado_en_id", None) else None
         if (
-            getattr(item, "agregado_por_revisor", False)
+            (getattr(item, "agregado_por_revisor", False) or getattr(item, "movido_por_revisor", False))
             and found_here is not None
             and stocked_map.get(key)
             and not any(location["subdivision_id"] == int(found_here.id) for location in locations)
@@ -4550,8 +4551,147 @@ class RandomInspectionAddProductAPIView(APIView):
         )
 
 
+MOVED_NOTE_PREFIX = "[Movido]"
+
+
+def _strip_moved_note(observacion):
+    return "\n".join(
+        line for line in _normalize_text(observacion).splitlines()
+        if not line.strip().startswith(MOVED_NOTE_PREFIX)
+    ).strip()
+
+
+class RandomInspectionMoveProductAPIView(APIView):
+    """El revisor paso TODO un producto que ya esta en la revision (en otra
+    fila) a la fila donde esta contando. Ahi se cuenta; sus ubicaciones de
+    antes quedan en 0 y en esas filas se ve "Movido". No toca el stock:
+    administracion lo aprueba como cualquier diferencia (cada ubicacion queda
+    como se conto)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, inspection_id):
+        with transaction.atomic():
+            inspection, error = _pending_inspection_for_reviewer(
+                request, inspection_id, lock=True
+            )
+            if error is not None:
+                return error
+            client_version = _parse_client_draft_version(request.data)
+            if client_version is not None and client_version != int(inspection.borrador_version or 0):
+                return _random_inspection_conflict_response(inspection.id, request)
+
+            item = (
+                inspection.items.select_related("producto")
+                .filter(pk=_normalize_int(request.data.get("item_id"), 0))
+                .first()
+            )
+            if item is None:
+                return Response(
+                    {"detail": "Ese producto no esta en esta revision."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if item.agregado_por_revisor:
+                return Response(
+                    {"detail": "Ese producto lo agregaste tu: quitalo y vuelve a agregarlo en esta fila."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            subdivision = (
+                _inspection_branch_locations(inspection)
+                .filter(pk=_normalize_int(request.data.get("subdivision_id"), 0))
+                .select_related("division__bodega")
+                .first()
+            )
+            if subdivision is None or int(subdivision.division.bodega.sucursal_id) != int(item.sucursal_id):
+                return Response(
+                    {"detail": "Elige una ubicacion de la sucursal del producto."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            quantity = _parse_optional_quantity(request.data.get("cantidad"))
+            if quantity is None or quantity <= 0:
+                return Response(
+                    {"detail": "Escribe cuantas unidades hay aqui ahora (mayor a 0)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # [{key, subdivision_id, cantidad}]: esta fila con lo contado y las
+            # de antes en 0. Las claves las arma el cliente (son las mismas con
+            # las que guarda el borrador).
+            location_counts = _parse_random_inspection_location_counts(
+                request.data.get("conteo_ubicaciones")
+            ) or []
+            allowed = set(_inspection_branch_locations(inspection).values_list("id", flat=True))
+            if any(entry["subdivision_id"] not in allowed for entry in location_counts):
+                return Response(
+                    {"detail": "Una de las ubicaciones del conteo no es de esta sucursal."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            here = [entry for entry in location_counts if entry["subdivision_id"] == int(subdivision.id)]
+            if not here:
+                return Response(
+                    {"detail": "Falta el conteo de esta fila."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            others = [entry for entry in location_counts if entry["subdivision_id"] != int(subdivision.id)]
+            if not others:
+                return Response(
+                    {"detail": "Este producto ya esta en esta fila: cuentalo aqui mismo."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            counts = [
+                {
+                    "key": entry["key"],
+                    "subdivision_id": entry["subdivision_id"],
+                    "cantidad_contada": int(quantity) if entry in here else 0,
+                    "no_encontrado": False,
+                }
+                for entry in [here[0], *others]
+            ]
+            origin_labels = [
+                _subdivision_label(location)
+                for location in SubDivision.objects.filter(
+                    pk__in=[entry["subdivision_id"] for entry in others]
+                ).select_related("division__bodega")
+            ]
+            note = (
+                f"{MOVED_NOTE_PREFIX} Lo pase todo de {', '.join(sorted(origin_labels))} "
+                f"a {_subdivision_label(subdivision)}: quedaron {int(quantity)} aqui."
+            )
+            observacion = _strip_moved_note(item.observacion)
+            item.observacion = f"{observacion}\n{note}".strip() if observacion else note
+            item.movido_por_revisor = True
+            item.encontrado_en = subdivision
+            item.no_encontrado = False
+            item.cantidad_reportada = int(quantity)
+            item.conteo_ubicaciones = counts
+            item.save(
+                update_fields=[
+                    "movido_por_revisor",
+                    "encontrado_en",
+                    "no_encontrado",
+                    "cantidad_reportada",
+                    "conteo_ubicaciones",
+                    "observacion",
+                    "updated_at",
+                ]
+            )
+            inspection.borrador_version = int(inspection.borrador_version or 0) + 1
+            inspection.save(update_fields=["borrador_version", "updated_at"])
+
+        refreshed = _get_random_inspection_queryset().filter(pk=inspection_id).first()
+        return Response(
+            {
+                "ok": True,
+                "item_id": int(item.id),
+                "version": int(inspection.borrador_version),
+                "inspection": _serialize_random_inspection(refreshed, viewer=request.user),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class RandomInspectionRemoveAddedProductAPIView(APIView):
-    """El revisor quita un producto que el mismo agrego (se equivoco)."""
+    """El revisor quita un producto que el mismo agrego (se equivoco) o
+    deshace el cambio de fila de uno que movio (vuelve a su fila sin contar)."""
 
     permission_classes = [IsAuthenticated]
 
@@ -4566,14 +4706,33 @@ class RandomInspectionRemoveAddedProductAPIView(APIView):
             if client_version is not None and client_version != int(inspection.borrador_version or 0):
                 return _random_inspection_conflict_response(inspection.id, request)
             item = inspection.items.filter(
-                pk=_normalize_int(request.data.get("item_id"), 0), agregado_por_revisor=True
-            ).first()
+                pk=_normalize_int(request.data.get("item_id"), 0)
+            ).filter(Q(agregado_por_revisor=True) | Q(movido_por_revisor=True)).first()
             if item is None:
                 return Response(
                     {"detail": "Solo puedes quitar productos que agregaste tu."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            item.delete()
+            if item.movido_por_revisor and not item.agregado_por_revisor:
+                item.movido_por_revisor = False
+                item.encontrado_en = None
+                item.cantidad_reportada = None
+                item.conteo_ubicaciones = []
+                item.no_encontrado = False
+                item.observacion = _strip_moved_note(item.observacion)
+                item.save(
+                    update_fields=[
+                        "movido_por_revisor",
+                        "encontrado_en",
+                        "cantidad_reportada",
+                        "conteo_ubicaciones",
+                        "no_encontrado",
+                        "observacion",
+                        "updated_at",
+                    ]
+                )
+            else:
+                item.delete()
             inspection.total_items = inspection.items.count()
             inspection.borrador_version = int(inspection.borrador_version or 0) + 1
             inspection.save(update_fields=["total_items", "borrador_version", "updated_at"])

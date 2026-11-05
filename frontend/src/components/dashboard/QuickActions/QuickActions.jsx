@@ -214,6 +214,14 @@ const mergeRandomInspectionFromServer = (localInspection, serverInspection) => {
           .map((location) => [buildInspectionLocationKey(location), location])
       )
       const localLocations = Array.isArray(item?.ubicaciones_bodega) ? item.ubicaciones_bodega : []
+      // Se movio de fila (o se deshizo): cambian sus ubicaciones; las de
+      // este dispositivo ya no sirven.
+      if (
+        Boolean(item?.movido_por_revisor) !== Boolean(serverItem?.movido_por_revisor) ||
+        normalizeId(item?.encontrado_en?.subdivision_id) !== normalizeId(serverItem?.encontrado_en?.subdivision_id)
+      ) {
+        return serverItem
+      }
       return {
         ...item,
         cantidad_esperada: serverItem.cantidad_esperada,
@@ -2770,6 +2778,24 @@ function QuickActions({
       : Boolean(chosenDivisionId) && Boolean(location?.division_id) && String(location.division_id) !== chosenDivisionId)
     randomInspectionRows.forEach((row, rowIndex) => {
       const locations = Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : []
+      if (row?.movido_por_revisor && !row?.agregado_por_revisor && row?.encontrado_en) {
+        // Lo paso todo a otra fila: se cuenta en la nueva y en las de antes
+        // queda "Movido -> fila nueva" (ya resuelto, en 0).
+        const foundId = String(row.encontrado_en?.subdivision_id || '')
+        const here = locations.find((location) => String(location?.subdivision_id || '') === foundId)
+        addEntry({ ...row.encontrado_en, sucursal_id: row?.sucursal_id }, here
+          ? { row, rowIndex, location: here, outsideLocations: [], movedHere: true }
+          : { row, rowIndex, location: null, movedHere: true })
+        locations
+          .filter((location) => location !== here)
+          .forEach((location) => addEntry(location, {
+            row,
+            rowIndex,
+            location,
+            movedAwayTo: String(row.encontrado_en?.label || '').trim() || 'otra fila',
+          }))
+        return
+      }
       if (row?.agregado_por_revisor && row?.encontrado_en) {
         // Agregado por el revisor: va en la fila donde lo encontro; si tiene
         // otras ubicaciones, se cuentan ahi mismo debajo (todas obligatorias).
@@ -2855,7 +2881,7 @@ function QuickActions({
     const isEmptyLocation = (location) => String(location?.cantidad_contada_input ?? '').trim() === ''
     const indexes = []
     randomInspectionGroups.forEach((group, index) => {
-      const missing = group.entries.some((entry) => (
+      const missing = group.entries.some((entry) => !entry.movedAwayTo && (
         (entry.location ? isEmptyLocation(entry.location) : entry.row?.cantidad_reportada == null) ||
         (Array.isArray(entry.outsideLocations) && entry.outsideLocations.some(isEmptyLocation))
       ))
@@ -5258,6 +5284,88 @@ function QuickActions({
       } : prev))
     }
   }, [activeRandomInspection?.id, flushRandomInspectionDraft, randomInspectionAdd, randomInspectionAddOtherLocations, token])
+  // Tras mover / deshacer, el conteo de ese producto es el del servidor (lo
+  // que se habia escrito en su fila vieja ya no vale).
+  const resetRandomInspectionItemDraftFromServer = useCallback((itemId, serverInspection) => {
+    const normalizedItemId = normalizeId(itemId)
+    if (!normalizedItemId || !serverInspection) return
+    randomInspectionDirtyItemsRef.current.delete(normalizedItemId)
+    const serverDraft = buildRandomInspectionDraft(serverInspection)?.[normalizedItemId]
+    setRandomInspectionDraftByItemId((prev) => ({
+      ...(prev || {}),
+      [normalizedItemId]: serverDraft || { id: normalizedItemId },
+    }))
+  }, [buildRandomInspectionDraft])
+
+  // Producto que ya esta en la revision en otra fila: el revisor lo paso
+  // todo a esta. Se cuenta aqui y sus filas de antes quedan "Movido".
+  const moveRandomInspectionProductHere = useCallback(async () => {
+    const inspectionId = normalizeId(activeRandomInspection?.id)
+    const form = randomInspectionAdd
+    const row = form?.moveRow
+    const here = form?.location
+    if (!token || !inspectionId || !row || !here?.subdivision_id) return
+    const quantity = toPositiveInt(form.cantidad, 0)
+    if (quantity <= 0) {
+      setRandomInspectionAdd((prev) => (prev ? { ...prev, error: 'Escribe cuántas hay aquí ahora (después de moverlo).' } : prev))
+      return
+    }
+    const hereId = String(here.subdivision_id)
+    const others = (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
+      .filter((location) => location?.subdivision_id && String(location.subdivision_id) !== hereId)
+    setRandomInspectionAdd((prev) => (prev ? { ...prev, saving: true, error: '' } : prev))
+    try {
+      const flushResult = await flushRandomInspectionDraft()
+      if (flushResult?.completed) return
+      const itemId = normalizeId(row?.row_id || row?.id)
+      const response = await authFetch(
+        `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/mover-producto/`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            item_id: Number(itemId),
+            subdivision_id: Number(here.subdivision_id),
+            cantidad: quantity,
+            version: randomInspectionVersionRef.current,
+            conteo_ubicaciones: [
+              { key: here.key || buildInspectionLocationKey({ ...here, sucursal_id: here.sucursal_id || row?.sucursal_id }), subdivision_id: Number(here.subdivision_id), cantidad: quantity },
+              ...others.map((location) => ({
+                key: location.key || buildInspectionLocationKey(location),
+                subdivision_id: Number(location.subdivision_id),
+                cantidad: 0,
+              })),
+            ],
+          }),
+        },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (payload?.inspection) randomInspectionApplyServerRef.current?.(payload.inspection)
+      if (!response.ok) {
+        throw new Error(
+          payload?.conflict
+            ? 'La revisión se actualizó desde otro dispositivo. Vuelve a intentarlo.'
+            : String(payload?.detail || '').trim() || 'No se pudo mover el producto.'
+        )
+      }
+      resetRandomInspectionItemDraftFromServer(itemId, payload?.inspection)
+      setRandomInspectionAdd(null)
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Producto movido',
+        detail: `${row?.producto_codigo || 'El producto'} ahora está en ${here.label}. En su fila de antes queda como "Movido".`,
+        life: 3600,
+      })
+      setRandomInspectionHighlightRowId(itemId)
+      window.setTimeout(() => {
+        document.querySelector(`[data-inspection-row="${itemId}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }, 80)
+      window.setTimeout(() => setRandomInspectionHighlightRowId((current) => (current === itemId ? '' : current)), 2600)
+    } catch (error) {
+      setRandomInspectionAdd((prev) => (prev ? { ...prev, saving: false, error: error?.message || 'No se pudo mover el producto.' } : prev))
+    }
+  }, [activeRandomInspection?.id, flushRandomInspectionDraft, randomInspectionAdd, resetRandomInspectionItemDraftFromServer, token])
+
   // Quita un producto que el revisor agrego (se equivoco).
   const [randomInspectionRemovingId, setRandomInspectionRemovingId] = useState('')
   const removeRandomInspectionAddedProduct = useCallback(async (row) => {
@@ -5285,10 +5393,14 @@ function QuickActions({
             : String(payload?.detail || '').trim() || 'No se pudo quitar el producto.'
         )
       }
+      const wasMoved = Boolean(row?.movido_por_revisor) && !row?.agregado_por_revisor
+      if (wasMoved) resetRandomInspectionItemDraftFromServer(itemId, payload?.inspection)
       toast.current?.show({
         severity: 'success',
-        summary: 'Producto quitado',
-        detail: `${row?.producto_codigo || 'El producto'} ya no está en esta revisión.`,
+        summary: wasMoved ? 'Cambio deshecho' : 'Producto quitado',
+        detail: wasMoved
+          ? `${row?.producto_codigo || 'El producto'} volvió a su fila: cuéntalo ahí.`
+          : `${row?.producto_codigo || 'El producto'} ya no está en esta revisión.`,
         life: 3000,
       })
     } catch (error) {
@@ -5296,7 +5408,7 @@ function QuickActions({
     } finally {
       setRandomInspectionRemovingId('')
     }
-  }, [activeRandomInspection?.id, flushRandomInspectionDraft, randomInspectionRemovingId, token])
+  }, [activeRandomInspection?.id, flushRandomInspectionDraft, randomInspectionRemovingId, resetRandomInspectionItemDraftFromServer, token])
 
   const jumpToRandomInspectionStep = useCallback((rowIndex) => {
     if (randomInspectionSubmitting) return
@@ -5330,13 +5442,40 @@ function QuickActions({
     if (!product) return
     if (product.en_lista) {
       const rowIndex = randomInspectionRows.findIndex((row) => normalizeId(row?.producto_id) === normalizeId(product.id))
-      setRandomInspectionAdd(null)
-      if (rowIndex >= 0) jumpToRandomInspectionStep(rowIndex)
+      const row = rowIndex >= 0 ? randomInspectionRows[rowIndex] : null
+      // Ya esta en la revision pero en OTRA fila: se puede pasar todo aqui.
+      // Si ya esta en esta fila (o lo agrego el revisor) solo se va a el.
+      const alreadyHere = Boolean(activeRandomInspectionGroup?.entries?.some((entry) => (
+        entry.rowIndex === rowIndex && !entry.movedAwayTo
+      )))
+      const canMove = Boolean(
+        row &&
+        !row.agregado_por_revisor &&
+        !alreadyHere &&
+        randomInspectionAdd?.fixedLocation &&
+        randomInspectionAdd?.location?.subdivision_id
+      )
+      if (!canMove) {
+        setRandomInspectionAdd(null)
+        if (rowIndex >= 0) jumpToRandomInspectionStep(rowIndex)
+        return
+      }
+      setRandomInspectionAdd((prev) => (prev ? {
+        ...prev,
+        selected: product,
+        moveRow: row,
+        moveRowIndex: rowIndex,
+        open: false,
+        cantidad: '',
+        mover: null,
+        error: '',
+      } : prev))
+      window.setTimeout(() => document.querySelector('.quick-actions__inspection-add-qty')?.focus(), 0)
       return
     }
-    setRandomInspectionAdd((prev) => (prev ? { ...prev, selected: product, open: false, error: '' } : prev))
+    setRandomInspectionAdd((prev) => (prev ? { ...prev, selected: product, moveRow: null, moveRowIndex: -1, open: false, error: '' } : prev))
     window.setTimeout(() => document.querySelector('.quick-actions__inspection-add-qty')?.focus(), 0)
-  }, [jumpToRandomInspectionStep, randomInspectionRows])
+  }, [activeRandomInspectionGroup, jumpToRandomInspectionStep, randomInspectionAdd?.fixedLocation, randomInspectionAdd?.location?.subdivision_id, randomInspectionRows])
 
   // "No lo encontre": queda en 0 y marcado para que administracion decida
   // (puede reubicarlo). Pasa al siguiente producto como "Siguiente".
@@ -6858,7 +6997,7 @@ function QuickActions({
                               }}
                               disabled={randomInspectionSubmitting}
                             >
-                              + Agregar un producto que no está en la lista
+                              + Agregar o traer un producto a esta fila
                             </button>
                         )}
                       </div>
@@ -6880,6 +7019,32 @@ function QuickActions({
                         {activeRandomInspectionGroup.entries.map((entry, entryIndex) => {
                           const row = entry.row
                           const rowId = normalizeId(row?.row_id || row?.id)
+                          if (entry.movedAwayTo) {
+                            // Lo paso todo a otra fila: aqui ya no se cuenta.
+                            return (
+                              <div
+                                key={`inspection-rowtable-${rowId}-movido-${entry.location?.key || 'unica'}`}
+                                data-inspection-row={rowId}
+                                className="create-user__locations-row quick-actions__inspection-row--moved"
+                              >
+                                <span className="quick-actions__inspection-row-code">
+                                  <strong>{row?.producto_codigo || `Producto ${rowId}`}</strong>
+                                </span>
+                                <span className="quick-actions__inspection-row-name">
+                                  {String(row?.producto_nombre || '').trim()}
+                                </span>
+                                <span className="quick-actions__inspection-row-location">
+                                  <i className="pi pi-map-marker" aria-hidden="true" />
+                                  {String(entry.location?.label || activeRandomInspectionGroup.label || '').trim() || '-'}
+                                </span>
+                                <span className="quick-actions__inspection-moved-to">
+                                  <i className="pi pi-arrow-right" aria-hidden="true" />
+                                  {`Movido a ${entry.movedAwayTo}`}
+                                </span>
+                                <span />
+                              </div>
+                            )
+                          }
                           // "No lo encontre" no es lo mismo que contar 0 (ubicacion
                           // correcta pero vacia): la casilla queda vacia y en gris.
                           const notFoundHere = entry.location ? Boolean(entry.location?.no_encontrado) : Boolean(row?.no_encontrado)
@@ -6921,6 +7086,15 @@ function QuickActions({
                                 {row?.agregado_por_revisor && (
                                   <small className="quick-actions__inspection-added-tag">Agregado por ti (no estaba en la lista)</small>
                                 )}
+                                {entry.movedHere && (
+                                  <small className="quick-actions__inspection-added-tag">
+                                    {`Lo pasaste aquí desde ${(Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
+                                      .filter((location) => location !== entry.location)
+                                      .map((location) => String(location?.label || '').trim())
+                                      .filter(Boolean)
+                                      .join(', ') || 'otra fila'}`}
+                                  </small>
+                                )}
                               </span>
                               <span className="quick-actions__inspection-row-location">
                                 <i className="pi pi-map-marker" aria-hidden="true" />
@@ -6956,14 +7130,18 @@ function QuickActions({
                               </span>
                               <span>
                                 {/* Lo agrego el revisor: en vez de "No lo encontre", se puede quitar. */}
-                                {row?.agregado_por_revisor ? (
+                                {row?.agregado_por_revisor || entry.movedHere ? (
                                   <button
                                     type="button"
                                     className="create-user__locations-remove"
                                     onClick={() => void removeRandomInspectionAddedProduct(row)}
                                     disabled={randomInspectionSubmitting || Boolean(randomInspectionRemovingId)}
-                                    aria-label={`Quitar ${row?.producto_codigo || 'producto'} de la revisión`}
-                                    data-title="Quitar este producto (lo agregaste tú)"
+                                    aria-label={entry.movedHere
+                                      ? `Deshacer: ${row?.producto_codigo || 'el producto'} vuelve a su fila`
+                                      : `Quitar ${row?.producto_codigo || 'producto'} de la revisión`}
+                                    data-title={entry.movedHere
+                                      ? 'Deshacer el cambio: vuelve a su fila sin contar'
+                                      : 'Quitar este producto (lo agregaste tú)'}
                                   >
                                     {randomInspectionRemovingId === rowId ? <i className="pi pi-spin pi-spinner" aria-hidden="true" /> : 'x'}
                                   </button>
@@ -7140,12 +7318,11 @@ function QuickActions({
                                         className={`create-salida__result-row${product.en_lista ? ' is-added' : ''}${randomInspectionAdd.selected?.id === product.id ? ' is-selected' : ''}`}
                                         onMouseDown={(event) => event.preventDefault()}
                                         onClick={() => selectRandomInspectionAddProduct(product)}
-                                        title={product.en_lista ? 'Ya está en esta revisión: ir a su fila' : undefined}
                                       >
                                         <span className="result-codigo">{product.codigo}</span>
                                         <span className="result-nombre">{product.nombre || '-'}</span>
                                         <span className="result-stock">
-                                          {product.en_lista && <span className="create-salida__result-added-badge">ya en la revisión: ir</span>}
+                                          {product.en_lista && <span className="create-salida__result-added-badge">ya en la revisión</span>}
                                         </span>
                                       </button>
                                     ))}
@@ -7246,19 +7423,25 @@ function QuickActions({
                                 onKeyDown={(event) => {
                                   if (event.key !== 'Enter') return
                                   event.preventDefault()
-                                  void submitRandomInspectionAdd()
+                                  if (randomInspectionAdd.moveRow) void moveRandomInspectionProductHere()
+                                  else void submitRandomInspectionAdd()
                                 }}
-                                placeholder="Cant."
-                                aria-label="Cantidad encontrada"
+                                placeholder={randomInspectionAdd.moveRow ? 'Hay aquí' : 'Cant.'}
+                                aria-label={randomInspectionAdd.moveRow ? 'Cuántas hay aquí después de moverlo' : 'Cantidad encontrada'}
                                 disabled={randomInspectionAdd.saving}
                               />
                               <button
                                 type="button"
                                 className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
-                                onClick={() => void submitRandomInspectionAdd()}
+                                onClick={() => {
+                                  if (randomInspectionAdd.moveRow) void moveRandomInspectionProductHere()
+                                  else void submitRandomInspectionAdd()
+                                }}
                                 disabled={randomInspectionAdd.saving || !randomInspectionAdd.selected}
                               >
-                                {randomInspectionAdd.saving ? 'Agregando...' : 'Agregar'}
+                                {randomInspectionAdd.moveRow
+                                  ? (randomInspectionAdd.saving ? 'Moviendo...' : 'Mover aquí')
+                                  : (randomInspectionAdd.saving ? 'Agregando...' : 'Agregar')}
                               </button>
                               <button
                                 type="button"
@@ -7269,6 +7452,37 @@ function QuickActions({
                                 Cancelar
                               </button>
                             </div>
+                            {randomInspectionAdd.moveRow && (() => {
+                              const moveRow = randomInspectionAdd.moveRow
+                              const hereId = String(randomInspectionAdd.location?.subdivision_id || '')
+                              const fromLabels = (Array.isArray(moveRow?.ubicaciones_bodega) ? moveRow.ubicaciones_bodega : [])
+                                .filter((location) => String(location?.subdivision_id || '') !== hereId)
+                                .map((location) => String(location?.label || '').trim())
+                                .filter(Boolean)
+                              return (
+                                <div className="quick-actions__inspection-move-warning quick-actions__inspection-move-inline">
+                                  <i className="pi pi-arrow-right-arrow-left" aria-hidden="true" />
+                                  <div>
+                                    <strong>{`${moveRow?.producto_codigo || 'Este producto'} ya está en esta revisión, en ${fromLabels.join(', ') || 'otra fila'}`}</strong>
+                                    <p>
+                                      {`Si lo pasaste todo a ${randomInspectionAdd.location?.label || 'esta fila'}, escribe cuántas hay aquí ahora y pulsa "Mover aquí". En su fila de antes quedará como "Movido". Administración aprueba el cambio de ubicación.`}
+                                    </p>
+                                    <button
+                                      type="button"
+                                      className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                                      onClick={() => {
+                                        const rowIndex = randomInspectionAdd.moveRowIndex
+                                        setRandomInspectionAdd(null)
+                                        if (rowIndex >= 0) jumpToRandomInspectionStep(rowIndex)
+                                      }}
+                                      disabled={randomInspectionAdd.saving}
+                                    >
+                                      No, ir a su fila
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            })()}
                             {randomInspectionAdd.error && (
                               <p className="quick-actions__inspection-error">{randomInspectionAdd.error}</p>
                             )}

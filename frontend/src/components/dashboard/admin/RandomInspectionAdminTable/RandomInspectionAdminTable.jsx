@@ -2298,7 +2298,14 @@ function RandomInspectionAdminTable({
                         </p>
                       )}
 
-                      {item?.cambio_ubicacion && !decision && (
+                      {item?.movido_por_revisor && !item?.agregado_por_revisor && !decision && (
+                        <div className="inspection-admin__relocate inspection-admin__relocate--found">
+                          <strong>{`Cambio de fila: el revisor lo pasó todo a ${String(item?.encontrado_en?.label || 'otra fila')}`}</strong>
+                          <p>Lo contó en su nueva fila y sus ubicaciones de antes quedaron en 0 (ver la nota). "Aprobar" deja cada ubicación como la contó: el stock se mueve a la fila nueva.</p>
+                        </div>
+                      )}
+
+                      {item?.cambio_ubicacion && !item?.movido_por_revisor && !decision && (
                         <div className="inspection-admin__relocate inspection-admin__relocate--found">
                           <strong>{`Cambio de ubicación: el total coincide (${expected}) pero el revisor lo encontró repartido distinto`}</strong>
                           <p>"Aprobar cambio de ubicación" deja cada ubicación como la contó el revisor (el total no cambia). "Mantener como estaba" no mueve nada.</p>

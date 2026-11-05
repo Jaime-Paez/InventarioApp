@@ -362,6 +362,10 @@ class InspeccionAleatoriaItem(models.Model):
     # `encontrado_en`. Administracion puede aceptar que ahora esta ahi
     # ("mover aqui": lo trae desde sus otras ubicaciones).
     agregado_por_revisor = models.BooleanField(default=False, db_default=False)
+    # Producto que SI estaba en la lista y el revisor paso todo a otra fila de
+    # la revision (`encontrado_en`): ahi se cuenta y sus ubicaciones de antes
+    # quedan en 0 ("Movido"). Al aprobar, cada ubicacion queda como se conto.
+    movido_por_revisor = models.BooleanField(default=False, db_default=False)
     encontrado_en = models.ForeignKey(
         "inventario.SubDivision",
         on_delete=models.SET_NULL,

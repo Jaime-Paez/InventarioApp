@@ -1710,3 +1710,95 @@ class NoEncontradoPorUbicacionTests(InspeccionAleatoriaBaseTestCase):
         item.refresh_from_db()
         self.assertTrue(item.conteo_ubicaciones[0]["no_encontrado"])
         self.assertEqual(item.conteo_ubicaciones[0]["cantidad_contada"], 0)
+
+
+class MoverProductoDeFilaTests(InspeccionAleatoriaBaseTestCase):
+    """Al ordenar, el revisor pasa TODO un producto de la lista a la fila
+    donde esta contando: se cuenta ahi, su fila de antes queda en 0
+    ("Movido") y administracion lo aprueba como cambio de ubicacion."""
+
+    def setUp(self):
+        super().setUp()
+        self.inspection = self._crear_inspeccion(productos=[self.producto], sucursal=self.sucursal)
+        self.item = self.inspection.items.get()
+
+    def _mover(self, cantidad=10, **extra):
+        body = {
+            "item_id": self.item.id,
+            "subdivision_id": self.sub_b.id,
+            "cantidad": cantidad,
+            "conteo_ubicaciones": [
+                {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": cantidad},
+                {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": 0},
+            ],
+            **extra,
+        }
+        return self.revisor_client.post(
+            f"{BASE_URL}/{self.inspection.id}/mover-producto/", body, format="json"
+        )
+
+    def test_mueve_y_al_aprobar_el_stock_queda_en_la_fila_nueva(self):
+        response = self._mover()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.movido_por_revisor)
+        self.assertEqual(self.item.encontrado_en_id, self.sub_b.id)
+        self.assertEqual(self.item.cantidad_reportada, 10)
+        self.assertIn("[Movido]", self.item.observacion)
+        # El stock no cambia hasta que administracion apruebe.
+        self.assertEqual(self._stock(subdivision=self.sub_a), 10)
+        # La fila nueva viene como ubicacion del producto (primero).
+        row = response.data["inspection"]["items"][0]
+        self.assertEqual(row["ubicaciones_bodega"][0]["subdivision_id"], self.sub_b.id)
+
+        response = self._responder(self.inspection, {self.producto.id: 10})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.cambio_ubicacion)
+        self.assertEqual(self.item.verificacion_estado, "pendiente")
+
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{self.item.id}/verificar/", {"accion": "aprobar"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 0)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 10)
+
+    def test_si_no_coincide_igual_queda_cada_ubicacion_como_se_conto(self):
+        self._mover(cantidad=8)
+        self._responder(self.inspection, {self.producto.id: 8})
+        response = self.admin_client.post(
+            f"{BASE_URL}/items/{self.item.id}/verificar/", {"accion": "aprobar"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self._stock(subdivision=self.sub_a), 0)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 8)
+
+    def test_deshacer_lo_devuelve_a_su_fila_sin_contar(self):
+        self._mover()
+        response = self.revisor_client.post(
+            f"{BASE_URL}/{self.inspection.id}/quitar-producto/", {"item_id": self.item.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.item.refresh_from_db()
+        self.assertFalse(self.item.movido_por_revisor)
+        self.assertIsNone(self.item.encontrado_en_id)
+        self.assertIsNone(self.item.cantidad_reportada)
+        self.assertEqual(self.item.conteo_ubicaciones, [])
+        self.assertNotIn("[Movido]", self.item.observacion)
+        self.assertTrue(self.inspection.items.filter(pk=self.item.pk).exists())
+
+    def test_validaciones(self):
+        self.assertEqual(self._mover(cantidad=0).status_code, 400)
+        # Sin otra ubicacion de donde traerlo: ya esta en esta fila.
+        response = self.revisor_client.post(
+            f"{BASE_URL}/{self.inspection.id}/mover-producto/",
+            {
+                "item_id": self.item.id,
+                "subdivision_id": self.sub_a.id,
+                "cantidad": 3,
+                "conteo_ubicaciones": [{"key": "a", "subdivision_id": self.sub_a.id, "cantidad": 3}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
