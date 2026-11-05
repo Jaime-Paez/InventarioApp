@@ -366,6 +366,10 @@ class InspeccionAleatoriaItem(models.Model):
     # la revision (`encontrado_en`): ahi se cuenta y sus ubicaciones de antes
     # quedan en 0 ("Movido"). Al aprobar, cada ubicacion queda como se conto.
     movido_por_revisor = models.BooleanField(default=False, db_default=False)
+    # Administracion decide primero el cambio de fila ("aprobado" mueve el
+    # stock a la fila nueva, "rechazado" no mueve nada) y solo despues, si la
+    # cantidad no cuadra, ajusta o manda a recontar.
+    movimiento_decision = models.CharField(max_length=10, blank=True, default="", db_default="")
     encontrado_en = models.ForeignKey(
         "inventario.SubDivision",
         on_delete=models.SET_NULL,

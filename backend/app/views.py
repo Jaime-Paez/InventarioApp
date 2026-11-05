@@ -1766,6 +1766,7 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
         "cambio_ubicacion": bool(getattr(item, "cambio_ubicacion", False)) and not hide_expected,
         "agregado_por_revisor": bool(getattr(item, "agregado_por_revisor", False)),
         "movido_por_revisor": bool(getattr(item, "movido_por_revisor", False)),
+        "movimiento_decision": str(getattr(item, "movimiento_decision", "") or ""),
         "encontrado_en":_serialize_found_location(getattr(item, "encontrado_en", None))
         if getattr(item, "encontrado_en_id", None)
         else None,
@@ -3513,7 +3514,20 @@ def _normalize_random_inspection_verify_action(value):
         return "mover_aqui"
     if normalized in {"recontar", "reconteo", "reenviar"}:
         return "recontar"
+    if normalized in {"decidir_movimiento", "movimiento"}:
+        return "decidir_movimiento"
     return ""
+
+
+def _moved_item_awaiting_decision(item):
+    """El revisor lo paso a otra fila y administracion aun no decide si
+    aprueba ese cambio (eso va antes de ajustar o recontar)."""
+    return bool(
+        getattr(item, "movido_por_revisor", False)
+        and not getattr(item, "agregado_por_revisor", False)
+        and item.encontrado_en_id
+        and not str(getattr(item, "movimiento_decision", "") or "").strip()
+    )
 
 
 def _get_random_inspection_queryset():
@@ -4856,7 +4870,93 @@ class RandomInspectionVerifyItemAPIView(APIView):
             )
             recovered = []
 
-            if action == "mover_aqui":
+            awaiting_move_decision = _moved_item_awaiting_decision(item)
+            if action == "decidir_movimiento" and not awaiting_move_decision:
+                return Response(
+                    {"detail": "Este producto no tiene un cambio de fila por decidir."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if action != "decidir_movimiento" and awaiting_move_decision:
+                return Response(
+                    {"detail": "Primero decide si apruebas el cambio de fila que hizo el revisor."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if action == "decidir_movimiento":
+                target = item.encontrado_en
+                target_label = _subdivision_label(target)
+                approve_move = bool(request.data.get("aprobar_movimiento"))
+                entries = [entry for entry in (item.conteo_ubicaciones or []) if isinstance(entry, dict)]
+                if approve_move:
+                    moved = _move_inspection_item_stock(item, target)
+                    # La "foto" del sistema al contar pasa a la fila nueva: asi
+                    # un ajuste posterior compara lo contado aqui contra todo.
+                    total_system = sum(
+                        _normalize_int(entry.get("cantidad_sistema"), 0) for entry in entries
+                    )
+                    item.conteo_ubicaciones = [
+                        {
+                            **entry,
+                            "cantidad_sistema": (
+                                total_system
+                                if _normalize_int(entry.get("subdivision_id"), 0) == int(target.id)
+                                else 0
+                            ),
+                        }
+                        for entry in entries
+                    ]
+                    _record_random_inspection_audit(
+                        item,
+                        request.user,
+                        (
+                            f"Inspeccion aleatoria #{int(item.inspeccion_id)}: cambio de fila aprobado; "
+                            f"{moved['cantidad']} unidad(es) movidas a {target_label}."
+                        ),
+                        {**moved, "subdivision_destino_id": int(target.id)},
+                    )
+                    item.reubicado_a = target
+                    item.movimiento_decision = "aprobado"
+                    move_note = f"Cambio de fila aprobado: {moved['cantidad']} movida(s) a {target_label}."
+                else:
+                    # No se mueve nada; si despues se ajusta la cantidad, va
+                    # sobre el total (no repartido por las filas del revisor).
+                    item.conteo_ubicaciones = []
+                    item.movimiento_decision = "rechazado"
+                    move_note = f"Cambio de fila a {target_label} no aprobado: queda donde estaba."
+                note = f"{note} · {move_note}" if note else move_note
+
+                if int(item.cantidad_reportada or 0) != int(item.cantidad_esperada or 0):
+                    # La cantidad no cuadra: queda pendiente para ajustar o
+                    # recontar, ya con la ubicacion decidida.
+                    item.nota_verificacion = note
+                    item.save(
+                        update_fields=[
+                            "movimiento_decision",
+                            "conteo_ubicaciones",
+                            "reubicado_a",
+                            "nota_verificacion",
+                            "updated_at",
+                        ]
+                    )
+                    return Response(
+                        {
+                            "item_id": int(item_id),
+                            "accion": action,
+                            "movimiento_decision": item.movimiento_decision,
+                            "verificacion_estado": str(item.verificacion_estado or ""),
+                            "pendiente_cantidad": True,
+                            "reconteos": int(item.reconteos or 0),
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+                # Cuadra: con decidir la ubicacion queda resuelto.
+                item.verificacion_estado = (
+                    InspeccionAleatoriaItem.EstadosVerificacion.APROBADA
+                    if approve_move
+                    else InspeccionAleatoriaItem.EstadosVerificacion.RECHAZADA
+                )
+                item.cantidad_confirmada = int(item.cantidad_reportada or 0)
+            elif action == "mover_aqui":
                 target = getattr(item, "encontrado_en", None) if item.encontrado_en_id else None
                 if not item.agregado_por_revisor or target is None:
                     return Response(
@@ -5086,6 +5186,7 @@ class RandomInspectionVerifyItemAPIView(APIView):
                     "recupera_faltantes",
                     "conteo_ubicaciones",
                     "reubicado_a",
+                    "movimiento_decision",
                     "nota_verificacion",
                     "verificado_por",
                     "verificado_en",

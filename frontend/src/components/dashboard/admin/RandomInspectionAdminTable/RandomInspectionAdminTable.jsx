@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronLeft, ChevronRight, Eye, Loader2, Map as MapIcon, PackageCheck, Pencil, RefreshCw, Send, Settings, Wrench, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, Map as MapIcon, PackageCheck, Pencil, RefreshCw, Send, Settings, Wrench, X } from 'lucide-react'
 import { Button } from 'primereact/button'
 import { Column } from 'primereact/column'
 import { DataTable } from 'primereact/datatable'
@@ -39,7 +39,16 @@ const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.r
 const normalizeId = (value) => (value == null ? '' : String(value).trim())
 // Ubicaciones de una diferencia que el admin puede confirmar por separado:
 // las que tienen subdivision, cantidad del sistema y cantidad contada.
-const getVerifiableLocations = (item) => (Array.isArray(item?.ubicaciones_conteo) ? item.ubicaciones_conteo : [])
+// El revisor lo paso todo a otra fila: primero se decide si se aprueba ese
+// cambio. Solo despues, y solo si la cantidad no cuadra, se puede ajustar o
+// reenviar a contar.
+const isMoveAwaitingDecision = (row) => (
+  Boolean(row?.movido_por_revisor) &&
+  !row?.agregado_por_revisor &&
+  !String(row?.movimiento_decision || '').trim() &&
+  String(row?.verificacion_estado || '').trim().toLowerCase() === 'pendiente'
+)
+const getVerifiableLocations =(item) => (Array.isArray(item?.ubicaciones_conteo) ? item.ubicaciones_conteo : [])
   .filter((location) => (
     Number.parseInt(String(location?.subdivision_id ?? ''), 10) > 0 &&
     location?.cantidad_sistema != null &&
@@ -1488,14 +1497,100 @@ function RandomInspectionAdminTable({
     }
   }
 
+  // Producto que el revisor movio de fila: primero se decide el cambio.
+  // Aprobar mueve el stock a la fila nueva (el total no cambia); mantener no
+  // mueve nada. Si la cantidad cuadraba queda resuelto; si no, queda
+  // pendiente para reenviar conteo o ajustar.
+  const [movedDecidingId, setMovedDecidingId] = useState('')
+  const postMoveDecision = useCallback(async (itemId, approve) => {
+    const response = await authFetch(
+      `${API_URL}/recordatorios/inspeccion-aleatoria/items/${encodeURIComponent(itemId)}/verificar/`,
+      { method: 'POST', body: JSON.stringify({ accion: 'decidir_movimiento', aprobar_movimiento: Boolean(approve) }) },
+      token
+    )
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok && !payload?.ya_verificado) {
+      throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar la decisión.')
+    }
+    return payload
+  }, [token])
+  const describeMoveDecision = (codigo, approve, payload) => {
+    if (payload?.ya_verificado) return `${codigo} ya lo decidió otro administrador.`
+    const base = approve ? `${codigo}: cambio de fila aprobado.` : `${codigo}: se queda en su fila de antes.`
+    return payload?.pendiente_cantidad
+      ? `${base} La cantidad no cuadra: ahora puedes reenviar el conteo o verificarla.`
+      : base
+  }
+  // Lo mismo desde "Verificar": si la cantidad cuadraba pasa al siguiente;
+  // si no, se queda en este producto ya con las opciones de cantidad.
+  const decideMoveInWizard = async (approve) => {
+    const item = verifyWizardItems[verifyWizardIndex]
+    const itemId = normalizeId(item?.id)
+    if (!token || !itemId || verifyWizardSubmitting || verifyWizardDecisions[itemId]) return
+    setVerifyWizardError('')
+    setVerifyWizardSubmitting(true)
+    try {
+      const payload = await postMoveDecision(itemId, approve)
+      notifySuccess(describeMoveDecision(String(item?.producto_codigo || 'El producto').trim(), approve, payload))
+      if (payload?.pendiente_cantidad) {
+        setVerifyWizardItems((prev) => prev.map((row) => (
+          normalizeId(row?.id) === itemId
+            ? { ...row, movimiento_decision: payload?.movimiento_decision || (approve ? 'aprobado' : 'rechazado') }
+            : row
+        )))
+        return
+      }
+      const nextDecisions = {
+        ...verifyWizardDecisions,
+        [itemId]: payload?.ya_verificado
+          ? (String(payload?.verificacion_estado || '').trim().toLowerCase() === 'rechazada' ? 'rechazada' : 'aprobada')
+          : approve ? 'aprobada' : 'rechazada',
+      }
+      setVerifyWizardDecisions(nextDecisions)
+      const total = verifyWizardItems.length
+      let nextIndex = -1
+      for (let offset = 1; offset <= total; offset += 1) {
+        const candidate = (verifyWizardIndex + offset) % total
+        if (!nextDecisions[normalizeId(verifyWizardItems[candidate]?.id)]) {
+          nextIndex = candidate
+          break
+        }
+      }
+      setVerifyWizardIndex(nextIndex >= 0 ? nextIndex : total)
+    } catch (error) {
+      setVerifyWizardError(error?.message || 'No se pudo guardar la decisión.')
+    } finally {
+      setVerifyWizardSubmitting(false)
+    }
+  }
+  const decideMovedRow = async (row, approve) => {
+    const itemId = normalizeId(row?.id)
+    if (!token || !itemId || movedDecidingId) return
+    setMovedDecidingId(itemId)
+    try {
+      const payload = await postMoveDecision(itemId, approve)
+      notifySuccess(describeMoveDecision(String(row?.producto_codigo || 'El producto').trim(), approve, payload))
+    } catch (error) {
+      notifyError(error?.message || 'No se pudo guardar la decisión.')
+    } finally {
+      setMovedDecidingId('')
+      void loadRevisionItems({ silent: true })
+      void loadSummary({ silent: true })
+      void loadItems({ silent: true })
+    }
+  }
+
   const renderRevisionDetail = () => {
     const revision = itemsRows.find((row) => normalizeId(row?.id) === normalizeId(expandedRevisionId)) || null
     const state = REVISION_STATES[revision?.estado_revision] || REVISION_STATES.revisada
     const sortedItems = [...revisionItems].sort((a, b) => ITEM_ORDER[getItemStatus(a).key] - ITEM_ORDER[getItemStatus(b).key])
     const pendingCount = revisionItems.filter((row) => getItemStatus(row).key === 'pendiente').length
-    const recountableCount = revisionItems.filter((row) => (
-      getItemStatus(row).key === 'pendiente' && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3)
-    )).length
+    const isRecountable = (row) => (
+      getItemStatus(row).key === 'pendiente' &&
+      Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3) &&
+      !isMoveAwaitingDecision(row)
+    )
+    const recountableCount = revisionItems.filter(isRecountable).length
     const solvedCount = revisionItems.filter((row) => ['solucionado', 'mantenido', 'reconteo'].includes(getItemStatus(row).key)).length
     const close = () => setExpandedRevisionId('')
     return (
@@ -1561,7 +1656,9 @@ function RandomInspectionAdminTable({
                     const expected = toCount(row?.cantidad_esperada)
                     const reported = row?.cantidad_reportada == null ? null : toCount(row.cantidad_reportada)
                     const diff = reported == null ? null : reported - expected
-                    const canFix = canUpdate && status.key === 'pendiente'
+                    const awaitingMove = canUpdate && status.key === 'pendiente' && isMoveAwaitingDecision(row)
+                    // Hasta decidir el cambio de fila no se reenvia ni se verifica.
+                    const canFix = canUpdate && status.key === 'pendiente' && !awaitingMove
                     const canFound = canUpdate && Number(row?.faltante_pendiente || 0) > 0
                     const note = String(row?.nota_verificacion || row?.observacion || '').trim()
                     return (
@@ -1577,6 +1674,12 @@ function RandomInspectionAdminTable({
                               ? `Esperado ${expected} · sin contar`
                               : `Esperado ${expected} · contado ${reported}${row?.no_encontrado ? ' (no lo encontró)' : ''}`}
                           </small>
+                          {row?.movido_por_revisor && !row?.agregado_por_revisor && row?.encontrado_en?.label ? (
+                            <small className="inspection-admin__moved-note">
+                              {`El revisor lo pasó a ${String(row.encontrado_en.label).trim()}`}
+                              {row?.movimiento_decision === 'aprobado' ? ' · cambio aprobado' : row?.movimiento_decision === 'rechazado' ? ' · se quedó donde estaba' : ''}
+                            </small>
+                          ) : null}
                           <RecountDots count={Number(row?.reconteos || 0)} max={Number(row?.max_reconteos || 3)} />
                         </div>
                         {diff ? (
@@ -1585,6 +1688,27 @@ function RandomInspectionAdminTable({
                           </span>
                         ) : <span />}
                         <div className="transfer-issues-item__actions">
+                          {awaitingMove ? (
+                            <>
+                              <button
+                                type="button"
+                                className="inspection-admin__action"
+                                onClick={() => void decideMovedRow(row, false)}
+                                disabled={Boolean(movedDecidingId)}
+                              >
+                                Mantener como estaba
+                              </button>
+                              <button
+                                type="button"
+                                className="inspection-admin__action inspection-admin__action--approve"
+                                onClick={() => void decideMovedRow(row, true)}
+                                disabled={Boolean(movedDecidingId)}
+                              >
+                                {movedDecidingId === normalizeId(row?.id) ? <Loader2 size={13} /> : <PackageCheck size={13} />}
+                                Aprobar cambio
+                              </button>
+                            </>
+                          ) : null}
                           {canFix && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3) ? (
                             <button
                               type="button"
@@ -1645,9 +1769,7 @@ function RandomInspectionAdminTable({
                     <button
                       type="button"
                       className="create-user__action inspection-admin__recount-btn inspection-admin__recount-btn--solid"
-                      onClick={() => setRecountConfirmRows(revisionItems.filter((row) => (
-                        getItemStatus(row).key === 'pendiente' && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3)
-                      )))}
+                      onClick={() => setRecountConfirmRows(revisionItems.filter(isRecountable))}
                       disabled={Boolean(recountSendingId)}
                     >
                       <RefreshCw size={14} />
@@ -2010,16 +2132,6 @@ function RandomInspectionAdminTable({
                 </div>
                 <div className="users-header__right">
                   <span className="users-header__count">{`Reg. ${itemsTotalCount}`}</span>
-                  {canUpdate && Number(selectedBranch?.pendientes_verificacion || 0) > 0 && (
-                    <button
-                      type="button"
-                      className="inspection-admin__manage"
-                      onClick={() => void openVerifyWizard()}
-                    >
-                      <Wrench size={14} />
-                      {`Verificar todas (${Number(selectedBranch?.pendientes_verificacion || 0)})`}
-                    </button>
-                  )}
                 </div>
               </div>
             )}
@@ -2075,41 +2187,8 @@ function RandomInspectionAdminTable({
                 return <span className={`transfer-issues-state transfer-issues-state--${state.chip}`}>{state.label}</span>
               }}
             />
+            {/* Sin columna de acciones: la fila entera abre la revision. */}
             <Column header="Resolución" body={(revision) => describeRevisionResolution(revision)} />
-            <Column
-              header="Acciones"
-              body={(revision) => {
-                const pending = Number(revision?.pendientes || 0)
-                return (
-                  <div className="inspection-admin__row-actions">
-                    <button
-                      type="button"
-                      className="inspection-admin__action"
-                      onClick={(event) => {
-                        event.stopPropagation()
-                        setExpandedRevisionId(normalizeId(revision?.id))
-                      }}
-                    >
-                      <Eye size={13} />
-                      Ver
-                    </button>
-                    {canUpdate && pending > 0 && (
-                      <button
-                        type="button"
-                        className="inspection-admin__action"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          void openVerifyWizard('', normalizeId(revision?.id))
-                        }}
-                      >
-                        <Wrench size={13} />
-                        {`Verificar (${pending})`}
-                      </button>
-                    )}
-                  </div>
-                )
-              }}
-            />
           </DataTable>
         </div>
       )}
@@ -2128,7 +2207,7 @@ function RandomInspectionAdminTable({
         const resentCount = Object.values(verifyWizardDecisions).filter((value) => value === 'reenviada').length
         const recounts = Number(item?.reconteos || 0)
         const maxRecounts = Number(item?.max_reconteos || 3)
-        const canResend = recounts < maxRecounts
+        const canResend = recounts < maxRecounts && !isMoveAwaitingDecision(item)
         const relocateState = relocateOptionsByBranch[normalizeId(item?.sucursal_id)] || null
         const expected = Number.parseInt(String(item?.cantidad_esperada ?? 0), 10) || 0
         const reported = item?.cantidad_reportada == null ? null : Number.parseInt(String(item.cantidad_reportada), 10) || 0
@@ -2301,7 +2380,16 @@ function RandomInspectionAdminTable({
                       {item?.movido_por_revisor && !item?.agregado_por_revisor && !decision && (
                         <div className="inspection-admin__relocate inspection-admin__relocate--found">
                           <strong>{`Cambio de fila: el revisor lo pasó todo a ${String(item?.encontrado_en?.label || 'otra fila')}`}</strong>
-                          <p>Lo contó en su nueva fila y sus ubicaciones de antes quedaron en 0 (ver la nota). "Aprobar" deja cada ubicación como la contó: el stock se mueve a la fila nueva.</p>
+                          {isMoveAwaitingDecision(item) ? (
+                            <p>
+                              {'Primero decide el cambio: "Aprobar cambio de fila" pasa todo el stock a la fila nueva (el total no cambia); "Mantener como estaba" no mueve nada.'}
+                              {reported != null && reported !== expected ? ` Después queda la diferencia de cantidad (contó ${reported}, había ${expected}) para reenviar el conteo o ajustar.` : ' La cantidad cuadra: con eso queda resuelto.'}
+                            </p>
+                          ) : (
+                            <p>{item?.movimiento_decision === 'aprobado'
+                              ? `Cambio aprobado: ya está en la fila nueva. Falta resolver la cantidad (contó ${reported ?? 0}, había ${expected}).`
+                              : `Se quedó donde estaba. Falta resolver la cantidad (contó ${reported ?? 0}, había ${expected}).`}</p>
+                          )}
                         </div>
                       )}
 
@@ -2625,7 +2713,27 @@ function RandomInspectionAdminTable({
                       Siguiente
                       <ChevronRight size={15} />
                     </button>
-                    {!decision && item?.cambio_ubicacion && (
+                    {!decision && isMoveAwaitingDecision(item) && (
+                      <>
+                        <button
+                          type="button"
+                          className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                          onClick={() => void decideMoveInWizard(false)}
+                          disabled={busy}
+                        >
+                          Mantener como estaba
+                        </button>
+                        <button
+                          type="button"
+                          className="quick-actions__inspection-btn inspection-admin__verify-adjust"
+                          onClick={() => void decideMoveInWizard(true)}
+                          disabled={busy}
+                        >
+                          {verifyWizardSubmitting ? 'Guardando...' : 'Aprobar cambio de fila'}
+                        </button>
+                      </>
+                    )}
+                    {!decision && !isMoveAwaitingDecision(item) && item?.cambio_ubicacion && !item?.movido_por_revisor && (
                       <button
                         type="button"
                         className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
@@ -2648,7 +2756,7 @@ function RandomInspectionAdminTable({
                         {`Reenviar conteo (${recounts + 1}/${maxRecounts})`}
                       </button>
                     )}
-                    {!decision && (
+                    {!decision && !isMoveAwaitingDecision(item) && (
                       <button
                         type="button"
                         className="quick-actions__inspection-btn inspection-admin__verify-adjust"
@@ -2656,7 +2764,7 @@ function RandomInspectionAdminTable({
                         disabled={busy || verifyWizardConfirming}
                         title="Deja el inventario en la cantidad real confirmada"
                       >
-                        {verifyWizardSubmitting ? 'Guardando...' : item?.cambio_ubicacion ? 'Aprobar cambio de ubicación' : 'Aprobar ajuste'}
+                        {verifyWizardSubmitting ? 'Guardando...' : item?.cambio_ubicacion && !item?.movido_por_revisor ? 'Aprobar cambio de ubicación' : 'Aprobar ajuste'}
                       </button>
                     )}
                   </>

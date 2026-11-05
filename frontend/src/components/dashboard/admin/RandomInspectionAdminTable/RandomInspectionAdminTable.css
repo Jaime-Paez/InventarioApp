@@ -2300,3 +2300,32 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
 .quick-actions__inspection-overlay.dark .inspection-admin__recount-dots > small {
   color: var(--color-text-dark);
 }
+
+/* Producto que el revisor paso a otra fila: se aprueba (o no) el cambio
+   antes de ajustar o recontar. */
+.inspection-admin__moved-note {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #dbeafe;
+  color: #1e3a8a !important;
+  font-weight: 700;
+}
+
+.inspection-admin__action--approve {
+  border-color: #15803d;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.dashboard-shell.dark .inspection-admin__moved-note {
+  background: #1e3a8a;
+  color: #dbeafe !important;
+}
+
+.dashboard-shell.dark .inspection-admin__action--approve {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}

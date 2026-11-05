@@ -1757,19 +1757,46 @@ class MoverProductoDeFilaTests(InspeccionAleatoriaBaseTestCase):
         self.assertTrue(self.item.cambio_ubicacion)
         self.assertEqual(self.item.verificacion_estado, "pendiente")
 
-        response = self.admin_client.post(
-            f"{BASE_URL}/items/{self.item.id}/verificar/", {"accion": "aprobar"}, format="json"
-        )
+        # Primero se decide el cambio de fila (no se puede ajustar ni recontar antes).
+        response = self._verificar({"accion": "recontar"})
+        self.assertEqual(response.status_code, 400)
+        response = self._verificar({"accion": "decidir_movimiento", "aprobar_movimiento": True})
         self.assertEqual(response.status_code, 200, response.data)
+        self.item.refresh_from_db()
+        # El total cuadraba: con aprobar el cambio queda resuelto.
+        self.assertEqual(self.item.verificacion_estado, "aprobada")
+        self.assertEqual(self.item.movimiento_decision, "aprobado")
         self.assertEqual(self._stock(subdivision=self.sub_a), 0)
         self.assertEqual(self._stock(subdivision=self.sub_b), 10)
 
-    def test_si_no_coincide_igual_queda_cada_ubicacion_como_se_conto(self):
+    def _verificar(self, body):
+        return self.admin_client.post(
+            f"{BASE_URL}/items/{self.item.id}/verificar/", body, format="json"
+        )
+
+    def test_mantener_no_mueve_nada(self):
+        self._mover()
+        self._responder(self.inspection, {self.producto.id: 10})
+        response = self._verificar({"accion": "decidir_movimiento", "aprobar_movimiento": False})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.verificacion_estado, "rechazada")
+        self.assertEqual(self._stock(subdivision=self.sub_a), 10)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 0)
+
+    def test_si_no_coincide_primero_el_cambio_y_despues_la_cantidad(self):
         self._mover(cantidad=8)
         self._responder(self.inspection, {self.producto.id: 8})
-        response = self.admin_client.post(
-            f"{BASE_URL}/items/{self.item.id}/verificar/", {"accion": "aprobar"}, format="json"
-        )
+        response = self._verificar({"accion": "decidir_movimiento", "aprobar_movimiento": True})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data["pendiente_cantidad"])
+        self.item.refresh_from_db()
+        # El cambio ya se aplico (todo a la fila nueva); la diferencia sigue pendiente.
+        self.assertEqual(self.item.verificacion_estado, "pendiente")
+        self.assertEqual(self._stock(subdivision=self.sub_a), 0)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 10)
+
+        response = self._verificar({"accion": "aprobar", "cantidad_confirmada": 8})
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(self._stock(subdivision=self.sub_a), 0)
         self.assertEqual(self._stock(subdivision=self.sub_b), 8)
