@@ -94,11 +94,25 @@ def location_label_sort_key(label):
     return (group, natural)
 
 
+def _location_bodega_key(location):
+    bodega_id = int((location or {}).get("bodega_id") or 0)
+    if bodega_id:
+        return ("id", bodega_id)
+    return ("nombre", strip_accents(str((location or {}).get("bodega_nombre") or "")).strip().lower())
+
+
 def needs_restock(principal, others):
-    """Ojo en rojo: alguna ubicacion secundaria tiene MAS que la principal
-    (hay que pasar mercaderia a la principal)."""
+    """Ojo en rojo: una ubicacion de OTRA bodega (ej. Bodega Matriz) tiene
+    MAS que la principal (hay que pasar mercaderia al almacen). Las de la
+    misma bodega que la principal (dos filas de Almacen Matriz) son todas
+    principales: entre ellas no se compara."""
     principal_qty = int((principal or {}).get("cantidad") or 0)
-    return any(int(item.get("cantidad") or 0) > principal_qty for item in others)
+    principal_bodega = _location_bodega_key(principal)
+    return any(
+        int(item.get("cantidad") or 0) > principal_qty
+        for item in others
+        if _location_bodega_key(item) != principal_bodega
+    )
 
 
 def get_user_location_order(product_ids):

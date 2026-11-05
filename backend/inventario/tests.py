@@ -311,9 +311,10 @@ class InventarioTablaBusquedaSufijoGuionTests(APITestCase):
 
 
 class InventarioTablaUbicacionesStockBajoTests(APITestCase):
-    """Ojo en rojo cuando alguna ubicacion SECUNDARIA tiene mas que la
-    principal. Las de bodega ("Bodega Norte") siempre son secundarias. Las
-    columnas Ub. se ordenan por la cantidad de la principal."""
+    """Ojo en rojo cuando una ubicacion de OTRA bodega tiene mas que la
+    principal. Las de bodega ("Bodega Norte") siempre son secundarias; las del
+    mismo almacen que la principal son todas principales (entre ellas no hay
+    rojo). Las columnas Ub. se ordenan por la cantidad de la principal."""
 
     def setUp(self):
         User = get_user_model()
@@ -341,10 +342,10 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
             return item
 
         # Columnas: A y B (almacen), C (bodega).
-        producto("BAJO-PRINC1", [1, 20, None])     # principal A=1, B tiene mas -> rojo
+        producto("BAJO-PRINC1", [1, 20, None])     # A y B del mismo almacen: ambas principales -> normal
         producto("BAJO-OTRA", [50, 1, None])       # principal A=50 -> normal
         producto("BAJO-CERO", [0, 20, None])       # sin orden: principal B=20 (con stock) -> normal
-        producto("BAJO-DOS", [2, 50, None])        # principal A=2, B tiene mas -> rojo
+        producto("BAJO-DOS", [2, 50, None])        # mismo almacen -> normal
         producto("BAJO-UNA", [1, None, None])      # una sola ubicacion -> sin ojo, normal
         producto("BAJO-SINSTOCK", [0, 0, None])    # sin stock -> celda vacia
         producto("BAJO-BOD", [3, None, 10])        # la bodega tiene mas que el almacen -> rojo
@@ -374,11 +375,13 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
         )
         self.assertEqual(response.status_code, 200, response.data)
 
-    def test_rojo_cuando_una_secundaria_tiene_mas_que_la_principal(self):
+    def test_rojo_solo_cuando_otra_bodega_tiene_mas_que_la_principal(self):
         rows = self._payloads()
         rojos = {codigo for codigo, payload in rows.items() if payload.get("tiene_stock_bajo")}
-        self.assertEqual(rojos, {"BAJO-PRINC1", "BAJO-DOS", "BAJO-BOD", "BAJO-SOLOBOD"})
-        self.assertTrue(rows["BAJO-PRINC1"]["principal"]["stock_bajo"])
+        # Dos filas del mismo almacen (A=1, B=20) no prenden el ojo.
+        self.assertEqual(rojos, {"BAJO-BOD", "BAJO-SOLOBOD"})
+        self.assertFalse(rows["BAJO-PRINC1"]["principal"]["stock_bajo"])
+        self.assertTrue(rows["BAJO-BOD"]["principal"]["stock_bajo"])
         self.assertEqual(rows["BAJO-CERO"]["principal"]["cantidad"], 20)
         self.assertEqual(rows["BAJO-SINSTOCK"], {})
         # La bodega nunca es principal: aunque tenga mas, la principal es del almacen.
@@ -390,9 +393,9 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
         )
 
     def test_el_orden_elegido_decide_la_principal_pero_la_bodega_sigue_secundaria(self):
-        # La de 0 puesta primera: es la principal y la otra tiene mas -> rojo.
+        # La de 0 puesta primera: la otra (mismo almacen) tiene mas, pero no es rojo.
         self._ordenar("BAJO-CERO", [self.sub_a, self.sub_b])
-        # La de 1 puesta primera: rojo.
+        # La de 1 puesta primera: mismo almacen -> tampoco.
         self._ordenar("BAJO-OTRA", [self.sub_b, self.sub_a])
         # La bodega puesta primera: igual queda secundaria.
         self._ordenar("BAJO-BOD", [self.sub_c, self.sub_a])
@@ -400,9 +403,9 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
         self._ordenar("BAJO-PRINC1", [self.sub_b, self.sub_a])
 
         rows = self._payloads()
-        self.assertTrue(rows["BAJO-CERO"]["tiene_stock_bajo"])
+        self.assertFalse(rows["BAJO-CERO"]["tiene_stock_bajo"])
         self.assertEqual(rows["BAJO-CERO"]["principal"]["cantidad"], 0)
-        self.assertTrue(rows["BAJO-OTRA"]["tiene_stock_bajo"])
+        self.assertFalse(rows["BAJO-OTRA"]["tiene_stock_bajo"])
         self.assertEqual(rows["BAJO-OTRA"]["ubicacion_principal"], rows["BAJO-OTRA"]["principal"]["ubicacion"])
         self.assertEqual(rows["BAJO-BOD"]["principal"]["bodega_nombre"], "Almacén Norte")
         self.assertTrue(rows["BAJO-BOD"]["tiene_stock_bajo"])
@@ -437,7 +440,7 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
             row["codigo"] for row in self._rows() if self._ubicacion(row).get("tiene_stock_bajo")
         }
         self.assertEqual(rojos, esperados)
-        self.assertEqual(rojos, {"BAJO-PRINC1", "BAJO-DOS", "BAJO-BOD", "BAJO-SOLOBOD"})
+        self.assertEqual(rojos, {"BAJO-BOD", "BAJO-SOLOBOD"})
         otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
         self.assertEqual(self._rows(restock_bodega="1", restock_sucursal=str(otra.id)), [])
         # Junto con el orden por cantidad sigue funcionando.
