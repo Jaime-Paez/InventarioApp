@@ -516,7 +516,7 @@ function BodegaDetails({
         <div className="bodega-layout__subdivisions">
           <div className="bodega-layout__subdivisions-header">
             <strong>Subdivisiones</strong>
-            <span>{subs.length} pendientes</span>
+            <span>{subs.length} {subs.length === 1 ? 'subdivisión' : 'subdivisiones'}</span>
           </div>
 
           {subs.length > 0 ? (
@@ -605,6 +605,18 @@ function BodegaDetails({
     if (!payload.nombre) {
       setSaving(false)
       notifyError('Define un nombre para la bodega.')
+      return
+    }
+
+    // Cada division del plano necesita al menos una subdivision.
+    const sinSubdivision = (formData.ubicaciones || []).filter((location) => {
+      const key = normalizeDivisionKey(location?.nombre)
+      const division = key ? divisionByName.get(key) : null
+      return !division || !(subdivisionsByDivision.get(division.id) || []).length
+    })
+    if (sinSubdivision.length) {
+      setSaving(false)
+      notifyError(`Cada división necesita al menos una subdivisión. Falta en: ${sinSubdivision.map((location) => location?.nombre || 'sin nombre').join(', ')}.`)
       return
     }
 

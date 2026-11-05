@@ -399,6 +399,18 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
       return
     }
 
+    // Cada division necesita al menos una subdivision (lo escrito sin
+    // "Agregar" tambien cuenta).
+    const sinSubdivision = (formData.ubicaciones || []).filter((location) => (
+      !(Array.isArray(location?.subdivisions_list) && location.subdivisions_list.length) &&
+      !String(location?.subdivision_draft ?? '').trim()
+    ))
+    if (sinSubdivision.length) {
+      setLoading(false)
+      notifyError(`Cada división necesita al menos una subdivisión. Falta en: ${sinSubdivision.map((location) => location?.nombre || 'sin nombre').join(', ')}.`)
+      return
+    }
+
     if (!payload.sucursal_id) {
       setLoading(false)
       notifyError(

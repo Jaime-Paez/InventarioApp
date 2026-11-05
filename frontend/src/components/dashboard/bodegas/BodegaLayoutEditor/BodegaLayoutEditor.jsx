@@ -15,7 +15,6 @@ const DEFAULT_TYPES = ['Estantería', 'Cajonera', 'Muebles']
 const TYPE_COLORS = ['#4f8df8', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14b8a6']
 const OVERLAP_TOLERANCE = 0.05
 // Pasos (en metros) del panel de ajuste fino: mover y cambiar tamaño sin arrastrar.
-const NUDGE_STEPS = [0.1, 0.5, 1]
 // Distancia minima (px) antes de empezar a arrastrar: con el dedo un toque
 // siempre se mueve un poco, y eso no debe desplazar la ubicacion.
 const DRAG_THRESHOLD_MOUSE = 2
@@ -232,7 +231,7 @@ const TypeSelect = ({
               value={colors?.[value] || DEFAULT_COLOR}
               onChange={(event) => onColorChange?.(value, event.target.value)}
               aria-label={`Color para ${value}`}
-              disabled={!value}
+              disabled={disabled || !value}
             />
             <span
               className="bodega-type-select__color-dot"
@@ -318,8 +317,6 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   const cardRefs = useRef({})
   const [resizeOverlay, setResizeOverlay] = useState(null)
   const [isAdding, setIsAdding] = useState(false)
-  const [nudgeStep, setNudgeStep] = useState(0.5)
-  const [nudgeMessage, setNudgeMessage] = useState('')
   const [types, setTypes] = useState(DEFAULT_TYPES)
   const [typeColors, setTypeColors] = useState(() =>
     DEFAULT_TYPES.reduce((acc, type, index) => {
@@ -696,61 +693,13 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     }
   }, []) // stable — reads all values through refs
 
-  const selectedLocations = locations.filter((location) => selectedIds.has(location.id))
-  const singleSelected = selectedLocations.length === 1 ? selectedLocations[0] : null
-
-  // Panel de ajuste fino: en tablet arrastrar al milimetro es incomodo, asi
-  // que se puede mover y cambiar el tamaño de lo seleccionado con botones.
-  const moveSelected = (deltaX, deltaY) => {
-    if (disabled || !selectedLocations.length || !safeWidth || !safeHeight) return
-    let appliedX = deltaX
-    let appliedY = deltaY
-    selectedLocations.forEach((origin) => {
-      appliedX = clamp(appliedX, -origin.x, safeWidth - origin.ancho - origin.x)
-      appliedY = clamp(appliedY, -origin.y, safeHeight - origin.alto - origin.y)
-    })
-    if (Math.abs(appliedX) < 0.05 && Math.abs(appliedY) < 0.05) {
-      setNudgeMessage('Ya está en el borde del plano.')
-      return
-    }
-    setNudgeMessage('')
-    const working = locations.map((location) => (
-      selectedIds.has(location.id)
-        ? {
-          ...location,
-          x: Number((location.x + appliedX).toFixed(1)),
-          y: Number((location.y + appliedY).toFixed(1)),
-        }
-        : { ...location }
-    ))
-    onChange(resolveOverlaps(working, [...selectedIds], safeWidth, safeHeight))
-  }
-
-  const resizeSelected = (field, delta) => {
-    if (disabled || !singleSelected) return
-    const next = clampLocation({
-      ...singleSelected,
-      [field]: Math.max(MIN_SIZE_METERS, Number((singleSelected[field] + delta).toFixed(1))),
-    })
-    if (next[field] === singleSelected[field]) {
-      setNudgeMessage(delta < 0 ? `Ya tiene el tamaño mínimo (${MIN_SIZE_METERS} m).` : 'Ya llega al borde del plano.')
-      return
-    }
-    const blocker = locations.find((location) => location.id !== singleSelected.id && rectsOverlap(next, location))
-    if (blocker) {
-      setNudgeMessage(`No cabe: chocaría con ${blocker.nombre || 'otra ubicación'}.`)
-      return
-    }
-    setNudgeMessage('')
-    onChange(locations.map((location) => (location.id === singleSelected.id ? next : location)))
-  }
 
   return (
     <div className="bodega-layout">
       <div className="bodega-layout__meta">
         <p>
           Plano interactivo para distribuir ubicaciones internas. Toca una ubicación para
-          seleccionarla y luego arrástrala, o usa las flechas de abajo para moverla con precisión.
+          seleccionarla y luego arrástrala.
         </p>
         <button
           type="button"
@@ -829,6 +778,8 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                   }}
                   onClick={(event) => {
                     event.stopPropagation()
+                    // Fuera de "Editar" no se selecciona (no se puede mover).
+                    if (disabled) return
                     setSelectedIds(new Set([location.id]))
                   }}
                   onDoubleClick={(event) => {
@@ -875,95 +826,6 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
           )}
         </div>
       </div>
-      {selectedLocations.length > 0 && (
-        <div className="bodega-layout__adjust" role="group" aria-label="Ajustar ubicación seleccionada">
-          <div className="bodega-layout__adjust-head">
-            <strong>
-              {singleSelected
-                ? (singleSelected.nombre || 'Ubicación seleccionada')
-                : `${selectedLocations.length} ubicaciones seleccionadas`}
-            </strong>
-            {singleSelected && (
-              <span className="bodega-layout__adjust-meta">
-                X {singleSelected.x} · Y {singleSelected.y} · {singleSelected.ancho} × {singleSelected.alto} m
-              </span>
-            )}
-            <button
-              type="button"
-              className="bodega-layout__adjust-close"
-              onClick={() => { setSelectedIds(new Set()); setNudgeMessage('') }}
-              aria-label="Quitar selección"
-            >
-              <i className="pi pi-times" />
-            </button>
-          </div>
-
-          <div className="bodega-layout__adjust-steps" role="radiogroup" aria-label="Paso">
-            <span>Paso</span>
-            {NUDGE_STEPS.map((step) => (
-              <button
-                key={step}
-                type="button"
-                role="radio"
-                aria-checked={nudgeStep === step}
-                className={`bodega-layout__adjust-step${nudgeStep === step ? ' is-active' : ''}`}
-                onClick={() => setNudgeStep(step)}
-              >
-                {step} m
-              </button>
-            ))}
-          </div>
-
-          <div className="bodega-layout__adjust-body">
-            <div className="bodega-layout__adjust-pad">
-              <span className="bodega-layout__adjust-label">Mover</span>
-              <div className="bodega-layout__adjust-arrows">
-                <button type="button" className="bodega-layout__adjust-btn bodega-layout__adjust-btn--up" onClick={() => moveSelected(0, -nudgeStep)} disabled={disabled} aria-label="Mover arriba">
-                  <i className="pi pi-arrow-up" />
-                </button>
-                <button type="button" className="bodega-layout__adjust-btn bodega-layout__adjust-btn--left" onClick={() => moveSelected(-nudgeStep, 0)} disabled={disabled} aria-label="Mover a la izquierda">
-                  <i className="pi pi-arrow-left" />
-                </button>
-                <button type="button" className="bodega-layout__adjust-btn bodega-layout__adjust-btn--right" onClick={() => moveSelected(nudgeStep, 0)} disabled={disabled} aria-label="Mover a la derecha">
-                  <i className="pi pi-arrow-right" />
-                </button>
-                <button type="button" className="bodega-layout__adjust-btn bodega-layout__adjust-btn--down" onClick={() => moveSelected(0, nudgeStep)} disabled={disabled} aria-label="Mover abajo">
-                  <i className="pi pi-arrow-down" />
-                </button>
-              </div>
-            </div>
-
-            {singleSelected && (
-              <div className="bodega-layout__adjust-sizes">
-                {[['ancho', 'Ancho'], ['alto', 'Alto']].map(([field, label]) => (
-                  <div key={field} className="bodega-layout__adjust-size">
-                    <span className="bodega-layout__adjust-label">{label}</span>
-                    <div className="bodega-layout__adjust-stepper">
-                      <button type="button" className="bodega-layout__adjust-btn" onClick={() => resizeSelected(field, -nudgeStep)} disabled={disabled} aria-label={`Reducir ${label.toLowerCase()}`}>
-                        <i className="pi pi-minus" />
-                      </button>
-                      <span className="bodega-layout__adjust-value">{singleSelected[field]} m</span>
-                      <button type="button" className="bodega-layout__adjust-btn" onClick={() => resizeSelected(field, nudgeStep)} disabled={disabled} aria-label={`Aumentar ${label.toLowerCase()}`}>
-                        <i className="pi pi-plus" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {nudgeMessage && <p className="bodega-layout__adjust-message">{nudgeMessage}</p>}
-
-          {singleSelected && (
-            <button type="button" className="bodega-layout__adjust-edit" onClick={() => scrollToCard(singleSelected.id)}>
-              <i className="pi pi-pencil" />
-              Editar nombre, tipo y medidas
-            </button>
-          )}
-        </div>
-      )}
-
       <p className="bodega-layout__hint">
         {safeWidth && safeHeight
           ? `Plano: ${safeWidth}m x ${safeHeight}m`
@@ -998,7 +860,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                 </button>
                 <button
                   type="button"
-                  className="create-user__action create-user__action--cancel"
+                  className="create-user__action user-details__delete"
                   onClick={() => { void removeLocation(location.id) }}
                   disabled={disabled || removingId === location.id}
                 >
@@ -1008,7 +870,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
             </div>
             <div className="bodega-layout__grid">
               <label className="create-user__field">
-                <span>Descripción</span>
+                <span>División</span>
                 <input
                   type="text"
                   value={location.nombre}
