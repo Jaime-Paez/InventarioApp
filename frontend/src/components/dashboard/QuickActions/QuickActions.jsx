@@ -75,8 +75,11 @@ const REMINDERS_POLL_MS = 4000
 // Envios pendientes/en camino cambian poco: no hace falta pedirlos cada 4s
 // (al volver a la pestana o enfocarla se piden al instante igual).
 const SHIPMENTS_POLL_MS = 15000
-// Desde cuantas pildoras a la vez el dock pasa a solo iconos.
+// Desde cuantas pildoras a la vez el dock puede pasar a solo iconos (y solo
+// si con los nombres completos no cabe en la barra).
 const DOCK_COMPACT_MIN_PILLS = 3
+// Ancho que las pestanas abiertas conservan antes de que el dock se compacte.
+const DOCK_TABS_MIN_WIDTH = 360
 // Las pestanas ocultas no consultan al servidor: cada pestana abierta sumaba
 // varias consultas por segundo aunque nadie la estuviera mirando.
 const isDocumentHidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
@@ -4011,20 +4014,71 @@ function QuickActions({
     setIsPendingReviewsOpen((open) => !open)
   }, [handleOpenRandomInspectionFromReminder, pendingReviewReminders])
 
-  // Con muchas pildoras a la vez (Por ubicar, envios, revision...) el dock
-  // pasa a modo compacto: solo icono + numero, igual que en el telefono.
+  // El dock (Por ubicar, envios, revision...) pasa a modo compacto (solo
+  // icono + numero, igual que en el telefono) solo cuando con los nombres
+  // completos no cabe: las pestanas deben conservar su ancho (hasta
+  // DOCK_TABS_MIN_WIDTH) y la campana su lugar.
   const [isDockCompact, setIsDockCompact] = useState(false)
   useEffect(() => {
     const dock = dockRef.current
     if (!dock || typeof MutationObserver === 'undefined') return undefined
-    const update = () => {
+    const toolbar = dock.parentElement
+    let frame = 0
+    const measure = () => {
+      frame = 0
       const pills = dock.querySelectorAll(':scope > .quick-actions__pending-shipments').length
-      setIsDockCompact(pills >= DOCK_COMPACT_MIN_PILLS)
+      if (pills < DOCK_COMPACT_MIN_PILLS || !toolbar) {
+        setIsDockCompact(false)
+        return
+      }
+      // Ancho del dock con los nombres completos (sin pintar: se mide y se
+      // devuelve la clase en el mismo instante).
+      const wasCompact = dock.classList.contains('is-compact')
+      dock.classList.remove('is-compact')
+      const fullWidth = dock.getBoundingClientRect().width
+      if (wasCompact) dock.classList.add('is-compact')
+
+      const style = window.getComputedStyle(toolbar)
+      const gap = parseFloat(style.columnGap) || 0
+      const inner = toolbar.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0)
+      let others = 0
+      let visible = 0
+      Array.from(toolbar.children).forEach((child) => {
+        if (child === dock || child.offsetParent === null) return
+        visible += 1
+        if (child.classList.contains('workspace__tabs')) {
+          // En telefono las pestanas van en su propia fila.
+          if (window.innerWidth <= 900) return
+          const wrapper = child.querySelector('.workspace__tablist-wrapper')
+          const list = child.querySelector('.workspace__tablist')
+          const natural = wrapper && list
+            ? child.getBoundingClientRect().width - wrapper.clientWidth + list.scrollWidth
+            : child.getBoundingClientRect().width
+          others += Math.min(natural, DOCK_TABS_MIN_WIDTH)
+          return
+        }
+        const childStyle = window.getComputedStyle(child)
+        others += child.getBoundingClientRect().width
+          + (parseFloat(childStyle.marginLeft) || 0)
+          + (parseFloat(childStyle.marginRight) || 0)
+      })
+      setIsDockCompact(fullWidth + others + gap * visible > inner)
     }
-    update()
-    const observer = new MutationObserver(update)
-    observer.observe(dock, { childList: true, subtree: true })
-    return () => observer.disconnect()
+    const schedule = () => {
+      if (!frame) frame = window.requestAnimationFrame(measure)
+    }
+    measure()
+    const observer = new MutationObserver(schedule)
+    observer.observe(toolbar || dock, { childList: true, subtree: true, characterData: true })
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule)
+    if (resizeObserver && toolbar) resizeObserver.observe(toolbar)
+    window.addEventListener('resize', schedule)
+    return () => {
+      observer.disconnect()
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', schedule)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
   }, [])
 
   useEffect(
