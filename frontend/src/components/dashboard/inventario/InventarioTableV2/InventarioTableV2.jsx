@@ -30,6 +30,7 @@ import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } 
 import { memoryStore } from '../../../../utils/memoryStore'
 import { isPhoneViewport } from '../../../../utils/viewport'
 import MoneyInput from '../../common/MoneyInput'
+import UbicacionSearchFields from './UbicacionSearchFields'
 
 const normId = (value) => (value == null ? null : String(value))
 const BULK_SELECT_CONFIRM_THRESHOLD = 1000
@@ -297,6 +298,10 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     if (criteria?.sin_precio) params.set('sin_precio', '1')
     if (criteria?.sin_casa) params.set('sin_casa', '1')
     if (criteria?.sin_oem) params.set('sin_oem', '1')
+    addIfPresent('ubic_sucursal', criteria?.ubic_sucursal)
+    addIfPresent('ubic_bodega', criteria?.ubic_bodega)
+    addIfPresent('ubic_division', criteria?.ubic_division)
+    addIfPresent('ubic_subdivision', criteria?.ubic_subdivision)
 
     const hasExplicitGlobalSearch = Object.prototype.hasOwnProperty.call(options || {}, 'globalSearchValue')
     const globalSearch = hasExplicitGlobalSearch
@@ -648,6 +653,10 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     sin_costo: false,
     sin_casa: false,
     sin_oem: false,
+    ubic_sucursal: '',
+    ubic_bodega: '',
+    ubic_division: '',
+    ubic_subdivision: '',
   }
 
   const [searchCriteria, setSearchCriteria] = useState(initialSearchCriteria)
@@ -2153,6 +2162,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   // boton Buscar: al cerrar el modal no se ven y es facil olvidarlos).
   const activeSearchFilterCount = Object.entries(lastSearchRef.current || {}).filter(([key, value]) => {
     if (key === 'restock_sucursal') return false
+    // La ubicacion cuenta como un solo filtro (la sucursal siempre va).
+    if (key === 'ubic_bodega' || key === 'ubic_division' || key === 'ubic_subdivision') return false
     if (!canSeeCost && (key === 'costo_min' || key === 'costo_max' || key === 'sin_costo')) return false
     return typeof value === 'boolean' ? value : String(value ?? '').trim() !== ''
   }).length
@@ -3005,6 +3016,19 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                       </label>
                     )}
                   </div>
+                </section>
+
+                <section className="create-user__section">
+                  <div className="inv-search__heading">
+                    <h4>Ubicación</h4>
+                  </div>
+                  <UbicacionSearchFields
+                    token={token}
+                    branches={restockBranches}
+                    bodegas={bodegas}
+                    value={searchCriteria}
+                    onChange={(patch) => setSearchCriteria((prev) => ({ ...prev, ...patch }))}
+                  />
                 </section>
 
                 <section className="create-user__section">

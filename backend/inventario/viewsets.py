@@ -955,6 +955,26 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 id__in=OEMProducto.objects.values("producto_id")
             )
 
+        # Ubicacion: productos que estan en esa sucursal / bodega / division /
+        # subdivision. Se usa la mas especifica que se eligio.
+        location_lookup = None
+        for param, lookup in (
+            ("ubic_subdivision", "subdivision_id"),
+            ("ubic_division", "subdivision__division_id"),
+            ("ubic_bodega", "subdivision__division__bodega_id"),
+            ("ubic_sucursal", "subdivision__division__bodega__sucursal_id"),
+        ):
+            try:
+                value = int(str(params.get(param) or "").strip())
+            except ValueError:
+                continue
+            location_lookup = {lookup: value}
+            break
+        if location_lookup:
+            product_queryset = product_queryset.filter(
+                id__in=Inventario.objects.filter(**location_lookup).values("producto_id")
+            )
+
         return product_queryset
 
     def _restock_product_ids(self, branch_ids):
