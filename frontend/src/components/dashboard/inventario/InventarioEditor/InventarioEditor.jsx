@@ -688,8 +688,18 @@ const InventarioEditor = forwardRef(function InventarioEditor(
           return { ...loc, sucursalId: String(id), sucursalNombre: nombre, bodegaId: '', bodegaNombre: '-', divisionId: '', divisionNombre: '-', subdivisionId: '', subdivisionNombre: '-' }
         case 'bodega':
           return { ...loc, bodegaId: String(id), bodegaNombre: nombre, divisionId: '', divisionNombre: '-', subdivisionId: '', subdivisionNombre: '-' }
-        case 'division':
-          return { ...loc, divisionId: String(id), divisionNombre: nombre, subdivisionId: '', subdivisionNombre: '-' }
+        case 'division': {
+          // Si la division tiene una sola subdivision, queda elegida.
+          const subs = subdivisionsByDivision.get(String(id)) || []
+          const unica = subs.length === 1 ? subs[0] : null
+          return {
+            ...loc,
+            divisionId: String(id),
+            divisionNombre: nombre,
+            subdivisionId: unica ? String(unica.id) : '',
+            subdivisionNombre: unica ? String(unica.nombre || '-') : '-',
+          }
+        }
         case 'subdivision':
           return { ...loc, subdivisionId: String(id), subdivisionNombre: nombre }
         default:
@@ -917,6 +927,16 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     try {
       // Todo en una sola llamada: si cambia el total de una sucursal es un
       // ajuste de inventario y se pide el motivo (useAjusteInventario).
+      // Una fila a medio elegir (sin subdivision) no se puede saltar: si no,
+      // se borraba la ubicacion vieja y la nueva nunca se creaba (quedaba -1).
+      const incompleta = locations.find((location) => !Number(location.subdivisionId))
+      if (incompleta) {
+        const donde = [incompleta.bodegaNombre, incompleta.divisionNombre]
+          .map((part) => String(part || '').trim())
+          .filter((part) => part && part !== '-')
+          .join(' / ')
+        throw new Error(`Elige la subdivisión de la ubicación${donde ? ` ${donde}` : ''} antes de guardar (o quita esa fila).`)
+      }
       const cambios = []
       locations.forEach((location) => {
         const quantity = parseNumber(location.cantidad)
