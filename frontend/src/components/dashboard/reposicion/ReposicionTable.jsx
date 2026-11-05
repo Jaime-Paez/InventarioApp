@@ -129,6 +129,8 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
   const [sucursalId, setSucursalId] = useState('')
   const [estado, setEstado] = useState('reponer')
   const [clase, setClase] = useState('')
+  // Causa elegida con clic en el resumen ("Inventario por causa").
+  const [causa, setCausa] = useState('')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -151,7 +153,7 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
     return () => window.clearTimeout(timer)
   }, [search])
 
-  useEffect(() => { setPage(1) }, [sucursalId, estado, clase, debouncedSearch, orden, pageSize])
+  useEffect(() => { setPage(1) }, [sucursalId, estado, clase, causa, debouncedSearch, orden, pageSize])
 
   const load = useCallback(async ({ recalcular = false } = {}) => {
     if (!token) return
@@ -163,9 +165,10 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
     if (sucursalId) params.set('sucursal_id', sucursalId)
     if (estado) params.set('estado', estado)
     if (clase) params.set('clase', clase)
+    if (causa) params.set('causa', causa)
     if (debouncedSearch) params.set('search', debouncedSearch)
     if (recalcular) params.set('recalcular', '1')
-    const key = JSON.stringify([sucursalId, estado, clase, debouncedSearch])
+    const key = JSON.stringify([sucursalId, estado, clase, causa, debouncedSearch])
     try {
       const response = await authFetch(`${API_URL}/reposicion/?${params.toString()}`, {}, token)
       const payload = await response.json().catch(() => ({}))
@@ -178,7 +181,7 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
     } finally {
       if (requestId === requestRef.current) setLoading(false)
     }
-  }, [token, page, pageSize, orden, sucursalId, estado, clase, debouncedSearch])
+  }, [token, page, pageSize, orden, sucursalId, estado, clase, causa, debouncedSearch])
 
   useEffect(() => { void load() }, [load])
 
@@ -245,6 +248,7 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
     parts.push(sucursalId ? ((config?.sucursales || []).find((s) => String(s.id) === String(sucursalId))?.nombre || 'Sucursal') : 'Todas las sucursales')
     parts.push(ESTADOS.find((e) => e.value === estado)?.label || 'Todos')
     parts.push(clase ? `Clase ${clase}` : 'Clases A, B y C')
+    if (causa) parts.push(`Causa: ${CAUSAS.find((c) => c.key === causa)?.label || causa}`)
     if (debouncedSearch) parts.push(`Búsqueda "${debouncedSearch}"`)
     return parts.join(' · ')
   }
@@ -257,6 +261,7 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
       if (sucursalId) params.set('sucursal_id', sucursalId)
       if (estado) params.set('estado', estado)
       if (clase) params.set('clase', clase)
+    if (causa) params.set('causa', causa)
       if (debouncedSearch) params.set('search', debouncedSearch)
       const response = await authFetch(`${API_URL}/reposicion/?${params.toString()}`, {}, token)
       const payload = await response.json().catch(() => ({}))
@@ -267,6 +272,7 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
         'reposicion',
         estado || 'todos',
         clase ? `clase-${clase}` : '',
+        causa ? `causa-${causa}` : '',
       ].filter(Boolean).join('-')
       const fileName = buildFileName(slug)
       if (formato === 'excel') {
@@ -289,11 +295,12 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
   }
 
   const resumen = data?.resumen
+  const causaFiltro = causa
   const totalCausas = useMemo(() => (
     CAUSAS.reduce((sum, causa) => sum + Number(resumen?.valor_por_causa?.[causa.key] || 0), 0)
   ), [resumen])
   const sucursales = config?.sucursales || []
-  const currentKey = JSON.stringify([sucursalId, estado, clase, debouncedSearch])
+  const currentKey = JSON.stringify([sucursalId, estado, clase, causa, debouncedSearch])
   // Al cambiar de filtro no se muestran los datos del filtro anterior.
   const stale = loadedKey !== currentKey
   const rows = !stale && Array.isArray(data?.results) ? data.results : []
@@ -341,7 +348,7 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
                   key={option.value || 'todos'}
                   type="button"
                   className={`reposicion__segment${estado === option.value ? ' is-active' : ''}`}
-                  onClick={() => { setHint(null); setEstado(option.value) }}
+                  onClick={() => { setHint(null); setEstado(option.value); setCausa('') }}
                   {...hintProps(option.value ? estadoInfo(option.value, null, cfg) : null)}
                 >
                   {option.label}
@@ -397,14 +404,28 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
             </div>
             <div className="reposicion__causes">
               {CAUSAS.map((causa) => {
+                const causaActiva = causaFiltro
                 const value = Number(resumen.valor_por_causa?.[causa.key] || 0)
                 return (
-                  <div key={causa.key} className="reposicion__cause" tabIndex={0} {...hintProps(causaInfo(causa.key, cfg))}>
+                  <button
+                    key={causa.key}
+                    type="button"
+                    className={`reposicion__cause${causaActiva === causa.key ? ' is-active' : ''}`}
+                    aria-pressed={causaActiva === causa.key}
+                    onClick={() => {
+                      setHint(null)
+                      // La causa abarca todos los estados: se ve con "Todos".
+                      if (causaActiva === causa.key) { setCausa(''); return }
+                      setCausa(causa.key)
+                      setEstado('')
+                    }}
+                    {...hintProps(causaInfo(causa.key, cfg))}
+                  >
                     <span className={`reposicion__dot is-${causa.key}`} />
                     <small>{causa.label}</small>
                     <strong>{money(value)}</strong>
                     <em>{totalCausas ? `${((value / totalCausas) * 100).toFixed(1)}%` : '0%'}</em>
-                  </div>
+                  </button>
                 )
               })}
             </div>

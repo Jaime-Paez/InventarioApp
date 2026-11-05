@@ -240,9 +240,31 @@
   align-items: baseline;
   gap: 5px;
   min-width: 0;
-  padding: 1px 4px;
+  padding: 1px 6px;
+  font: inherit;
   font-size: var(--font-size-xs, 12px);
+  color: inherit;
   white-space: nowrap;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.reposicion__cause:hover {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+/* Causa con la que esta filtrada la tabla (clic otra vez para quitarla) */
+.reposicion__cause.is-active {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+}
+
+.dashboard-shell.dark .reposicion__cause.is-active {
+  background: color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-primary-dark) 55%, transparent);
 }
 
 .reposicion__cause small,

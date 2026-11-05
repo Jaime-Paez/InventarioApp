@@ -505,6 +505,11 @@ class ReposicionAPIView(APIView):
         clase = (params.get("clase") or "").strip().upper()
         if clase:
             rows = [row for row in rows if row["clase"] == clase]
+        # Clic en una causa del resumen: solo los productos con inventario de
+        # esa causa (ciclo, seguridad, en camino, exceso, lento u obsoleto).
+        causa = (params.get("causa") or "").strip().lower()
+        if causa in CAUSAS:
+            rows = [row for row in rows if float((row.get("causa") or {}).get(causa) or 0) > 0]
         search = (params.get("search") or "").strip()
         if search:
             # Codigo, nombre, descripcion, referencia(s) u OEM.
