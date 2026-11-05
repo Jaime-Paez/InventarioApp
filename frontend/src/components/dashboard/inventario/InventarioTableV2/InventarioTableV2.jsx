@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { FilterMatchMode } from 'primereact/api'
+import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import { ColumnGroup } from 'primereact/columngroup'
@@ -2724,12 +2726,14 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         </div>
       )}
 
-      {shouldRenderBulkSelectProgressModal && (
+      {/* En un portal y a pantalla completa: dentro de la tabla quedaba
+          centrado respecto de la tarjeta (abajo a la derecha), no de la ventana. */}
+      {shouldRenderBulkSelectProgressModal && createPortal(
         <div
           className={`create-user__overlay${isClosingBulkSelectProgressModal ? ' create-user__overlay--closing' : ''}`}
           role="dialog"
           aria-modal="true"
-          style={{ pointerEvents: 'auto', background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(1px)' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, pointerEvents: 'auto', background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(1px)' }}
         >
           <div
             ref={bulkModalRef}
@@ -2798,7 +2802,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        getAppPortalRoot()
       )}
 
       <CreateProducto

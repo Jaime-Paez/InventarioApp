@@ -2620,12 +2620,12 @@ const handleResetTable = () => {
         </div>
       )}
 
-      {shouldRenderBulkSelectProgressModal && (
+      {shouldRenderBulkSelectProgressModal && createPortal(
         <div
           className={`create-user__overlay${isClosingBulkSelectProgressModal ? ' create-user__overlay--closing' : ''}`}
           role="dialog"
           aria-modal="true"
-          style={{ pointerEvents: 'auto', background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(1px)' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, pointerEvents: 'auto', background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(1px)' }}
         >
           <div
             ref={bulkModalRef}
@@ -2694,7 +2694,8 @@ const handleResetTable = () => {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        getPortalRoot()
       )}
 
       {Array.isArray(productHoverCard?.products) && productHoverCard.products.length > 0 && (

@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom'
+import { getAppPortalRoot as getPortalRoot } from '../../../../utils/portalRoot'
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { FilterMatchMode } from 'primereact/api'
 import { DataTable } from 'primereact/datatable'
@@ -1351,12 +1353,12 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
         </div>
       )}
 
-      {shouldRenderBulkSelectProgressModal && (
+      {shouldRenderBulkSelectProgressModal && createPortal(
         <div
           className={`create-user__overlay${isClosingBulkSelectProgressModal ? ' create-user__overlay--closing' : ''}`}
           role="dialog"
           aria-modal="true"
-          style={{ pointerEvents: 'auto', background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(1px)' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2000, pointerEvents: 'auto', background: 'rgba(2, 6, 23, 0.72)', backdropFilter: 'blur(1px)' }}
         >
           <div
             ref={bulkModalRef}
@@ -1425,7 +1427,8 @@ function ClientesTable({ token, onSelect, user, moduleActions }) {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        getPortalRoot()
       )}
 
       <CreateCliente
