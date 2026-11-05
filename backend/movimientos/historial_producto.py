@@ -112,13 +112,53 @@ def _base_movements():
     ).exclude(garantia_pendiente=True)
 
 
+def _es_matriz(nombre):
+    name = _norm(nombre)
+    return "matriz" in name or ("octubre" in name and "9" in name)
+
+
+def history_branch_options(allowed_ids=None, assigned_ids=None):
+    """Sucursales del filtro del historial y la que sale marcada al abrir.
+
+    allowed_ids None = sin restriccion (administrador): todas las sucursales,
+    la matriz (9 de Octubre) primero y marcada. Con restriccion: solo las
+    permitidas, marcada la sucursal asignada al usuario (o la primera)."""
+    from inventario.models import Sucursal
+
+    queryset = Sucursal.objects.all()
+    if allowed_ids is not None:
+        queryset = queryset.filter(id__in=sorted(allowed_ids))
+    branches = sorted(
+        queryset.values("id", "nombre"),
+        key=lambda row: (0 if _es_matriz(row["nombre"]) else 1, _norm(row["nombre"])),
+    )
+    default_id = None
+    if allowed_ids is not None:
+        default_id = next((row["id"] for row in branches if row["id"] in set(assigned_ids or ())), None)
+    if default_id is None and branches:
+        default_id = branches[0]["id"]
+    return branches, default_id
+
+
 def build_product_movement_history(
-    producto_id, *, tipo="", sucursal_id=None, fecha_desde=None, fecha_hasta=None, page=1, page_size=PAGE_SIZE_DEFAULT
+    producto_id,
+    *,
+    tipo="",
+    sucursal_id=None,
+    allowed_sucursal_ids=None,
+    fecha_desde=None,
+    fecha_hasta=None,
+    page=1,
+    page_size=PAGE_SIZE_DEFAULT,
 ):
+    """allowed_sucursal_ids None = todas; si no, solo movimientos de esas
+    sucursales (sucursal_id ya debe estar entre ellas)."""
     detalles = DetalleMovimiento.objects.filter(
         producto_id=producto_id,
         movimiento_inventario__in=_base_movements(),
     )
+    if allowed_sucursal_ids is not None:
+        detalles = detalles.filter(movimiento_inventario__sucursal_id__in=sorted(allowed_sucursal_ids))
 
     # Totales y sucursales sin filtrar por tipo (para el resumen y el filtro).
     scope = detalles
@@ -133,14 +173,6 @@ def build_product_movement_history(
     for row in scope.values("movimiento_inventario__tipo_movimiento__nombre").annotate(total=Sum("cantidad")):
         key = "salidas" if _norm(row["movimiento_inventario__tipo_movimiento__nombre"]).startswith("sal") else "entradas"
         totales[key] += int(row["total"] or 0)
-
-    sucursales = sorted(
-        {
-            (row["movimiento_inventario__sucursal_id"], row["movimiento_inventario__sucursal__nombre"])
-            for row in detalles.values("movimiento_inventario__sucursal_id", "movimiento_inventario__sucursal__nombre").distinct()
-        },
-        key=lambda item: str(item[1] or ""),
-    )
 
     filtered = scope
     if tipo in {"entrada", "salida"}:
@@ -209,5 +241,4 @@ def build_product_movement_history(
         "page_size": page_size,
         "total_pages": total_pages,
         "totales": totales,
-        "sucursales": [{"id": sid, "nombre": nombre} for sid, nombre in sucursales if sid],
     }

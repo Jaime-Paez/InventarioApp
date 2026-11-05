@@ -67,6 +67,7 @@ from usuarios.sucursal_scope import (
     get_allowed_sucursal_ids,
     get_allowed_sucursal_ids_for_modules,
     get_readable_sucursal_ids,
+    get_readable_sucursal_ids_for_modules,
 )
 from usuarios.utils import is_app_admin
 from .models import (
@@ -91,7 +92,7 @@ from .serializers import (
     SALIDA_SUBTYPE_PREFIXES,
 )
 from .historial import build_movement_history
-from .historial_producto import build_product_movement_history
+from .historial_producto import build_product_movement_history, history_branch_options as build_history_branch_options
 from .inconveniente_borrador import parse_borrador_items
 from .stock_availability import get_available_transfer_quantities_by_product
 from .transfer_helpers import (
@@ -2882,17 +2883,48 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         if not producto_id:
             return Response({"detail": "Falta producto_id."}, status=status.HTTP_400_BAD_REQUEST)
         tipo = (params.get("tipo") or "").strip().lower()
-        return Response(
-            build_product_movement_history(
-                producto_id,
-                tipo=tipo,
-                sucursal_id=_int(params.get("sucursal_id")),
-                fecha_desde=parse_date((params.get("fecha_desde") or "").strip()),
-                fecha_hasta=parse_date((params.get("fecha_hasta") or "").strip()),
-                page=_int(params.get("page"), 1),
-                page_size=_int(params.get("page_size"), 50),
-            )
+
+        # Sucursales: el administrador ve todas (y "todas"); los demas solo
+        # las sucursales que pueden leer. Sin sucursal_id se usa la de por
+        # defecto: la matriz para el admin, la sucursal del usuario si no.
+        allowed = get_readable_sucursal_ids_for_modules(
+            request.user,
+            [
+                RolPermiso.Modulos.PRODUCTOS,
+                RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+                RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
+            ],
         )
+        assigned = set(
+            UsuarioSucursal.objects.filter(usuario=request.user).values_list("sucursal_id", flat=True)
+        )
+        branches, default_id = build_history_branch_options(allowed, assigned)
+        puede_ver_todas = allowed is None
+        raw_sucursal = (params.get("sucursal_id") or "").strip().lower()
+        if raw_sucursal == "todas" and puede_ver_todas:
+            sucursal_id = None
+        elif raw_sucursal and raw_sucursal != "todas":
+            sucursal_id = _int(raw_sucursal)
+            if allowed is not None and sucursal_id not in allowed:
+                return Response(
+                    {"detail": "No tienes acceso a esa sucursal."}, status=status.HTTP_403_FORBIDDEN
+                )
+        else:
+            sucursal_id = default_id
+        data = build_product_movement_history(
+            producto_id,
+            tipo=tipo,
+            sucursal_id=sucursal_id,
+            allowed_sucursal_ids=allowed,
+            fecha_desde=parse_date((params.get("fecha_desde") or "").strip()),
+            fecha_hasta=parse_date((params.get("fecha_hasta") or "").strip()),
+            page=_int(params.get("page"), 1),
+            page_size=_int(params.get("page_size"), 50),
+        )
+        data["sucursales"] = branches
+        data["sucursal_aplicada"] = sucursal_id
+        data["puede_ver_todas"] = puede_ver_todas
+        return Response(data)
 
     @action(detail=True, methods=["get", "post", "patch"], url_path="distribucion-compra")
     def distribucion_compra(self, request, pk=None):

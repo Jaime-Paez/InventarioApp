@@ -159,7 +159,8 @@
 
 .create-user__header h3 {
   margin: 0;
-  padding: 2px;
+  /* Aire a los lados para que el texto no quede pegado al borde de la pestaña */
+  padding: 2px 24px;
   border-bottom-left-radius: 14px;
   border-bottom-right-radius: 14px;
   background: var(--color-primary);

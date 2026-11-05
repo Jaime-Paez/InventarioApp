@@ -20,6 +20,8 @@ const TIPO_FILTERS = [
 // un boton para abrir esa entrada o salida (solo para ver).
 function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
   const [tipo, setTipo] = useState('')
+  // '' = la sucursal por defecto (la decide el backend: la matriz para el
+  // administrador, la del usuario para los demas); 'todas' solo para admin.
   const [sucursalId, setSucursalId] = useState('')
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
@@ -81,6 +83,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
   }
 
   const sucursales = Array.isArray(meta.sucursales) ? meta.sucursales : []
+  const sucursalActiva = meta.sucursal_aplicada == null ? 'todas' : String(meta.sucursal_aplicada)
   const totales = meta.totales || { entradas: 0, salidas: 0 }
 
   return (
@@ -99,25 +102,27 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
               </button>
             ))}
           </div>
-          {sucursales.length > 1 && (
+          {(sucursales.length > 0 || meta.puede_ver_todas) && (
             <div className="producto-movs__segment" role="group" aria-label="Sucursal">
-              <button
-                type="button"
-                className={`producto-movs__chip${!sucursalId ? ' is-active' : ''}`}
-                onClick={() => setSucursalId('')}
-              >
-                Todas
-              </button>
               {sucursales.map((branch) => (
                 <button
                   key={branch.id}
                   type="button"
-                  className={`producto-movs__chip${String(sucursalId) === String(branch.id) ? ' is-active' : ''}`}
+                  className={`producto-movs__chip${sucursalActiva === String(branch.id) ? ' is-active' : ''}`}
                   onClick={() => setSucursalId(String(branch.id))}
                 >
                   {branch.nombre}
                 </button>
               ))}
+              {meta.puede_ver_todas && (
+                <button
+                  type="button"
+                  className={`producto-movs__chip${sucursalActiva === 'todas' ? ' is-active' : ''}`}
+                  onClick={() => setSucursalId('todas')}
+                >
+                  Todas
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -180,7 +185,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
 
           {!rows.length && (
             <div className="create-user__locations-row create-user__locations-row--empty">
-              <span>Este producto no tiene entradas ni salidas{tipo || sucursalId || fechaDesde || fechaHasta ? ' con este filtro' : ''}.</span>
+              <span>Este producto no tiene entradas ni salidas{tipo || fechaDesde || fechaHasta ? ' con este filtro' : ''}.</span>
             </div>
           )}
 
