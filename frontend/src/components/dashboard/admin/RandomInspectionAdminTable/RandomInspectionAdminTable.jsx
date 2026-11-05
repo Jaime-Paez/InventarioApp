@@ -15,7 +15,6 @@ import '../../movimientos/TrasladosInconvenientesTable.css'
 import './RandomInspectionAdminTable.css'
 import InspectionCoverageMap from './InspectionCoverageMap'
 import RecountWarningDialog from './RecountWarningDialog'
-import FaltanteAparecioDialog from './FaltanteAparecioDialog'
 import useResizableModal from '../../common/useResizableModal'
 import CascadeDropdown from '../../common/CascadeDropdown'
 import BlockerNotice from '../../common/BlockerNotice'
@@ -255,7 +254,6 @@ function RandomInspectionAdminTable({
   // Revision a desplegar cuando llega su sucursal (abierta desde un recordatorio).
   const pendingExpandRevisionRef = useRef('')
   // Faltante abierto al que se le registra "Aparecio".
-  const [aparecioItem, setAparecioItem] = useState(null)
   const [itemsPage, setItemsPage] = useState(1)
   const [itemsPageSize, setItemsPageSize] = useState(25)
   const [itemsTotalCount, setItemsTotalCount] = useState(0)
@@ -1736,7 +1734,6 @@ function RandomInspectionAdminTable({
                     const awaitingMove = canUpdate && status.key === 'pendiente' && isMoveAwaitingDecision(row)
                     // Hasta decidir el cambio de fila no se reenvia ni se verifica.
                     const canFix = canUpdate && status.key === 'pendiente' && !awaitingMove
-                    const canFound = canUpdate && Number(row?.faltante_pendiente || 0) > 0
                     const note = String(row?.nota_verificacion || row?.observacion || '').trim()
                     return (
                       <div
@@ -1806,12 +1803,6 @@ function RandomInspectionAdminTable({
                             >
                               <Wrench size={13} />
                               Verificar
-                            </button>
-                          ) : null}
-                          {canFound ? (
-                            <button type="button" className="inspection-admin__action" onClick={() => setAparecioItem(row)}>
-                              <PackageCheck size={13} />
-                              Apareció
                             </button>
                           ) : null}
                         </div>
@@ -2038,25 +2029,6 @@ function RandomInspectionAdminTable({
         warning={recountConfirm}
         onResolve={(choice) => { recountConfirm?.resolve(choice); setRecountConfirm(null) }}
       />
-
-      {aparecioItem && (
-        <FaltanteAparecioDialog
-          item={aparecioItem}
-          token={token}
-          onClose={() => setAparecioItem(null)}
-          onSaved={(updated, cantidad) => {
-            setAparecioItem(null)
-            const pendiente = Number(updated?.faltante_pendiente || 0)
-            notifySuccess(
-              pendiente > 0
-                ? `Se sumaron ${cantidad} al stock; siguen faltando ${pendiente}.`
-                : `Se sumaron ${cantidad} al stock; el faltante quedó cerrado.`
-            )
-            void loadItems({ silent: true })
-            void loadSummary({ silent: true })
-          }}
-        />
-      )}
 
       {/* Una sola tarjeta con la tabla, igual que en el resto del sistema. */}
       {view === 'sucursales' && (
