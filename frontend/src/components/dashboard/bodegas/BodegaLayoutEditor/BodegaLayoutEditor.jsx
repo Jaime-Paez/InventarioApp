@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Eye } from 'lucide-react'
+import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import './BodegaLayoutEditor.css'
 import { REFERENCE_TYPES, REFERENCE_TYPE_COLORS, isReferenceType } from './referenceTypes'
 
@@ -181,12 +184,47 @@ const TypeSelect = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [menuStyle, setMenuStyle] = useState(null)
   const containerRef = useRef(null)
+  const menuRef = useRef(null)
+
+  // El menu va en una capa encima de la pantalla (portal, posicion fija): asi
+  // no queda cortado por la lista de tarjetas ni le sale una segunda barra de
+  // desplazamiento. Se abre hacia arriba si abajo no hay espacio.
+  const placeMenu = useCallback(() => {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const gap = 8
+    const menuHeight = menuRef.current?.offsetHeight || 300
+    const spaceBelow = window.innerHeight - rect.bottom - gap
+    const openUp = spaceBelow < menuHeight && rect.top - gap > spaceBelow
+    setMenuStyle({
+      position: 'fixed',
+      left: Math.max(8, rect.left),
+      width: rect.width,
+      ...(openUp
+        ? { bottom: window.innerHeight - rect.top + gap }
+        : { top: rect.bottom + gap }),
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!isOpen) return undefined
+    placeMenu()
+    window.addEventListener('scroll', placeMenu, true)
+    window.addEventListener('resize', placeMenu)
+    return () => {
+      window.removeEventListener('scroll', placeMenu, true)
+      window.removeEventListener('resize', placeMenu)
+    }
+  }, [isOpen, placeMenu])
 
   useEffect(() => {
     if (!isOpen) return
     const handleClickOutside = (event) => {
-      if (!containerRef.current?.contains(event.target)) setIsOpen(false)
+      if (containerRef.current?.contains(event.target)) return
+      if (menuRef.current?.contains(event.target)) return
+      setIsOpen(false)
     }
     document.addEventListener('mousedown', handleClickOutside, true)
     return () => document.removeEventListener('mousedown', handleClickOutside, true)
@@ -221,7 +259,12 @@ const TypeSelect = ({
         onClick={() => setIsOpen((prev) => !prev)}
         disabled={disabled}
       >
-        <span>{value || placeholder}</span>
+        <span className="bodega-type-select__value">
+          {isReferenceType(value) && (
+            <Eye className="bodega-type-select__visual" size={14} aria-label="Solo visual" />
+          )}
+          <span>{value || placeholder}</span>
+        </span>
         <div className="bodega-type-select__control-actions">
           <label
             className="bodega-type-select__color"
@@ -243,8 +286,12 @@ const TypeSelect = ({
         </div>
       </button>
 
-      {isOpen && (
-        <div className="bodega-type-select__menu">
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={menuRef}
+          className="bodega-type-select__menu bodega-type-select__menu--floating"
+          style={menuStyle || { position: 'fixed', visibility: 'hidden' }}
+        >
           <div className="bodega-type-select__search">
             <i className="pi pi-search" />
             <input
@@ -266,7 +313,12 @@ const TypeSelect = ({
                 className={`bodega-type-select__option${option === value ? ' is-active' : ''}`}
                 onClick={() => handleSelect(option)}
               >
-                <span>{option}</span>
+                <span className="bodega-type-select__value">
+                  {isReferenceType(option) && (
+                    <Eye className="bodega-type-select__visual" size={14} aria-hidden="true" />
+                  )}
+                  <span>{option}</span>
+                </span>
                 <label
                   className="bodega-type-select__color"
                   onClick={(event) => event.stopPropagation()}
@@ -293,7 +345,11 @@ const TypeSelect = ({
           >
             Escribe para crear un tipo
           </button>
-        </div>
+          <p className="bodega-type-select__legend">
+            <Eye size={12} aria-hidden="true" /> Solo visual: sirve para identificar en el mapa, no lleva subdivisiones.
+          </p>
+        </div>,
+        getAppPortalRoot()
       )}
     </div>
   )
@@ -849,7 +905,12 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
             ].filter(Boolean).join(' ')}
           >
             <div className="bodega-layout__card-header">
-              <h5>{location.nombre || `Ubicación ${index + 1}`}</h5>
+              <h5 className="bodega-layout__card-title">
+                {isReferenceType(location.tipo) && (
+                  <Eye className="bodega-type-select__visual" size={16} aria-label="Solo visual" />
+                )}
+                {location.nombre || `Ubicación ${index + 1}`}
+              </h5>
               <div className="bodega-layout__card-actions">
                 <button
                   type="button"
@@ -941,7 +1002,9 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
               ? renderLocationFooter(location, index)
               : null}
             {isReferenceType(location.tipo) && (
-              <p className="bodega-layout__hint">Solo de referencia en el mapa: no lleva subdivisiones ni productos.</p>
+              <p className="bodega-layout__hint bodega-layout__hint--visual">
+                <Eye size={14} aria-hidden="true" /> Solo visual: sirve para identificar en el mapa, no lleva subdivisiones ni productos.
+              </p>
             )}
           </div>
         ))}

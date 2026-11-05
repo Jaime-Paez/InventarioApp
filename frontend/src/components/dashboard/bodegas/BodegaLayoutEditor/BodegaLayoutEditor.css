@@ -452,7 +452,7 @@
 /* Selector de color nativo invisible encima del punto (se ve solo el punto).
    Con la clase delante para ganarle a las reglas de los inputs del campo
    (.create-user__field input), que lo dejaban como una cajita con una linea. */
-.bodega-type-select .bodega-type-select__color input {
+:is(.bodega-type-select, .bodega-type-select__menu) .bodega-type-select__color input {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -469,12 +469,12 @@
   cursor: pointer;
 }
 
-.bodega-type-select .bodega-type-select__color input:disabled {
+:is(.bodega-type-select, .bodega-type-select__menu) .bodega-type-select__color input:disabled {
   opacity: 0;
   cursor: default;
 }
 
-.bodega-type-select .bodega-type-select__color-dot {
+:is(.bodega-type-select, .bodega-type-select__menu) .bodega-type-select__color-dot {
   display: block;
   flex: none;
   width: 12px;
@@ -812,4 +812,56 @@
   .bodega-layout__adjust-btn {
     transition: none;
   }
+}
+
+/* Menu en capa flotante (portal): por encima de modales y tarjetas. */
+.bodega-type-select__menu--floating {
+  z-index: 21000;
+  box-sizing: border-box;
+}
+
+.bodega-type-select__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bodega-type-select__value > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ojo: tipos solo visuales (puerta, pasillo, columna, pared, escritorio). */
+.bodega-type-select__visual {
+  flex: none;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.bodega-type-select__legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  color: var(--color-text-secondary, #64748b);
+  font-size: var(--font-size-xs, 0.75rem);
+  line-height: 1.35;
+}
+
+.dashboard-shell.dark .bodega-type-select__visual,
+.dashboard-shell.dark .bodega-type-select__legend {
+  color: #94a3b8;
+}
+
+.bodega-layout__card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bodega-layout__hint--visual {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
