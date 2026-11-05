@@ -271,3 +271,14 @@
 .dashboard-shell.dark .ajuste-motivo__hint {
   color: #fcd34d;
 }
+
+/* Si la cantidad sube no se ofrece "No encontré": quedan 2 opciones. */
+.ajuste-motivo__options--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 420px) {
+  .ajuste-motivo__options--2 {
+    grid-template-columns: 1fr;
+  }
+}

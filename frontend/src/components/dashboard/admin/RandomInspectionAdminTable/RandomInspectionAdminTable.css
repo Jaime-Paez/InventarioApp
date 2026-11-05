@@ -2491,3 +2491,17 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   background: rgba(251, 191, 36, 0.18);
   color: #fcd34d;
 }
+
+/* Revision que no se termino y se dejo pasar: gris, para que no parezca que
+   alguien sigue contando. */
+.transfer-issues-state.transfer-issues-state--dejada {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+}
+
+.dashboard-shell.dark .transfer-issues-state.transfer-issues-state--dejada {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #cbd5e1;
+}

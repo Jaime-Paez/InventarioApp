@@ -183,6 +183,13 @@ LOCATION_CATALOG_SCOPED_READ_MODULE_KEYS = (
     RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
 )
 
+def _norm_motivo(texto):
+    import unicodedata
+
+    raw = unicodedata.normalize("NFD", str(texto or ""))
+    return "".join(ch for ch in raw if unicodedata.category(ch) != "Mn").strip().lower()
+
+
 INVENTARIO_WRITE_SCOPE_MODULE_KEYS = (
     RolPermiso.Modulos.PRODUCTOS,
 )
@@ -2222,6 +2229,13 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 for sid in sorted(sucursales_tocadas)
                 if despues[sid] != antes[sid]
             ]
+            if motivo and _norm_motivo(motivo) == "no encontre" and any(a["diferencia"] > 0 for a in ajustes):
+                # "No encontré" solo cuando la cantidad baja.
+                transaction.set_rollback(True)
+                return Response(
+                    {"detail": '"No encontré" solo se puede usar cuando la cantidad baja.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if ajustes and not motivo:
                 transaction.set_rollback(True)
                 return Response(

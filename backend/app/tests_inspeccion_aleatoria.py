@@ -470,6 +470,23 @@ class DisculparTests(InspeccionAleatoriaBaseTestCase):
         self.assertTrue(daily.disculpada)
         self.assertTrue(branch.disculpada)
 
+    def test_dejar_pasar_no_excusa_un_reconteo(self):
+        daily = self._crear_inspeccion()
+        reconteo = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
+        InspeccionAleatoriaDiaria.objects.filter(pk=reconteo.pk).update(nota_general="Reconteo de REV-X")
+        response = self.admin_client.post(
+            f"{BASE_URL}/admin/disculpar/",
+            {"usuario_id": self.revisor.id, "fecha": timezone.localdate().isoformat()},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        daily.refresh_from_db()
+        reconteo.refresh_from_db()
+        self.assertTrue(daily.disculpada)
+        self.assertFalse(reconteo.disculpada)
+        self.assertEqual(app_views._revision_state_key(daily), "dejada_pasar")
+        self.assertEqual(app_views._revision_state_key(reconteo), "en_curso")
+
 
 class ResumenAdminTests(InspeccionAleatoriaBaseTestCase):
     def _resumen_usuario(self):

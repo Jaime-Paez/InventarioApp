@@ -73,3 +73,10 @@ class AjusteInventarioTests(APITestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.data["ajustes"][0]["diferencia"], 2)
         self.assertEqual(response.data["ajustes"][0]["cantidad_nueva"], 7)
+
+    def test_no_encontre_solo_cuando_baja(self):
+        sube = {"producto_id": self.producto.id, "motivo": "No encontré", "cambios": [{"subdivision_id": self.sub_b.id, "cantidad": 2}]}
+        response = self.client.post(URL, sube, format="json")
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertFalse(Inventario.objects.filter(producto=self.producto, subdivision=self.sub_b).exists())
+        self.assertFalse(AjusteInventario.objects.exists())

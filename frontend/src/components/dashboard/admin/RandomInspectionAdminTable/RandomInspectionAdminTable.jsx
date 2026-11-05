@@ -84,6 +84,8 @@ const REVISION_STATUS_FILTERS = [
 
 const REVISION_STATES = {
   en_curso: { label: 'En curso', chip: 'encurso', row: '' },
+  // No se termino y administracion la dejo pasar ("Dejar pasar").
+  dejada_pasar: { label: 'Dejada pasar', chip: 'dejada', row: '' },
   pendiente: { label: 'Pendiente', chip: 'pendiente', row: 'pendiente' },
   solucionada: { label: 'Solucionada', chip: 'resuelto', row: 'resuelto' },
   revisada: { label: 'Revisada', chip: 'revisada', row: '' },
@@ -93,6 +95,7 @@ const describeRevisionResolution = (revision) => {
   const differences = Number(revision?.diferencias || 0)
   const verified = Number(revision?.verificadas || 0)
   if (revision?.estado_revision === 'en_curso') return 'Aún contando'
+  if (revision?.estado_revision === 'dejada_pasar') return 'No se terminó de contar'
   if (!differences) return 'Sin diferencias'
   if (verified >= differences) return `${differences} de ${differences} solucionadas`
   return `${verified} de ${differences} solucionadas`

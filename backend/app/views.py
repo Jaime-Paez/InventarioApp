@@ -5488,13 +5488,21 @@ class RandomInspectionAdminExcuseAPIView(APIView):
                 )
 
             for inspection in inspections:
+                # Un reconteo lo pidio administracion a proposito: no se deja
+                # pasar, sigue con su recordatorio hasta que se cuente.
+                if _normalize_text(inspection.nota_general).startswith(RECOUNT_ORIGIN_PREFIX):
+                    continue
                 if inspection.estado != InspeccionAleatoriaDiaria.Estados.COMPLETADA:
                     inspection.disculpada = True
                     inspection.save(update_fields=["disculpada", "updated_at"])
 
             # Mark the user's own inspection reminders as seen by the user
             existing_payload = list(store.payload) if isinstance(store.payload, list) else []
-            insp_id_strs = {str(int(inspection.id)) for inspection in inspections}
+            insp_id_strs = {
+                str(int(inspection.id))
+                for inspection in inspections
+                if not _normalize_text(inspection.nota_general).startswith(RECOUNT_ORIGIN_PREFIX)
+            }
             user_id_str = str(int(usuario_id))
             for rem in existing_payload:
                 if not isinstance(rem, dict):
@@ -6076,10 +6084,11 @@ def _inspection_display_name(inspection):
 
 
 def _revision_state_key(inspection):
-    """en_curso (aun contando), pendiente (diferencias por verificar),
-    solucionada (todas verificadas) o revisada (sin diferencias)."""
+    """en_curso (aun contando), dejada_pasar (no se termino y administracion
+    la dejo pasar), pendiente (diferencias por verificar), solucionada (todas
+    verificadas) o revisada (sin diferencias)."""
     if inspection.estado != InspeccionAleatoriaDiaria.Estados.COMPLETADA:
-        return "en_curso"
+        return "dejada_pasar" if inspection.disculpada else "en_curso"
     if int(getattr(inspection, "n_pendientes", 0) or 0) > 0:
         return "pendiente"
     if int(getattr(inspection, "n_diferencias", 0) or 0) > 0:
@@ -6173,7 +6182,7 @@ class RandomInspectionAdminRevisionsAPIView(APIView):
         elif estado == "faltantes":
             queryset = queryset.filter(n_faltantes__gt=0)
         elif estado == "en_curso":
-            queryset = queryset.exclude(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA)
+            queryset = queryset.exclude(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA).filter(disculpada=False)
 
         total_count = queryset.count()
         total_pages = max(1, ((total_count - 1) // page_size) + 1) if total_count else 1

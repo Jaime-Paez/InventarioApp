@@ -391,3 +391,33 @@
   font-size: var(--font-size-xs, 0.75rem);
   color: var(--color-text-secondary, #64748b);
 }
+
+/* Linea debajo de "Saldo actual" cuando la tabla se desplaza a lo ancho: la
+   linea de la ultima fila queda partida en el borde de la tabla (border-
+   collapse) y con la barra de desplazamiento debajo casi no se veia. Se
+   dibuja arriba de la barra, solo cuando hay barra; sin barra la pone el
+   borde del recuadro. */
+.producto-movs__kardex-wrap {
+  /* Sin esto Chrome usa el scrollbar-color global y no dibuja la linea. */
+  scrollbar-color: auto;
+  scrollbar-width: auto;
+}
+
+.producto-movs__kardex-wrap::-webkit-scrollbar {
+  height: 10px;
+}
+
+.producto-movs__kardex-wrap::-webkit-scrollbar-track {
+  border-top: 1px solid var(--color-border);
+  background: var(--scrollbar-track-color, transparent);
+}
+
+.producto-movs__kardex-wrap::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb-color, var(--color-primary)) padding-box;
+}
+
+.producto-movs__kardex-wrap::-webkit-scrollbar-corner {
+  background: transparent;
+}

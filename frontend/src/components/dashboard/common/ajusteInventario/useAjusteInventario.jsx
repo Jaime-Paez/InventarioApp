@@ -28,6 +28,10 @@ export class AjusteCanceladoError extends Error {
 // no pide motivo.
 // El editor pregunta el motivo apenas se cambia la cantidad (pedirMotivo); el
 // que se confirma ahi se manda al guardar sin volver a preguntar.
+// "No encontré" solo tiene sentido si en todas las sucursales la cantidad bajó.
+const soloBaja = (ajustes) => Array.isArray(ajustes) && ajustes.length > 0
+  && ajustes.every((ajuste) => Number(ajuste?.diferencia) < 0)
+
 export default function useAjusteInventario(token) {
   const [pending, setPending] = useState(null)
   const [choice, setChoice] = useState(MOTIVOS_AJUSTE[0])
@@ -41,7 +45,9 @@ export default function useAjusteInventario(token) {
     if (promiseRef.current) return promiseRef.current
     promiseRef.current = new Promise((resolve) => {
       resolverRef.current = resolve
-      setChoice(MOTIVOS_AJUSTE[0])
+      // "No encontré" solo cuando la cantidad baja; si sube, por defecto
+      // "Ajuste de inventario".
+      setChoice(soloBaja(ajustes) ? MOTIVOS_AJUSTE[0] : MOTIVOS_AJUSTE[1])
       setOtro('')
       setPending(ajustes || [])
     })
@@ -75,6 +81,7 @@ export default function useAjusteInventario(token) {
   }, [pedirMotivo, token])
 
   const motivoFinal = choice === OTRO ? otro.trim() : choice
+  const opciones = OPCIONES.filter(({ value }) => value !== MOTIVOS_AJUSTE[0] || soloBaja(pending))
 
   const dialog = pending && typeof document !== 'undefined' ? createPortal(
     <div className="ajuste-motivo__backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(null) }}>
@@ -99,8 +106,8 @@ export default function useAjusteInventario(token) {
             </li>
           ))}
         </ul>
-        <div className="ajuste-motivo__options" role="radiogroup" aria-label="Motivo">
-          {OPCIONES.map(({ value, label, icon }) => (
+        <div className={`ajuste-motivo__options ajuste-motivo__options--${opciones.length}`} role="radiogroup" aria-label="Motivo">
+          {opciones.map(({ value, label, icon }) => (
             <label key={value} className={`ajuste-motivo__option${choice === value ? ' is-active' : ''}`}>
               <input
                 className="ajuste-motivo__radio"
