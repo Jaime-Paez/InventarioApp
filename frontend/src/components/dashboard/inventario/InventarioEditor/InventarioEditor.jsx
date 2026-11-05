@@ -218,6 +218,13 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     return map
   }, [subdivisions])
 
+  // Al elegir una division la subdivision nunca queda vacia: sale la primera
+  // libre (en el mismo orden del desplegable) y luego se puede cambiar.
+  const firstSubdivisionOf = useCallback((divisionId, excludedIds = new Set()) => {
+    const subs = subdivisionsByDivision.get(String(divisionId)) || []
+    return subs.find((sub) => !excludedIds.has(String(sub.id))) || null
+  }, [subdivisionsByDivision])
+
   const availableBodegas = useMemo(
     () => (locationDraft.sucursalId ? bodegasBySucursal.get(locationDraft.sucursalId) || [] : []),
     [bodegasBySucursal, locationDraft.sucursalId]
@@ -542,10 +549,12 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         }
       }
       if (field === 'divisionId') {
+        const used = new Set(locations.map((loc) => String(loc.subdivisionId)))
+        const first = firstSubdivisionOf(value, used)
         return {
           ...prev,
           divisionId: value,
-          subdivisionId: '',
+          subdivisionId: first ? String(first.id) : '',
         }
       }
       return {
@@ -689,15 +698,15 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         case 'bodega':
           return { ...loc, bodegaId: String(id), bodegaNombre: nombre, divisionId: '', divisionNombre: '-', subdivisionId: '', subdivisionNombre: '-' }
         case 'division': {
-          // Si la division tiene una sola subdivision, queda elegida.
-          const subs = subdivisionsByDivision.get(String(id)) || []
-          const unica = subs.length === 1 ? subs[0] : null
+          // Sale la primera subdivision libre (no usada por otra fila).
+          const used = new Set(prev.filter((other) => other.uid !== uid).map((other) => String(other.subdivisionId)))
+          const first = firstSubdivisionOf(id, used)
           return {
             ...loc,
             divisionId: String(id),
             divisionNombre: nombre,
-            subdivisionId: unica ? String(unica.id) : '',
-            subdivisionNombre: unica ? String(unica.nombre || '-') : '-',
+            subdivisionId: first ? String(first.id) : '',
+            subdivisionNombre: first ? String(first.nombre || `Subdivision ${first.id}`) : '-',
           }
         }
         case 'subdivision':
@@ -769,7 +778,11 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   const handleTransferSelect = (field, id) => {
     setTransferDraft((prev) => {
       if (field === 'bodega') return { ...prev, bodegaId: String(id), divisionId: '', subdivisionId: '' }
-      if (field === 'division') return { ...prev, divisionId: String(id), subdivisionId: '' }
+      if (field === 'division') {
+        const origen = locations.find((loc) => loc.uid === transferUid)
+        const first = firstSubdivisionOf(id, new Set([String(origen?.subdivisionId || '')]))
+        return { ...prev, divisionId: String(id), subdivisionId: first ? String(first.id) : '' }
+      }
       return { ...prev, subdivisionId: String(id) }
     })
     setOpenTransferDropdown(null)
@@ -900,6 +913,9 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     if (antes === undefined || Number(antes) === Number(location.cantidad)) return
     const nueva = Number(location.cantidad)
     if (!Number.isFinite(nueva) || nueva < 0) return
+    // El motivo solo se pide con todas las ubicaciones completas; si falta una
+    // subdivision, primero hay que elegirla (al guardar se avisa).
+    if (locations.some((loc) => !Number(loc.subdivisionId))) return
     const saved = savedTotalsRef.current.get(location.sucursalId) || { total: 0, nombre: location.sucursalNombre }
     const totalNuevo = locations
       .filter((loc) => loc.sucursalId === location.sucursalId)
