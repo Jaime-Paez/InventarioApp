@@ -308,3 +308,16 @@
 .dashboard-shell.dark .producto-movs__qty--out {
   color: #fca5a5;
 }
+
+/* Ajustes de inventario (cambios manuales de cantidad con motivo): ambar. */
+.producto-movs__total--adj,
+.producto-movs__tag--adj {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.dashboard-shell.dark .producto-movs__total--adj,
+.dashboard-shell.dark .producto-movs__tag--adj {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fcd34d;
+}

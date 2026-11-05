@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from configuracion.models import ConfiguracionSistema
+from inventario.ajustes import registrar_ajuste_inventario
 from inventario.models import Bodega, Division, Inventario, SubDivision
 from usuarios.models import RolPermiso
 from usuarios.sucursal_scope import get_allowed_sucursal_ids
@@ -4972,6 +4973,13 @@ class RandomInspectionVerifyItemAPIView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
                 moved = _move_found_stock_here(item, target, quantity)
+                registrar_ajuste_inventario(
+                    producto_id=item.producto_id,
+                    sucursal_id=item.sucursal_id,
+                    diferencia=moved["ajuste"],
+                    motivo=f"Revisión de inventario #{int(item.inspeccion_id)}: apareció",
+                    usuario=request.user,
+                )
                 # Lo que se sumo por ajuste son unidades que aparecieron: cierran
                 # faltantes abiertos de este producto.
                 recovered = _recover_open_shortfalls(item, moved["ajuste"], request.user, target)
@@ -5112,6 +5120,13 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 else:
                     adjustment = _apply_random_inspection_adjustment(
                         item, int(cantidad_confirmada), confirmed_by_location or None
+                    )
+                    registrar_ajuste_inventario(
+                        producto_id=item.producto_id,
+                        sucursal_id=item.sucursal_id,
+                        diferencia=adjustment["delta_total"],
+                        motivo=f"Revisión de inventario #{int(item.inspeccion_id)}",
+                        usuario=request.user,
                     )
                     if adjustment["delta_total"] < 0:
                         # Lo que falta queda abierto hasta que aparezca.
@@ -5331,6 +5346,13 @@ class RandomInspectionShortfallFoundAPIView(APIView):
             )
             inventory_row.cantidad = int(inventory_row.cantidad or 0) + quantity
             inventory_row.save(update_fields=["cantidad"])
+            registrar_ajuste_inventario(
+                producto_id=item.producto_id,
+                sucursal_id=item.sucursal_id,
+                diferencia=quantity,
+                motivo=f"Revisión de inventario #{int(item.inspeccion_id)}: apareció",
+                usuario=request.user,
+            )
             _register_shortfall_recovery(item, quantity, request.user, origen="manual", subdivision=target)
             target_label = _subdivision_label(target)
             _record_random_inspection_audit(

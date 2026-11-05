@@ -2098,3 +2098,159 @@ class InventarioViewSet(viewsets.ModelViewSet):
             action_key="puede_actualizar",
         )
         serializer.save()
+
+    @action(detail=False, methods=["post"], url_path="ajustar")
+    def ajustar(self, request, *args, **kwargs):
+        """Guarda de una vez las cantidades editadas de las ubicaciones de un
+        producto. Si el total de una sucursal sube o baja es un ajuste de
+        inventario: exige motivo y queda registrado (sale en el Kardex).
+        Repartir entre ubicaciones de la misma sucursal no es ajuste.
+
+        Body: {producto_id, motivo?, cambios: [{id?, subdivision_id, cantidad}]}
+        (cantidad 0 en una fila existente la elimina). Sin motivo y con
+        cambio de total responde 400 code=motivo_requerido con los ajustes
+        para que el usuario elija el motivo y reenvie."""
+        from .models import AjusteInventario
+
+        try:
+            producto_id = int(request.data.get("producto_id"))
+        except (TypeError, ValueError):
+            return Response({"detail": "Falta producto_id."}, status=status.HTTP_400_BAD_REQUEST)
+        producto = Producto.objects.filter(id=producto_id).first()
+        if not producto:
+            return Response({"detail": "Producto no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        motivo = str(request.data.get("motivo") or "").strip()[:200]
+        cambios = request.data.get("cambios")
+        if not isinstance(cambios, list):
+            return Response({"detail": "cambios debe ser una lista."}, status=status.HTTP_400_BAD_REQUEST)
+
+        parsed = []
+        for raw in cambios:
+            if not isinstance(raw, dict):
+                return Response({"detail": "Cambio no valido."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                cantidad = int(raw.get("cantidad"))
+                subdivision_id = int(raw.get("subdivision_id")) if raw.get("subdivision_id") not in (None, "") else None
+                inv_id = int(raw.get("id")) if raw.get("id") not in (None, "") else None
+            except (TypeError, ValueError):
+                return Response({"detail": "Cantidad o ubicacion no valida."}, status=status.HTTP_400_BAD_REQUEST)
+            if cantidad < 0:
+                return Response({"detail": "La cantidad no puede ser negativa."}, status=status.HTTP_400_BAD_REQUEST)
+            if inv_id is None and subdivision_id is None:
+                return Response({"detail": "Falta la ubicacion."}, status=status.HTTP_400_BAD_REQUEST)
+            parsed.append((inv_id, subdivision_id, cantidad))
+
+        def _totales(sucursal_ids):
+            rows = (
+                Inventario.objects.filter(
+                    producto_id=producto_id,
+                    subdivision__division__bodega__sucursal_id__in=sorted(sucursal_ids),
+                )
+                .values("subdivision__division__bodega__sucursal_id")
+                .annotate(total=Sum("cantidad"))
+            )
+            result = {sid: 0 for sid in sucursal_ids}
+            for row in rows:
+                result[row["subdivision__division__bodega__sucursal_id"]] = int(row["total"] or 0)
+            return result
+
+        sucursales_tocadas = set()
+        with transaction.atomic():
+            plan = []
+            for inv_id, subdivision_id, cantidad in parsed:
+                if inv_id is not None:
+                    inv = (
+                        Inventario.objects.select_for_update()
+                        .select_related("subdivision__division__bodega")
+                        .filter(id=inv_id, producto_id=producto_id)
+                        .first()
+                    )
+                    if not inv:
+                        transaction.set_rollback(True)
+                        return Response({"detail": "Una de las ubicaciones ya no existe; recarga el producto."}, status=status.HTTP_404_NOT_FOUND)
+                    sucursal_id = inv.subdivision.division.bodega.sucursal_id
+                    plan.append(("existing", inv, None, cantidad, sucursal_id))
+                else:
+                    subdivision = SubDivision.objects.select_related("division__bodega").filter(id=subdivision_id).first()
+                    if not subdivision:
+                        transaction.set_rollback(True)
+                        return Response({"detail": "Ubicacion no valida."}, status=status.HTTP_400_BAD_REQUEST)
+                    sucursal_id = subdivision.division.bodega.sucursal_id
+                    plan.append(("new", None, subdivision, cantidad, sucursal_id))
+                sucursales_tocadas.add(sucursal_id)
+
+            antes = _totales(sucursales_tocadas)
+            for kind, inv, subdivision, cantidad, sucursal_id in plan:
+                if kind == "existing":
+                    action_key = "puede_eliminar" if cantidad == 0 else "puede_actualizar"
+                else:
+                    action_key = "puede_crear"
+                ensure_sucursal_allowed_for_modules(
+                    request.user, INVENTARIO_WRITE_SCOPE_MODULE_KEYS, sucursal_id, action_key=action_key
+                )
+                if kind == "existing":
+                    if cantidad == 0:
+                        inv.delete()
+                    elif inv.cantidad != cantidad:
+                        inv.cantidad = cantidad
+                        inv.save(update_fields=["cantidad"])
+                    continue
+                existing = Inventario.objects.select_for_update().filter(
+                    producto_id=producto_id, subdivision=subdivision, referencia=""
+                ).first()
+                if existing:
+                    if cantidad == 0:
+                        existing.delete()
+                    elif existing.cantidad != cantidad:
+                        existing.cantidad = cantidad
+                        existing.save(update_fields=["cantidad"])
+                elif cantidad > 0:
+                    Inventario.objects.create(
+                        producto_id=producto_id, subdivision=subdivision, referencia="", cantidad=cantidad
+                    )
+            despues = _totales(sucursales_tocadas)
+
+            nombres = dict(Sucursal.objects.filter(id__in=sorted(sucursales_tocadas)).values_list("id", "nombre"))
+            ajustes = [
+                {
+                    "sucursal_id": sid,
+                    "sucursal": nombres.get(sid, ""),
+                    "cantidad_anterior": antes[sid],
+                    "cantidad_nueva": despues[sid],
+                    "diferencia": despues[sid] - antes[sid],
+                }
+                for sid in sorted(sucursales_tocadas)
+                if despues[sid] != antes[sid]
+            ]
+            if ajustes and not motivo:
+                transaction.set_rollback(True)
+                return Response(
+                    {
+                        "code": "motivo_requerido",
+                        "detail": "Cambio la cantidad del producto: elige el motivo del ajuste.",
+                        "ajustes": ajustes,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            for ajuste in ajustes:
+                AjusteInventario.objects.create(
+                    producto_id=producto_id,
+                    sucursal_id=ajuste["sucursal_id"],
+                    cantidad_anterior=ajuste["cantidad_anterior"],
+                    cantidad_nueva=ajuste["cantidad_nueva"],
+                    diferencia=ajuste["diferencia"],
+                    motivo=motivo,
+                    usuario=request.user if request.user.is_authenticated else None,
+                )
+
+        response_data = {"ajustes": ajustes}
+        extra_reason = build_sale_stock_change_extra_reason(None)
+        sync = False
+        for sid in sorted(sucursales_tocadas):
+            if cancel_pending_transfer_requests(
+                branch_id=sid, product_ids=[producto_id], actor_user=request.user, extra_reason=extra_reason
+            ):
+                sync = True
+        if sync:
+            response_data[REMINDERS_SYNC_FLAG] = True
+        return Response(response_data)

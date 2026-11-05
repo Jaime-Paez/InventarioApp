@@ -29,6 +29,7 @@ const TIPO_FILTERS = [
   { value: '', label: 'Todos' },
   { value: 'entrada', label: 'Entradas' },
   { value: 'salida', label: 'Salidas' },
+  { value: 'ajuste', label: 'Ajustes' },
 ]
 
 // Historial de entradas y salidas del producto en formato Kardex: saldo
@@ -178,6 +179,11 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
         <div className="producto-movs__totals">
           <span className="producto-movs__total producto-movs__total--in">Entraron {totales.entradas}</span>
           <span className="producto-movs__total producto-movs__total--out">Salieron {totales.salidas}</span>
+          {Number(totales.ajustes) !== 0 && (
+            <span className="producto-movs__total producto-movs__total--adj" data-title="Ajustes de inventario (ya incluidos en entradas y salidas)">
+              Ajustes {Number(totales.ajustes) > 0 ? '+' : '−'}{Math.abs(Number(totales.ajustes))}
+            </span>
+          )}
         </div>
       </div>
 
@@ -200,7 +206,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
           <AlertTriangle size={16} />
           <span>
             El saldo del Kardex ({saldoActual.cantidad}) no coincide con el stock actual en {sucursalNombre} ({meta.stock_actual}).
-            Puede haber ajustes de inventario hechos sin una entrada o salida, o movimientos antiguos que no se cargaron.
+            Puede haber cambios de cantidad hechos antes de que se registraran los ajustes, o movimientos antiguos que no se cargaron.
           </span>
         </div>
       )}
@@ -243,22 +249,33 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
 
               {!rows.length && (
                 <tr className="producto-movs__empty">
-                  <td colSpan={12}>Este producto no tiene entradas ni salidas{tipo || fechaDesde || fechaHasta ? ' con este filtro' : ''}.</td>
+                  <td colSpan={12}>Este producto no tiene entradas, salidas ni ajustes{tipo || fechaDesde || fechaHasta ? ' con este filtro' : ''}.</td>
                 </tr>
               )}
 
               {rows.map((row) => {
-                const isEntrada = row.tipo === 'entrada'
+                const isAjuste = row.tipo === 'ajuste'
+                // Un ajuste que sumo va en Entradas y uno que resto en Salidas.
+                const isEntrada = isAjuste ? Number(row.diferencia) > 0 : row.tipo === 'entrada'
                 const origen = row.origen || row.subtipo_nombre || '-'
-                const detalle = [origen, row.estado, row.sucursal].filter(Boolean).join(' · ')
+                const detalle = isAjuste
+                  ? [
+                    origen,
+                    `${row.cantidad_anterior} → ${row.cantidad_nueva}`,
+                    row.usuario ? `por ${row.usuario}` : '',
+                    row.sucursal,
+                  ].filter(Boolean).join(' · ')
+                  : [origen, row.estado, row.sucursal].filter(Boolean).join(' · ')
+                let tagClass = isEntrada ? 'producto-movs__tag--in' : 'producto-movs__tag--out'
+                if (isAjuste) tagClass = 'producto-movs__tag--adj'
                 return (
-                  <tr key={`${row.tipo}-${row.movimiento_id}`}>
+                  <tr key={isAjuste ? `ajuste-${row.ajuste_id}` : `${row.tipo}-${row.movimiento_id}`}>
                     <td className="nowrap">{formatDate(row.fecha)}</td>
                     <td className="producto-movs__doc nowrap">
-                      <span className={`producto-movs__tag ${isEntrada ? 'producto-movs__tag--in' : 'producto-movs__tag--out'}`}>
-                        {isEntrada ? 'E' : 'S'}
+                      <span className={`producto-movs__tag ${tagClass}`}>
+                        {isAjuste ? 'A' : isEntrada ? 'E' : 'S'}
                       </span>
-                      {row.no_documento || '-'}
+                      {isAjuste ? `Ajuste ${Number(row.diferencia) > 0 ? '+' : '−'}${row.cantidad}` : (row.no_documento || '-')}
                     </td>
                     <td className="producto-movs__origen" data-title={detalle}>{origen}</td>
                     {isEntrada ? (
@@ -279,13 +296,15 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
                     <td className={`num sep strong${row.acum_cantidad < 0 ? ' producto-movs__neg' : ''}`}>{row.acum_cantidad}</td>
                     <td className="num strong">{money(row.acum_costo)}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="create-user__ghost producto-movs__open"
-                        onClick={() => setOpenMovement({ id: row.movimiento_id, tipo: row.tipo })}
-                      >
-                        Ver
-                      </button>
+                      {!isAjuste && (
+                        <button
+                          type="button"
+                          className="create-user__ghost producto-movs__open"
+                          onClick={() => setOpenMovement({ id: row.movimiento_id, tipo: row.tipo })}
+                        >
+                          Ver
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )

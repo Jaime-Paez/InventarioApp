@@ -1,4 +1,6 @@
+from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class Sucursal(models.Model):
@@ -157,3 +159,46 @@ class ProductoUbicacionOrden(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - representacion legible
         return f"{self.producto_id} - {self.subdivision_id}: {self.orden}"
+
+
+class AjusteInventario(models.Model):
+    """Cambio manual de la cantidad de un producto en una sucursal (editar las
+    cantidades de sus ubicaciones) que no es una entrada ni una salida. Guarda
+    cuanto subio o bajo el total de la sucursal y el motivo; sale en el Kardex
+    del producto como "Ajuste". Mover stock entre ubicaciones de la misma
+    sucursal no cambia el total y no es un ajuste."""
+
+    producto = models.ForeignKey(
+        "productos.Producto",
+        on_delete=models.CASCADE,
+        related_name="ajustes_inventario",
+    )
+    sucursal = models.ForeignKey(
+        Sucursal,
+        on_delete=models.CASCADE,
+        related_name="ajustes_inventario",
+    )
+    cantidad_anterior = models.IntegerField()
+    cantidad_nueva = models.IntegerField()
+    diferencia = models.IntegerField(help_text="cantidad_nueva - cantidad_anterior (negativa si bajo).")
+    motivo = models.CharField(max_length=200)
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ajustes_inventario",
+    )
+    fecha = models.DateField(default=timezone.localdate)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Ajuste de inventario"
+        verbose_name_plural = "Ajustes de inventario"
+        indexes = [
+            models.Index(fields=["producto", "sucursal", "fecha"], name="ajuste_inv_prod_suc_idx"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - representacion legible
+        return f"{self.producto_id} @ {self.sucursal_id}: {self.diferencia:+d} ({self.motivo})"

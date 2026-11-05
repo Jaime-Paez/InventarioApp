@@ -239,6 +239,23 @@ def build_product_movement_history(
         .order_by("fecha", "movimiento_inventario_id")
     )
 
+    # Ajustes de inventario (cambios manuales de cantidad con motivo). Van
+    # despues de los movimientos del mismo dia: corrigen lo que se conto.
+    from inventario.models import AjusteInventario
+
+    ajustes = AjusteInventario.objects.filter(producto_id=producto_id)
+    if allowed_sucursal_ids is not None:
+        ajustes = ajustes.filter(sucursal_id__in=sorted(allowed_sucursal_ids))
+    if sucursal_id:
+        ajustes = ajustes.filter(sucursal_id=sucursal_id)
+    if fecha_hasta:
+        ajustes = ajustes.filter(fecha__lte=fecha_hasta)
+    eventos = [(row["fecha"], 0, row["movimiento_inventario_id"], row) for row in grouped]
+    for ajuste in ajustes.values("id", "fecha", "diferencia"):
+        if ajuste["diferencia"]:
+            eventos.append((ajuste["fecha"], 1, ajuste["id"], {"ajuste_id": ajuste["id"], **ajuste}))
+    eventos.sort(key=lambda item: (item[0] is None, item[0] or "", item[1], item[2]))
+
     acum_cant = 0
     acum_costo = Decimal("0")
     saldo_anterior = {"cantidad": 0, "costo": Decimal("0")}
@@ -247,14 +264,29 @@ def build_product_movement_history(
         "salidas": 0,
         "entradas_total": Decimal("0"),
         "salidas_total": Decimal("0"),
+        "ajustes": 0,
     }
     visibles = []
-    for row in grouped:
-        es_salida = _norm(row["tipo_nombre"]).startswith("sal")
-        cantidad = int(row["cantidad"] or 0)
-        valor_total = Decimal(row["valor_total"] or 0)
+    for _fecha, _orden, _id, row in eventos:
+        es_ajuste = "ajuste_id" in row
+        if es_ajuste:
+            es_salida = row["diferencia"] < 0
+            cantidad = abs(int(row["diferencia"]))
+            valor_total = Decimal("0")
+        else:
+            es_salida = _norm(row["tipo_nombre"]).startswith("sal")
+            cantidad = int(row["cantidad"] or 0)
+            valor_total = Decimal(row["valor_total"] or 0)
         promedio = (acum_costo / acum_cant) if acum_cant > 0 else None
-        if es_salida:
+        if es_ajuste and not es_salida:
+            # Lo que aparecio entra al costo promedio (sin promedio, sin costo).
+            unitario = promedio if promedio is not None else Decimal("0")
+            total = unitario * cantidad
+            acum_cant += cantidad
+            acum_costo = acum_costo + total if acum_cant - cantidad >= 0 else unitario * max(acum_cant, 0)
+            if acum_cant <= 0:
+                acum_costo = Decimal("0")
+        elif es_salida:
             unitario = promedio if promedio is not None else Decimal("0")
             # Si se lleva justo lo que hay, se lleva todo el costo (sin
             # centavos sueltos por redondeo).
@@ -292,11 +324,16 @@ def build_product_movement_history(
         key = "salidas" if es_salida else "entradas"
         totales[key] += cantidad
         totales[f"{key}_total"] += total
-        if tipo in {"entrada", "salida"} and (tipo == "salida") != es_salida:
+        if es_ajuste:
+            totales["ajustes"] += row["diferencia"]
+        if tipo == "ajuste" and not es_ajuste:
+            continue
+        if tipo in {"entrada", "salida"} and (es_ajuste or (tipo == "salida") != es_salida):
             continue
         visibles.append(
             {
-                "movimiento_inventario_id": row["movimiento_inventario_id"],
+                "ajuste_id": row.get("ajuste_id"),
+                "movimiento_inventario_id": row.get("movimiento_inventario_id"),
                 "cantidad": cantidad,
                 "valor_total": valor_total,
                 "costo_unitario": unitario,
@@ -312,7 +349,9 @@ def build_product_movement_history(
     page = max(1, min(int(page or 1), total_pages))
     page_rows = visibles[(page - 1) * page_size: page * page_size]
 
-    ids = [row["movimiento_inventario_id"] for row in page_rows]
+    ids = [row["movimiento_inventario_id"] for row in page_rows if row["movimiento_inventario_id"]]
+    ajuste_ids = [row["ajuste_id"] for row in page_rows if row["ajuste_id"]]
+    ajustes_por_id = AjusteInventario.objects.filter(id__in=ajuste_ids).select_related("sucursal", "usuario").in_bulk()
     movements = MovimientoInventario.objects.filter(id__in=ids).select_related(
         "sucursal",
         "sucursal_objetivo",
@@ -325,6 +364,43 @@ def build_product_movement_history(
 
     results = []
     for row in page_rows:
+        if row["ajuste_id"]:
+            ajuste = ajustes_por_id.get(row["ajuste_id"])
+            if not ajuste:
+                continue
+            usuario = ajuste.usuario
+            usuario_nombre = ""
+            if usuario:
+                usuario_nombre = (usuario.get_full_name() or "").strip() or usuario.get_username()
+            results.append(
+                {
+                    "movimiento_id": None,
+                    "ajuste_id": ajuste.id,
+                    "tipo": "ajuste",
+                    "subtipo": "ajuste",
+                    "subtipo_nombre": "Ajuste de inventario",
+                    "fecha": ajuste.fecha.isoformat() if ajuste.fecha else None,
+                    "no_documento": "AJUSTE",
+                    "estado": "",
+                    "sucursal_id": ajuste.sucursal_id,
+                    "sucursal": str(ajuste.sucursal) if ajuste.sucursal_id else "",
+                    "origen": f"Ajuste · {ajuste.motivo}" if ajuste.motivo else "Ajuste de inventario",
+                    "motivo": ajuste.motivo,
+                    "usuario": usuario_nombre,
+                    "cantidad_anterior": ajuste.cantidad_anterior,
+                    "cantidad_nueva": ajuste.cantidad_nueva,
+                    "diferencia": ajuste.diferencia,
+                    "importacion": None,
+                    "cantidad": row["cantidad"],
+                    "valor_total": "0",
+                    "costo_unitario": _money(row["costo_unitario"]),
+                    "costo_total": _money(row["costo_total"]),
+                    "acum_cantidad": row["acum_cantidad"],
+                    "acum_costo": _money(row["acum_costo"]),
+                    "es_legado": False,
+                }
+            )
+            continue
         mov = movements.get(row["movimiento_inventario_id"])
         if not mov:
             continue
@@ -365,6 +441,7 @@ def build_product_movement_history(
             "salidas": totales["salidas"],
             "entradas_total": _money(totales["entradas_total"]),
             "salidas_total": _money(totales["salidas_total"]),
+            "ajustes": totales["ajustes"],
         },
         "saldo_anterior": {
             "cantidad": saldo_anterior["cantidad"],

@@ -7,6 +7,7 @@ import { API_URL, authFetch } from '../../../../utils/api'
 import { emitRemindersSync } from '../../common/reminders/remindersStorage'
 import BodegaLocationPreview from './BodegaLocationPreview'
 import BlockerNotice from '../../common/BlockerNotice'
+import useAjusteInventario from '../../common/ajusteInventario/useAjusteInventario'
 import { getAppPortalRoot as getPortalHost } from '../../../../utils/portalRoot'
 import { useCloseDropdownsOnTabSwitch } from '../../../../hooks/useCloseDropdownsOnTabSwitch'
 
@@ -859,13 +860,17 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     }
   }
 
+  const { guardarAjuste, ajusteDialog } = useAjusteInventario(token)
+
   const saveChanges = async () => {
     if (!productId || saving) return
     setSaving(true)
     setError(null)
 
     try {
-      const updates = []
+      // Todo en una sola llamada: si cambia el total de una sucursal es un
+      // ajuste de inventario y se pide el motivo (useAjusteInventario).
+      const cambios = []
       locations.forEach((location) => {
         const quantity = parseNumber(location.cantidad)
         const subdivisionId = Number(location.subdivisionId)
@@ -873,110 +878,34 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         const existing = entryBySubdivision.get(String(location.subdivisionId))
         if (existing) {
           if (Number(existing.cantidad) === quantity) return
-          updates.push({
-            method: 'PUT',
-            id: existing.id,
-            payload: {
-              producto_id: productId,
-              subdivision_id: subdivisionId,
-              referencia: existing.referencia ?? '',
-              cantidad: quantity,
-            },
-          })
+          cambios.push({ id: existing.id, subdivision_id: subdivisionId, cantidad: quantity })
           return
         }
         if (quantity > 0) {
-          updates.push({
-            method: 'POST',
-            payload: {
-              producto_id: productId,
-              subdivision_id: subdivisionId,
-              referencia: '',
-              cantidad: quantity,
-            },
-          })
+          cambios.push({ subdivision_id: subdivisionId, cantidad: quantity })
         }
       })
       const locationSubIds = new Set(locations.map((location) => String(location.subdivisionId)))
       entryBySubdivision.forEach((entry, subdivisionId) => {
         if (!locationSubIds.has(String(subdivisionId)) && entry?.id) {
-          updates.push({
-            method: 'DELETE',
-            id: entry.id,
-          })
+          cambios.push({ id: entry.id, subdivision_id: Number(subdivisionId), cantidad: 0 })
         }
       })
 
-      if (!updates.length) {
+      if (!cambios.length) {
         setSaving(false)
         return true
       }
 
-      const responses = await Promise.all(
-        updates.map((update) => {
-          if (update.method === 'PUT') {
-            return authFetch(
-              `${API_URL}/inventario/inventario/${update.id}/`,
-              {
-                method: 'PUT',
-                body: JSON.stringify(update.payload),
-              },
-              token
-            )
-          }
-          if (update.method === 'DELETE') {
-            return authFetch(
-              `${API_URL}/inventario/inventario/${update.id}/`,
-              { method: 'DELETE' },
-              token
-            )
-          }
-          return authFetch(
-            `${API_URL}/inventario/inventario/`,
-            {
-              method: 'POST',
-              body: JSON.stringify(update.payload),
-            },
-            token
-          )
-        })
-      )
-
-      const failedIndex = responses.findIndex((response) => !response.ok)
-      if (failedIndex !== -1) {
-        const failed = responses[failedIndex]
-        const failedUpdate = updates[failedIndex]
-        const detailPayload = await failed.json().catch(() => ({}))
-        const detailText = String(detailPayload?.detail || '').trim()
-        const normalizedDetail = normalizeErrorText(detailText)
-        const failedMethod = String(failedUpdate?.method || '').trim().toUpperCase()
-        const looksLikeBranchScopeRestriction =
-          failed.status === 403 ||
-          normalizedDetail.includes('no tienes acceso a la sucursal seleccionada') ||
-          (failed.status === 404 &&
-            (
-              normalizedDetail.includes('no inventario matches the given query') ||
-              normalizedDetail.includes('no se encontro') ||
-              normalizedDetail.includes('not found')
-            ) &&
-            (failedMethod === 'DELETE' || failedMethod === 'PUT'))
-
-        if (looksLikeBranchScopeRestriction) {
-          if (failedMethod === 'DELETE') {
-            throw new Error(SCOPE_DELETE_LOCATION_ERROR)
-          }
-          throw new Error(SCOPE_EDIT_LOCATION_ERROR)
+      const { response, payload } = await guardarAjuste(productId, cambios)
+      if (!response.ok) {
+        const detailText = String(payload?.detail || '').trim()
+        if (response.status === 403) {
+          throw new Error(cambios.some((cambio) => cambio.cantidad === 0) ? SCOPE_DELETE_LOCATION_ERROR : SCOPE_EDIT_LOCATION_ERROR)
         }
-
         throw new Error(detailText || 'No se pudieron guardar los cambios.')
       }
-
-      const payloads = await Promise.all(
-        responses.map((response) =>
-          response.ok ? response.clone().json().catch(() => ({})) : Promise.resolve(null)
-        )
-      )
-      if (payloads.some((payload) => Boolean(payload?.reminders_sync_required))) {
+      if (payload?.reminders_sync_required) {
         emitRemindersSync()
       }
 
@@ -1925,6 +1854,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
       </section>
 
+      {ajusteDialog}
     </div>
   )
   }

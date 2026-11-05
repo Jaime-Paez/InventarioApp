@@ -1,0 +1,160 @@
+/* Dialogo del motivo de un ajuste de inventario. Va encima de los modales. */
+.ajuste-motivo__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.ajuste-motivo {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 14px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text-primary, #0f172a);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+}
+
+.ajuste-motivo__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b45309;
+}
+
+.ajuste-motivo__head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--color-text-primary, #0f172a);
+}
+
+.ajuste-motivo__lead {
+  margin: 0;
+  font-size: var(--font-size-sm, 0.875rem);
+}
+
+.ajuste-motivo__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ajuste-motivo__list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.04);
+  font-size: var(--font-size-sm, 0.875rem);
+}
+
+.ajuste-motivo__nums {
+  display: inline-flex;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ajuste-motivo__nums .is-up {
+  color: #15803d;
+}
+
+.ajuste-motivo__nums .is-down {
+  color: #b91c1c;
+}
+
+.ajuste-motivo__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ajuste-motivo__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: var(--font-size-sm, 0.875rem);
+}
+
+.ajuste-motivo__option input {
+  margin: 0;
+}
+
+.ajuste-motivo__option.is-active {
+  border-color: var(--color-primary, #1e3a5f);
+  background: rgba(30, 58, 95, 0.08);
+  font-weight: 600;
+}
+
+.ajuste-motivo__input {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: 8px;
+  background: var(--color-surface, #fff);
+  color: inherit;
+  font: inherit;
+}
+
+.ajuste-motivo__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ajuste-motivo__btn {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ajuste-motivo__btn--primary {
+  border-color: var(--color-primary, #1e3a5f);
+  background: var(--color-primary, #1e3a5f);
+  color: var(--color-button-primary, #fff);
+}
+
+.ajuste-motivo__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dashboard-shell.dark .ajuste-motivo {
+  background: var(--color-surface-darker, #1e293b);
+}
+
+.dashboard-shell.dark .ajuste-motivo__list li {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dashboard-shell.dark .ajuste-motivo__input {
+  background: var(--color-surface-darker, #1e293b);
+}
+
+.dashboard-shell.dark .ajuste-motivo__nums .is-up {
+  color: #86efac;
+}
+
+.dashboard-shell.dark .ajuste-motivo__nums .is-down {
+  color: #fca5a5;
+}
