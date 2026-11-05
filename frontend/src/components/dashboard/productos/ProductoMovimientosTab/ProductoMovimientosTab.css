@@ -321,3 +321,43 @@
   background: rgba(251, 191, 36, 0.18);
   color: #fcd34d;
 }
+
+/* El Kardex no agranda la ventana: la seccion (hija de la grilla del modal)
+   no toma el ancho de la tabla; la tabla se mueve dentro de su recuadro. */
+.producto-movs {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.producto-movs__kardex-wrap {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Primera columna (Fecha) fija al moverse a los lados. Fondo opaco (el del
+   modal) con el mismo tono del encabezado encima. Las filas de saldo y la
+   de "Entradas/Salidas" abarcan 3 columnas: esas no se fijan (taparian los
+   numeros al moverse). */
+.producto-movs__kardex thead tr:not(.producto-movs__group) th:first-child,
+.producto-movs__kardex tbody tr:not(.producto-movs__saldo):not(.producto-movs__empty) td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--modal-color);
+  box-shadow: inset -1px 0 0 var(--color-border);
+}
+
+.producto-movs__kardex thead tr:not(.producto-movs__group) th:first-child,
+.producto-movs__kardex tbody tr:not(.producto-movs__saldo):not(.producto-movs__empty):hover td:first-child {
+  background-image: linear-gradient(rgba(15, 23, 42, 0.04), rgba(15, 23, 42, 0.04));
+}
+
+.dashboard-shell.dark .producto-movs__kardex thead tr:not(.producto-movs__group) th:first-child,
+.dashboard-shell.dark .producto-movs__kardex tbody tr:not(.producto-movs__saldo):not(.producto-movs__empty) td:first-child {
+  background-color: var(--table-color-dark);
+}
+
+.dashboard-shell.dark .producto-movs__kardex thead tr:not(.producto-movs__group) th:first-child,
+.dashboard-shell.dark .producto-movs__kardex tbody tr:not(.producto-movs__saldo):not(.producto-movs__empty):hover td:first-child {
+  background-image: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05));
+}
