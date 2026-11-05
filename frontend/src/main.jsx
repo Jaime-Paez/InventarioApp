@@ -5,6 +5,7 @@ import './styles/polish.css'
 import App from './App.jsx'
 import { registerSystemNotificationWorker } from './utils/systemNotifications'
 import { startNativeTooltipBlocker } from './utils/nativeTooltips'
+import { startNoDoubleClickSelect } from './utils/noDoubleClickSelect'
 import { addLocale, locale } from 'primereact/api'
 
 // /descargar es una pagina estatica (public/descargar/) con el APK; si el
@@ -67,6 +68,7 @@ document.addEventListener('wheel', () => {
 }, { passive: true })
 
 startNativeTooltipBlocker()
+startNoDoubleClickSelect()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
