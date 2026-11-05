@@ -7,6 +7,7 @@ import './AjusteMotivoDialog.css'
 
 export const MOTIVOS_AJUSTE = ['No encontré', 'Ajuste de inventario']
 const OTRO = '__otro__'
+const MOTIVO_CAMBIO_UBICACION = 'Cambio de ubicación'
 
 const OPCIONES = [
   { value: MOTIVOS_AJUSTE[0], label: 'No encontré', icon: <SearchX className="ajuste-motivo__icon" size={22} aria-hidden="true" /> },
@@ -72,7 +73,14 @@ export default function useAjusteInventario(token) {
     let response = await send('')
     let payload = await response.clone().json().catch(() => ({}))
     if (response.status === 400 && payload?.code === 'motivo_requerido') {
-      const motivo = motivoPrevio || await pedirMotivo(payload.ajustes)
+      // Solo se cambio de lugar (lo que sale de una sucursal entra en otra, el
+      // total del producto no cambia): no es un cambio de cantidad, no se pregunta.
+      const ajustes = Array.isArray(payload.ajustes) ? payload.ajustes : []
+      const soloCambioDeLugar = ajustes.length > 0 &&
+        ajustes.reduce((sum, ajuste) => sum + Number(ajuste?.diferencia || 0), 0) === 0
+      const motivo = soloCambioDeLugar
+        ? MOTIVO_CAMBIO_UBICACION
+        : motivoPrevio || await pedirMotivo(payload.ajustes)
       if (!motivo) throw new AjusteCanceladoError()
       response = await send(motivo)
       payload = await response.clone().json().catch(() => ({}))
