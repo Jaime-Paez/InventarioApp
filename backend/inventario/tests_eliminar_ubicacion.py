@@ -82,3 +82,7 @@ class EliminarUbicacionConStockTests(APITestCase):
         Inventario.objects.filter(subdivision__division=self.vacia).delete()
         response = self._put_bodega([{"id": "u1", "nombre": "Percha"}])
         self.assertEqual(response.status_code, 200, response.content)
+        # La division quitada del plano se borra con sus subdivisiones.
+        self.assertFalse(Division.objects.filter(id=self.vacia.id).exists())
+        self.assertFalse(SubDivision.objects.filter(division_id=self.vacia.id).exists())
+        self.assertTrue(Division.objects.filter(id=self.division.id).exists())

@@ -477,6 +477,21 @@ class BodegaViewSet(viewsets.ModelViewSet):
                         return _stock_block_response(
                             f'la ubicación "{division.nombre}"', productos
                         )
+                # Sin productos: la division (y sus subdivisiones) se borra con
+                # la ubicacion; si no, seguia saliendo al elegir ubicaciones.
+                with transaction.atomic():
+                    response = super().update(request, *args, **kwargs)
+                    if response.status_code < 400:
+                        sigue_en_plano = {
+                            _ubicacion_key(u.get("nombre"))
+                            for u in (self.get_object().ubicaciones or [])
+                            if isinstance(u, dict)
+                        }
+                        for division in instance.divisiones.all():
+                            key = _ubicacion_key(division.nombre)
+                            if key in quitadas_keys and key not in sigue_en_plano:
+                                division.delete()
+                    return response
         return super().update(request, *args, **kwargs)
 
     def _get_delete_block_reasons(self, instance):
