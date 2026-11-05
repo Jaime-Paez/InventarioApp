@@ -8191,21 +8191,21 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // existen y al final los quitados. Solo cambia como se muestra, no el orden
   // guardado.
   const VERIFICAR_ORDEN_GRUPOS = ['agregadoExiste', 'agregadoNuevo', 'catalogo', 'noExiste', 'quitado']
-  // Los repetidos (sin quitar) van uno tras otro.
-  const shownDetails = isVerificar
-    ? juntarRepetidos(
-      VERIFICAR_ORDEN_GRUPOS.flatMap((grupo) => {
+  // En todas las etapas los repetidos (sin quitar) van uno tras otro.
+  const shownDetails = juntarRepetidos(
+    isVerificar
+      ? VERIFICAR_ORDEN_GRUPOS.flatMap((grupo) => {
         const enGrupo = details.filter((item) => verificarColorDe(item) === grupo)
         return grupo.startsWith('agregado') ? enGrupo.reverse() : enGrupo
-      }),
-      (item) => {
-        if (item.quitado) return ''
-        const codigo = String(item.producto?.codigo || item.codigo || '').trim()
-        if (!codigo) return ''
-        return item.producto?.id ? `p:${item.producto.id}` : `c:${codigo.toUpperCase()}`
-      }
-    )
-    : details
+      })
+      : details,
+    (item) => {
+      if (item.quitado) return ''
+      const codigo = String(item.producto?.codigo || item.codigo || '').trim()
+      if (!codigo) return ''
+      return item.producto?.id ? `p:${item.producto.id}` : `c:${codigo.toUpperCase()}`
+    }
+  )
   // Lleva a la primera fila de un codigo repetido y marca todas sus filas.
   // Cada clic en "N repetidos" va al siguiente codigo repetido.
   const repetidoSiguienteVerificacionRef = useRef(0)
