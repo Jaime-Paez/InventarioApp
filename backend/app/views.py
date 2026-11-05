@@ -464,6 +464,10 @@ def _sanitize_context(raw):
                 "name": str(entry.get("name") or "").strip() or "Usuario",
                 "completada": bool(entry.get("completada")),
                 "disculpada": bool(entry.get("disculpada")),
+                "nota_general": str(entry.get("nota_general") or "").strip(),
+                "en_curso": bool(entry.get("en_curso")),
+                "contados": max(0, _normalize_int(entry.get("contados"), 0)),
+                "total_items": max(0, _normalize_int(entry.get("total_items"), 0)),
             })
         if sanitized_detalle:
             result["detalle_usuarios"] = sanitized_detalle
@@ -2301,6 +2305,24 @@ def _upsert_random_inspection_admin_summary_reminder(
             return True
         return False
 
+    # Avance de las que siguen abiertas: asi el resumen distingue a quien ya
+    # esta contando (con X de Y productos) de quien todavia no empieza.
+    open_ids = [
+        i.id for i in inspections_today
+        if i.estado != InspeccionAleatoriaDiaria.Estados.COMPLETADA and not i.disculpada
+    ]
+    progress = {}
+    if open_ids:
+        for row in (
+            InspeccionAleatoriaItem.objects.filter(inspeccion_id__in=open_ids)
+            .values("inspeccion_id")
+            .annotate(
+                total=Count("id"),
+                contados=Count("id", filter=Q(cantidad_reportada__isnull=False) | Q(no_encontrado=True)),
+            )
+        ):
+            progress[row["inspeccion_id"]] = (int(row["contados"] or 0), int(row["total"] or 0))
+
     user_map = {}
     for inspection in inspections_today:
         user = inspection.usuario
@@ -2310,6 +2332,12 @@ def _upsert_random_inspection_admin_summary_reminder(
         is_completed = inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA
         is_disculpada = bool(inspection.disculpada)
         nota_general = str(inspection.nota_general or "").strip()
+        contados, total_items = progress.get(inspection.id, (0, 0))
+        started = inspection.id in progress and (
+            contados > 0
+            or bool(str(inspection.borrador_fase or "").strip())
+            or int(inspection.borrador_paso_actual or 0) > 0
+        )
         # Un usuario puede tener varias inspecciones el mismo dia (la
         # automatica, "enviar ahora", por division). Antes bastaba con que UNA
         # estuviera completada o disculpada para mostrarlo como terminado, y
@@ -2321,9 +2349,16 @@ def _upsert_random_inspection_admin_summary_reminder(
                 "completada": is_completed,
                 "disculpada": is_disculpada and not is_completed,
                 "nota_general": nota_general,
+                "en_curso": started,
+                "contados": contados if started else 0,
+                "total_items": total_items if started else 0,
             }
         else:
             current = user_map[user_id]
+            if started:
+                current["en_curso"] = True
+                current["contados"] = int(current.get("contados") or 0) + contados
+                current["total_items"] = int(current.get("total_items") or 0) + total_items
             all_closed = (
                 (current["completada"] or current["disculpada"])
                 and (is_completed or is_disculpada)

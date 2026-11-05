@@ -887,6 +887,20 @@ const formatTransferIssueValue = (value, fallback = '-') => {
     .join(' ')
 }
 
+
+// Estado de cada usuario en el resumen de inspecciones: termino (✓), esta
+// contando (◔ con su avance) o todavia no empieza (✗).
+const getInspectionUserStatus = (u) => {
+  if (u?.completada) return { key: 'done', icon: '✓', label: '' }
+  if (u?.disculpada) return { key: 'done', icon: '✓', label: 'Dejado pasar' }
+  if (u?.en_curso) {
+    const total = Number(u?.total_items || 0)
+    const contados = Number(u?.contados || 0)
+    return { key: 'counting', icon: '◔', label: total ? `Contando ${contados} de ${total}` : 'Contando' }
+  }
+  return { key: 'pending', icon: '✗', label: 'Sin empezar' }
+}
+
 function RecordatoriosPopup({
   open,
   onClose,
@@ -3626,14 +3640,15 @@ function RecordatoriosPopup({
                               {isAdminSummaryReminder && Array.isArray(reminder?.context?.detalle_usuarios) && reminder.context.detalle_usuarios.length > 0 && (
                                 <ul className="recordatorios-popup__inspection-summary-list">
                                   {reminder.context.detalle_usuarios.map((u) => {
-                                    const isDone = u.completada || u.disculpada
+                                    const status = getInspectionUserStatus(u)
                                     return (
                                       <li
                                         key={u.id}
-                                        className={`recordatorios-popup__inspection-summary-item${isDone ? ' recordatorios-popup__inspection-summary-item--done' : ' recordatorios-popup__inspection-summary-item--pending'}`}
+                                        className={`recordatorios-popup__inspection-summary-item recordatorios-popup__inspection-summary-item--${status.key}`}
                                       >
-                                        <span className="recordatorios-popup__inspection-summary-icon">{isDone ? '✓' : '✗'}</span>
+                                        <span className="recordatorios-popup__inspection-summary-icon">{status.icon}</span>
                                         <span className="recordatorios-popup__inspection-summary-name">{u.name}</span>
+                                        {status.label && <span className="recordatorios-popup__inspection-summary-progress">{status.label}</span>}
                                       </li>
                                     )
                                   })}
@@ -4788,16 +4803,20 @@ function RecordatoriosPopup({
                       <tbody>
                         {activeDetailReminder.context.detalle_usuarios.map((u) => {
                           const isDone = u.completada || u.disculpada
+                          const status = getInspectionUserStatus(u)
                           const discuseKey = `${u.id}:${activeDetailReminder?.context?.id}`
                           const isDiscusing = discusingUserId === discuseKey
                           const notaGeneral = String(u?.nota_general || '').trim()
                           return (
                             <tr
                               key={u.id}
-                              className={`recordatorios-popup__inspection-detail-tr${isDone ? ' recordatorios-popup__inspection-detail-tr--done' : ' recordatorios-popup__inspection-detail-tr--pending'}`}
+                              className={`recordatorios-popup__inspection-detail-tr recordatorios-popup__inspection-detail-tr--${status.key}`}
                             >
-                              <td className="recordatorios-popup__inspection-detail-td-icon">{isDone ? '✓' : '✗'}</td>
-                              <td className="recordatorios-popup__inspection-detail-td-name">{u.name}</td>
+                              <td className="recordatorios-popup__inspection-detail-td-icon">{status.icon}</td>
+                              <td className="recordatorios-popup__inspection-detail-td-name">
+                                {u.name}
+                                {status.label && <span className="recordatorios-popup__inspection-summary-progress">{status.label}</span>}
+                              </td>
                               <td className="recordatorios-popup__inspection-detail-td-nota" title={notaGeneral}>
                                 {notaGeneral || '-'}
                               </td>

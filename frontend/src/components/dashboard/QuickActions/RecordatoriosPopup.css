@@ -4035,3 +4035,37 @@
     color: #f87171;
   }
 }
+
+/* Usuario que ya empezo a contar (no terminado): no es lo mismo que no empezar */
+.recordatorios-popup__inspection-summary-item--counting .recordatorios-popup__inspection-summary-icon,
+.recordatorios-popup__inspection-detail-tr--counting .recordatorios-popup__inspection-detail-td-icon {
+  color: var(--color-primary);
+}
+
+.recordatorios-popup__inspection-summary-item--counting .recordatorios-popup__inspection-summary-name {
+  font-weight: 500;
+}
+
+.recordatorios-popup__inspection-summary-progress {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.85em;
+  font-weight: 600;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  white-space: nowrap;
+}
+
+.recordatorios-popup__inspection-summary-item--counting .recordatorios-popup__inspection-summary-progress,
+.recordatorios-popup__inspection-detail-tr--counting .recordatorios-popup__inspection-summary-progress {
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary);
+}
+
+.dashboard-shell.dark .recordatorios-popup__inspection-summary-item--counting .recordatorios-popup__inspection-summary-icon,
+.dashboard-shell.dark .recordatorios-popup__inspection-detail-tr--counting .recordatorios-popup__inspection-detail-td-icon,
+.dashboard-shell.dark .recordatorios-popup__inspection-summary-item--counting .recordatorios-popup__inspection-summary-progress,
+.dashboard-shell.dark .recordatorios-popup__inspection-detail-tr--counting .recordatorios-popup__inspection-summary-progress {
+  color: var(--color-primary-dark);
+}
