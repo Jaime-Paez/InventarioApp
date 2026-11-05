@@ -468,6 +468,7 @@ def _sanitize_context(raw):
                 "en_curso": bool(entry.get("en_curso")),
                 "contados": max(0, _normalize_int(entry.get("contados"), 0)),
                 "total_items": max(0, _normalize_int(entry.get("total_items"), 0)),
+                "ultima_actividad": str(entry.get("ultima_actividad") or "").strip(),
             })
         if sanitized_detalle:
             result["detalle_usuarios"] = sanitized_detalle
@@ -2338,6 +2339,8 @@ def _upsert_random_inspection_admin_summary_reminder(
             or bool(str(inspection.borrador_fase or "").strip())
             or int(inspection.borrador_paso_actual or 0) > 0
         )
+        # Ultimo guardado del conteo: si es reciente, esta contando ahora mismo.
+        last_activity = inspection.updated_at.isoformat() if started and inspection.updated_at else ""
         # Un usuario puede tener varias inspecciones el mismo dia (la
         # automatica, "enviar ahora", por division). Antes bastaba con que UNA
         # estuviera completada o disculpada para mostrarlo como terminado, y
@@ -2352,6 +2355,7 @@ def _upsert_random_inspection_admin_summary_reminder(
                 "en_curso": started,
                 "contados": contados if started else 0,
                 "total_items": total_items if started else 0,
+                "ultima_actividad": last_activity,
             }
         else:
             current = user_map[user_id]
@@ -2359,6 +2363,7 @@ def _upsert_random_inspection_admin_summary_reminder(
                 current["en_curso"] = True
                 current["contados"] = int(current.get("contados") or 0) + contados
                 current["total_items"] = int(current.get("total_items") or 0) + total_items
+                current["ultima_actividad"] = max(str(current.get("ultima_actividad") or ""), last_activity)
             all_closed = (
                 (current["completada"] or current["disculpada"])
                 and (is_completed or is_disculpada)

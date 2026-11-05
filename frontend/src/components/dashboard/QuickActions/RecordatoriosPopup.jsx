@@ -888,6 +888,8 @@ const formatTransferIssueValue = (value, fallback = '-') => {
 }
 
 
+const INSPECTION_LIVE_WINDOW_MS = 5 * 60 * 1000
+
 // Estado de cada usuario en el resumen de inspecciones: termino (✓), esta
 // contando (◔ con su avance) o todavia no empieza (✗).
 const getInspectionUserStatus = (u) => {
@@ -896,7 +898,10 @@ const getInspectionUserStatus = (u) => {
   if (u?.en_curso) {
     const total = Number(u?.total_items || 0)
     const contados = Number(u?.contados || 0)
-    return { key: 'counting', icon: '◔', label: total ? `Contando ${contados} de ${total}` : 'Contando' }
+    const lastActivity = Date.parse(u?.ultima_actividad || '')
+    // Guardo el conteo hace poco: esta contando en este momento (punto en vivo).
+    const live = Number.isFinite(lastActivity) && Date.now() - lastActivity < INSPECTION_LIVE_WINDOW_MS
+    return { key: 'counting', icon: '◔', label: total ? `Contando ${contados} de ${total}` : 'Contando', live }
   }
   return { key: 'pending', icon: '✗', label: 'Sin empezar' }
 }
@@ -3648,7 +3653,12 @@ function RecordatoriosPopup({
                                       >
                                         <span className="recordatorios-popup__inspection-summary-icon">{status.icon}</span>
                                         <span className="recordatorios-popup__inspection-summary-name">{u.name}</span>
-                                        {status.label && <span className="recordatorios-popup__inspection-summary-progress">{status.label}</span>}
+                                        {status.label && (
+                                          <span className="recordatorios-popup__inspection-summary-progress">
+                                            {status.live && <span className="recordatorios-popup__live-dot" aria-label="Contando ahora" />}
+                                            {status.label}
+                                          </span>
+                                        )}
                                       </li>
                                     )
                                   })}
@@ -4815,7 +4825,12 @@ function RecordatoriosPopup({
                               <td className="recordatorios-popup__inspection-detail-td-icon">{status.icon}</td>
                               <td className="recordatorios-popup__inspection-detail-td-name">
                                 {u.name}
-                                {status.label && <span className="recordatorios-popup__inspection-summary-progress">{status.label}</span>}
+                                {status.label && (
+                                          <span className="recordatorios-popup__inspection-summary-progress">
+                                            {status.live && <span className="recordatorios-popup__live-dot" aria-label="Contando ahora" />}
+                                            {status.label}
+                                          </span>
+                                        )}
                               </td>
                               <td className="recordatorios-popup__inspection-detail-td-nota" title={notaGeneral}>
                                 {notaGeneral || '-'}
