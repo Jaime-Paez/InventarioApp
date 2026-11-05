@@ -1340,12 +1340,13 @@ class ReconteoTests(InspeccionAleatoriaBaseTestCase):
     def _recontar(self, item):
         return self.admin_client.post(f"{BASE_URL}/items/{item.id}/verificar/", {"accion": "recontar"}, format="json")
 
-    def test_reenvia_hasta_tres_veces_y_luego_hay_que_solucionarlo(self):
+    def test_se_cuenta_hasta_tres_veces_y_luego_hay_que_solucionarlo(self):
         Sucursal.objects.filter(pk=self.sucursal.pk).update(codigo="9OCT")
         original = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
         self._responder(original, {self.producto.id: 7})
         item = original.items.get()
-        for numero in (1, 2, 3):
+        # 3 conteos en total: el original y 2 reconteos.
+        for numero in (1, 2):
             response = self._recontar(item)
             self.assertEqual(response.status_code, 200, response.data)
             item.refresh_from_db()
@@ -1358,9 +1359,32 @@ class ReconteoTests(InspeccionAleatoriaBaseTestCase):
             self._responder(nuevo.inspeccion, {self.producto.id: 7})
             item = InspeccionAleatoriaItem.objects.get(pk=nuevo.pk)
             self.assertEqual(item.estado_revision, "no_coincide")
-        # Tercer reconteo: ya no se puede reenviar, hay que solucionarlo.
+        # Ya se conto 3 veces: no se puede reenviar, hay que solucionarlo.
         self.assertEqual(self._recontar(item).status_code, 400)
         self.assertEqual(self._stock(), 10)
+
+    def test_reconteo_que_coincide_no_queda_bien_y_se_puede_recontar(self):
+        original = self._crear_inspeccion(es_por_lista=True, sucursal=self.sucursal)
+        self._responder(original, {self.producto.id: 7})
+        item = original.items.get()
+        self.assertEqual(self._recontar(item).status_code, 200)
+        nuevo = InspeccionAleatoriaItem.objects.get(reconteo_de=item)
+        # El reconteo coincide con el sistema (10), pero el primero no: sigue pendiente.
+        self._responder(nuevo.inspeccion, {self.producto.id: 10})
+        nuevo.refresh_from_db()
+        self.assertEqual(nuevo.estado_revision, "no_coincide")
+        self.assertEqual(nuevo.verificacion_estado, "pendiente")
+        # Y se puede mandar a contar otra vez (tercer y ultimo conteo).
+        self.assertEqual(self._recontar(nuevo).status_code, 200)
+        tercero = InspeccionAleatoriaItem.objects.get(reconteo_de=nuevo)
+
+        from app.views import _recount_history
+
+        historia = _recount_history(nuevo)
+        self.assertEqual([c["cantidad"] for c in historia], [7, 10, None])
+        self.assertEqual([c["es_este"] for c in historia], [False, True, False])
+        self.assertEqual([c["actual"] for c in historia], [False, False, True])
+        self.assertEqual(_recount_history(tercero)[-1]["es_este"], True)
 
     def test_los_de_una_misma_revision_van_juntos_al_reconteo(self):
         original = self._crear_inspeccion(productos=[self.producto, self.producto_2], es_por_lista=True, sucursal=self.sucursal)

@@ -2112,6 +2112,8 @@ def _serialize_random_inspection_admin_item(item, subdivision_labels=None):
             "inspeccion_codigo": _normalize_text(getattr(inspection, "codigo", "")) if inspection is not None else "",
             "reconteos": int(getattr(item, "reconteos", 0) or 0),
             "max_reconteos": MAX_RANDOM_INSPECTION_RECOUNTS,
+            "max_conteos": MAX_RANDOM_INSPECTION_COUNTS,
+            "conteos": _recount_history(item) if (item.reconteos or item.reconteo_de_id or item.verificacion_estado == InspeccionAleatoriaItem.EstadosVerificacion.RECONTEO) else [],
             "reconteo_enviado_a": _recount_sent_to_code(item),
             "inspeccion_descripcion": _inspection_display_name(inspection),
             "fecha_programada": (
@@ -2135,6 +2137,47 @@ def _serialize_random_inspection_admin_item(item, subdivision_labels=None):
         }
     )
     return serialized
+
+
+def _recount_history(item):
+    """Todos los conteos del producto en esta cadena de reconteos (original y
+    reconteos), del primero al ultimo: cuanto conto cada vez, en que revision,
+    cual es este y cual el actual (el ultimo)."""
+    root = item
+    seen = {root.id}
+    while root.reconteo_de_id and root.reconteo_de_id not in seen:
+        parent = InspeccionAleatoriaItem.objects.select_related("inspeccion").filter(pk=root.reconteo_de_id).first()
+        if parent is None:
+            break
+        seen.add(parent.id)
+        root = parent
+    chain = [root]
+    while len(chain) < 10:
+        child = (
+            InspeccionAleatoriaItem.objects.select_related("inspeccion")
+            .filter(reconteo_de_id=chain[-1].id)
+            .order_by("-id")
+            .first()
+        )
+        if child is None or child.id in {c.id for c in chain}:
+            break
+        chain.append(child)
+    history = []
+    for index, entry in enumerate(chain, start=1):
+        history.append(
+            {
+                "numero": index,
+                "item_id": int(entry.id),
+                "inspeccion_codigo": _normalize_text(getattr(entry.inspeccion, "codigo", "")),
+                "cantidad": int(entry.cantidad_reportada) if entry.cantidad_reportada is not None else None,
+                "esperado": int(entry.cantidad_esperada or 0),
+                "no_encontrado": bool(entry.no_encontrado),
+                "fecha": entry.revisado_en.isoformat() if entry.revisado_en else None,
+                "es_este": entry.id == item.id,
+                "actual": index == len(chain),
+            }
+        )
+    return history
 
 
 def _normalize_random_inspection_review_state(value):
@@ -3426,7 +3469,9 @@ class ReminderStateAPIView(APIView):
         return _reminders_response(entry, "")
 
 
-MAX_RANDOM_INSPECTION_RECOUNTS = 3
+# Un producto se cuenta hasta 3 veces en total: el conteo original y 2 reconteos.
+MAX_RANDOM_INSPECTION_COUNTS = 3
+MAX_RANDOM_INSPECTION_RECOUNTS = MAX_RANDOM_INSPECTION_COUNTS - 1
 RECOUNT_ORIGIN_PREFIX = "Reconteo de "
 
 
@@ -3450,7 +3495,7 @@ def _send_item_to_recount(item, actor_user):
     MAX_RANDOM_INSPECTION_RECOUNTS veces; despues hay que solucionarlo."""
     if int(item.reconteos or 0) >= MAX_RANDOM_INSPECTION_RECOUNTS:
         return None, Response(
-            {"detail": f"Ya se reconto {MAX_RANDOM_INSPECTION_RECOUNTS} veces: tienes que solucionarlo aqui."},
+            {"detail": f"Ya se conto {MAX_RANDOM_INSPECTION_COUNTS} veces: tienes que solucionarlo aqui."},
             status=status.HTTP_400_BAD_REQUEST,
         )
     source = item.inspeccion
@@ -4056,10 +4101,13 @@ class RandomInspectionRespondAPIView(APIView):
                     estado_revision = InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE
                     verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
                     mismatch_count += 1
-                elif reported == system_qty:
+                elif reported == system_qty and not int(item.reconteos or 0):
+                    # Solo un PRIMER conteo correcto queda bien (verde).
                     estado_revision = InspeccionAleatoriaItem.EstadosRevision.COINCIDE
                     verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.SIN_NOVEDAD
                 else:
+                    # Un reconteo nunca queda bien solo, aunque ahora coincida:
+                    # el primer conteo no coincidio, administracion decide.
                     estado_revision = InspeccionAleatoriaItem.EstadosRevision.NO_COINCIDE
                     verificacion_estado = InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE
                     mismatch_count += 1

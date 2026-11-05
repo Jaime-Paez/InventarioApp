@@ -113,15 +113,53 @@ const getItemStatus = (row) => {
   return { key: 'sin_contar', label: 'Sin contar' }
 }
 
-// Puntos de reconteo: cuantos reconteos lleva el producto (de 3).
-function RecountDots({ count = 0, max = 3 }) {
-  if (!count) return null
+// Un producto se cuenta hasta 3 veces en total (el conteo original y 2
+// reconteos). Numero del conteo de este item y del siguiente si se reenvia.
+const getMaxCounts = (row) => Number(row?.max_conteos || 0) || Number(row?.max_reconteos || 2) + 1
+const getCountNumber = (row) => Number(row?.reconteos || 0) + 1
+const getNextCountLabel = (row) => `${getCountNumber(row) + 1} de ${getMaxCounts(row)}`
+
+const describeCount = (entry) => {
+  const parts = [`Conteo ${entry.numero}`]
+  if (entry.cantidad == null) parts.push('sin contar todavía')
+  else parts.push(`contó ${entry.cantidad}${entry.no_encontrado ? ' (no lo encontró)' : ''} · esperado ${entry.esperado}`)
+  if (entry.inspeccion_codigo) parts.push(entry.inspeccion_codigo)
+  if (entry.actual) parts.push('ACTUAL')
+  else if (entry.es_este) parts.push('este')
+  return parts.join(' · ')
+}
+
+// Puntos de conteo: uno por cada vez que se cuenta el producto (de 3). Al
+// pasar el mouse por cada punto dice cuanto conto esa vez y cual es el actual.
+function RecountDots({ row, onlyIfRecounted = false }) {
+  const max = getMaxCounts(row)
+  const history = Array.isArray(row?.conteos) && row.conteos.length
+    ? row.conteos
+    : [{
+      numero: 1,
+      cantidad: row?.cantidad_reportada ?? null,
+      esperado: Number(row?.cantidad_esperada || 0),
+      no_encontrado: Boolean(row?.no_encontrado),
+      inspeccion_codigo: row?.inspeccion_codigo || '',
+      es_este: true,
+      actual: true,
+    }]
+  if (onlyIfRecounted && history.length < 2) return null
+  const current = history.find((entry) => entry.es_este) || history[history.length - 1]
   return (
-    <span className="inspection-admin__recount-dots" data-title={`${count} de ${max} reconteos enviados`}>
-      {Array.from({ length: max }, (_, index) => (
-        <i key={index} className={index < count ? 'is-on' : ''} aria-hidden="true" />
-      ))}
-      <small>{`Reconteo ${count} de ${max}`}</small>
+    <span className="inspection-admin__recount-dots">
+      {Array.from({ length: max }, (_, index) => {
+        const entry = history[index]
+        if (!entry) {
+          return <i key={index} data-title={`Conteo ${index + 1}: no se ha pedido`} aria-hidden="true" />
+        }
+        const classes = [
+          entry.cantidad != null ? 'is-on' : 'is-waiting',
+          entry.actual ? 'is-current' : '',
+        ].filter(Boolean).join(' ')
+        return <i key={index} className={classes} data-title={describeCount(entry)} aria-hidden="true" />
+      })}
+      <small>{`Conteo ${current?.numero || 1} de ${max}`}</small>
     </span>
   )
 }
@@ -1376,7 +1414,7 @@ function RandomInspectionAdminTable({
             : action === 'reubicar' ? 'reubicada' : action === 'mover_aqui' ? 'movida' : action === 'recontar' ? 'reenviada' : 'rechazada',
       }
       if (action === 'recontar' && !alreadyVerified) {
-        notifySuccess(`${String(item?.producto_codigo || 'El producto').trim()} se envió a contar de nuevo (reconteo ${Number(payload?.reconteos || 0) + 1} de ${Number(item?.max_reconteos || 3)}).`)
+        notifySuccess(`${String(item?.producto_codigo || 'El producto').trim()} se envió a contar de nuevo (conteo ${getNextCountLabel(item)}).`)
       }
       setVerifyWizardDecisions(nextDecisions)
       setVerifyWizardConfirming(false)
@@ -1471,7 +1509,7 @@ function RandomInspectionAdminTable({
   // Productos que se van a reenviar (se pregunta antes, uno o todos).
   const [recountConfirmRows, setRecountConfirmRows] = useState(null)
   const resendToRecount = async (rows) => {
-    const list = rows.filter((row) => Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3))
+    const list = rows.filter((row) => Number(row?.reconteos || 0) < Number(row?.max_reconteos || 2))
     if (!token || !list.length || recountSendingId) return
     setRecountSendingId(list.length === 1 ? normalizeId(list[0]?.id) : 'all')
     let sent = 0
@@ -1587,7 +1625,7 @@ function RandomInspectionAdminTable({
     const pendingCount = revisionItems.filter((row) => getItemStatus(row).key === 'pendiente').length
     const isRecountable = (row) => (
       getItemStatus(row).key === 'pendiente' &&
-      Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3) &&
+      Number(row?.reconteos || 0) < Number(row?.max_reconteos || 2) &&
       !isMoveAwaitingDecision(row)
     )
     const recountableCount = revisionItems.filter(isRecountable).length
@@ -1680,7 +1718,7 @@ function RandomInspectionAdminTable({
                               {row?.movimiento_decision === 'aprobado' ? ' · cambio aprobado' : row?.movimiento_decision === 'rechazado' ? ' · se quedó donde estaba' : ''}
                             </small>
                           ) : null}
-                          <RecountDots count={Number(row?.reconteos || 0)} max={Number(row?.max_reconteos || 3)} />
+                          <RecountDots row={row} onlyIfRecounted={status.key !== 'pendiente'} />
                         </div>
                         {diff ? (
                           <span className={`transfer-issues-item__qty transfer-issues-cantidad--${diff > 0 ? 'sobrante' : 'faltante'}`}>
@@ -1709,16 +1747,16 @@ function RandomInspectionAdminTable({
                               </button>
                             </>
                           ) : null}
-                          {canFix && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 3) ? (
+                          {canFix && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 2) ? (
                             <button
                               type="button"
                               className="inspection-admin__action inspection-admin__recount-btn"
                               onClick={() => setRecountConfirmRows([row])}
                               disabled={Boolean(recountSendingId)}
-                              data-title={`Manda a contar de nuevo este producto al mismo revisor (reconteo ${Number(row?.reconteos || 0) + 1} de ${Number(row?.max_reconteos || 3)}). No ajusta nada.`}
+                              data-title={`Manda a contar de nuevo este producto al mismo revisor (conteo ${getNextCountLabel(row)}). No ajusta nada.`}
                             >
                               {recountSendingId === normalizeId(row?.id) ? <Loader2 size={13} /> : <RefreshCw size={13} />}
-                              {`Reenviar conteo (${Number(row?.reconteos || 0) + 1}/${Number(row?.max_reconteos || 3)})`}
+                              {`Reenviar conteo (${getCountNumber(row) + 1}/${getMaxCounts(row)})`}
                             </button>
                           ) : null}
                           {canFix ? (
@@ -1768,7 +1806,7 @@ function RandomInspectionAdminTable({
                   {recountableCount > 0 && (
                     <button
                       type="button"
-                      className="create-user__action inspection-admin__recount-btn inspection-admin__recount-btn--solid"
+                      className="create-user__action create-user__action--secondary inspection-admin__footer-recount"
                       onClick={() => setRecountConfirmRows(revisionItems.filter(isRecountable))}
                       disabled={Boolean(recountSendingId)}
                     >
@@ -1794,7 +1832,7 @@ function RandomInspectionAdminTable({
                     <div>
                       <strong>
                         {recountConfirmRows.length === 1
-                          ? `¿Reenviar ${String(recountConfirmRows[0]?.producto_codigo || 'este producto').trim()} a contar de nuevo? (reconteo ${Number(recountConfirmRows[0]?.reconteos || 0) + 1} de ${Number(recountConfirmRows[0]?.max_reconteos || 3)})`
+                          ? `¿Reenviar ${String(recountConfirmRows[0]?.producto_codigo || 'este producto').trim()} a contar de nuevo? (conteo ${getNextCountLabel(recountConfirmRows[0])})`
                           : `¿Reenviar ${recountConfirmRows.length} productos a contar de nuevo?`}
                       </strong>
                       <p>{`Le llegan a ${String(revision?.usuario_nombre || 'el revisor').trim()} en una revisión "Reconteo de ${String(revision?.codigo || '').trim()}". No se ajusta nada del inventario.`}</p>
@@ -2206,7 +2244,7 @@ function RandomInspectionAdminTable({
         const relocatedCount = Object.values(verifyWizardDecisions).filter((value) => value === 'reubicada' || value === 'movida').length
         const resentCount = Object.values(verifyWizardDecisions).filter((value) => value === 'reenviada').length
         const recounts = Number(item?.reconteos || 0)
-        const maxRecounts = Number(item?.max_reconteos || 3)
+        const maxRecounts = Number(item?.max_reconteos || 2)
         const canResend = recounts < maxRecounts && !isMoveAwaitingDecision(item)
         const relocateState = relocateOptionsByBranch[normalizeId(item?.sucursal_id)] || null
         const expected = Number.parseInt(String(item?.cantidad_esperada ?? 0), 10) || 0
@@ -2296,10 +2334,10 @@ function RandomInspectionAdminTable({
                         {!!String(item?.producto_nombre || '').trim() && (
                           <p className="quick-actions__inspection-stage-name">{String(item.producto_nombre).trim()}</p>
                         )}
-                        <RecountDots count={recounts} max={maxRecounts} />
+                        <RecountDots row={item} />
                         {!canResend && !decision && (
                           <p className="inspection-admin__recount-last">
-                            {`Ya se recontó ${maxRecounts} veces: tienes que solucionarlo (aprobar, reubicar o mantener).`}
+                            {`Ya se contó ${getMaxCounts(item)} veces: tienes que solucionarlo (aprobar, reubicar o mantener).`}
                           </p>
                         )}
                       </div>
@@ -2750,10 +2788,10 @@ function RandomInspectionAdminTable({
                         className="quick-actions__inspection-btn inspection-admin__recount-btn inspection-admin__recount-btn--solid"
                         onClick={() => void submitVerifyDecision('recontar')}
                         disabled={busy || verifyWizardConfirming}
-                        data-title={`Manda a contar de nuevo este producto al mismo revisor (reconteo ${recounts + 1} de ${maxRecounts}). No ajusta nada.`}
+                        data-title={`Manda a contar de nuevo este producto al mismo revisor (conteo ${getNextCountLabel(item)}). No ajusta nada.`}
                       >
                         <RefreshCw size={14} />
-                        {`Reenviar conteo (${recounts + 1}/${maxRecounts})`}
+                        {`Reenviar conteo (${getCountNumber(item) + 1}/${getMaxCounts(item)})`}
                       </button>
                     )}
                     {!decision && !isMoveAwaitingDecision(item) && (

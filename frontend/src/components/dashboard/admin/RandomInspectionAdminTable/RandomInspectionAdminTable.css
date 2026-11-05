@@ -2258,24 +2258,40 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   color: #fff !important;
 }
 
-/* Reconteos: puntos que dicen cuantos se han enviado (de 3). */
+/* Conteos: un punto por cada vez que se cuenta el producto (de 3). Lleno =
+   ya contado; punteado = enviado y sin contar; con anillo = el actual. Al
+   pasar el mouse dice cuanto conto esa vez. */
 .inspection-admin__recount-dots {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   margin-top: 6px;
 }
 
 .inspection-admin__recount-dots > i {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 2px solid var(--color-primary);
   background: transparent;
+  cursor: help;
+  transition: transform 120ms ease;
+}
+
+.inspection-admin__recount-dots > i:hover {
+  transform: scale(1.25);
 }
 
 .inspection-admin__recount-dots > i.is-on {
   background: var(--color-primary);
+}
+
+.inspection-admin__recount-dots > i.is-waiting {
+  border-style: dashed;
+}
+
+.inspection-admin__recount-dots > i.is-current {
+  box-shadow: 0 0 0 2px var(--color-surface, #fff), 0 0 0 4px #d97706;
 }
 
 .inspection-admin__recount-dots > small {
@@ -2328,4 +2344,12 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   border-color: #22c55e;
   background: rgba(34, 197, 94, 0.16);
   color: #86efac;
+}
+
+/* Reenviar conteo de pendientes (pie del detalle): boton secundario normal de
+   la app, con su icono, al lado de "Verificar pendientes". */
+.inspection-admin__footer-recount {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
