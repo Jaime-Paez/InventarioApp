@@ -2849,6 +2849,20 @@ function QuickActions({
     ),
     [activeRandomInspectionGroup, activeRandomInspectionStepIndex, randomInspectionRows]
   )
+  // Filas con alguna casilla sin contar. Se puede seguir de largo; al final
+  // se vuelve a estas (ver handleAdvanceRandomInspectionStep).
+  const randomInspectionMissingStepIndexes = useMemo(() => {
+    const isEmptyLocation = (location) => String(location?.cantidad_contada_input ?? '').trim() === ''
+    const indexes = []
+    randomInspectionGroups.forEach((group, index) => {
+      const missing = group.entries.some((entry) => (
+        (entry.location ? isEmptyLocation(entry.location) : entry.row?.cantidad_reportada == null) ||
+        (Array.isArray(entry.outsideLocations) && entry.outsideLocations.some(isEmptyLocation))
+      ))
+      if (missing) indexes.push(index)
+    })
+    return indexes
+  }, [randomInspectionGroups])
   const isRandomInspectionSummaryVisible = !isRandomInspectionVerifyMode && randomInspectionShowSummary
   const randomInspectionAllAnswersReady = (
     randomInspectionRows.length > 0 &&
@@ -4923,7 +4937,13 @@ function QuickActions({
   // pedirle nada al servidor ni marcar la inspeccion como "revelada".
   // "Siguiente fila" con casillas vacias: se marcan en rojo (en vez de un aviso abajo).
   const [randomInspectionShowMissing, setRandomInspectionShowMissing] = useState(false)
-  useEffect(() => { setRandomInspectionShowMissing(false) }, [activeRandomInspection?.id])
+  // true desde que se llego al final con filas sin contar: "Siguiente" ya no
+  // va a la fila de al lado sino a la proxima que falta.
+  const [randomInspectionFixingMissing, setRandomInspectionFixingMissing] = useState(false)
+  useEffect(() => {
+    setRandomInspectionShowMissing(false)
+    setRandomInspectionFixingMissing(false)
+  }, [activeRandomInspection?.id])
   const handleAdvanceRandomInspectionStep = useCallback(() => {
     if (randomInspectionSubmitting) return
     if (!randomInspectionRows.length) {
@@ -4932,16 +4952,29 @@ function QuickActions({
     }
 
     if (activeRandomInspectionGroup) {
-      // Tambien las otras ubicaciones del producto (filas amarillas): todas
-      // se cuentan aqui mismo y son obligatorias.
-      const isEmptyLocation = (location) => String(location?.cantidad_contada_input ?? '').trim() === ''
-      const missing = activeRandomInspectionGroup.entries.filter((entry) => (
-        (entry.location ? isEmptyLocation(entry.location) : entry.row?.cantidad_reportada == null) ||
-        (Array.isArray(entry.outsideLocations) && entry.outsideLocations.some(isEmptyLocation))
-      ))
-      if (missing.length) {
+      // Se puede seguir aunque la fila tenga casillas vacias. Al llegar al
+      // final (o mientras se corrigen las que faltan) se va a la proxima fila
+      // sin contar, con las casillas vacias en rojo; el resumen solo se abre
+      // cuando ya no falta nada.
+      const isLastStep = activeRandomInspectionStepIndex >= randomInspectionStepCount - 1
+      if (!isLastStep && !randomInspectionFixingMissing) {
         setRandomInspectionError('')
+        setRandomInspectionShowMissing(false)
+        const nextStep = activeRandomInspectionStepIndex + 1
+        setRandomInspectionStepIndex(nextStep)
+        void saveInspectionDraftToBackend(nextStep)
+        return
+      }
+      const missingSteps = randomInspectionMissingStepIndexes
+      if (missingSteps.length) {
+        const target = missingSteps.find((index) => index > activeRandomInspectionStepIndex) ?? missingSteps[0]
+        setRandomInspectionError('')
+        setRandomInspectionFixingMissing(true)
         setRandomInspectionShowMissing(true)
+        if (target !== activeRandomInspectionStepIndex) {
+          setRandomInspectionStepIndex(target)
+          void saveInspectionDraftToBackend(target)
+        }
         window.setTimeout(() => {
           const first = document.querySelector('.quick-actions__inspection-row-table input.is-missing')
           first?.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -4949,6 +4982,12 @@ function QuickActions({
         }, 60)
         return
       }
+      setRandomInspectionError('')
+      setRandomInspectionShowMissing(false)
+      setRandomInspectionFixingMissing(false)
+      setRandomInspectionShowSummary(true)
+      void saveInspectionDraftToBackend(activeRandomInspectionStepIndex)
+      return
     } else if (activeRandomInspectionRow?.cantidad_reportada == null) {
       setRandomInspectionError(
         activeRandomInspectionRow?.requiere_conteo_por_ubicacion
@@ -4973,6 +5012,8 @@ function QuickActions({
     activeRandomInspectionGroup,
     activeRandomInspectionRow,
     activeRandomInspectionStepIndex,
+    randomInspectionFixingMissing,
+    randomInspectionMissingStepIndexes,
     randomInspectionRows,
     randomInspectionStepCount,
     randomInspectionSubmitting,
@@ -7870,9 +7911,13 @@ function QuickActions({
                       ? 'Inspección ya enviada'
                     : !isRandomInspectionSummaryVisible
                       ? (
-                        activeRandomInspectionStepIndex >= randomInspectionStepCount - 1
-                          ? 'Ver resumen'
-                          : isRandomInspectionTableMode ? 'Siguiente fila' : 'Siguiente producto'
+                        isRandomInspectionTableMode &&
+                        (randomInspectionFixingMissing || activeRandomInspectionStepIndex >= randomInspectionStepCount - 1) &&
+                        randomInspectionMissingStepIndexes.some((index) => index !== activeRandomInspectionStepIndex)
+                          ? `Ir a lo que falta (${randomInspectionMissingStepIndexes.length} fila${randomInspectionMissingStepIndexes.length === 1 ? '' : 's'})`
+                          : activeRandomInspectionStepIndex >= randomInspectionStepCount - 1 || randomInspectionFixingMissing
+                            ? 'Ver resumen'
+                            : isRandomInspectionTableMode ? 'Siguiente fila' : 'Siguiente producto'
                       )
                     : 'Guardar inspecci\u00f3n'}
               </button>
