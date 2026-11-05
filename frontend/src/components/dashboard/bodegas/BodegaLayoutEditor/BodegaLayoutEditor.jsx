@@ -299,7 +299,7 @@ const TypeSelect = ({
   )
 }
 
-function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, disabled, renderLocationFooter }) {
+function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, disabled, renderLocationFooter, onBeforeRemoveLocation }) {
   const safeWidth = useMemo(() => Math.max(widthMeters || 0, 0), [widthMeters])
   const safeHeight = useMemo(() => Math.max(heightMeters || 0, 0), [heightMeters])
   const planStyle = useMemo(() => {
@@ -471,7 +471,23 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
   const handleTypeChange = (locationId, value) => updateLocation(locationId, { tipo: value })
   const handleAddType = (value) => ensureType(value)
 
-  const removeLocation = (id) => {
+  const [removingId, setRemovingId] = useState(null)
+
+  // onBeforeRemoveLocation (opcional) revisa antes si se puede quitar, p. ej.
+  // que no queden productos con cantidad en esa ubicacion.
+  const removeLocation = async (id) => {
+    if (removingId) return
+    const target = locations.find((location) => location.id === id)
+    if (typeof onBeforeRemoveLocation === 'function' && target) {
+      setRemovingId(id)
+      let allowed = false
+      try {
+        allowed = await onBeforeRemoveLocation(target)
+      } finally {
+        setRemovingId(null)
+      }
+      if (!allowed) return
+    }
     onChange(locations.filter((location) => location.id !== id))
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -983,10 +999,10 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                 <button
                   type="button"
                   className="create-user__action create-user__action--cancel"
-                  onClick={() => removeLocation(location.id)}
-                  disabled={disabled}
+                  onClick={() => { void removeLocation(location.id) }}
+                  disabled={disabled || removingId === location.id}
                 >
-                  Eliminar
+                  {removingId === location.id ? 'Revisando...' : 'Eliminar'}
                 </button>
               </div>
             </div>

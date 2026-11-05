@@ -359,6 +359,58 @@ class SucursalViewSet(viewsets.ModelViewSet):
             )
 
 
+# Una ubicacion (division del plano de la bodega) o una subdivision no se puede
+# eliminar mientras tenga productos con cantidad: se perderia ese inventario
+# (Inventario cae en cascada). El mensaje dice cuales son para moverlos antes.
+STOCK_BLOCK_LIST_LIMIT = 10
+
+
+def _productos_con_stock(inventario_qs):
+    rows = (
+        inventario_qs.filter(cantidad__gt=0)
+        .values("producto__codigo", "producto__nombre")
+        .annotate(total=Sum("cantidad"))
+        .order_by("producto__codigo")
+    )
+    return [
+        {
+            "codigo": row["producto__codigo"] or "",
+            "nombre": row["producto__nombre"] or "",
+            "cantidad": int(row["total"] or 0),
+        }
+        for row in rows
+    ]
+
+
+def _stock_block_detail(ubicacion_label, productos):
+    shown = productos[:STOCK_BLOCK_LIST_LIMIT]
+    partes = ", ".join(
+        f"{p['codigo'] or p['nombre']} ({p['cantidad']})" for p in shown
+    )
+    resto = len(productos) - len(shown)
+    if resto > 0:
+        partes += f" y {resto} más"
+    return (
+        f"No se puede eliminar {ubicacion_label} porque tiene productos con cantidad: "
+        f"{partes}. Muévelos o ajusta su cantidad a 0 antes de eliminarla."
+    )
+
+
+def _stock_block_response(ubicacion_label, productos):
+    return Response(
+        {
+            "code": "ubicacion_con_stock",
+            "detail": _stock_block_detail(ubicacion_label, productos),
+            "productos": productos,
+        },
+        status=status.HTTP_400_BAD_REQUEST,
+    )
+
+
+def _ubicacion_key(value):
+    return str(value or "").strip().lower()
+
+
 class BodegaViewSet(viewsets.ModelViewSet):
     queryset = Bodega.objects.select_related("sucursal").all().order_by(
         "-id"
@@ -396,6 +448,35 @@ class BodegaViewSet(viewsets.ModelViewSet):
             action_key="puede_actualizar",
         )
         serializer.save()
+
+    def update(self, request, *args, **kwargs):
+        # Quitar una ubicacion del plano: si su division tiene productos con
+        # cantidad no se deja (quedarian en una ubicacion que ya no se ve).
+        instance = self.get_object()
+        if "ubicaciones" in request.data:
+            nuevas = request.data.get("ubicaciones") or []
+            nuevas_keys = {
+                _ubicacion_key(u.get("nombre")) for u in nuevas if isinstance(u, dict)
+            }
+            quitadas = [
+                u for u in (instance.ubicaciones or [])
+                if isinstance(u, dict)
+                and _ubicacion_key(u.get("nombre"))
+                and _ubicacion_key(u.get("nombre")) not in nuevas_keys
+            ]
+            if quitadas:
+                quitadas_keys = {_ubicacion_key(u.get("nombre")) for u in quitadas}
+                for division in instance.divisiones.all():
+                    if _ubicacion_key(division.nombre) not in quitadas_keys:
+                        continue
+                    productos = _productos_con_stock(
+                        Inventario.objects.filter(subdivision__division=division)
+                    )
+                    if productos:
+                        return _stock_block_response(
+                            f'la ubicación "{division.nombre}"', productos
+                        )
+        return super().update(request, *args, **kwargs)
 
     def _get_delete_block_reasons(self, instance):
         reasons = []
@@ -491,6 +572,37 @@ class DivisionViewSet(viewsets.ModelViewSet):
         )
         serializer.save()
 
+    @action(detail=True, methods=["get"], url_path="productos-con-stock")
+    def productos_con_stock(self, request, pk=None):
+        division = self.get_object()
+        productos = _productos_con_stock(
+            Inventario.objects.filter(subdivision__division=division)
+        )
+        return Response(
+            {
+                "productos": productos,
+                "detail": (
+                    _stock_block_detail(f'la ubicación "{division.nombre}"', productos)
+                    if productos else ""
+                ),
+            }
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        productos = _productos_con_stock(
+            Inventario.objects.filter(subdivision__division=instance)
+        )
+        if productos:
+            return _stock_block_response(f'la ubicación "{instance.nombre}"', productos)
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {"detail": "No se puede eliminar la ubicación porque está ligada a registros históricos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
 
 class SubDivisionViewSet(viewsets.ModelViewSet):
     queryset = (
@@ -551,12 +663,17 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        if Inventario.objects.filter(subdivision=instance).exists():
+        productos = _productos_con_stock(Inventario.objects.filter(subdivision=instance))
+        if productos:
+            return _stock_block_response(f'la subdivisión "{instance.nombre}"', productos)
+        try:
+            # Sin cantidades: los registros en 0 se van con la subdivision.
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
             return Response(
-                {"detail": "No se puede eliminar la subdivisión porque tiene productos asociados."},
+                {"detail": "No se puede eliminar la subdivisión porque está ligada a registros históricos."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        return super().destroy(request, *args, **kwargs)
 
 class InventarioViewSet(viewsets.ModelViewSet):
     queryset = (

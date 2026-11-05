@@ -447,6 +447,34 @@ function BodegaDetails({
     }
   }
 
+  // Antes de quitar una ubicacion del plano: si su division tiene productos
+  // con cantidad no se deja y el aviso dice cuales son.
+  const handleBeforeRemoveLocation = useCallback(async (location) => {
+    const key = normalizeDivisionKey(location?.nombre)
+    const division = key ? divisionByName.get(key) : null
+    if (!division?.id) return true
+    try {
+      const response = await authFetch(
+        `${API_URL}/inventario/divisiones/${division.id}/productos-con-stock/`,
+        { method: 'GET' },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        notifyError(data?.detail || 'No se pudo revisar si la ubicación tiene productos.')
+        return false
+      }
+      if (Array.isArray(data?.productos) && data.productos.length) {
+        notifyError(data.detail || 'La ubicación tiene productos con cantidad.')
+        return false
+      }
+      return true
+    } catch (err) {
+      notifyError(err?.message || 'No se pudo revisar si la ubicación tiene productos.')
+      return false
+    }
+  }, [divisionByName, normalizeDivisionKey, notifyError, token])
+
   const handleDeleteSubdivision = async (subdivisionId) => {
     if (!subdivisionId || subdivisionsDisabled) return
     if (!window.confirm('¿Eliminar esta subdivisión?')) return
@@ -1005,6 +1033,7 @@ function BodegaDetails({
                   onChange={handleLayoutChange}
                   disabled={editorDisabled}
                   renderLocationFooter={renderLocationSubdivisions}
+                  onBeforeRemoveLocation={handleBeforeRemoveLocation}
                 />
               </section>
             )}
