@@ -4564,7 +4564,36 @@ const fetchCoincidencias = async (token, casaId, rows, { soloCoincidencias = fal
 const sugerenciaRowRank = (row) => (
   row.conflicto_casa ? 0 : row.codigo_sugerido ? 1 : row.matched_producto_id ? 2 : String(row.codigo || '').trim() ? 3 : 4
 )
-const sortSugerenciaRows = (rows) => [...rows].sort((a, b) => sugerenciaRowRank(a) - sugerenciaRowRank(b))
+// Los repetidos (mismo producto o mismo codigo) van uno tras otro: cada
+// repetido se sube justo debajo de la primera fila de su codigo. Lo demas
+// conserva su orden. keyOf(item) -> clave ('' = no se agrupa).
+const juntarRepetidos = (items, keyOf) => {
+  const porClave = new Map()
+  items.forEach((item) => {
+    const clave = keyOf(item)
+    if (!clave) return
+    if (!porClave.has(clave)) porClave.set(clave, [])
+    porClave.get(clave).push(item)
+  })
+  const result = []
+  const puestos = new Set()
+  items.forEach((item) => {
+    if (puestos.has(item)) return
+    const grupo = porClave.get(keyOf(item))
+    const juntos = grupo && grupo.length > 1 ? grupo : [item]
+    juntos.forEach((x) => { puestos.add(x); result.push(x) })
+  })
+  return result
+}
+const sugerenciaDuplicateKey = (row) => (
+  row.matched_producto_id
+    ? `p:${row.matched_producto_id}`
+    : String(row.codigo || '').trim() ? `c:${String(row.codigo).trim().toUpperCase()}` : ''
+)
+const sortSugerenciaRows = (rows) => juntarRepetidos(
+  [...rows].sort((a, b) => sugerenciaRowRank(a) - sugerenciaRowRank(b)),
+  sugerenciaDuplicateKey
+)
 
 // La referencia del Excel no es ninguna de las que ya tiene el producto
 // vinculado: hay que elegir cual se guarda.
@@ -8162,11 +8191,20 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // existen y al final los quitados. Solo cambia como se muestra, no el orden
   // guardado.
   const VERIFICAR_ORDEN_GRUPOS = ['agregadoExiste', 'agregadoNuevo', 'catalogo', 'noExiste', 'quitado']
+  // Los repetidos (sin quitar) van uno tras otro.
   const shownDetails = isVerificar
-    ? VERIFICAR_ORDEN_GRUPOS.flatMap((grupo) => {
-      const enGrupo = details.filter((item) => verificarColorDe(item) === grupo)
-      return grupo.startsWith('agregado') ? enGrupo.reverse() : enGrupo
-    })
+    ? juntarRepetidos(
+      VERIFICAR_ORDEN_GRUPOS.flatMap((grupo) => {
+        const enGrupo = details.filter((item) => verificarColorDe(item) === grupo)
+        return grupo.startsWith('agregado') ? enGrupo.reverse() : enGrupo
+      }),
+      (item) => {
+        if (item.quitado) return ''
+        const codigo = String(item.producto?.codigo || item.codigo || '').trim()
+        if (!codigo) return ''
+        return item.producto?.id ? `p:${item.producto.id}` : `c:${codigo.toUpperCase()}`
+      }
+    )
     : details
   // Lleva a la primera fila de un codigo repetido y marca todas sus filas.
   // Cada clic en "N repetidos" va al siguiente codigo repetido.
