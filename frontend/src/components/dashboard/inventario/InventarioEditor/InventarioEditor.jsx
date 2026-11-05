@@ -446,6 +446,10 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     []
   )
 
+  const savedTotalsRef = useRef(new Map())
+  const motivoAjusteRef = useRef('')
+  const cantidadAntesRef = useRef({})
+
   const resetEditorState = useCallback(() => {
     const nextLocations = inventarioEntries
       .map((entry) => {
@@ -470,6 +474,16 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         }
       })
       .filter(Boolean)
+
+    // Total guardado por sucursal: contra esto se ve si un cambio de cantidad
+    // es un ajuste (sube o baja la sucursal) o solo un reparto interno.
+    const totals = new Map()
+    nextLocations.forEach((location) => {
+      const prev = totals.get(location.sucursalId) || { total: 0, nombre: location.sucursalNombre }
+      totals.set(location.sucursalId, { ...prev, total: prev.total + (Number(location.cantidad) || 0) })
+    })
+    savedTotalsRef.current = totals
+    motivoAjusteRef.current = ''
 
     setLocations(nextLocations)
     setShowLocationForm(false)
@@ -860,7 +874,40 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     }
   }
 
-  const { guardarAjuste, ajusteDialog } = useAjusteInventario(token)
+  const { guardarAjuste, pedirMotivo, ajusteDialog } = useAjusteInventario(token)
+
+  // Al terminar de escribir una cantidad (salir del campo o Enter): si el
+  // total de la sucursal queda distinto al guardado, se pide el motivo en ese
+  // momento. Cancelar devuelve la cantidad que tenia la fila; la nueva solo
+  // queda si se confirma el motivo (y se manda al guardar el producto).
+  const handleRowCantidadFocus = (location) => {
+    cantidadAntesRef.current[location.uid] = location.cantidad
+  }
+
+  const handleRowCantidadCommit = async (location) => {
+    const antes = cantidadAntesRef.current[location.uid]
+    delete cantidadAntesRef.current[location.uid]
+    if (antes === undefined || Number(antes) === Number(location.cantidad)) return
+    const nueva = Number(location.cantidad)
+    if (!Number.isFinite(nueva) || nueva < 0) return
+    const saved = savedTotalsRef.current.get(location.sucursalId) || { total: 0, nombre: location.sucursalNombre }
+    const totalNuevo = locations
+      .filter((loc) => loc.sucursalId === location.sucursalId)
+      .reduce((sum, loc) => sum + (Number(loc.uid === location.uid ? nueva : loc.cantidad) || 0), 0)
+    if (totalNuevo === saved.total) return
+    const motivo = await pedirMotivo([{
+      sucursal_id: location.sucursalId,
+      sucursal: saved.nombre || location.sucursalNombre,
+      cantidad_anterior: saved.total,
+      cantidad_nueva: totalNuevo,
+      diferencia: totalNuevo - saved.total,
+    }])
+    if (motivo) {
+      motivoAjusteRef.current = motivo
+      return
+    }
+    setLocations((prev) => prev.map((loc) => (loc.uid === location.uid ? { ...loc, cantidad: antes } : loc)))
+  }
 
   const saveChanges = async () => {
     if (!productId || saving) return
@@ -897,7 +944,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         return true
       }
 
-      const { response, payload } = await guardarAjuste(productId, cambios)
+      const { response, payload } = await guardarAjuste(productId, cambios, motivoAjusteRef.current)
       if (!response.ok) {
         const detailText = String(payload?.detail || '').trim()
         if (response.status === 403) {
@@ -1764,6 +1811,13 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                         step="1"
                         value={String(location.cantidad ?? '')}
                         onChange={(event) => handleRowCantidadChange(location.uid, event.target.value)}
+                        onFocus={() => handleRowCantidadFocus(location)}
+                        onBlur={() => { void handleRowCantidadCommit(location) }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter') return
+                          event.preventDefault()
+                          event.currentTarget.blur()
+                        }}
                       />
                     ) : (
                       <strong className="create-user__locations-total">{location.cantidad}</strong>
