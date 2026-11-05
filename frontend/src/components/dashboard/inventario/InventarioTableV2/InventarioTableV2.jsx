@@ -2167,10 +2167,24 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     if (!canSeeCost && (key === 'costo_min' || key === 'costo_max' || key === 'sin_costo')) return false
     return typeof value === 'boolean' ? value : String(value ?? '').trim() !== ''
   }).length
+  // Las sucursales llegan con la respuesta de la tabla: antes de la primera
+  // busqueda no hay ninguna y en la Busqueda avanzada solo salia "Todas".
+  // Mientras tanto se toman de las bodegas (se cargan al abrir, con los
+  // permisos del usuario).
+  const branchesFromBodegas = useMemo(() => {
+    const byId = new Map()
+    ;(bodegas || []).forEach((bodega) => {
+      const id = Number(bodega?.sucursal?.id ?? bodega?.sucursal_id) || 0
+      const nombre = String(bodega?.sucursal?.nombre || '').trim()
+      if (id > 0 && nombre && !byId.has(id)) byId.set(id, { id, nombre, direccion: '' })
+    })
+    return [...byId.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true }))
+  }, [bodegas])
+  const knownBranches = branches.length ? branches : branchesFromBodegas
   // Sucursales donde el usuario ve ubicaciones (el ojo rojo solo existe ahi).
   const restockBranches = permittedBranchIds
-    ? branches.filter((branch) => permittedBranchIds.has(String(branch.id)))
-    : branches
+    ? knownBranches.filter((branch) => permittedBranchIds.has(String(branch.id)))
+    : knownBranches
   // Restock es siempre de UNA sucursal (si no, salian filas cuyo ojo rojo
   // estaba en otra columna). Por defecto, la de la columna Ub. que se ve.
   const visibleLocationBranchId = selectedBranchColumns
