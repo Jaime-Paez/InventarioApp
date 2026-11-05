@@ -2923,6 +2923,17 @@ def _parse_optional_quantity(raw_value):
 
 # Health check usado por Render para verificar que el servicio esté vivo.
 def ping(request):
+    # ?db=1: tambien prueba la base de datos (lo usa el login para saber si
+    # el sistema ya responde). Sin el parametro sigue igual que siempre para
+    # el health check de Render.
+    if request.GET.get("db") == "1":
+        from django.db import connection
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+        except Exception:
+            return JsonResponse({"message": "db_down"}, status=503)
     return JsonResponse({"message": "pong", "framework": "Django"})
 
 

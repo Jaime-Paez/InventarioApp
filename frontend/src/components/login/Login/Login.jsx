@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './Login.css'
 import wallpaperLight from '../../../assets/login/login_wallpaper(light).png'
 import wallpaperDark from '../../../assets/login/login_wallpaper(dark).png'
@@ -7,6 +7,11 @@ import jpaezLight from '../../../assets/login/jpaez(light).png'
 import kavaDark from '../../../assets/login/kava(dark).png'
 import kavaLight from '../../../assets/login/kava(light).png'
 import { API_URL, authFetch } from '../../../utils/api'
+import useServerStatus, { RETRY_SECONDS } from './useServerStatus'
+
+const LOGIN_TIMEOUT_MS = 25000
+// Respuestas que significan "el servidor no esta" (no credenciales malas).
+const SERVER_DOWN_STATUSES = new Set([502, 503, 504])
 
 const SunIcon = () => (
   <svg
@@ -65,22 +70,35 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
   })
 
   const headers = useMemo(() => ({ 'Content-Type': 'application/json' }), [])
+  const server = useServerStatus()
+  const { status: serverStatus, markDown } = server
+  // Login enviado mientras el servidor no respondia: se manda solo al volver.
+  const [pendingLogin, setPendingLogin] = useState(false)
+  const loginDataRef = useRef(loginData)
+  loginDataRef.current = loginData
 
-  const handleLogin = async (event) => {
-    event.preventDefault()
+  const doLogin = useCallback(async () => {
     setLoading(true)
     setAuthError('')
     setStatusMessage('')
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS)
     try {
       const response = await authFetch(
         `${API_URL}/auth/login/`,
         {
           method: 'POST',
           headers,
-          body: JSON.stringify(loginData),
+          body: JSON.stringify(loginDataRef.current),
+          signal: controller.signal,
         },
         null
       )
+      if (SERVER_DOWN_STATUSES.has(response.status)) {
+        markDown()
+        setPendingLogin(true)
+        return
+      }
       const data = await response.json().catch(() => ({}))
 
       if (!response.ok) {
@@ -94,12 +112,32 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
       setLoginData({ email: '', password: '' })
       setShowPassword(false)
     } catch (error) {
+      // Sin respuesta o tardo demasiado: el servidor esta caido o reiniciando.
       console.error('Error al iniciar sesión:', error)
-      setAuthError('No se pudo contactar al servidor. Intenta de nuevo.')
+      markDown()
+      setPendingLogin(true)
     } finally {
+      window.clearTimeout(timer)
       setLoading(false)
     }
+  }, [headers, markDown, onLoginSuccess])
+
+  const handleLogin = async (event) => {
+    event.preventDefault()
+    if (serverStatus === 'down') {
+      setAuthError('')
+      setPendingLogin(true)
+      return
+    }
+    await doLogin()
   }
+
+  // Volvio el servidor: enviar el login que quedo esperando.
+  useEffect(() => {
+    if (serverStatus !== 'up' || !pendingLogin || loading) return
+    setPendingLogin(false)
+    void doLogin()
+  }, [serverStatus, pendingLogin, loading, doLogin])
 
   const handleToggleTheme = () => {
     // “splash” liquid del botón
@@ -195,10 +233,47 @@ function Login({ darkMode, onToggleTheme, onLoginSuccess, isCollapsing, isExpand
               </div>
             </div>
 
-            <button type="submit" className="primary-button" disabled={loading}>
-              {loading ? 'Validando...' : 'Iniciar Sesión'}
+            <button type="submit" className="primary-button" disabled={loading || pendingLogin}>
+              {loading ? 'Validando...' : pendingLogin ? 'Esperando al servidor...' : 'Iniciar Sesión'}
             </button>
           </form>
+
+          {serverStatus === 'slow' && (
+            <div className="server-status server-status--slow" role="status">
+              <span className="server-status__spinner" aria-hidden />
+              <span>Conectando con el servidor… puede tardar si se estaba reiniciando.</span>
+            </div>
+          )}
+          {serverStatus === 'down' && (
+            <div className="server-status server-status--down" role="alert">
+              <strong>El servidor no está respondiendo</strong>
+              <span>
+                Puede estar reiniciándose. Se vuelve a intentar solo cada {RETRY_SECONDS} segundos; no hace falta recargar la página.
+              </span>
+              <span className="server-status__meta">
+                {server.secondsLeft > 0 ? `Próximo intento en ${server.secondsLeft} s` : 'Probando…'}
+                {server.attempts > 1 ? ` · intento ${server.attempts}` : ''}
+              </span>
+              {pendingLogin && (
+                <span>Tu inicio de sesión se enviará en cuanto responda.</span>
+              )}
+              <div className="server-status__actions">
+                <button type="button" className="server-status__btn" onClick={() => void server.check()}>
+                  Reintentar ahora
+                </button>
+                {pendingLogin && (
+                  <button type="button" className="server-status__btn server-status__btn--ghost" onClick={() => setPendingLogin(false)}>
+                    Cancelar inicio de sesión
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {serverStatus === 'up' && server.recovered && (
+            <div className="server-status server-status--up" role="status">
+              <span>Servidor disponible.</span>
+            </div>
+          )}
 
           {statusMessage && <p className="status success">{statusMessage}</p>}
           {authError && <p className="status error">{authError}</p>}

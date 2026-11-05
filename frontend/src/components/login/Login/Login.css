@@ -661,3 +661,112 @@ input:focus {
 
   opacity: 0.55;
 }
+
+/* =========================
+   Estado del servidor (backend caido o reiniciando)
+   ========================= */
+.server-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.server-status--slow {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  background: #f1f5f9;
+  color: #334155;
+  border-color: #e2e8f0;
+}
+
+.server-status--down {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+
+.server-status--down strong {
+  font-size: 0.95rem;
+}
+
+.server-status--up {
+  background: #f0fdf4;
+  color: #166534;
+  border-color: #bbf7d0;
+  font-weight: 600;
+}
+
+.server-status__meta {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.server-status__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.server-status__btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #d97706;
+  background: #d97706;
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.server-status__btn--ghost {
+  background: transparent;
+  color: inherit;
+}
+
+.server-status__spinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: server-status-spin 0.8s linear infinite;
+}
+
+@keyframes server-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .server-status__spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+.login-page.dark .server-status--slow {
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.login-page.dark .server-status--down {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.login-page.dark .server-status--up {
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.3);
+}
