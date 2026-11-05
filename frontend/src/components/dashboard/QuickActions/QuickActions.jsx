@@ -7029,14 +7029,18 @@ function QuickActions({
                                 </span>
                                 <span className="quick-actions__inspection-row-name">
                                   {String(row?.producto_nombre || '').trim()}
+                                  {/* Aqui (y no en la columna angosta) para que se lea entero. */}
+                                  <small className="quick-actions__inspection-moved-chip">
+                                    <i className="pi pi-arrow-right" aria-hidden="true" />
+                                    {`Lo pasaste a ${entry.movedAwayTo}`}
+                                  </small>
                                 </span>
                                 <span className="quick-actions__inspection-row-location">
                                   <i className="pi pi-map-marker" aria-hidden="true" />
                                   {String(entry.location?.label || activeRandomInspectionGroup.label || '').trim() || '-'}
                                 </span>
-                                <span className="quick-actions__inspection-moved-to">
-                                  <i className="pi pi-arrow-right" aria-hidden="true" />
-                                  {`Movido a ${entry.movedAwayTo}`}
+                                <span>
+                                  <span className="quick-actions__inspection-moved-badge">Movido</span>
                                 </span>
                                 <span />
                               </div>
@@ -7073,7 +7077,7 @@ function QuickActions({
                             <React.Fragment key={`inspection-rowtable-${rowId}-${entry.location?.key || 'unica'}`}>
                             <div
                               data-inspection-row={rowId}
-                              className={`create-user__locations-row${randomInspectionHighlightRowId === rowId ? ' quick-actions__inspection-row--highlight' : ''}`}
+                              className={`create-user__locations-row${entry.movedHere ? ' quick-actions__inspection-row--moved-here' : ''}${randomInspectionHighlightRowId === rowId ? ' quick-actions__inspection-row--highlight' : ''}`}
                             >
                               <span className="quick-actions__inspection-row-code">
                                 <strong>{row?.producto_codigo || `Producto ${rowId}`}</strong>
@@ -7084,8 +7088,9 @@ function QuickActions({
                                   <small className="quick-actions__inspection-added-tag">Agregado por ti (no estaba en la lista)</small>
                                 )}
                                 {entry.movedHere && (
-                                  <small className="quick-actions__inspection-added-tag">
-                                    {`Lo pasaste aquí desde ${(Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
+                                  <small className="quick-actions__inspection-moved-chip">
+                                    <i className="pi pi-arrow-left" aria-hidden="true" />
+                                    {`Lo trajiste de ${(Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
                                       .filter((location) => location !== entry.location)
                                       .map((location) => String(location?.label || '').trim())
                                       .filter(Boolean)
