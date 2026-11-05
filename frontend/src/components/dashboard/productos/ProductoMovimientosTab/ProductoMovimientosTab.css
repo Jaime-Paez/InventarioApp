@@ -366,3 +366,14 @@
 .producto-movs__kardex .producto-movs__saldo-label {
   text-align: right;
 }
+
+.producto-movs__saldo-note {
+  font-weight: 500;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.producto-movs__note {
+  margin: 0;
+  font-size: var(--font-size-xs, 0.75rem);
+  color: var(--color-text-secondary, #64748b);
+}

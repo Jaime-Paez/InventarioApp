@@ -19,7 +19,9 @@ const defaultDesde = () => {
 
 const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmt4 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 })
+// null = costo desconocido (unidades del saldo inicial, que vino sin costo).
 const money = (value, decimals = 2) => {
+  if (value === null || value === undefined || value === '') return '—'
   const n = Number(value)
   if (!Number.isFinite(n)) return '-'
   return (decimals === 4 ? fmt4 : fmt2).format(n)
@@ -104,6 +106,8 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
   const sucursalActiva = meta.sucursal_aplicada == null ? 'todas' : String(meta.sucursal_aplicada)
   const totales = meta.totales || { entradas: 0, salidas: 0 }
   const saldoAnterior = meta.saldo_anterior || { cantidad: 0, costo: 0 }
+  const saldoInicial = Number(meta.saldo_inicial) || 0
+  const costosIncompletos = Boolean(totales.costos_incompletos) || (saldoAnterior.costo == null && saldoAnterior.cantidad > 0)
   const saldoActual = meta.saldo_actual || { cantidad: 0, costo: 0 }
   const isLastPage = meta.page >= meta.total_pages
   const sucursalNombre = sucursales.find((branch) => String(branch.id) === sucursalActiva)?.nombre || 'la sucursal'
@@ -206,7 +210,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
           <AlertTriangle size={16} />
           <span>
             El saldo del Kardex ({saldoActual.cantidad}) no coincide con el stock actual en {sucursalNombre} ({meta.stock_actual}).
-            Puede haber cambios de cantidad hechos antes de que se registraran los ajustes, o movimientos antiguos que no se cargaron.
+            Puede haber cambios de cantidad hechos a mano o por la revisión de inventario antes de que se registraran como ajuste.
           </span>
         </div>
       )}
@@ -240,7 +244,12 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
             <tbody>
               <tr className="producto-movs__saldo">
                 {/* El texto va a la derecha, junto a los totales que describe. */}
-                <td colSpan={9} className="producto-movs__saldo-label">{fechaDesde ? `Saldo anterior al ${formatDate(fechaDesde)}` : 'Saldo anterior'}</td>
+                <td colSpan={9} className="producto-movs__saldo-label">
+                  {fechaDesde ? `Saldo anterior al ${formatDate(fechaDesde)}` : 'Saldo inicial (sistema anterior)'}
+                  {fechaDesde && saldoInicial > 0 && (
+                    <span className="producto-movs__saldo-note"> · incluye {saldoInicial} del saldo inicial del sistema anterior</span>
+                  )}
+                </td>
                 <td className="num sep">{saldoAnterior.cantidad}</td>
                 <td className="num">{money(saldoAnterior.costo)}</td>
                 <td />
@@ -314,10 +323,10 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
                 <tr className="producto-movs__saldo">
                   <td colSpan={3} className="producto-movs__saldo-label">Saldo actual{fechaHasta ? ` al ${formatDate(fechaHasta)}` : ''}</td>
                   <td className="num sep">{totales.entradas}</td>
-                  <td className="num">{totales.entradas ? money(Number(totales.entradas_total) / totales.entradas, 4) : '-'}</td>
+                  <td className="num">{totales.entradas && !costosIncompletos ? money(Number(totales.entradas_total) / totales.entradas, 4) : '—'}</td>
                   <td className="num">{money(totales.entradas_total)}</td>
                   <td className="num sep">{totales.salidas}</td>
-                  <td className="num">{totales.salidas ? money(Number(totales.salidas_total) / totales.salidas, 4) : '-'}</td>
+                  <td className="num">{totales.salidas && !costosIncompletos ? money(Number(totales.salidas_total) / totales.salidas, 4) : '—'}</td>
                   <td className="num">{money(totales.salidas_total)}</td>
                   <td className="num sep">{saldoActual.cantidad}</td>
                   <td className="num">{money(saldoActual.costo)}</td>
@@ -327,6 +336,12 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
             )}
           </table>
         </div>
+      )}
+
+      {!loading && !loadError && costosIncompletos && (
+        <p className="producto-movs__note">
+          — = costo desconocido: el saldo inicial vino del sistema anterior sin costo. Toma el costo de la primera compra local o importación que llegue después.
+        </p>
       )}
 
       {!loading && !loadError && meta.page < meta.total_pages && (

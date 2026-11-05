@@ -202,3 +202,35 @@ class AjusteInventario(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - representacion legible
         return f"{self.producto_id} @ {self.sucursal_id}: {self.diferencia:+d} ({self.motivo})"
+
+
+class SaldoInicialInventario(models.Model):
+    """Stock con el que arranco cada producto en cada sucursal al migrar del
+    sistema anterior (Firebase). El sistema anterior no llevaba kardex (no
+    guardaba los traslados enviados ni los cambios de stock), asi que el
+    Kardex parte de este saldo y suma solo los movimientos del sistema nuevo.
+    Se carga con `manage.py cargar_saldo_inicial <export.json>`."""
+
+    producto = models.ForeignKey(
+        "productos.Producto",
+        on_delete=models.CASCADE,
+        related_name="saldos_iniciales",
+    )
+    sucursal = models.ForeignKey(
+        Sucursal,
+        on_delete=models.CASCADE,
+        related_name="saldos_iniciales",
+    )
+    cantidad = models.IntegerField()
+    origen = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Saldo inicial de inventario"
+        verbose_name_plural = "Saldos iniciales de inventario"
+        constraints = [
+            models.UniqueConstraint(fields=["producto", "sucursal"], name="saldo_inicial_producto_sucursal_unico"),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - representacion legible
+        return f"{self.producto_id} @ {self.sucursal_id}: {self.cantidad}"

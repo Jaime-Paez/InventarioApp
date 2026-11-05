@@ -145,6 +145,38 @@ class HistorialProductoTests(APITestCase):
         self.assertEqual(rows["CL-1"]["acum_cantidad"], 2)
         self.assertEqual(rows["CL-1"]["acum_costo"], "180.0000")
 
+    def test_kardex_parte_del_saldo_inicial_e_ignora_el_sistema_anterior(self):
+        from inventario.models import SaldoInicialInventario
+
+        SaldoInicialInventario.objects.create(producto=self.producto, sucursal=self.matriz, cantidad=5)
+        SaldoInicialInventario.objects.create(producto=self.producto, sucursal=self.norte, cantidad=99)
+        # Del sistema anterior: ya esta dentro del saldo inicial.
+        self._mov_valor(self.sub["venta"], "LEG-1", "2026-09-01", 3, Decimal("200"), es_legado=True)
+        self._mov_valor(self.sub["venta"], "V-1", "2026-10-01", 1, Decimal("200"))
+        compra = self._mov_valor(self.sub["compra"], "CL-1", "2026-10-02", 2, Decimal("200"))
+        DetalleMovimiento.objects.filter(movimiento_inventario=compra).update(costo=Decimal("10"))
+        self._mov_valor(self.sub["venta"], "V-2", "2026-10-03", 1, Decimal("200"))
+
+        data = build_product_movement_history(self.producto.id, sucursal_id=self.matriz.id)
+
+        self.assertEqual(data["saldo_inicial"], 5)
+        self.assertEqual(data["saldo_anterior"], {"cantidad": 5, "costo": None})
+        self.assertEqual([row["no_documento"] for row in data["results"]], ["V-1", "CL-1", "V-2"])
+        rows = {row["no_documento"]: row for row in data["results"]}
+        # Sin costo conocido todavia: no se inventa.
+        self.assertIsNone(rows["V-1"]["costo_unitario"])
+        self.assertIsNone(rows["V-1"]["acum_costo"])
+        self.assertEqual(rows["V-1"]["acum_cantidad"], 4)
+        # La primera compra con costo valora todo lo que hay.
+        self.assertEqual(rows["CL-1"]["acum_cantidad"], 6)
+        self.assertEqual(rows["CL-1"]["acum_costo"], "60.0000")
+        self.assertEqual(rows["V-2"]["costo_unitario"], "10.0000")
+        self.assertEqual(data["saldo_actual"], {"cantidad": 5, "costo": "50.0000"})
+        self.assertTrue(data["totales"]["costos_incompletos"])
+
+        rango = build_product_movement_history(self.producto.id, sucursal_id=self.matriz.id, fecha_desde="2026-10-02")
+        self.assertEqual(rango["saldo_anterior"], {"cantidad": 4, "costo": None})
+
     def test_endpoint(self):
         self._mov(self.sub["compra"], "CL-9", "2026-10-02", [(self.producto, 2)])
         user = get_user_model().objects.create_superuser(username="adm", email="adm@x.com", password="x")

@@ -152,7 +152,10 @@ _Q4 = Decimal("0.0001")
 
 
 def _money(value):
-    return str(Decimal(value or 0).quantize(_Q4, rounding=ROUND_HALF_UP))
+    """None = costo desconocido (se muestra como "-")."""
+    if value is None:
+        return None
+    return str(Decimal(value).quantize(_Q4, rounding=ROUND_HALF_UP))
 
 
 def _subtipo_key_nombre(nombre):
@@ -186,14 +189,16 @@ def build_product_movement_history(
     page=1,
     page_size=PAGE_SIZE_DEFAULT,
 ):
-    """Kardex del producto: movimientos del mas antiguo al mas reciente con
-    saldo anterior, entradas, salidas y el acumulado (cantidad y costo) despues
-    de cada movimiento. Costo promedio ponderado: las compras entran a su
-    valor, las demas entradas y todas las salidas al costo promedio del momento.
+    """Kardex del producto: parte del saldo inicial de la migracion
+    (SaldoInicialInventario) y suma, del mas antiguo al mas reciente, las
+    entradas, salidas y ajustes del sistema nuevo, con el acumulado (cantidad y
+    costo) despues de cada uno. Costo promedio ponderado: las compras entran a
+    su costo, las demas entradas y todas las salidas al costo promedio del
+    momento; sin costo conocido se devuelve None.
 
-    El acumulado se calcula desde el primer movimiento, asi que el saldo
-    anterior (todo lo de antes de fecha_desde) y los acumulados son los mismos
-    con o sin filtro de tipo; el filtro de tipo solo oculta filas.
+    El saldo anterior (saldo inicial + todo lo de antes de fecha_desde) y los
+    acumulados son los mismos con o sin filtro de tipo; el filtro de tipo solo
+    oculta filas.
 
     allowed_sucursal_ids None = todas; si no, solo movimientos de esas
     sucursales (sucursal_id ya debe estar entre ellas)."""
@@ -201,9 +206,12 @@ def build_product_movement_history(
         fecha_desde = parse_date(fecha_desde)
     if isinstance(fecha_hasta, str):
         fecha_hasta = parse_date(fecha_hasta)
+    # Solo movimientos del sistema nuevo: los del sistema anterior ya estan
+    # dentro del saldo inicial (y no se pueden sumar: el sistema anterior no
+    # guardaba los traslados enviados ni los cambios de stock).
     detalles = DetalleMovimiento.objects.filter(
         producto_id=producto_id,
-        movimiento_inventario__in=_base_movements(),
+        movimiento_inventario__in=_base_movements().filter(es_legado=False),
     )
     if allowed_sucursal_ids is not None:
         detalles = detalles.filter(movimiento_inventario__sucursal_id__in=sorted(allowed_sucursal_ids))
@@ -256,9 +264,23 @@ def build_product_movement_history(
             eventos.append((ajuste["fecha"], 1, ajuste["id"], {"ajuste_id": ajuste["id"], **ajuste}))
     eventos.sort(key=lambda item: (item[0] is None, item[0] or "", item[1], item[2]))
 
-    acum_cant = 0
-    acum_costo = Decimal("0")
-    saldo_anterior = {"cantidad": 0, "costo": Decimal("0")}
+    # Saldo inicial: el stock con el que arranco el producto al migrar del
+    # sistema anterior (sin costo: el sistema anterior no lo guardaba).
+    from inventario.models import SaldoInicialInventario
+
+    iniciales = SaldoInicialInventario.objects.filter(producto_id=producto_id)
+    if allowed_sucursal_ids is not None:
+        iniciales = iniciales.filter(sucursal_id__in=sorted(allowed_sucursal_ids))
+    if sucursal_id:
+        iniciales = iniciales.filter(sucursal_id=sucursal_id)
+    saldo_inicial = int(iniciales.aggregate(total=Sum("cantidad"))["total"] or 0)
+
+    # Costo promedio ponderado. acum_costo None = costo desconocido (unidades
+    # del saldo inicial o que entraron sin costo); toman el costo de la
+    # primera compra que llegue despues.
+    acum_cant = saldo_inicial
+    acum_costo = None if saldo_inicial > 0 else Decimal("0")
+    saldo_anterior = {"cantidad": acum_cant, "costo": acum_costo}
     totales = {
         "entradas": 0,
         "salidas": 0,
@@ -266,6 +288,7 @@ def build_product_movement_history(
         "salidas_total": Decimal("0"),
         "ajustes": 0,
     }
+    costos_incompletos = False
     visibles = []
     for _fecha, _orden, _id, row in eventos:
         es_ajuste = "ajuste_id" in row
@@ -277,43 +300,45 @@ def build_product_movement_history(
             es_salida = _norm(row["tipo_nombre"]).startswith("sal")
             cantidad = int(row["cantidad"] or 0)
             valor_total = Decimal(row["valor_total"] or 0)
-        promedio = (acum_costo / acum_cant) if acum_cant > 0 else None
-        if es_ajuste and not es_salida:
-            # Lo que aparecio entra al costo promedio (sin promedio, sin costo).
-            unitario = promedio if promedio is not None else Decimal("0")
-            total = unitario * cantidad
-            acum_cant += cantidad
-            acum_costo = acum_costo + total if acum_cant - cantidad >= 0 else unitario * max(acum_cant, 0)
-            if acum_cant <= 0:
-                acum_costo = Decimal("0")
-        elif es_salida:
-            unitario = promedio if promedio is not None else Decimal("0")
-            # Si se lleva justo lo que hay, se lleva todo el costo (sin
-            # centavos sueltos por redondeo).
-            total = acum_costo if cantidad == acum_cant else unitario * cantidad
+        promedio = (acum_costo / acum_cant) if acum_cant > 0 and acum_costo is not None else None
+
+        if es_salida:
+            unitario = promedio
+            if unitario is None:
+                total = None
+            elif cantidad == acum_cant:
+                # Se lleva justo lo que hay: todo el costo, sin centavos sueltos.
+                total = acum_costo
+            else:
+                total = unitario * cantidad
             acum_cant -= cantidad
-            acum_costo -= total
+            if acum_costo is not None and total is not None:
+                acum_costo -= total
             if acum_cant <= 0:
                 acum_costo = Decimal("0")
         else:
-            con_costo = _subtipo_key_nombre(row["subtipo_nombre"]) in _ENTRADAS_CON_COSTO
-            costo_compra = Decimal(row["costo_compra"] or 0)
-            if con_costo and cantidad and costo_compra:
-                total = costo_compra
+            costo_compra = Decimal(row.get("costo_compra") or 0)
+            con_costo = (
+                not es_ajuste
+                and _subtipo_key_nombre(row["subtipo_nombre"]) in _ENTRADAS_CON_COSTO
+                and cantidad
+                and costo_compra
+            )
+            if con_costo:
                 unitario = costo_compra / cantidad
-            elif promedio is None and cantidad and valor_total:
-                total = valor_total
-                unitario = valor_total / cantidad
             else:
-                unitario = promedio if promedio is not None else Decimal("0")
-                total = unitario * cantidad
-            if acum_cant < 0:
-                # Venia en negativo (faltan movimientos viejos): lo que queda
-                # vale al costo de esta entrada.
-                acum_cant += cantidad
+                # Traslados, devoluciones y ajustes entran al costo promedio.
+                unitario = promedio
+            total = unitario * cantidad if unitario is not None else None
+            anterior = acum_cant
+            acum_cant += cantidad
+            if unitario is None:
+                acum_costo = None if acum_cant > 0 else Decimal("0")
+            elif anterior <= 0 or acum_costo is None:
+                # No habia stock valorado (saldo inicial sin costo o venia en
+                # negativo): todo lo que queda vale al costo de esta entrada.
                 acum_costo = unitario * max(acum_cant, 0)
             else:
-                acum_cant += cantidad
                 acum_costo += total
             if acum_cant <= 0:
                 acum_costo = Decimal("0")
@@ -323,7 +348,10 @@ def build_product_movement_history(
             continue
         key = "salidas" if es_salida else "entradas"
         totales[key] += cantidad
-        totales[f"{key}_total"] += total
+        if total is None:
+            costos_incompletos = True
+        else:
+            totales[f"{key}_total"] += total
         if es_ajuste:
             totales["ajustes"] += row["diferencia"]
         if tipo == "ajuste" and not es_ajuste:
@@ -442,7 +470,9 @@ def build_product_movement_history(
             "entradas_total": _money(totales["entradas_total"]),
             "salidas_total": _money(totales["salidas_total"]),
             "ajustes": totales["ajustes"],
+            "costos_incompletos": costos_incompletos,
         },
+        "saldo_inicial": saldo_inicial,
         "saldo_anterior": {
             "cantidad": saldo_anterior["cantidad"],
             "costo": _money(saldo_anterior["costo"]),
