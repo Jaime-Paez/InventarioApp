@@ -360,14 +360,15 @@ class SucursalViewSet(viewsets.ModelViewSet):
 
 
 # Una ubicacion (division del plano de la bodega) o una subdivision no se puede
-# eliminar mientras tenga productos con cantidad: se perderia ese inventario
-# (Inventario cae en cascada). El mensaje dice cuales son para moverlos antes.
+# eliminar mientras tenga productos asignados, aunque esten en cantidad 0: se
+# perderian esos registros (Inventario cae en cascada). El mensaje dice cuales
+# son para moverlos o quitarlos antes.
 STOCK_BLOCK_LIST_LIMIT = 10
 
 
 def _productos_con_stock(inventario_qs):
     rows = (
-        inventario_qs.filter(cantidad__gt=0)
+        inventario_qs
         .values("producto__codigo", "producto__nombre")
         .annotate(total=Sum("cantidad"))
         .order_by("producto__codigo")
@@ -391,8 +392,8 @@ def _stock_block_detail(ubicacion_label, productos):
     if resto > 0:
         partes += f" y {resto} más"
     return (
-        f"No se puede eliminar {ubicacion_label} porque tiene productos con cantidad: "
-        f"{partes}. Muévelos o ajusta su cantidad a 0 antes de eliminarla."
+        f"No se puede eliminar {ubicacion_label} porque tiene productos asignados: "
+        f"{partes}. Muévelos o quítalos de esa ubicación antes de eliminarla."
     )
 
 
@@ -667,7 +668,6 @@ class SubDivisionViewSet(viewsets.ModelViewSet):
         if productos:
             return _stock_block_response(f'la subdivisión "{instance.nombre}"', productos)
         try:
-            # Sin cantidades: los registros en 0 se van con la subdivision.
             return super().destroy(request, *args, **kwargs)
         except ProtectedError:
             return Response(

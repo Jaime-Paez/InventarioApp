@@ -448,7 +448,7 @@ function BodegaDetails({
   }
 
   // Antes de quitar una ubicacion del plano: si su division tiene productos
-  // con cantidad no se deja y el aviso dice cuales son.
+  // asignados (aunque esten en 0) no se deja y el aviso dice cuales son.
   const handleBeforeRemoveLocation = useCallback(async (location) => {
     const key = normalizeDivisionKey(location?.nombre)
     const division = key ? divisionByName.get(key) : null
@@ -465,7 +465,7 @@ function BodegaDetails({
         return false
       }
       if (Array.isArray(data?.productos) && data.productos.length) {
-        notifyError(data.detail || 'La ubicación tiene productos con cantidad.')
+        notifyError(data.detail || 'La ubicación tiene productos asignados.')
         return false
       }
       return true
