@@ -163,6 +163,12 @@ const buildInspectionLocationKey = (location) => [
   normalizeString(location?.division_nombre),
   normalizeString(location?.subdivision_nombre),
 ].join('::')
+// Codigo base de un producto: sin el sufijo de marca (P1847AFP y P1847LHP ->
+// P1847). Al traer uno de otra fila se ofrecen tambien los del mismo codigo
+// base que estaban ahi.
+const inspectionBaseCode = (codigo) => (
+  String(codigo || '').trim().toUpperCase().match(/^[A-Z]*\d+/) || ['']
+)[0]
 const RANDOM_INSPECTION_SYNC_MS = 5000
 const RANDOM_INSPECTION_DRAFT_SAVE_DEBOUNCE_MS = 700
 const RANDOM_INSPECTION_CONFLICT_MESSAGE =
@@ -5306,50 +5312,64 @@ function QuickActions({
     const here = form?.location
     if (!token || !inspectionId || !row || !here?.subdivision_id) return
     // Se mueve sin cantidad: queda en esta fila por contar, como los demas.
+    // Junto con el, los del mismo codigo base que quedaron marcados.
     const hereId = String(here.subdivision_id)
-    const others = (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
-      .filter((location) => location?.subdivision_id && String(location.subdivision_id) !== hereId)
+    const rowsToMove = [
+      row,
+      ...(Array.isArray(form?.moveCompanions) ? form.moveCompanions : [])
+        .filter((companion) => companion?.checked && companion?.row)
+        .map((companion) => companion.row),
+    ]
+    const itemId = normalizeId(row?.row_id || row?.id)
+    const moved = []
     setRandomInspectionAdd((prev) => (prev ? { ...prev, saving: true, error: '' } : prev))
     try {
       const flushResult = await flushRandomInspectionDraft()
       if (flushResult?.completed) return
-      const itemId = normalizeId(row?.row_id || row?.id)
-      const response = await authFetch(
-        `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/mover-producto/`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            item_id: Number(itemId),
-            subdivision_id: Number(here.subdivision_id),
-            version: randomInspectionVersionRef.current,
-            conteo_ubicaciones: [
-              { key: here.key || buildInspectionLocationKey({ ...here, sucursal_id: here.sucursal_id || row?.sucursal_id }), subdivision_id: Number(here.subdivision_id), cantidad: null },
-              ...others.map((location) => ({
-                key: location.key || buildInspectionLocationKey(location),
-                subdivision_id: Number(location.subdivision_id),
-                cantidad: 0,
-              })),
-            ],
-          }),
-        },
-        token
-      )
-      const payload = await response.json().catch(() => ({}))
-      if (payload?.inspection) randomInspectionApplyServerRef.current?.(payload.inspection)
-      if (!response.ok) {
-        throw new Error(
-          payload?.conflict
+      for (const moveRow of rowsToMove) {
+        const moveItemId = normalizeId(moveRow?.row_id || moveRow?.id)
+        const others = (Array.isArray(moveRow?.ubicaciones_bodega) ? moveRow.ubicaciones_bodega : [])
+          .filter((location) => location?.subdivision_id && String(location.subdivision_id) !== hereId)
+        const response = await authFetch(
+          `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/mover-producto/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              item_id: Number(moveItemId),
+              subdivision_id: Number(here.subdivision_id),
+              version: randomInspectionVersionRef.current,
+              conteo_ubicaciones: [
+                { key: here.key || buildInspectionLocationKey({ ...here, sucursal_id: here.sucursal_id || moveRow?.sucursal_id }), subdivision_id: Number(here.subdivision_id), cantidad: null },
+                ...others.map((location) => ({
+                  key: location.key || buildInspectionLocationKey(location),
+                  subdivision_id: Number(location.subdivision_id),
+                  cantidad: 0,
+                })),
+              ],
+            }),
+          },
+          token
+        )
+        const payload = await response.json().catch(() => ({}))
+        if (payload?.inspection) randomInspectionApplyServerRef.current?.(payload.inspection)
+        if (Number.isFinite(Number(payload?.version))) randomInspectionVersionRef.current = Number(payload.version)
+        if (!response.ok) {
+          const reason = payload?.conflict
             ? 'La revisión se actualizó desde otro dispositivo. Vuelve a intentarlo.'
             : String(payload?.detail || '').trim() || 'No se pudo mover el producto.'
-        )
+          throw new Error(moved.length
+            ? `Se movió ${moved.join(', ')}, pero ${moveRow?.producto_codigo || 'otro producto'} no: ${reason}`
+            : reason)
+        }
+        resetRandomInspectionItemDraftFromServer(moveItemId, payload?.inspection)
+        moved.push(moveRow?.producto_codigo || 'producto')
       }
-      resetRandomInspectionItemDraftFromServer(itemId, payload?.inspection)
       setRandomInspectionAdd(null)
       toast.current?.show({
         severity: 'success',
-        summary: 'Producto movido',
-        detail: `${row?.producto_codigo || 'El producto'} ahora está en ${here.label}: cuéntalo aquí. En su fila de antes queda como "Movido".`,
-        life: 3600,
+        summary: moved.length > 1 ? 'Productos movidos' : 'Producto movido',
+        detail: `${moved.join(', ')} ${moved.length > 1 ? 'ahora están' : 'ahora está'} en ${here.label}: cuéntalo${moved.length > 1 ? 's' : ''} aquí. En su fila de antes queda${moved.length > 1 ? 'n' : ''} como "Movido".`,
+        life: 4000,
       })
       setRandomInspectionHighlightRowId(itemId)
       window.setTimeout(() => {
@@ -5457,11 +5477,34 @@ function QuickActions({
         if (rowIndex >= 0) jumpToRandomInspectionStep(rowIndex)
         return
       }
+      // Los del mismo codigo base que estan en la misma fila de origen se
+      // traen junto con el (marcados; se pueden desmarcar).
+      const hereId = String(randomInspectionAdd?.location?.subdivision_id || '')
+      const originIds = new Set(
+        (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
+          .map((location) => String(location?.subdivision_id || ''))
+          .filter((id) => id && id !== hereId)
+      )
+      const baseCode = inspectionBaseCode(row?.producto_codigo)
+      const companions = baseCode
+        ? randomInspectionRows
+          .map((other, otherIndex) => ({ row: other, rowIndex: otherIndex }))
+          .filter(({ row: other, rowIndex: otherIndex }) => (
+            otherIndex !== rowIndex &&
+            !other?.agregado_por_revisor &&
+            inspectionBaseCode(other?.producto_codigo) === baseCode &&
+            !activeRandomInspectionGroup?.entries?.some((entry) => entry.rowIndex === otherIndex && !entry.movedAwayTo) &&
+            (Array.isArray(other?.ubicaciones_bodega) ? other.ubicaciones_bodega : [])
+              .some((location) => originIds.has(String(location?.subdivision_id || '')))
+          ))
+          .map((companion) => ({ ...companion, checked: true }))
+        : []
       setRandomInspectionAdd((prev) => (prev ? {
         ...prev,
         selected: product,
         moveRow: row,
         moveRowIndex: rowIndex,
+        moveCompanions: companions,
         open: false,
         cantidad: '',
         mover: null,
@@ -5470,7 +5513,7 @@ function QuickActions({
       window.setTimeout(() => document.querySelector('.quick-actions__inspection-add-qty')?.focus(), 0)
       return
     }
-    setRandomInspectionAdd((prev) => (prev ? { ...prev, selected: product, moveRow: null, moveRowIndex: -1, open: false, error: '' } : prev))
+    setRandomInspectionAdd((prev) => (prev ? { ...prev, selected: product, moveRow: null, moveRowIndex: -1, moveCompanions: [], open: false, error: '' } : prev))
     window.setTimeout(() => document.querySelector('.quick-actions__inspection-add-qty')?.focus(), 0)
   }, [activeRandomInspectionGroup, jumpToRandomInspectionStep, randomInspectionAdd?.fixedLocation, randomInspectionAdd?.location?.subdivision_id, randomInspectionRows])
 
@@ -7473,6 +7516,31 @@ function QuickActions({
                                     <p>
                                       {`"Mover todo aquí" lo pasa a ${randomInspectionAdd.location?.label || 'esta fila'} y lo cuentas aquí, como los demás. En su fila de antes quedará como "Movido". Administración aprueba el cambio de ubicación.`}
                                     </p>
+                                    {Array.isArray(randomInspectionAdd.moveCompanions) && randomInspectionAdd.moveCompanions.length > 0 && (
+                                      <div className="quick-actions__inspection-move-companions">
+                                        <span>{`También se mueven los del mismo código (${inspectionBaseCode(moveRow?.producto_codigo)}) que estaban en esa fila:`}</span>
+                                        {randomInspectionAdd.moveCompanions.map((companion, companionIndex) => (
+                                          <label key={`move-companion-${normalizeId(companion.row?.row_id || companion.row?.id)}`}>
+                                            <input
+                                              type="checkbox"
+                                              checked={Boolean(companion.checked)}
+                                              onChange={(event) => {
+                                                const checked = event.target.checked
+                                                setRandomInspectionAdd((prev) => (prev ? {
+                                                  ...prev,
+                                                  moveCompanions: prev.moveCompanions.map((item, index) => (
+                                                    index === companionIndex ? { ...item, checked } : item
+                                                  )),
+                                                } : prev))
+                                              }}
+                                              disabled={randomInspectionAdd.saving}
+                                            />
+                                            <strong>{companion.row?.producto_codigo}</strong>
+                                            <span>{String(companion.row?.producto_nombre || '').trim()}</span>
+                                          </label>
+                                        ))}
+                                      </div>
+                                    )}
                                     <p>{'Si no lo vas a mover, ve a su ubicación y cuéntalo allá.'}</p>
                                     <button
                                       type="button"

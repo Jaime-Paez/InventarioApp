@@ -4535,3 +4535,36 @@
   background: rgba(59, 130, 246, 0.14);
   box-shadow: inset 4px 0 0 #60a5fa;
 }
+
+/* Al traer un producto de otra fila: los del mismo codigo base que estaban
+   ahi, marcados para traerlos juntos. */
+.quick-actions__inspection-move-companions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.quick-actions__inspection-move-companions > span {
+  font-weight: 600;
+}
+
+.quick-actions__inspection-move-companions label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+}
+
+.quick-actions__inspection-move-companions input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.quick-actions__inspection-add-overlay.dark .quick-actions__inspection-move-companions label {
+  background: rgba(0, 0, 0, 0.25);
+}
