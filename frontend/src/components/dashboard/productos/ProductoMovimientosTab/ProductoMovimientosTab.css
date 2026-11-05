@@ -361,3 +361,8 @@
 .dashboard-shell.dark .producto-movs__kardex tbody tr:not(.producto-movs__saldo):not(.producto-movs__empty):hover td:first-child {
   background-image: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05));
 }
+
+/* "Saldo anterior" / "Saldo actual": a la derecha, pegado a sus numeros. */
+.producto-movs__kardex .producto-movs__saldo-label {
+  text-align: right;
+}

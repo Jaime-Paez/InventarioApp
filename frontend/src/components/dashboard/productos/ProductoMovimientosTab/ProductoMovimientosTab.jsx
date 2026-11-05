@@ -239,9 +239,8 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
             </thead>
             <tbody>
               <tr className="producto-movs__saldo">
-                <td colSpan={3}>{fechaDesde ? `Saldo anterior al ${formatDate(fechaDesde)}` : 'Saldo anterior'}</td>
-                <td colSpan={3} className="sep" />
-                <td colSpan={3} className="sep" />
+                {/* El texto va a la derecha, junto a los totales que describe. */}
+                <td colSpan={9} className="producto-movs__saldo-label">{fechaDesde ? `Saldo anterior al ${formatDate(fechaDesde)}` : 'Saldo anterior'}</td>
                 <td className="num sep">{saldoAnterior.cantidad}</td>
                 <td className="num">{money(saldoAnterior.costo)}</td>
                 <td />
@@ -313,7 +312,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
             {isLastPage && (
               <tfoot>
                 <tr className="producto-movs__saldo">
-                  <td colSpan={3}>Saldo actual{fechaHasta ? ` al ${formatDate(fechaHasta)}` : ''}</td>
+                  <td colSpan={3} className="producto-movs__saldo-label">Saldo actual{fechaHasta ? ` al ${formatDate(fechaHasta)}` : ''}</td>
                   <td className="num sep">{totales.entradas}</td>
                   <td className="num">{totales.entradas ? money(Number(totales.entradas_total) / totales.entradas, 4) : '-'}</td>
                   <td className="num">{money(totales.entradas_total)}</td>
