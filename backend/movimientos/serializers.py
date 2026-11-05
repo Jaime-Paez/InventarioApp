@@ -2071,7 +2071,16 @@ class MovimientoInventarioSerializer(serializers.ModelSerializer):
                 remaining -= taken
             return
 
-        target = branch_stock.filter(cantidad__gt=0).first() or branch_stock.first()
+        # Se suma en la ubicacion principal (la que muestra la tabla de
+        # inventario), no en la fila mas antigua de la sucursal.
+        from .entry_adjustment import principal_subdivision_id
+
+        principal_id = principal_subdivision_id(sucursal.id, producto_id, for_update=True)
+        target = None
+        if principal_id is not None:
+            target = branch_stock.filter(subdivision_id=principal_id).order_by("-cantidad", "id").first()
+        if target is None:
+            target = branch_stock.filter(cantidad__gt=0).first() or branch_stock.first()
         if target is not None:
             target.cantidad += int(delta)
             target.save(update_fields=["cantidad"])

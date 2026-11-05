@@ -29,6 +29,51 @@ def location_label(subdivision):
     return f"{division.bodega.nombre} › {division.nombre} › {subdivision.nombre}"
 
 
+def principal_subdivision_id(sucursal_id, producto_id, for_update=False):
+    """Ubicacion principal del producto en la sucursal: la misma que muestra
+    la tabla de inventario (orden elegido por el usuario; si no, la primera
+    con stock del almacen). Lo que entra por compra local se suma ahi.
+    POR UBICAR no cuenta: es un lugar de paso, no la ubicacion del producto.
+    None si el producto no tiene ninguna ubicacion en la sucursal."""
+    from inventario.por_ubicar import POR_UBICAR_NOMBRE
+    from inventario.viewsets import get_user_location_order, order_branch_locations
+
+    queryset = Inventario.objects.filter(
+        producto_id=int(producto_id),
+        subdivision__division__bodega__sucursal_id=int(sucursal_id),
+    ).select_related("subdivision__division__bodega")
+    if for_update:
+        queryset = queryset.select_for_update(of=("self",))
+    locations = {}
+    for row in queryset:
+        subdivision = row.subdivision
+        division = subdivision.division
+        if (
+            str(division.nombre or "").strip().upper() == POR_UBICAR_NOMBRE
+            and str(subdivision.nombre or "").strip().upper() == POR_UBICAR_NOMBRE
+        ):
+            continue
+        entry = locations.setdefault(
+            subdivision.id,
+            {
+                "bodega_id": division.bodega_id,
+                "bodega_nombre": str(division.bodega.nombre or "").strip(),
+                "division_id": division.id,
+                "division_nombre": str(division.nombre or "").strip(),
+                "subdivision_id": subdivision.id,
+                "subdivision_nombre": str(subdivision.nombre or "").strip(),
+                "cantidad": 0,
+            },
+        )
+        entry["cantidad"] += max(0, int(row.cantidad or 0))
+    if not locations:
+        return None
+    _, principal = order_branch_locations(
+        int(producto_id), list(locations.values()), get_user_location_order([int(producto_id)])
+    )
+    return int(principal["subdivision_id"])
+
+
 def entry_adds_stock(tipo_name, subtipo_key, estado_name, funcional=True):
     """Si una entrada con estos datos suma al inventario de su sucursal."""
     if not str(tipo_name or "").startswith("ent"):
@@ -144,10 +189,13 @@ def plan_adjustment(*, sucursal, before, after, overrides=None, products=None, f
 
         if delta > 0:
             if not item["subdivision_id"]:
-                # Igual que al crear una entrada: la ubicacion habitual del
-                # producto (la primera registrada que tiene stock).
-                by_order = sorted(locs, key=lambda loc: loc["orden"])
-                target = next((loc for loc in by_order if loc["cantidad"] > 0), by_order[0] if by_order else None)
+                # Igual que al crear una entrada: la ubicacion principal del
+                # producto (la que muestra la tabla de inventario).
+                principal_id = principal_subdivision_id(sucursal_id, pid) if locs else None
+                target = next((loc for loc in locs if loc["subdivision_id"] == principal_id), None)
+                if target is None:
+                    by_order = sorted(locs, key=lambda loc: loc["orden"])
+                    target = next((loc for loc in by_order if loc["cantidad"] > 0), by_order[0] if by_order else None)
                 if target is None:
                     item["error"] = (
                         f"{label} no tiene ubicación en {sucursal_name}: elige dónde guardar "
