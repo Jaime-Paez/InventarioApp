@@ -5305,11 +5305,7 @@ function QuickActions({
     const row = form?.moveRow
     const here = form?.location
     if (!token || !inspectionId || !row || !here?.subdivision_id) return
-    const quantity = toPositiveInt(form.cantidad, 0)
-    if (quantity <= 0) {
-      setRandomInspectionAdd((prev) => (prev ? { ...prev, error: 'Escribe cuántas hay aquí ahora (después de moverlo).' } : prev))
-      return
-    }
+    // Se mueve sin cantidad: queda en esta fila por contar, como los demas.
     const hereId = String(here.subdivision_id)
     const others = (Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : [])
       .filter((location) => location?.subdivision_id && String(location.subdivision_id) !== hereId)
@@ -5325,10 +5321,9 @@ function QuickActions({
           body: JSON.stringify({
             item_id: Number(itemId),
             subdivision_id: Number(here.subdivision_id),
-            cantidad: quantity,
             version: randomInspectionVersionRef.current,
             conteo_ubicaciones: [
-              { key: here.key || buildInspectionLocationKey({ ...here, sucursal_id: here.sucursal_id || row?.sucursal_id }), subdivision_id: Number(here.subdivision_id), cantidad: quantity },
+              { key: here.key || buildInspectionLocationKey({ ...here, sucursal_id: here.sucursal_id || row?.sucursal_id }), subdivision_id: Number(here.subdivision_id), cantidad: null },
               ...others.map((location) => ({
                 key: location.key || buildInspectionLocationKey(location),
                 subdivision_id: Number(location.subdivision_id),
@@ -5353,13 +5348,15 @@ function QuickActions({
       toast.current?.show({
         severity: 'success',
         summary: 'Producto movido',
-        detail: `${row?.producto_codigo || 'El producto'} ahora está en ${here.label}. En su fila de antes queda como "Movido".`,
+        detail: `${row?.producto_codigo || 'El producto'} ahora está en ${here.label}: cuéntalo aquí. En su fila de antes queda como "Movido".`,
         life: 3600,
       })
       setRandomInspectionHighlightRowId(itemId)
       window.setTimeout(() => {
-        document.querySelector(`[data-inspection-row="${itemId}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      }, 80)
+        const target = document.querySelector(`[data-inspection-row="${itemId}"]:not(.quick-actions__inspection-row--moved)`)
+        target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        target?.querySelector('input')?.focus({ preventScroll: true })
+      }, 120)
       window.setTimeout(() => setRandomInspectionHighlightRowId((current) => (current === itemId ? '' : current)), 2600)
     } catch (error) {
       setRandomInspectionAdd((prev) => (prev ? { ...prev, saving: false, error: error?.message || 'No se pudo mover el producto.' } : prev))
@@ -7241,10 +7238,19 @@ function QuickActions({
                             onMouseDown={(event) => event.stopPropagation()}
                           >
                             <div className="quick-actions__inspection-add-head">
-                              <strong>Agregar un producto que no está en la lista</strong>
+                              <strong>{randomInspectionAdd.moveRow ? 'Traer un producto a esta fila' : 'Agregar o traer un producto a esta fila'}</strong>
                               {randomInspectionAdd.fixedLocation && randomInspectionAdd.location?.label && (
-                                <small>{`Lo encontraste en ${randomInspectionAdd.location.label}`}</small>
+                                <small>{`Fila: ${randomInspectionAdd.location.label}`}</small>
                               )}
+                              <button
+                                type="button"
+                                className="quick-actions__inspection-add-close"
+                                onClick={() => setRandomInspectionAdd(null)}
+                                disabled={randomInspectionAdd.saving}
+                                aria-label="Cerrar"
+                              >
+                                <i className="pi pi-times" aria-hidden="true" />
+                              </button>
                             </div>
                             <div className="quick-actions__inspection-add-row">
                               <button
@@ -7411,6 +7417,9 @@ function QuickActions({
                                 getAppPortalRoot()
                               )}
                               </>)}
+                              {/* Al traerlo de otra fila no se pide cantidad aqui:
+                                  se cuenta despues en la fila, como los demas. */}
+                              {!randomInspectionAdd.moveRow && (
                               <input
                                 type="text"
                                 inputMode="numeric"
@@ -7423,13 +7432,13 @@ function QuickActions({
                                 onKeyDown={(event) => {
                                   if (event.key !== 'Enter') return
                                   event.preventDefault()
-                                  if (randomInspectionAdd.moveRow) void moveRandomInspectionProductHere()
-                                  else void submitRandomInspectionAdd()
+                                  void submitRandomInspectionAdd()
                                 }}
-                                placeholder={randomInspectionAdd.moveRow ? 'Hay aquí' : 'Cant.'}
-                                aria-label={randomInspectionAdd.moveRow ? 'Cuántas hay aquí después de moverlo' : 'Cantidad encontrada'}
+                                placeholder="Cant."
+                                aria-label="Cantidad encontrada"
                                 disabled={randomInspectionAdd.saving}
                               />
+                              )}
                               <button
                                 type="button"
                                 className="quick-actions__inspection-btn quick-actions__inspection-btn--primary"
@@ -7440,16 +7449,8 @@ function QuickActions({
                                 disabled={randomInspectionAdd.saving || !randomInspectionAdd.selected}
                               >
                                 {randomInspectionAdd.moveRow
-                                  ? (randomInspectionAdd.saving ? 'Moviendo...' : 'Mover aquí')
+                                  ? (randomInspectionAdd.saving ? 'Moviendo...' : 'Mover todo aquí')
                                   : (randomInspectionAdd.saving ? 'Agregando...' : 'Agregar')}
-                              </button>
-                              <button
-                                type="button"
-                                className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
-                                onClick={() => setRandomInspectionAdd(null)}
-                                disabled={randomInspectionAdd.saving}
-                              >
-                                Cancelar
                               </button>
                             </div>
                             {randomInspectionAdd.moveRow && (() => {
@@ -7465,11 +7466,12 @@ function QuickActions({
                                   <div>
                                     <strong>{`${moveRow?.producto_codigo || 'Este producto'} ya está en esta revisión, en ${fromLabels.join(', ') || 'otra fila'}`}</strong>
                                     <p>
-                                      {`Si lo pasaste todo a ${randomInspectionAdd.location?.label || 'esta fila'}, escribe cuántas hay aquí ahora y pulsa "Mover aquí". En su fila de antes quedará como "Movido". Administración aprueba el cambio de ubicación.`}
+                                      {`"Mover todo aquí" lo pasa a ${randomInspectionAdd.location?.label || 'esta fila'} y lo cuentas aquí, como los demás. En su fila de antes quedará como "Movido". Administración aprueba el cambio de ubicación.`}
                                     </p>
+                                    <p>{'Si no lo vas a mover, ve a su ubicación y cuéntalo allá.'}</p>
                                     <button
                                       type="button"
-                                      className="quick-actions__inspection-btn quick-actions__inspection-btn--ghost"
+                                      className="quick-actions__inspection-move-goto"
                                       onClick={() => {
                                         const rowIndex = randomInspectionAdd.moveRowIndex
                                         setRandomInspectionAdd(null)
@@ -7477,7 +7479,8 @@ function QuickActions({
                                       }}
                                       disabled={randomInspectionAdd.saving}
                                     >
-                                      No, ir a su fila
+                                      Ir a su ubicación
+                                      <i className="pi pi-arrow-right" aria-hidden="true" />
                                     </button>
                                   </div>
                                 </div>

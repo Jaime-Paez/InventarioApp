@@ -4647,13 +4647,12 @@ class RandomInspectionMoveProductAPIView(APIView):
                     {"detail": "Elige una ubicacion de la sucursal del producto."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            # Opcional: lo normal es moverlo sin cantidad y contarlo despues en
+            # la fila, como los demas productos.
             quantity = _parse_optional_quantity(request.data.get("cantidad"))
-            if quantity is None or quantity <= 0:
-                return Response(
-                    {"detail": "Escribe cuantas unidades hay aqui ahora (mayor a 0)."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            # [{key, subdivision_id, cantidad}]: esta fila con lo contado y las
+            if quantity is not None and quantity <= 0:
+                quantity = None
+            # [{key, subdivision_id, cantidad}]: esta fila (por contar) y las
             # de antes en 0. Las claves las arma el cliente (son las mismas con
             # las que guarda el borrador).
             location_counts = _parse_random_inspection_location_counts(
@@ -4681,7 +4680,9 @@ class RandomInspectionMoveProductAPIView(APIView):
                 {
                     "key": entry["key"],
                     "subdivision_id": entry["subdivision_id"],
-                    "cantidad_contada": int(quantity) if entry in here else 0,
+                    "cantidad_contada": (
+                        (int(quantity) if quantity is not None else None) if entry is here[0] else 0
+                    ),
                     "no_encontrado": False,
                 }
                 for entry in [here[0], *others]
@@ -4694,14 +4695,14 @@ class RandomInspectionMoveProductAPIView(APIView):
             ]
             note = (
                 f"{MOVED_NOTE_PREFIX} Lo pase todo de {', '.join(sorted(origin_labels))} "
-                f"a {_subdivision_label(subdivision)}: quedaron {int(quantity)} aqui."
+                f"a {_subdivision_label(subdivision)}."
             )
             observacion = _strip_moved_note(item.observacion)
             item.observacion = f"{observacion}\n{note}".strip() if observacion else note
             item.movido_por_revisor = True
             item.encontrado_en = subdivision
             item.no_encontrado = False
-            item.cantidad_reportada = int(quantity)
+            item.cantidad_reportada = int(quantity) if quantity is not None else None
             item.conteo_ubicaciones = counts
             item.save(
                 update_fields=[

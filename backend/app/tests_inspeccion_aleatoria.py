@@ -1788,8 +1788,16 @@ class MoverProductoDeFilaTests(InspeccionAleatoriaBaseTestCase):
         self.assertNotIn("[Movido]", self.item.observacion)
         self.assertTrue(self.inspection.items.filter(pk=self.item.pk).exists())
 
+    def test_mover_sin_cantidad_queda_por_contar_en_la_fila_nueva(self):
+        response = self._mover(cantidad=None)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.item.refresh_from_db()
+        self.assertTrue(self.item.movido_por_revisor)
+        self.assertIsNone(self.item.cantidad_reportada)
+        conteo = {entry["subdivision_id"]: entry["cantidad_contada"] for entry in self.item.conteo_ubicaciones}
+        self.assertEqual(conteo, {self.sub_b.id: None, self.sub_a.id: 0})
+
     def test_validaciones(self):
-        self.assertEqual(self._mover(cantidad=0).status_code, 400)
         # Sin otra ubicacion de donde traerlo: ya esta en esta fila.
         response = self.revisor_client.post(
             f"{BASE_URL}/{self.inspection.id}/mover-producto/",
