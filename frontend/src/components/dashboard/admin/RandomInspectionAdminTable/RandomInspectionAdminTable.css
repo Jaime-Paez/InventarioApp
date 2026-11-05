@@ -2269,17 +2269,15 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
 }
 
 .inspection-admin__recount-dots > i {
+  position: relative;
+  flex: 0 0 auto;
+  box-sizing: border-box;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   border: 2px solid var(--color-primary);
   background: transparent;
   cursor: help;
-  transition: transform 120ms ease;
-}
-
-.inspection-admin__recount-dots > i:hover {
-  transform: scale(1.25);
 }
 
 .inspection-admin__recount-dots > i.is-on {
@@ -2290,8 +2288,41 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   border-style: dashed;
 }
 
+/* El conteo actual: punto ambar con un pulso "en vivo" que sale de el. */
 .inspection-admin__recount-dots > i.is-current {
-  box-shadow: 0 0 0 2px var(--color-surface, #fff), 0 0 0 4px #d97706;
+  border-color: #d97706;
+}
+
+.inspection-admin__recount-dots > i.is-current.is-on {
+  background: #d97706;
+}
+
+.inspection-admin__recount-dots > i.is-current::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: #d97706;
+  animation: inspection-recount-live 1.6s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes inspection-recount-live {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspection-admin__recount-dots > i.is-current::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .inspection-admin__recount-dots > small {
@@ -2352,4 +2383,99 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Tarjeta de conteos (hover de las bolitas): misma tarjeta blanca de la app
+   (table-cell-hover-card), una fila por conteo. */
+.inspection-admin__count-card {
+  min-width: 260px;
+}
+
+.inspection-admin__count-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0 -8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.inspection-admin__count-row + .inspection-admin__count-row {
+  margin-top: 2px;
+}
+
+.inspection-admin__count-row.is-hovered {
+  background: rgba(30, 58, 95, 0.07);
+}
+
+.inspection-admin__count-row.is-empty {
+  opacity: 0.55;
+}
+
+.inspection-admin__count-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.inspection-admin__count-row.is-current .inspection-admin__count-num {
+  background: #d97706;
+}
+
+.inspection-admin__count-row.is-empty .inspection-admin__count-num {
+  background: transparent;
+  border: 2px solid var(--color-primary);
+  color: var(--color-primary);
+}
+
+.inspection-admin__count-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.inspection-admin__count-text strong {
+  font-size: 0.92rem;
+  color: var(--color-text, #1e293b);
+}
+
+.inspection-admin__count-text small {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.inspection-admin__count-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dashboard-shell.dark .inspection-admin__count-row.is-hovered {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dashboard-shell.dark .inspection-admin__count-text strong {
+  color: #e2e8f0;
+}
+
+.dashboard-shell.dark .inspection-admin__count-text small {
+  color: #94a3b8;
+}
+
+.dashboard-shell.dark .inspection-admin__count-badge {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fcd34d;
 }

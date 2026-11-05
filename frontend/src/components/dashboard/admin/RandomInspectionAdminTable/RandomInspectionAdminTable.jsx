@@ -119,19 +119,16 @@ const getMaxCounts = (row) => Number(row?.max_conteos || 0) || Number(row?.max_r
 const getCountNumber = (row) => Number(row?.reconteos || 0) + 1
 const getNextCountLabel = (row) => `${getCountNumber(row) + 1} de ${getMaxCounts(row)}`
 
-const describeCount = (entry) => {
-  const parts = [`Conteo ${entry.numero}`]
-  if (entry.cantidad == null) parts.push('sin contar todavía')
-  else parts.push(`contó ${entry.cantidad}${entry.no_encontrado ? ' (no lo encontró)' : ''} · esperado ${entry.esperado}`)
-  if (entry.inspeccion_codigo) parts.push(entry.inspeccion_codigo)
-  if (entry.actual) parts.push('ACTUAL')
-  else if (entry.es_este) parts.push('este')
-  return parts.join(' · ')
+const describeCountQty = (entry) => {
+  if (entry.cantidad == null) return 'Sin contar todavía'
+  return `Contó ${entry.cantidad}${entry.no_encontrado ? ' (no lo encontró)' : ''}`
 }
 
 // Puntos de conteo: uno por cada vez que se cuenta el producto (de 3). Al
-// pasar el mouse por cada punto dice cuanto conto esa vez y cual es el actual.
+// pasar el mouse por un punto sale una tarjeta con todos los conteos (cuanto
+// conto cada vez y contra cuanto esperado), marcando el del punto y el actual.
 function RecountDots({ row, onlyIfRecounted = false }) {
+  const [hover, setHover] = useState(null)
   const max = getMaxCounts(row)
   const history = Array.isArray(row?.conteos) && row.conteos.length
     ? row.conteos
@@ -146,21 +143,63 @@ function RecountDots({ row, onlyIfRecounted = false }) {
     }]
   if (onlyIfRecounted && history.length < 2) return null
   const current = history.find((entry) => entry.es_este) || history[history.length - 1]
+
+  const showCard = (event, index) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setHover({ index, top: rect.bottom + 8, left: Math.max(8, rect.left - 12) })
+  }
+
   return (
-    <span className="inspection-admin__recount-dots">
-      {Array.from({ length: max }, (_, index) => {
-        const entry = history[index]
-        if (!entry) {
-          return <i key={index} data-title={`Conteo ${index + 1}: no se ha pedido`} aria-hidden="true" />
-        }
-        const classes = [
-          entry.cantidad != null ? 'is-on' : 'is-waiting',
-          entry.actual ? 'is-current' : '',
-        ].filter(Boolean).join(' ')
-        return <i key={index} className={classes} data-title={describeCount(entry)} aria-hidden="true" />
-      })}
-      <small>{`Conteo ${current?.numero || 1} de ${max}`}</small>
-    </span>
+    <>
+      <span className="inspection-admin__recount-dots" onMouseLeave={() => setHover(null)}>
+        {Array.from({ length: max }, (_, index) => {
+          const entry = history[index]
+          const classes = entry
+            ? [entry.cantidad != null ? 'is-on' : 'is-waiting', entry.actual ? 'is-current' : ''].filter(Boolean).join(' ')
+            : ''
+          return (
+            <i
+              key={index}
+              className={classes}
+              onMouseEnter={(event) => showCard(event, index)}
+              aria-label={entry ? `Conteo ${entry.numero}: ${describeCountQty(entry)}` : `Conteo ${index + 1}: no se ha pedido`}
+            />
+          )
+        })}
+        <small>{`Conteo ${current?.numero || 1} de ${max}`}</small>
+      </span>
+      {hover && createPortal(
+        <div className="table-cell-hover-card inspection-admin__count-card" style={{ top: hover.top, left: hover.left }}>
+          <div className="table-cell-hover-card__title">{`Conteos de ${String(row?.producto_codigo || 'este producto').trim()}`}</div>
+          {Array.from({ length: max }, (_, index) => {
+            const entry = history[index]
+            const rowClasses = [
+              'inspection-admin__count-row',
+              index === hover.index ? 'is-hovered' : '',
+              entry?.actual ? 'is-current' : '',
+              !entry ? 'is-empty' : '',
+            ].filter(Boolean).join(' ')
+            return (
+              <div key={index} className={rowClasses}>
+                <span className="inspection-admin__count-num">{index + 1}</span>
+                <span className="inspection-admin__count-text">
+                  {entry ? (
+                    <>
+                      <strong>{describeCountQty(entry)}</strong>
+                      <small>{`Esperado ${entry.esperado}${entry.inspeccion_codigo ? ` · ${entry.inspeccion_codigo}` : ''}`}</small>
+                    </>
+                  ) : (
+                    <small>No se ha pedido</small>
+                  )}
+                </span>
+                {entry?.actual ? <span className="inspection-admin__count-badge">Actual</span> : null}
+              </div>
+            )
+          })}
+        </div>,
+        getAppPortalRoot()
+      )}
+    </>
   )
 }
 
