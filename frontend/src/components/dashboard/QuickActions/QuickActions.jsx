@@ -2825,12 +2825,10 @@ function QuickActions({
           locations.forEach((location) => addEntry(location, { row, rowIndex, location }))
           return
         }
-        inside.forEach((location, index) => addEntry(location, {
-          row,
-          rowIndex,
-          location,
-          outsideLocations: index === 0 ? outside : [],
-        }))
+        // Las otras ubicaciones no se cuentan en ese momento: van al final,
+        // cada una como su propia fila (arriba sale la ubicacion y se cuenta ahi).
+        inside.forEach((location) => addEntry(location, { row, rowIndex, location }))
+        outside.forEach((location) => addEntry(location, { row, rowIndex, location, otraUbicacion: true }))
       } else {
         addEntry(locations[0] || null, { row, rowIndex, location: null })
       }
@@ -2841,10 +2839,13 @@ function QuickActions({
     if (chosenKey) {
       groups.sort((left, right) => Number(right.key === chosenKey) - Number(left.key === chosenKey))
     }
-    // Si un producto solo esta fuera de la division (caso raro), su ubicacion
-    // queda como fila aparte al final.
+    // Las filas que solo tienen "otras ubicaciones" (o que estan fuera de la
+    // division enviada) van al final.
+    groups.forEach((group) => {
+      group.outside = group.entries.every((entry) => entry.otraUbicacion) ||
+        (Boolean(chosenDivisionId) && Boolean(group.divisionId) && group.divisionId !== chosenDivisionId)
+    })
     if (chosenDivisionId) {
-      groups.forEach((group) => { group.outside = Boolean(group.divisionId) && group.divisionId !== chosenDivisionId })
       groups.sort((left, right) => Number(left.outside) - Number(right.outside))
     }
     if (sinDivision) {
@@ -2857,7 +2858,8 @@ function QuickActions({
         })
       }
       // Las filas en el orden de la bodega (por nombre de ubicacion).
-      groups.sort((left, right) => left.label.localeCompare(right.label, 'es', { numeric: true }))
+      groups.sort((left, right) => (Number(left.outside) - Number(right.outside)) ||
+        left.label.localeCompare(right.label, 'es', { numeric: true }))
     }
     return groups
   }, [activeRandomInspection?.es_por_division, activeRandomInspection?.es_por_subdivision, activeRandomInspection?.subdivision_id, activeRandomInspection?.division_id, isRandomInspectionTableMode, randomInspectionRows])
@@ -6998,7 +7000,9 @@ function QuickActions({
                         </p>
                         <h5>{activeRandomInspectionGroup.label}</h5>
                         <p className="quick-actions__inspection-stage-help">
-                          {activeRandomInspectionGroup.outside
+                          {activeRandomInspectionGroup.outside && !activeRandomInspection?.es_por_division
+                            ? 'Otra ubicación de productos que ya contaste: búscalos aquí y cuéntalos (es obligatorio).'
+                            : activeRandomInspectionGroup.outside
                             ? `Esta ubicación está fuera de ${String(activeRandomInspection?.division_nombre || 'la columna enviada').trim()}, pero estos productos también están aquí: búscalos y cuéntalos (es obligatorio).`
                             : 'Cuenta todos los códigos de esta fila y escribe lo que encontraste de cada uno.'}
                         </p>
