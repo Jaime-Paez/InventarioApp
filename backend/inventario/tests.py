@@ -474,6 +474,10 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
         ProductoReferencia.objects.create(producto=self.productos["BAJO-UNA"], valor="REF-XYZ-9")
         self.assertEqual({row["codigo"] for row in self._rows(referencia="xyz-9")}, {"BAJO-UNA"})
 
+        hoy = timezone.localdate().isoformat()
+        self.assertEqual({row["codigo"] for row in self._rows(fecha_desde=hoy, fecha_hasta=hoy)}, codigos)
+        self.assertEqual(self._rows(fecha_desde="2000-01-01", fecha_hasta="2000-01-02"), [])
+
     def test_filtro_por_ubicacion_sucursal_bodega_division_subdivision(self):
         def esperados(**lookup):
             return set(
@@ -496,10 +500,6 @@ class InventarioTablaUbicacionesStockBajoTests(APITestCase):
         )
         otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
         self.assertEqual(self._rows(ubic_sucursal=str(otra.id)), [])
-
-        hoy = timezone.localdate().isoformat()
-        self.assertEqual({row["codigo"] for row in self._rows(fecha_desde=hoy, fecha_hasta=hoy)}, codigos)
-        self.assertEqual(self._rows(fecha_desde="2000-01-01", fecha_hasta="2000-01-02"), [])
 
     def test_orden_rechaza_ubicaciones_de_otra_sucursal(self):
         otra = Sucursal.objects.create(nombre="Sur", direccion="Av 2")
