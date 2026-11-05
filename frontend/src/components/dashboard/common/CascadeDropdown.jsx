@@ -19,7 +19,11 @@ const normalizeForSearch = (value) =>
 // pueda salirse del modal en vez de quedar recortado por su overflow.
 // `emptyMessage`: que decir cuando la lista viene vacia (sin buscar nada),
 // p. ej. "Esta bodega no tiene divisiones" en vez de "Sin resultados.".
-export default function CascadeDropdown({ placeholder, searchPlaceholder, options, valueId, onSelect, disabled, getOptionLabel, emptyMessage }) {
+// Listas grandes: con `onSearch` la busqueda se hace en el servidor (con el
+// mismo debounce): se llama al abrir y con cada texto, y `options` son los
+// resultados que devuelve. `loading` muestra "Buscando..." y
+// `selectedLabel` el nombre de lo elegido aunque ya no este en los resultados.
+export default function CascadeDropdown({ placeholder, searchPlaceholder, options, valueId, onSelect, disabled, getOptionLabel, emptyMessage, onSearch, loading, selectedLabel }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
@@ -53,12 +57,19 @@ export default function CascadeDropdown({ placeholder, searchPlaceholder, option
     }, [])
   )
 
+  useEffect(() => {
+    if (open && onSearch) onSearch(query.trim())
+    // Solo con el texto ya debounced (y al abrir), no en cada tecla.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, debouncedQuery])
+
   const filtered = useMemo(() => {
-    if (!debouncedQuery) return options
+    if (onSearch || !debouncedQuery) return options
     return options.filter((o) => normalizeForSearch(getOptionLabel(o)).includes(debouncedQuery))
-  }, [options, debouncedQuery, getOptionLabel])
+  }, [options, debouncedQuery, getOptionLabel, onSearch])
 
   const selected = options.find((o) => String(o.id) === String(valueId))
+  const triggerLabel = selected ? getOptionLabel(selected) : (valueId && selectedLabel) || placeholder
 
   return (
     <div className="create-user__dropdown" ref={wrapRef}>
@@ -93,7 +104,7 @@ export default function CascadeDropdown({ placeholder, searchPlaceholder, option
         }}
         disabled={disabled}
       >
-        <span>{selected ? getOptionLabel(selected) : placeholder}</span>
+        <span>{triggerLabel}</span>
         <i className={`pi pi-chevron-${open ? 'up' : 'down'}`} />
       </button>
 
@@ -115,7 +126,8 @@ export default function CascadeDropdown({ placeholder, searchPlaceholder, option
             />
           </div>
           <div className="create-user__dropdown-results">
-            {!filtered.length && (
+            {loading && <small className="muted">Buscando...</small>}
+            {!loading && !filtered.length && (
               <small className="muted">{!options.length && emptyMessage ? emptyMessage : 'Sin resultados.'}</small>
             )}
             {filtered.map((option) => (
