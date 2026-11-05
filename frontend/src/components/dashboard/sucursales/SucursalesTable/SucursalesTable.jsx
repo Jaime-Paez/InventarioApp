@@ -85,6 +85,8 @@ function SucursalesTable({ token, onSelect, moduleActions }) {
         }
       }
 
+      // Siempre ordenadas por nombre de sucursal.
+      list.sort((a, b) => String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es', { numeric: true, sensitivity: 'base' }))
       setBranches(list)
       setAllBranches(list)
       return list

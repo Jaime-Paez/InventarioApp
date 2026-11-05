@@ -64,11 +64,15 @@ function BodegasTable({ token, onSelect, moduleActions }) {
   const [error, setError] = useState(null)
 
   const normalizeList = useCallback((list) => {
+    // Siempre ordenadas por sucursal (y dentro, por nombre de bodega).
     return list.map((warehouse) => ({
       ...warehouse,
       sucursal_nombre: warehouse?.sucursal?.nombre ?? '-',
       ubicaciones_count: Array.isArray(warehouse?.ubicaciones) ? warehouse.ubicaciones.length : 0,
-    }))
+    })).sort((a, b) => (
+      String(a.sucursal_nombre).localeCompare(String(b.sucursal_nombre), 'es', { numeric: true, sensitivity: 'base' }) ||
+      String(a.nombre || '').localeCompare(String(b.nombre || ''), 'es', { numeric: true, sensitivity: 'base' })
+    ))
   }, [])
 
   const fetchWarehouses = useCallback(async (searchTerm = '') => {
