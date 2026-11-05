@@ -362,9 +362,17 @@
   background-image: linear-gradient(rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05));
 }
 
-/* "Saldo anterior" / "Saldo actual": a la derecha, pegado a sus numeros. */
-.producto-movs__kardex .producto-movs__saldo-label {
-  text-align: right;
+/* "Saldo anterior" / "Saldo actual": a la izquierda y acompañan el scroll
+   horizontal (sticky dentro de su celda, sin tapar los numeros). */
+.producto-movs__saldo-sticky {
+  position: sticky;
+  left: 8px;
+  display: inline-block;
+}
+
+.producto-movs__kardex tfoot .producto-movs__saldo--title td {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 
 .producto-movs__saldo-note {

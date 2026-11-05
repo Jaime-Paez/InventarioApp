@@ -243,12 +243,14 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
             </thead>
             <tbody>
               <tr className="producto-movs__saldo">
-                {/* El texto va a la derecha, junto a los totales que describe. */}
-                <td colSpan={9} className="producto-movs__saldo-label">
-                  {fechaDesde ? `Saldo anterior al ${formatDate(fechaDesde)}` : 'Saldo inicial (sistema anterior)'}
-                  {fechaDesde && saldoInicial > 0 && (
-                    <span className="producto-movs__saldo-note"> · incluye {saldoInicial} del saldo inicial del sistema anterior</span>
-                  )}
+                {/* El texto acompaña el scroll horizontal (sticky dentro de la celda). */}
+                <td colSpan={9}>
+                  <span className="producto-movs__saldo-sticky">
+                    {fechaDesde ? `Saldo anterior al ${formatDate(fechaDesde)}` : 'Saldo inicial (sistema anterior)'}
+                    {fechaDesde && saldoInicial > 0 && (
+                      <span className="producto-movs__saldo-note"> · incluye {saldoInicial} del saldo inicial del sistema anterior</span>
+                    )}
+                  </span>
                 </td>
                 <td className="num sep">{saldoAnterior.cantidad}</td>
                 <td className="num">{money(saldoAnterior.costo)}</td>
@@ -320,8 +322,15 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
             </tbody>
             {isLastPage && (
               <tfoot>
+                {/* Fila propia para el texto: asi acompaña el scroll a lo ancho
+                    de toda la tabla sin tapar los totales de la fila de abajo. */}
+                <tr className="producto-movs__saldo producto-movs__saldo--title">
+                  <td colSpan={12}>
+                    <span className="producto-movs__saldo-sticky">Saldo actual{fechaHasta ? ` al ${formatDate(fechaHasta)}` : ''}</span>
+                  </td>
+                </tr>
                 <tr className="producto-movs__saldo">
-                  <td colSpan={3} className="producto-movs__saldo-label">Saldo actual{fechaHasta ? ` al ${formatDate(fechaHasta)}` : ''}</td>
+                  <td colSpan={3} />
                   <td className="num sep">{totales.entradas}</td>
                   <td className="num">{totales.entradas && !costosIncompletos ? money(Number(totales.entradas_total) / totales.entradas, 4) : '—'}</td>
                   <td className="num">{money(totales.entradas_total)}</td>
