@@ -445,7 +445,8 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
       .catch(() => {})
   }, [open, caja, token])
 
-  const sucursalNombre = caja?.sucursal_nombre || ''
+  const esTaller = Boolean(caja?.taller)
+  const sucursalNombre = esTaller ? `Taller ${caja?.taller_nombre || ''}`.trim() : caja?.sucursal_nombre || ''
   const motivo = !(Number(form.monto_fondo) > 0) ? 'Indica el monto del fondo.' : !form.custodio ? 'Elige el custodio (responsable).' : ''
 
   const submit = async () => {
@@ -482,12 +483,14 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
     >
       <div className="taller-dialog__grid">
         <div className="create-user__field">
-          <span>Sucursal</span>
-          <div className="create-salida__static-value taller-static">{sucursalNombre || '-'}</div>
+          <span>{esTaller ? 'Taller' : 'Sucursal'}</span>
+          <div className="create-salida__static-value taller-static">
+            {esTaller ? `${caja?.taller_nombre || '-'}${caja?.sucursal_nombre ? ` (${caja.sucursal_nombre})` : ''}` : sucursalNombre || '-'}
+          </div>
         </div>
         <label className="create-user__field">
           <span>Nombre (opcional)</span>
-          <input value={form.nombre} placeholder={sucursalNombre ? `Caja chica ${sucursalNombre}` : 'Caja chica de la sucursal'} onChange={(event) => setForm((prev) => ({ ...prev, nombre: event.target.value }))} />
+          <input value={form.nombre} placeholder={esTaller ? `Caja chica ${caja?.taller_nombre || ''}` : sucursalNombre ? `Caja chica ${sucursalNombre}` : 'Caja chica de la sucursal'} onChange={(event) => setForm((prev) => ({ ...prev, nombre: event.target.value }))} />
         </label>
         <div className="create-user__field">
           <span>Custodio (responsable)</span>

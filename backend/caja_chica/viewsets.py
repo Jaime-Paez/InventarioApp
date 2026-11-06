@@ -57,7 +57,8 @@ class CategoriaGastoSerializer(serializers.ModelSerializer):
 
 
 class CajaSerializer(serializers.ModelSerializer):
-    sucursal_nombre = serializers.CharField(source="sucursal.nombre", read_only=True, default="")
+    sucursal_nombre = serializers.SerializerMethodField()
+    taller_nombre = serializers.CharField(source="taller.nombre", read_only=True, default="")
     custodio_nombre = serializers.SerializerMethodField()
     saldo = serializers.SerializerMethodField()
     pendientes = serializers.SerializerMethodField()
@@ -71,6 +72,8 @@ class CajaSerializer(serializers.ModelSerializer):
             "nombre",
             "sucursal",
             "sucursal_nombre",
+            "taller",
+            "taller_nombre",
             "custodio",
             "custodio_nombre",
             "monto_fondo",
@@ -84,9 +87,16 @@ class CajaSerializer(serializers.ModelSerializer):
             "configurada",
             "creado_en",
         ]
-        read_only_fields = ["id", "creado_en"]
+        read_only_fields = ["id", "creado_en", "sucursal", "taller"]
 
     configurada = serializers.SerializerMethodField()
+
+    def get_sucursal_nombre(self, obj):
+        if obj.sucursal_id:
+            return obj.sucursal.nombre
+        if obj.taller_id:
+            return obj.taller.sucursal.nombre
+        return ""
 
     def get_configurada(self, obj):
         return obj.movimientos.filter(tipo=MovimientoCaja.Tipos.APERTURA).exists()
@@ -114,27 +124,16 @@ class CajaSerializer(serializers.ModelSerializer):
 
     def get_fields(self):
         fields = super().get_fields()
-        # La unicidad de la sucursal se valida abajo con un mensaje claro.
-        fields["sucursal"].validators = []
         fields["nombre"].required = False
         fields["nombre"].allow_blank = True
         return fields
 
     def validate(self, attrs):
-        sucursal = attrs.get("sucursal", getattr(self.instance, "sucursal", None))
-        if sucursal is None:
-            raise serializers.ValidationError({"detail": "Elige la sucursal: cada sucursal tiene su caja chica."})
-        otra = Caja.objects.filter(sucursal=sucursal)
-        if self.instance is not None:
-            otra = otra.exclude(pk=self.instance.pk)
-        if otra.exists():
-            raise serializers.ValidationError({"detail": f"{sucursal.nombre} ya tiene su caja chica."})
-        if "nombre" in attrs or self.instance is None:
-            attrs["nombre"] = str(attrs.get("nombre") or "").strip() or f"Caja chica {sucursal.nombre}"
+        if "nombre" in attrs and self.instance is not None:
+            duena = self.instance.taller or self.instance.sucursal
+            attrs["nombre"] = str(attrs.get("nombre") or "").strip() or f"Caja chica {getattr(duena, 'nombre', '')}".strip()
         if "monto_fondo" in attrs and (attrs["monto_fondo"] is None or attrs["monto_fondo"] <= 0):
             raise serializers.ValidationError({"detail": "El fondo debe ser mayor que cero."})
-        if self.instance is not None and "sucursal" in attrs and attrs["sucursal"] != self.instance.sucursal:
-            raise serializers.ValidationError({"detail": "La caja es de su sucursal: no se puede cambiar."})
         if "tope_gasto" in attrs and attrs["tope_gasto"] is not None and attrs["tope_gasto"] < 0:
             raise serializers.ValidationError({"detail": "El tope no puede ser negativo."})
         return attrs
@@ -211,12 +210,22 @@ class MovimientoCajaSerializer(serializers.ModelSerializer):
 
 
 def asegurar_cajas():
-    """Cada sucursal tiene su caja chica, siempre: crea las que falten."""
+    """Cada sucursal y cada taller tienen su caja chica, siempre: crea las que falten."""
     from inventario.models import Sucursal
+    from taller.models import Taller
 
-    faltan = Sucursal.objects.filter(caja_chica__isnull=True)
-    for sucursal in faltan:
+    for sucursal in Sucursal.objects.filter(caja_chica__isnull=True):
         Caja.objects.get_or_create(sucursal=sucursal, defaults={"nombre": f"Caja chica {sucursal.nombre}"})
+    for taller in Taller.objects.filter(caja_chica__isnull=True):
+        Caja.objects.get_or_create(taller=taller, defaults={"nombre": f"Caja chica {taller.nombre}"})
+
+
+def _sucursales_del_usuario(user):
+    """Sucursales del usuario para Caja chica: sus sucursales asignadas y las
+    que tenga marcadas en el permiso de Caja chica (Administracion > Usuarios)."""
+    from usuarios.sucursal_scope import get_readable_sucursal_ids
+
+    return set(get_readable_sucursal_ids(user, "caja_chica") or set())
 
 
 def caja_configurada(caja):
@@ -224,10 +233,16 @@ def caja_configurada(caja):
 
 
 def _cajas_visibles(user):
-    queryset = Caja.objects.select_related("sucursal", "custodio")
+    """El administrador ve todas. Los demas, las cajas de SUS sucursales (y de
+    los talleres de esas sucursales) y la que tengan como custodio."""
+    queryset = Caja.objects.select_related("sucursal", "taller__sucursal", "custodio")
     if is_app_admin(user):
         return queryset
-    return queryset.filter(custodio=user, activa=True)
+    sucursales = _sucursales_del_usuario(user)
+    return queryset.filter(
+        Q(custodio=user) | Q(sucursal_id__in=sucursales) | Q(taller__sucursal_id__in=sucursales),
+        activa=True,
+    )
 
 
 def _caja_para(user, caja_id):
@@ -363,7 +378,7 @@ class CajaViewSet(viewsets.ModelViewSet):
         return super().list(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
-        raise ValidationError({"detail": "Cada sucursal ya tiene su caja chica: configúrala en vez de crear otra."})
+        raise ValidationError({"detail": "Cada sucursal y cada taller ya tienen su caja chica: configúrala en vez de crear otra."})
 
     def perform_update(self, serializer):
         self._solo_admin()
@@ -384,7 +399,7 @@ class CajaViewSet(viewsets.ModelViewSet):
                 )
 
     def destroy(self, request, *args, **kwargs):
-        raise ValidationError({"detail": "La caja chica de una sucursal no se elimina. Si no se usa, desactívala."})
+        raise ValidationError({"detail": "La caja chica de una sucursal o taller no se elimina. Si no se usa, desactívala."})
 
     @action(detail=False, methods=["get"], url_path="opciones")
     def opciones(self, request):

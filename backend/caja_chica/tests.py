@@ -135,7 +135,9 @@ class CajaChicaTests(TestCase):
 
     def test_solo_admin_configura(self):
         caja2 = Caja.objects.get(sucursal=self.sucursal2)
-        self.assertEqual(self.api.patch(f"{BASE}/cajas/{caja2.id}/", {"monto_fondo": "10"}, format="json").status_code, 403)
+        # No es de su sucursal: ni la ve (404); y la suya tampoco la configura (403).
+        self.assertIn(self.api.patch(f"{BASE}/cajas/{caja2.id}/", {"monto_fondo": "10"}, format="json").status_code, (403, 404))
+        self.assertEqual(self.api.patch(f"{BASE}/cajas/{self.caja.id}/", {"monto_fondo": "10"}, format="json").status_code, 403)
         self.assertEqual(self.api.post(f"{BASE}/categorias/", {"nombre": "X"}, format="json").status_code, 403)
 
     def test_cada_sucursal_tiene_su_caja(self):
@@ -148,8 +150,9 @@ class CajaChicaTests(TestCase):
         # No se crean ni eliminan a mano, ni cambian de sucursal.
         self.assertEqual(self.admin_api.post(f"{BASE}/cajas/", {"sucursal": nueva.id, "monto_fondo": "1"}, format="json").status_code, 400)
         self.assertEqual(self.admin_api.delete(f"{BASE}/cajas/{caja.id}/").status_code, 400)
-        r = self.admin_api.patch(f"{BASE}/cajas/{caja.id}/", {"sucursal": self.sucursal2.id}, format="json")
-        self.assertEqual(r.status_code, 400)
+        self.admin_api.patch(f"{BASE}/cajas/{caja.id}/", {"sucursal": self.sucursal2.id}, format="json")
+        caja.refresh_from_db()
+        self.assertEqual(caja.sucursal_id, nueva.id)
         # Sin fondo no se registra nada; al configurarlo se abre con ese monto.
         gasto = {"caja": caja.id, "tipo": "gasto", "monto": "5", "categoria": self.categoria.id, "descripcion": "x", "comprobante_tipo": "sin"}
         self.assertEqual(self.admin_api.post(f"{BASE}/movimientos/", gasto, format="json").status_code, 400)
@@ -161,3 +164,30 @@ class CajaChicaTests(TestCase):
         # Cambiar luego el fondo no vuelve a abrirla.
         self.admin_api.patch(f"{BASE}/cajas/{caja.id}/", {"monto_fondo": "250"}, format="json")
         self.assertEqual(caja.saldo(), Decimal("200"))
+
+    def test_cada_taller_tiene_su_caja(self):
+        from taller.models import Taller
+
+        taller = Taller.objects.create(nombre="9 de Octubre", sucursal=self.sucursal2)
+        caja = Caja.objects.get(taller=taller)
+        self.assertEqual(caja.nombre, "Caja chica 9 de Octubre")
+        self.assertIsNone(caja.sucursal_id)
+        fila = next(c for c in self.admin_api.get(f"{BASE}/cajas/").json() if c["id"] == caja.id)
+        self.assertEqual((fila["taller_nombre"], fila["sucursal_nombre"]), ("9 de Octubre", "Norte"))
+
+    def test_usuario_de_una_sucursal_solo_ve_sus_cajas(self):
+        from taller.models import Taller
+        from usuarios.models import UsuarioModuloSucursal, UsuarioSucursal
+
+        taller_norte = Taller.objects.create(nombre="Taller Norte", sucursal=self.sucursal2)
+        UsuarioSucursal.objects.create(usuario=self.otro, sucursal=self.sucursal2)
+        otro = APIClient()
+        otro.force_authenticate(self.otro)
+        ids = {c["id"] for c in otro.get(f"{BASE}/cajas/").json()}
+        self.assertEqual(ids, {Caja.objects.get(sucursal=self.sucursal2).id, Caja.objects.get(taller=taller_norte).id})
+        # Tambien por el permiso de Caja chica marcado por sucursal.
+        UsuarioModuloSucursal.objects.create(usuario=self.otro, modulo="caja_chica", sucursal=self.sucursal)
+        otro = APIClient()
+        otro.force_authenticate(get_user_model().objects.get(pk=self.otro.pk))
+        ids = {c["id"] for c in otro.get(f"{BASE}/cajas/").json()}
+        self.assertIn(self.caja.id, ids)

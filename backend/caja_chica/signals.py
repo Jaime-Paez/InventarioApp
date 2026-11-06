@@ -2,6 +2,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from inventario.models import Sucursal
+from taller.models import Taller
 
 
 @receiver(post_save, sender=Sucursal)
@@ -12,3 +13,13 @@ def crear_caja_de_sucursal(sender, instance, created, raw=False, **kwargs):
     from .models import Caja
 
     Caja.objects.get_or_create(sucursal=instance, defaults={"nombre": f"Caja chica {instance.nombre}"})
+
+
+@receiver(post_save, sender=Taller)
+def crear_caja_de_taller(sender, instance, created, raw=False, **kwargs):
+    """Cada taller nuevo nace con su caja chica (sin fondo hasta configurarla)."""
+    if raw or not created:
+        return
+    from .models import Caja
+
+    Caja.objects.get_or_create(taller=instance, defaults={"nombre": f"Caja chica {instance.nombre}"})

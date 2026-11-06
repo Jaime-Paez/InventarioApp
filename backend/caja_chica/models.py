@@ -9,11 +9,20 @@ class Caja(models.Model):
     """Fondo fijo de caja chica, con un custodio responsable."""
 
     nombre = models.CharField(max_length=120)
-    # Una caja chica por sucursal.
+    # Una caja chica por cada sucursal y por cada taller (una de las dos).
     sucursal = models.OneToOneField(
         "inventario.Sucursal",
         on_delete=models.PROTECT,
         related_name="caja_chica",
+        null=True,
+        blank=True,
+    )
+    taller = models.OneToOneField(
+        "taller.Taller",
+        on_delete=models.PROTECT,
+        related_name="caja_chica",
+        null=True,
+        blank=True,
     )
     custodio = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -34,6 +43,22 @@ class Caja(models.Model):
         ordering = ["nombre"]
         verbose_name = "Caja chica"
         verbose_name_plural = "Cajas chicas"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(sucursal__isnull=False, taller__isnull=True)
+                    | models.Q(sucursal__isnull=True, taller__isnull=False)
+                ),
+                name="caja_chica_de_sucursal_o_taller",
+            )
+        ]
+
+    @property
+    def sucursal_efectiva_id(self):
+        """Sucursal a la que pertenece (la del taller si es caja de taller)."""
+        if self.sucursal_id:
+            return self.sucursal_id
+        return self.taller.sucursal_id if self.taller_id else None
 
     def __str__(self) -> str:  # pragma: no cover
         return self.nombre

@@ -272,7 +272,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                   className={`caja-selector__btn${String(c.id) === String(cajaId) ? ' is-active' : ''}${c.activa ? '' : ' is-inactive'}`}
                   onClick={() => setCajaId(String(c.id))}
                 >
-                  {c.sucursal_nombre || c.nombre}
+                  {c.taller ? `Taller ${c.taller_nombre}` : c.sucursal_nombre || c.nombre}
                   {c.pendientes > 0 && isAdmin && <span className="taller-toggle__count">{c.pendientes}</span>}
                 </button>
               ))}
@@ -288,7 +288,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
           {caja && !configurada && (
             isAdmin ? (
               <BlockerNotice
-                title={`Configura la caja chica de ${caja.sucursal_nombre}`}
+                title={`Configura la caja chica de ${caja.taller ? `Taller ${caja.taller_nombre}` : caja.sucursal_nombre}`}
                 reason="Todavía no tiene fondo ni custodio. Indica el monto del fondo, quién la maneja y el tope de gasto sin aprobación: con eso queda abierta."
                 actionLabel="Configurar caja"
                 onAction={() => setDialog({ kind: 'caja', caja })}

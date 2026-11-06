@@ -285,6 +285,13 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
         queryset = OrdenTaller.objects.select_related(
             "asesor", "aceptada_por", "cerrada_por", "sucursal", "taller", "garantia_de", "movimiento_salida"
         )
+        # Taller se asigna por sucursal en Usuarios: cada uno ve las ordenes de
+        # sus sucursales. Sin sucursales asignadas se conserva el acceso general.
+        from usuarios.sucursal_scope import get_readable_sucursal_ids
+
+        sucursales = get_readable_sucursal_ids(self.request.user, "taller")
+        if sucursales:
+            queryset = queryset.filter(sucursal_id__in=sucursales)
         if self.action != "list":
             return queryset.prefetch_related(
                 "lineas__producto",
