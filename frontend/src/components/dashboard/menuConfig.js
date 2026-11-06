@@ -26,6 +26,7 @@ import {
   Users,
   ShieldCheck,
   Shapes,
+  Settings,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -57,7 +58,6 @@ export const MENU_STRUCTURE = [
       { label: 'Insumos', icon: Package, moduleKey: 'taller' },
     ],
   },
-  { label: 'Caja chica', icon: Wallet, moduleKey: 'caja_chica' },
   {
     label: 'Inconvenientes',
     icon: AlertTriangle,
@@ -82,6 +82,9 @@ export const MENU_STRUCTURE = [
     children: [
       { label: 'Usuarios', icon: Users, moduleKey: 'usuarios' },
       { label: 'Auditoría', icon: ScrollText, moduleKey: 'usuarios', requiresAdmin: true },
+      { label: 'Caja chica', icon: Wallet, moduleKey: 'caja_chica' },
+      // Solo para administradores (igual que el boton que estaba abajo del menu).
+      { label: 'Configuraciones', icon: Settings, moduleKey: 'configuracion', requiresAdmin: true, adminOnly: true },
     ],
   },
 ]
@@ -309,6 +312,7 @@ export const itemHasAccess = (
   isAdministrator = false
 ) => {
   if (itemRequiresAdministrator(item) && !isAdministrator) return false
+  if (item?.adminOnly) return Boolean(isAdministrator)
   if (!permissionIndex) return true
   if (item.children?.length) {
     return item.children.some((child) => itemHasAccess(child, permissionIndex, moduleScopeAccessIndex, isAdministrator))

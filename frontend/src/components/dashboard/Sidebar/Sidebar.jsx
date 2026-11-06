@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import './Sidebar.css'
-import { Settings, PanelLeftClose, Layers, LogOut } from 'lucide-react'
+import { PanelLeftClose, Layers, LogOut } from 'lucide-react'
 import { MENU_STRUCTURE, filterMenuByPermissions } from '../menuConfig'
 import { API_URL, authFetch } from '../../../utils/api'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
@@ -188,7 +188,8 @@ function Sidebar({
             const hasOpenTab = openTabSet.has(item.label)
             const hasOpenChild =
               isGroup && item.children?.some((child) => openTabSet.has(child.label))
-            const hasPendingAlert = item.label === 'Inconvenientes' && hasPendingInconvenientes
+            const hasPendingAlert = (item.label === 'Inconvenientes' && hasPendingInconvenientes)
+              || (item.label === 'Administración' && solicitudesWebSinLeer > 0)
 
             return (
               <li
@@ -224,6 +225,11 @@ function Sidebar({
                           >
                             <ChildIcon />
                             <span>{child.label}</span>
+                            {child.label === 'Configuraciones' && solicitudesWebSinLeer > 0 && (
+                              <span className="sidebar__action-badge" aria-label={`${solicitudesWebSinLeer} solicitud(es) nueva(s) del sitio web`}>
+                                {solicitudesWebSinLeer > 9 ? '9+' : solicitudesWebSinLeer}
+                              </span>
+                            )}
                             {(childActive || childHasOpenTab) && (
                               <span className="sidebar__bullet sidebar__bullet--small" aria-hidden />
                             )}
@@ -245,26 +251,6 @@ function Sidebar({
             <PanelLeftClose />
             Cerrar panel
           </button>
-          {canAccessConfiguration ? (
-            <button
-              type="button"
-              className="sidebar__action ghost"
-              onClick={() => onSelect('Configuraciones')}
-              title={
-                solicitudesWebSinLeer > 0
-                  ? `${solicitudesWebSinLeer} solicitud(es) nueva(s) del sitio web`
-                  : undefined
-              }
-            >
-              <Settings />
-              Configuración
-              {solicitudesWebSinLeer > 0 && (
-                <span className="sidebar__action-badge" aria-hidden>
-                  {solicitudesWebSinLeer > 9 ? '9+' : solicitudesWebSinLeer}
-                </span>
-              )}
-            </button>
-          ) : null}
         </div>
 
         <div className="sidebar__profile" ref={profileRef}>
