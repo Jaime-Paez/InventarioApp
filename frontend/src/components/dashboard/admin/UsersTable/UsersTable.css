@@ -665,6 +665,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Un inline-block con overflow:hidden se alinea por su borde inferior (no
+     por el texto): sin esto el texto queda unos px mas arriba que el de las
+     celdas que si van centradas (p. ej. la ubicacion del inventario). */
+  vertical-align: middle;
 }
 
 /* Loading overlay */
