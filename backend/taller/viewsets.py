@@ -20,6 +20,7 @@ from . import stock as taller_stock
 from .cierre import crear_salidas_taller
 from .codigos import sugerir_codigo
 from .models import (
+    Insumo,
     ManoObra,
     Taller,
     Tecnico,
@@ -32,6 +33,7 @@ from .models import (
     OrdenTallerPrueba,
 )
 from .serializers import (
+    InsumoSerializer,
     ManoObraSerializer,
     TallerSerializer,
     TecnicoSerializer,
@@ -169,6 +171,18 @@ def _quitar_despachado(orden, linea, cantidad, user):
         cantidad_entregada=cantidad,
         creado_por=user,
     )
+
+
+class InsumoViewSet(viewsets.ModelViewSet):
+    serializer_class = InsumoSerializer
+    permission_classes = [IsAuthenticated, TallerModulePermission]
+    pagination_class = None
+
+    def get_queryset(self):
+        queryset = Insumo.objects.all().order_by("nombre", "id")
+        if str(self.request.query_params.get("activos") or "").strip() in ("1", "true"):
+            queryset = queryset.filter(activo=True)
+        return queryset
 
 
 class ManoObraViewSet(viewsets.ModelViewSet):

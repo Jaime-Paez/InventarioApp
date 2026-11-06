@@ -255,6 +255,9 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
                 onSelect={(o) => setForm((prev) => ({ ...prev, [f.key]: o.id }))}
               />
               {f.help && <small className="taller-muted">{f.help}</small>}
+              {f.emptyNotice && selectOptions[f.key] && !selectOptions[f.key].length && (
+                <BlockerNotice compact title={f.emptyNotice.title} reason={f.emptyNotice.reason} goTo={f.emptyNotice.goTo} />
+              )}
             </div>
           ) : (
             <label key={f.key} className={`create-user__field${f.full ? ' create-user__field--full' : ''}`}>

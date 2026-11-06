@@ -910,3 +910,8 @@
 }
 .taller-product-panel .result-otras { text-align: right; font-variant-numeric: tabular-nums; opacity: 0.85; }
 .taller-product-panel .result-otras.has-stock { color: #b45309; font-weight: 700; opacity: 1; }
+
+/* Ventanas cortas: sin el alto minimo de las ventanas grandes. */
+.create-user__modal.taller-dialog-modal { min-height: 0; min-width: 0; }
+.taller-dialog-modal .create-user__body { flex: 0 1 auto; padding-bottom: 6px; }
+.taller-dialog-modal .create-user__form { min-height: 0; }

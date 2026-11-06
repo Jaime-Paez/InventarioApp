@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
@@ -22,10 +23,23 @@ function TallerDialog({
 }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
   const modal = useResizableModal(open, {
-    initialSize: wide ? { width: 1000, height: 760 } : { width: 760, height: 600 },
+    initialSize: wide ? { width: 1000, height: 640 } : { width: 680, height: 420 },
     minSize: { width: 420, height: 320 },
   })
+  // El alto se ajusta al contenido (como las demas ventanas cortas del
+  // sistema) hasta que el usuario la agranda o la maximiza.
+  const [resized, setResized] = useState(false)
+  useEffect(() => { if (open) setResized(false) }, [open])
   if (!shouldRender || typeof document === 'undefined') return null
+  const style = resized || modal.maximized
+    ? modal.style
+    : { ...modal.style, height: 'auto', maxHeight: 'calc(100dvh - 24px)' }
+  const resizeHandleProps = {
+    onMouseDown: (event) => {
+      setResized(true)
+      modal.resizeHandleProps.onMouseDown(event)
+    },
+  }
 
   const close = () => {
     if (!busy) onClose?.()
@@ -33,7 +47,7 @@ function TallerDialog({
 
   return createPortal(
     <div className={`create-user__overlay taller-dialog-overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true">
-      <div className={`create-user__modal taller-dialog-modal${isClosing ? ' create-user__modal--closing' : ''}`} style={modal.style}>
+      <div className={`create-user__modal taller-dialog-modal${isClosing ? ' create-user__modal--closing' : ''}`} style={style}>
         <header className="create-user__header" {...modal.headerProps}>
           <div className="create-user__header-text">
             <h3>{title}</h3>
@@ -75,7 +89,7 @@ function TallerDialog({
           {footer && <div className="create-user__footer taller-dialog-footer">{footer}</div>}
         </div>
 
-        <div className="create-user__resize-handle" {...modal.resizeHandleProps} aria-hidden="true" />
+        <div className="create-user__resize-handle" {...resizeHandleProps} aria-hidden="true" />
       </div>
     </div>,
     getAppPortalRoot()

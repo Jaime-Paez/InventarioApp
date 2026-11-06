@@ -19,7 +19,7 @@ const TIPO_OPCIONES = [
   { id: 'sin_codigo', nombre: 'Sin código' },
 ]
 
-const EMPTY_DRAFT = { tipo: 'repuesto', producto: null, mano_obra: null, referencia: '', descripcion: '', cantidad: '1', precio: null, garantia: false }
+const EMPTY_DRAFT = { tipo: 'repuesto', producto: null, mano_obra: null, insumo: null, referencia: '', descripcion: '', cantidad: '1', precio: null, garantia: false }
 
 
 const onEnterBlur = (event) => {
@@ -30,7 +30,7 @@ const onEnterBlur = (event) => {
 // Fila para agregar (igual que en Salidas): tipo, codigo/selector, descripcion,
 // cantidad, precio y "Agregar".
 // ---------------------------------------------------------------------------
-function FormRow({ token, sucursalId, busy, onAdd, manoObraCatalogo, esGarantia, addedIds }) {
+function FormRow({ token, sucursalId, busy, onAdd, manoObraCatalogo, insumosCatalogo = [], esGarantia, addedIds }) {
   const [draft, setDraft] = useState(EMPTY_DRAFT)
   const [error, setError] = useState('')
   const set = (patch) => { setDraft((prev) => ({ ...prev, ...patch })); setError('') }
@@ -107,7 +107,18 @@ function FormRow({ token, sucursalId, busy, onAdd, manoObraCatalogo, esGarantia,
           {draft.tipo === 'sin_codigo' && (
             <input placeholder="OEM / referencia" value={draft.referencia} onChange={(event) => set({ referencia: event.target.value })} disabled={busy} />
           )}
-          {draft.tipo === 'insumo' && <span className="taller-muted">Sin código</span>}
+          {draft.tipo === 'insumo' && (
+            <CascadeDropdown
+              placeholder="Del catálogo (opcional)"
+              searchPlaceholder="Buscar insumo"
+              options={insumosCatalogo.filter((m) => m.activo)}
+              valueId={draft.insumo}
+              getOptionLabel={(o) => `${o.nombre} · ${formatMoney(o.precio)}`}
+              emptyMessage="El catálogo está vacío: escribe el insumo en Descripción."
+              onSelect={(o) => set({ insumo: o.id, descripcion: o.nombre, precio: toNumber(o.precio) })}
+              disabled={busy}
+            />
+          )}
         </span>
         <span>
           {draft.tipo === 'repuesto' ? (
@@ -118,7 +129,7 @@ function FormRow({ token, sucursalId, busy, onAdd, manoObraCatalogo, esGarantia,
             <input
               placeholder={draft.tipo === 'insumo' ? 'Goma, cinta adhesiva, ...' : draft.tipo === 'mano_obra' ? 'Trabajo' : 'Descripción'}
               value={draft.descripcion}
-              onChange={(event) => set({ descripcion: event.target.value, ...(draft.tipo === 'mano_obra' ? { mano_obra: null } : {}) })}
+              onChange={(event) => set({ descripcion: event.target.value, mano_obra: null, insumo: null })}
               disabled={busy}
             />
           )}
@@ -355,7 +366,7 @@ function LineaRow({ linea, editable, enOrden, esGarantia, isAdmin, busy, onUpdat
   )
 }
 
-function LineasTabla({ orden, lineas, token, editable, enOrden, esGarantia, isAdmin, busy, manoObraCatalogo, onAdd, onUpdate, onDelete, onReviewPrice, onCrearProducto }) {
+function LineasTabla({ orden, lineas, token, editable, enOrden, esGarantia, isAdmin, busy, manoObraCatalogo, insumosCatalogo, onAdd, onUpdate, onDelete, onReviewPrice, onCrearProducto }) {
   const addedIds = useMemo(() => new Set(lineas.filter((l) => l.producto).map((l) => String(l.producto))), [lineas])
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   return (
@@ -378,6 +389,7 @@ function LineasTabla({ orden, lineas, token, editable, enOrden, esGarantia, isAd
           busy={busy}
           onAdd={onAdd}
           manoObraCatalogo={manoObraCatalogo}
+          insumosCatalogo={insumosCatalogo}
           esGarantia={esGarantia}
           addedIds={addedIds}
         />

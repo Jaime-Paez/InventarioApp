@@ -23,6 +23,7 @@ import {
   Wallet,
   UserCog,
   Warehouse,
+  Package,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -51,6 +52,7 @@ export const MENU_STRUCTURE = [
       { label: 'Talleres', icon: Warehouse, moduleKey: 'taller' },
       { label: 'Técnicos', icon: UserCog, moduleKey: 'taller' },
       { label: 'Mano de obra', icon: HardHat, moduleKey: 'taller' },
+      { label: 'Insumos', icon: Package, moduleKey: 'taller' },
     ],
   },
   { label: 'Caja chica', icon: Wallet, moduleKey: 'caja_chica' },

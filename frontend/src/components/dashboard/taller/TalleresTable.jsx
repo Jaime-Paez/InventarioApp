@@ -16,6 +16,11 @@ const CONFIG = {
       optionsEndpoint: '/taller/ordenes/sucursales/',
       placeholder: 'Elige la sucursal',
       help: 'Los repuestos salen primero de esta sucursal; si ahí no hay, se pueden despachar desde otra.',
+      emptyNotice: {
+        title: 'No hay sucursales para elegir',
+        reason: 'Crea la sucursal en Sucursales y aparecerá aquí.',
+        goTo: 'Sucursales',
+      },
     },
     { key: 'direccion', label: 'Dirección' },
   ],

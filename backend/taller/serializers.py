@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
+    Insumo,
     ManoObra,
     Taller,
     Tecnico,
@@ -20,6 +21,19 @@ def nombre_usuario(user):
         return ""
     full_name = str(user.get_full_name() or "").strip()
     return full_name or str(user.email or user.username or "").strip()
+
+
+class InsumoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Insumo
+        fields = ["id", "nombre", "precio", "activo", "creado_en", "actualizado_en"]
+        read_only_fields = ["id", "creado_en", "actualizado_en"]
+
+    def validate_nombre(self, value):
+        value = str(value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Escribe el nombre del insumo.")
+        return value
 
 
 class ManoObraSerializer(serializers.ModelSerializer):

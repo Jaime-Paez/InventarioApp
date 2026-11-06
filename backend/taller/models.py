@@ -33,6 +33,25 @@ class ManoObra(models.Model):
         return f"{self.nombre} (${self.precio})"
 
 
+class Insumo(models.Model):
+    """Catalogo de insumos (goma, cinta, ...) con precio fijo. No llevan
+    stock; en la orden tambien se puede escribir cualquier otro."""
+
+    nombre = models.CharField(max_length=200)
+    precio = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
+    activo = models.BooleanField(default=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["nombre"]
+        verbose_name = "Insumo"
+        verbose_name_plural = "Insumos"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.nombre
+
+
 class Taller(models.Model):
     """Taller de servicio. Sus repuestos salen primero de su sucursal
     principal; si ahi no hay, se pueden despachar desde otras sucursales."""

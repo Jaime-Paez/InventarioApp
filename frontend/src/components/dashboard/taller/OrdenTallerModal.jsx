@@ -56,6 +56,7 @@ function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit
   const [manoObraCatalogo, setManoObraCatalogo] = useState([])
   const [tecnicos, setTecnicos] = useState([])
   const [talleres, setTalleres] = useState([])
+  const [insumosCatalogo, setInsumosCatalogo] = useState([])
   const [showDespacho, setShowDespacho] = useState(false)
   const [devolucion, setDevolucion] = useState(null)
   const [crearProducto, setCrearProducto] = useState(null)
@@ -118,15 +119,17 @@ function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit
       }
     }
     ;(async () => {
-      const [mano, tecs, tals] = await Promise.all([
+      const [mano, tecs, tals, ins] = await Promise.all([
         getList('/taller/mano-obra/?activos=1'),
         getList('/taller/tecnicos/?activos=1'),
         getList('/taller/talleres/?activos=1'),
+        getList('/taller/insumos/?activos=1'),
       ])
       if (cancelled) return
       setManoObraCatalogo(mano)
       setTecnicos(tecs)
       setTalleres(tals)
+      setInsumosCatalogo(ins)
     })()
     return () => { cancelled = true }
   }, [open, token])
@@ -517,6 +520,14 @@ function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit
                           </label>
                         )}
                       </div>
+                      {editable && !talleres.length && (
+                        <BlockerNotice
+                          compact
+                          title="No hay talleres para elegir"
+                          reason="Crea el taller (con su sucursal principal) en Taller → Talleres y aparecerá aquí."
+                          goTo="Talleres"
+                        />
+                      )}
                       {editable && !tecnicos.length && (
                         <BlockerNotice
                           compact
@@ -615,6 +626,7 @@ function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit
                           isAdmin={isAdmin}
                           busy={busy}
                           manoObraCatalogo={manoObraCatalogo}
+                          insumosCatalogo={insumosCatalogo}
                           onAdd={addLinea}
                           onUpdate={updateLinea}
                           onDelete={requestDelete}

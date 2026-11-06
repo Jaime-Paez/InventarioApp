@@ -202,6 +202,13 @@ export function MovimientoDialog({ open, tipo, caja, categorias, movimiento, tok
           <MoneyInput className="taller-input" value={form.monto} onValueChange={(value) => setForm((prev) => ({ ...prev, monto: value }))} disabled={busy} />
         </label>
       </div>
+      {realTipo === 'gasto' && !categorias.some((c) => c.activa) && (
+        <BlockerNotice
+          compact
+          title="No hay categorías de gasto para elegir"
+          reason={isAdmin ? 'Créalas con el botón "Categorías" de esta pantalla y aparecerán aquí.' : 'Pide al administrador que cree las categorías de gasto (botón "Categorías" en Caja chica).'}
+        />
+      )}
       {realTipo === 'gasto' && (
         <div className="create-user__field">
           <span>Categoría</span>
