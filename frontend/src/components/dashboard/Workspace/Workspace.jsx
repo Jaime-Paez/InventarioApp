@@ -17,6 +17,8 @@ import InventarioTable from '../inventario/InventarioTableV2/InventarioTableV2'
 import EntradasTable from '../movimientos/EntradasTable'
 import SalidasTable from '../movimientos/SalidasTable'
 import TrasladosInconvenientesTable from '../movimientos/TrasladosInconvenientesTable'
+import OrdenesTallerTable from '../taller/OrdenesTallerTable'
+import ManoObraTable from '../taller/ManoObraTable'
 import './Workspace.css'
 import { getModuleActions, labelHasAccess } from '../menuConfig'
 import { API_URL, authFetch } from '../../../utils/api'
@@ -64,6 +66,8 @@ const MODULE_KEY_BY_TAB = {
   Importadas: 'importaciones',
   Solicitudes: 'solicitudes',
   Clientes: 'clientes',
+  'Órdenes de taller': 'taller',
+  'Mano de obra': 'taller',
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',
   [INCONVENIENTES_TAB]: 'movimientos_inconvenientes',
@@ -200,6 +204,8 @@ function Workspace({
     Importadas: ImportacionesTable,
     Solicitudes: SolicitudesTable,
     Clientes: ClientesTable,
+    'Órdenes de taller': OrdenesTallerTable,
+    'Mano de obra': ManoObraTable,
     Entradas: EntradasTable,
     Salidas: SalidasTable,
     [INCONVENIENTES_TAB]: TrasladosInconvenientesTable,
@@ -577,7 +583,7 @@ function Workspace({
           tab === 'Entradas' || tab === 'Salidas' || tab === 'Solicitudes' ||
           tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY ||
           tab === 'Importaciones' || tab === 'En proceso' || tab === 'En camino' || tab === 'Importadas' ||
-          tab === 'Administrar'
+          tab === 'Administrar' || tab === 'Órdenes de taller'
             ? isActive
             : undefined
         }

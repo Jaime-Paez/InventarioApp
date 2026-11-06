@@ -122,6 +122,7 @@ INSTALLED_APPS = [
     "configuracion",
     "contacto_web",
     "rendimiento",
+    "taller",
 ]
 
 

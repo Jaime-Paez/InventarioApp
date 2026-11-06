@@ -316,6 +316,10 @@ class ImportacionesModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.IMPORTACIONES
 
 
+class TallerModulePermission(ModulePermission):
+    module_key = RolPermiso.Modulos.TALLER
+
+
 class SolicitudesModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.SOLICITUDES
 

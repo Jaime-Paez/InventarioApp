@@ -15,6 +15,7 @@ from inventario.viewsets import (
 from casa_comercial.viewsets import CasaComercialViewSet
 from configuracion.viewsets import ConfiguracionSistemaViewSet
 from importaciones.viewsets import ImportacionViewSet
+from taller.viewsets import ManoObraViewSet, OrdenTallerViewSet
 from productos.viewsets import (
     OEMProductoViewSet,
     OEMViewSet,
@@ -82,6 +83,10 @@ router.register(r"inventario/inventario", InventarioViewSet, basename="inventari
 
 # Importaciones
 router.register(r"importaciones/importaciones", ImportacionViewSet, basename="importaciones-importaciones")
+
+# Taller
+router.register(r"taller/ordenes", OrdenTallerViewSet, basename="taller-ordenes")
+router.register(r"taller/mano-obra", ManoObraViewSet, basename="taller-mano-obra")
 
 # Movimientos
 router.register(

@@ -44,6 +44,7 @@ class RolPermiso(models.Model):
         SOLICITUDES = "solicitudes", "Solicitudes"
         CLIENTES = "clientes", "Clientes"
         IMPORTACIONES = "importaciones", "Importaciones"
+        TALLER = "taller", "Taller"
         USUARIOS = "usuarios", "Administrar"
         CONFIGURACION = "configuracion", "Configuraciones"
 

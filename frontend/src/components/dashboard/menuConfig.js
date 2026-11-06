@@ -17,6 +17,9 @@ import {
   Truck,
   Hand,
   PackageSearch,
+  Wrench,
+  ClipboardList,
+  HardHat,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -35,6 +38,14 @@ export const MENU_STRUCTURE = [
     children: [
       { label: 'Solicitudes', icon: Hand, moduleKey: 'solicitudes' },
       { label: 'Importaciones', icon: PackageCheck, moduleKey: 'importaciones' },
+    ],
+  },
+  {
+    label: 'Taller',
+    icon: Wrench,
+    children: [
+      { label: 'Órdenes de taller', icon: ClipboardList, moduleKey: 'taller' },
+      { label: 'Mano de obra', icon: HardHat, moduleKey: 'taller' },
     ],
   },
   {
