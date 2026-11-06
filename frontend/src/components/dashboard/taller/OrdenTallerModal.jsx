@@ -485,7 +485,6 @@ function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit
                             onSelect={(t) => patchOrden({ taller: t.id }, 'No se pudo cambiar el taller.').catch(() => {})}
                             disabled={!editable || busy || Boolean((orden.entregas || []).length)}
                           />
-                          {orden.sucursal_nombre && <small className="taller-muted">{`Repuestos primero de ${orden.sucursal_nombre}`}</small>}
                         </div>
                         <div className="create-user__field">
                           <span>Técnico</span>

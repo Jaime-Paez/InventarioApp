@@ -815,6 +815,18 @@
     86px
     84px;
 }
+.create-user__locations-table.taller-lines.taller-lines--sin-desp .create-user__locations-row {
+  /* Cotizacion: sin la columna Desp. (aun no se despacha). */
+  grid-template-columns:
+    minmax(104px, 0.8fr)
+    minmax(150px, 1.25fr)
+    minmax(170px, 1.9fr)
+    74px
+    78px
+    110px
+    86px
+    84px;
+}
 .create-user__locations-table.taller-lines .create-user__locations-row--empty { grid-template-columns: 1fr; }
 .taller-lines .create-user__locations-row--form > span { padding: 6px; min-width: 0; }
 .taller-lines .create-user__locations-row > span.taller-lines__wrap {

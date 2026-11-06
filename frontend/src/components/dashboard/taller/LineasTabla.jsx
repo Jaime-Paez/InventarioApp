@@ -30,7 +30,7 @@ const onEnterBlur = (event) => {
 // Fila para agregar (igual que en Salidas): tipo, codigo/selector, descripcion,
 // cantidad, precio y "Agregar".
 // ---------------------------------------------------------------------------
-function FormRow({ token, sucursalId, busy, onAdd, manoObraCatalogo, insumosCatalogo = [], esGarantia, addedIds }) {
+function FormRow({ token, sucursalId, busy, onAdd, manoObraCatalogo, insumosCatalogo = [], esGarantia, addedIds, mostrarDespacho }) {
   const [draft, setDraft] = useState(EMPTY_DRAFT)
   const [error, setError] = useState('')
   const set = (patch) => { setDraft((prev) => ({ ...prev, ...patch })); setError('') }
@@ -137,7 +137,7 @@ function FormRow({ token, sucursalId, busy, onAdd, manoObraCatalogo, insumosCata
         <span>
           <input type="number" min={1} step={1} value={draft.cantidad} onChange={(event) => set({ cantidad: event.target.value })} disabled={busy} />
         </span>
-        <span className="create-salida__table-static-value">-</span>
+        {mostrarDespacho && <span className="create-salida__table-static-value">-</span>}
         <span className="create-salida__table-static-value">{pvp != null ? formatMoney(pvp) : '-'}</span>
         <span>
           {draft.tipo === 'repuesto' && esGarantia && draft.garantia ? (
@@ -180,7 +180,7 @@ function FormRow({ token, sucursalId, busy, onAdd, manoObraCatalogo, insumosCata
 // ---------------------------------------------------------------------------
 // Fila guardada: cantidad, precio y descripcion se guardan al salir del campo.
 // ---------------------------------------------------------------------------
-function LineaRow({ linea, editable, enOrden, esGarantia, isAdmin, busy, onUpdate, onDelete, onReviewPrice, onCrearProducto, showHover, hideHover }) {
+function LineaRow({ linea, editable, enOrden, esGarantia, isAdmin, busy, onUpdate, onDelete, onReviewPrice, onCrearProducto, mostrarDespacho, showHover, hideHover }) {
   const [cantidad, setCantidad] = useState(String(linea.cantidad))
   const [precio, setPrecio] = useState(toNumber(linea.precio))
   const [descripcion, setDescripcion] = useState(linea.descripcion || '')
@@ -285,13 +285,13 @@ function LineaRow({ linea, editable, enOrden, esGarantia, isAdmin, busy, onUpdat
             linea.cantidad
           )}
         </span>
-        <span>
+        {mostrarDespacho && <span>
           {esRepuesto && linea.producto ? (
             <span className={`taller-desp${despachoClase}`} title={linea.pendiente_despacho ? `Faltan entregar ${linea.pendiente_despacho}` : 'Todo entregado al taller'}>
               {`${linea.cantidad_despachada}/${linea.cantidad}`}
             </span>
           ) : '-'}
-        </span>
+        </span>}
         <span className="create-salida__numeric">{esRepuesto ? (linea.precio_lista != null ? formatMoney(linea.precio_lista) : 'Sin PVP') : '-'}</span>
         <span>
           {editable && !linea.es_garantia ? (
@@ -369,14 +369,16 @@ function LineaRow({ linea, editable, enOrden, esGarantia, isAdmin, busy, onUpdat
 function LineasTabla({ orden, lineas, token, editable, enOrden, esGarantia, isAdmin, busy, manoObraCatalogo, insumosCatalogo, onAdd, onUpdate, onDelete, onReviewPrice, onCrearProducto }) {
   const addedIds = useMemo(() => new Set(lineas.filter((l) => l.producto).map((l) => String(l.producto))), [lineas])
   const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
+  // Lo despachado solo importa con la orden de trabajo (en la cotizacion aun no se despacha).
+  const mostrarDespacho = orden?.estado === 'orden' || orden?.estado === 'cerrada'
   return (
-    <div className="create-user__locations-table create-salida__products-table taller-lines">
+    <div className={`create-user__locations-table create-salida__products-table taller-lines${mostrarDespacho ? '' : ' taller-lines--sin-desp'}`}>
       <div className="create-user__locations-row create-user__locations-row--head">
         <span>Tipo</span>
         <span>Código / OEM</span>
         <span>Descripción</span>
         <span>Cantidad</span>
-        <span title="Entregado al taller / pedido">Desp.</span>
+        {mostrarDespacho && <span title="Entregado al taller / pedido">Desp.</span>}
         <span>PVP</span>
         <span>Precio</span>
         <span>Total</span>
@@ -392,6 +394,7 @@ function LineasTabla({ orden, lineas, token, editable, enOrden, esGarantia, isAd
           insumosCatalogo={insumosCatalogo}
           esGarantia={esGarantia}
           addedIds={addedIds}
+          mostrarDespacho={mostrarDespacho}
         />
       )}
       {!lineas.length && (
@@ -412,6 +415,7 @@ function LineasTabla({ orden, lineas, token, editable, enOrden, esGarantia, isAd
           onDelete={onDelete}
           onReviewPrice={onReviewPrice}
           onCrearProducto={onCrearProducto}
+          mostrarDespacho={mostrarDespacho}
           showHover={showHover}
           hideHover={hideHover}
         />
