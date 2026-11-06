@@ -2755,3 +2755,87 @@ button.create-user__locations-row {
     width: auto !important;
   }
 }
+
+/* ====== Esqueleto de carga de las ventanas (en vez de "Cargando...") ======
+   Bloques con la forma del formulario: titulo de seccion y campos en dos
+   columnas (etiqueta + caja), con un brillo que pasa. */
+.create-user__loading-overlay {
+  justify-content: flex-start;
+  align-items: stretch;
+  padding: 22px 22px 18px;
+  --skeleton-base: rgba(148, 163, 184, 0.22);
+  --skeleton-shine: rgba(148, 163, 184, 0.42);
+}
+
+.dashboard-shell.dark .create-user__loading-overlay {
+  --skeleton-base: rgba(148, 163, 184, 0.12);
+  --skeleton-shine: rgba(148, 163, 184, 0.24);
+}
+
+.create-user__loading-overlay > i {
+  display: none;
+}
+
+/* El texto queda para lectores de pantalla, no se ve. */
+.create-user__loading-overlay > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.create-user__loading-overlay::before,
+.create-user__loading-overlay::after {
+  content: '';
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(
+      100deg,
+      var(--skeleton-base) 0%,
+      var(--skeleton-base) 40%,
+      var(--skeleton-shine) 50%,
+      var(--skeleton-base) 60%,
+      var(--skeleton-base) 100%
+    )
+    0 0 / 200% 100%;
+  animation: skeleton-shine 1.3s ease-in-out infinite;
+}
+
+/* Titulo de la seccion. */
+.create-user__loading-overlay::before {
+  flex: 0 0 auto;
+  width: 220px;
+  max-width: 50%;
+  height: 18px;
+  margin-bottom: 22px;
+}
+
+/* Campos: etiqueta corta + caja, en dos columnas, repetidos hacia abajo.
+   Cada capa es una "baldosa" de 74px de alto que se repite hacia abajo. */
+.create-user__loading-overlay::after {
+  flex: 1 1 auto;
+  border-radius: 0;
+  background:
+    linear-gradient(to bottom, var(--skeleton-base) 0 10px, transparent 10px) 0 0 / 120px 74px repeat-y,
+    linear-gradient(to bottom, var(--skeleton-base) 0 10px, transparent 10px) calc(50% + 70px) 0 / 120px 74px repeat-y,
+    linear-gradient(to bottom, transparent 0 18px, var(--skeleton-base) 18px 50px, transparent 50px) 0 0 / calc(50% - 10px) 74px repeat-y,
+    linear-gradient(to bottom, transparent 0 18px, var(--skeleton-base) 18px 50px, transparent 50px) 100% 0 / calc(50% - 10px) 74px repeat-y;
+  animation: skeleton-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes skeleton-shine {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .create-user__loading-overlay::before,
+  .create-user__loading-overlay::after { animation: none; }
+}
