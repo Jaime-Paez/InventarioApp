@@ -286,15 +286,6 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
           <Column field="numero_factura" header="Factura" body={(row) => row.numero_factura || '-'} style={{ minWidth: 100 }} />
           <Column field="total" header="Subtotal" sortable body={(row) => formatMoney(row.total)} style={{ minWidth: 90, textAlign: 'right' }} />
           <Column field="actualizado_en" header="Actualizado" sortable body={(row) => formatDateTime(row.actualizado_en)} style={{ minWidth: 140 }} />
-          <Column
-            header=""
-            body={(row) => (
-              <button type="button" className="taller-open-btn" onClick={() => setOpenId(row.id)}>
-                Abrir
-              </button>
-            )}
-            style={{ width: 70 }}
-          />
         </DataTable>
       </div>
 
