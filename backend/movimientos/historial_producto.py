@@ -108,6 +108,35 @@ def _origen_texto(mov, tipo, subtipo, importacion):
     return getattr(mov.sub_tipo_movimiento, "nombre", "") or ""
 
 
+def _horas_registro_movimientos(movement_ids):
+    """{movimiento_id: datetime} de cuando se registro cada movimiento (su
+    creacion en la auditoria)."""
+    from django.contrib.contenttypes.models import ContentType
+    from django.db.models import Min
+
+    from auditoria.models import RegistroAuditoria
+
+    if not movement_ids:
+        return {}
+    content_type = ContentType.objects.get_for_model(MovimientoInventario)
+    rows = (
+        RegistroAuditoria.objects.filter(
+            content_type=content_type,
+            accion=RegistroAuditoria.Acciones.CREACION,
+            object_id__in=[str(mov_id) for mov_id in movement_ids],
+        )
+        .values("object_id")
+        .annotate(hora=Min("registrado_en"))
+    )
+    result = {}
+    for row in rows:
+        try:
+            result[int(row["object_id"])] = row["hora"]
+        except (TypeError, ValueError):
+            continue
+    return result
+
+
 def _base_movements():
     # Igual que la tabla de movimientos: las garantias eliminadas no cuentan y
     # las que esperan aprobacion todavia no afectaron el inventario.
@@ -258,11 +287,23 @@ def build_product_movement_history(
         ajustes = ajustes.filter(sucursal_id=sucursal_id)
     if fecha_hasta:
         ajustes = ajustes.filter(fecha__lte=fecha_hasta)
-    eventos = [(row["fecha"], 0, row["movimiento_inventario_id"], row) for row in grouped]
-    for ajuste in ajustes.values("id", "fecha", "diferencia"):
+    # Dentro del mismo dia van por la hora en que se registraron (el
+    # movimiento no guarda la hora: se toma de su registro de creacion en la
+    # auditoria). Sin hora conocida quedan al inicio del dia, por id.
+    grouped = list(grouped)
+    horas = _horas_registro_movimientos([row["movimiento_inventario_id"] for row in grouped])
+    eventos = []
+    for row in grouped:
+        hora = horas.get(row["movimiento_inventario_id"])
+        row["registrado_en"] = hora
+        eventos.append((row["fecha"], hora.timestamp() if hora else 0, 0, row["movimiento_inventario_id"], row))
+    for ajuste in ajustes.values("id", "fecha", "diferencia", "created_at"):
         if ajuste["diferencia"]:
-            eventos.append((ajuste["fecha"], 1, ajuste["id"], {"ajuste_id": ajuste["id"], **ajuste}))
-    eventos.sort(key=lambda item: (item[0] is None, item[0] or "", item[1], item[2]))
+            hora = ajuste["created_at"]
+            eventos.append(
+                (ajuste["fecha"], hora.timestamp() if hora else 0, 1, ajuste["id"], {"ajuste_id": ajuste["id"], "registrado_en": hora, **ajuste})
+            )
+    eventos.sort(key=lambda item: (item[0] is None, item[0] or "", item[1], item[2], item[3]))
 
     # Saldo inicial: el stock con el que arranco el producto al migrar del
     # sistema anterior (sin costo: el sistema anterior no lo guardaba).
@@ -290,7 +331,7 @@ def build_product_movement_history(
     }
     costos_incompletos = False
     visibles = []
-    for _fecha, _orden, _id, row in eventos:
+    for _fecha, _hora, _orden, _id, row in eventos:
         es_ajuste = "ajuste_id" in row
         if es_ajuste:
             es_salida = row["diferencia"] < 0
@@ -362,6 +403,7 @@ def build_product_movement_history(
             {
                 "ajuste_id": row.get("ajuste_id"),
                 "movimiento_inventario_id": row.get("movimiento_inventario_id"),
+                "registrado_en": row.get("registrado_en"),
                 "cantidad": cantidad,
                 "valor_total": valor_total,
                 "costo_unitario": unitario,
@@ -408,6 +450,7 @@ def build_product_movement_history(
                     "subtipo": "ajuste",
                     "subtipo_nombre": "Ajuste de inventario",
                     "fecha": ajuste.fecha.isoformat() if ajuste.fecha else None,
+                    "registrado_en": row["registrado_en"].isoformat() if row["registrado_en"] else None,
                     "no_documento": "AJUSTE",
                     "estado": "",
                     "sucursal_id": ajuste.sucursal_id,
@@ -442,6 +485,7 @@ def build_product_movement_history(
                 "subtipo": subtipo,
                 "subtipo_nombre": getattr(mov.sub_tipo_movimiento, "nombre", "") or "",
                 "fecha": mov.fecha.isoformat() if mov.fecha else None,
+                "registrado_en": row["registrado_en"].isoformat() if row["registrado_en"] else None,
                 "no_documento": mov.no_documento,
                 "estado": getattr(mov.estado_movimiento, "nombre", "") or "",
                 "sucursal_id": mov.sucursal_id,

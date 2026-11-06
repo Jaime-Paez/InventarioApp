@@ -280,7 +280,14 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
                 if (isAjuste) tagClass = 'producto-movs__tag--adj'
                 return (
                   <tr key={isAjuste ? `ajuste-${row.ajuste_id}` : `${row.tipo}-${row.movimiento_id}`}>
-                    <td className="nowrap">{formatDate(row.fecha)}</td>
+                    <td className="nowrap">
+                      {formatDate(row.fecha)}
+                      {row.registrado_en && (
+                        <small className="producto-movs__hora">
+                          {new Date(row.registrado_en).toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                        </small>
+                      )}
+                    </td>
                     <td className="producto-movs__doc nowrap sep">
                       <span className={`producto-movs__tag ${tagClass}`}>
                         {isAjuste ? 'A' : isEntrada ? 'E' : 'S'}

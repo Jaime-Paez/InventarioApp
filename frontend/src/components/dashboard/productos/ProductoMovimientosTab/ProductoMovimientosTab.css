@@ -421,3 +421,11 @@
 .producto-movs__kardex-wrap::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Hora en que se registro, debajo de la fecha (ordena dentro del dia). */
+.producto-movs__hora {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.85em;
+  opacity: 0.7;
+}
