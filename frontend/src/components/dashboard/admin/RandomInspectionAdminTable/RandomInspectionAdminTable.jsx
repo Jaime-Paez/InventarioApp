@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Loader2, Map as MapIcon, PackageCheck, Pencil, RefreshCw, Send, Settings, Wrench, X } from 'lucide-react'
 import { Button } from 'primereact/button'
@@ -162,10 +162,29 @@ function RecountDots({ row, onlyIfRecounted = false }) {
   }, {})
   const isMatch = (entry) => entry?.cantidad != null && qtyTimes[Number(entry.cantidad)] >= 2
 
+  const cardRef = useRef(null)
   const showCard = (event, index) => {
     const rect = event.currentTarget.getBoundingClientRect()
-    setHover({ index, top: rect.bottom + 8, left: Math.max(8, rect.left - 12) })
+    setHover({ index, anchorTop: rect.top, top: rect.bottom + 8, left: Math.max(8, rect.left - 12) })
   }
+
+  // Si la tarjeta no cabe debajo del punto (filas al final de la pantalla), se
+  // abre hacia arriba; y nunca se sale por la derecha.
+  useLayoutEffect(() => {
+    const card = cardRef.current
+    if (!hover || !card) return
+    const { height, width } = card.getBoundingClientRect()
+    const margin = 8
+    let top = hover.top
+    if (top + height > window.innerHeight - margin) {
+      const above = hover.anchorTop - 8 - height
+      top = above >= margin ? above : Math.max(margin, window.innerHeight - margin - height)
+    }
+    const left = Math.max(margin, Math.min(hover.left, window.innerWidth - margin - width))
+    card.style.top = `${top}px`
+    card.style.left = `${left}px`
+    card.style.visibility = 'visible'
+  }, [hover])
 
   return (
     <>
@@ -187,7 +206,7 @@ function RecountDots({ row, onlyIfRecounted = false }) {
         <small>{`Conteo ${current?.numero || 1} de ${max}`}</small>
       </span>
       {hover && createPortal(
-        <div className="table-cell-hover-card inspection-admin__count-card" style={{ top: hover.top, left: hover.left }}>
+        <div ref={cardRef} className="table-cell-hover-card inspection-admin__count-card" style={{ top: hover.top, left: hover.left, visibility: 'hidden' }}>
           <div className="table-cell-hover-card__title">{`Conteos de ${String(row?.producto_codigo || 'este producto').trim()}`}</div>
           {Array.from({ length: max }, (_, index) => {
             const entry = history[index]
