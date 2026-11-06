@@ -1324,7 +1324,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 {"detail": "Este movimiento es de una importacion y se actualiza solo al recibirla; no se puede editar."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if hasattr(instance, "orden_taller"):
+        if hasattr(instance, "orden_taller") or instance.ordenes_taller.exists():
             return Response(
                 {"detail": "Esta salida la genero el cierre de una orden de taller; no se puede editar."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -1518,7 +1518,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 {"detail": "Este movimiento es de una importacion, asi que no se puede eliminar."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if hasattr(instance, "orden_taller"):
+        if hasattr(instance, "orden_taller") or instance.ordenes_taller.exists():
             return Response(
                 {"detail": "Esta salida la genero el cierre de una orden de taller; no se puede eliminar."},
                 status=status.HTTP_400_BAD_REQUEST,

@@ -81,9 +81,15 @@ class CajaSerializer(serializers.ModelSerializer):
             "pendientes",
             "anticipos_abiertos",
             "ultimo_arqueo",
+            "configurada",
             "creado_en",
         ]
         read_only_fields = ["id", "creado_en"]
+
+    configurada = serializers.SerializerMethodField()
+
+    def get_configurada(self, obj):
+        return obj.movimientos.filter(tipo=MovimientoCaja.Tipos.APERTURA).exists()
 
     def get_custodio_nombre(self, obj):
         return _nombre(obj.custodio)
@@ -127,6 +133,8 @@ class CajaSerializer(serializers.ModelSerializer):
             attrs["nombre"] = str(attrs.get("nombre") or "").strip() or f"Caja chica {sucursal.nombre}"
         if "monto_fondo" in attrs and (attrs["monto_fondo"] is None or attrs["monto_fondo"] <= 0):
             raise serializers.ValidationError({"detail": "El fondo debe ser mayor que cero."})
+        if self.instance is not None and "sucursal" in attrs and attrs["sucursal"] != self.instance.sucursal:
+            raise serializers.ValidationError({"detail": "La caja es de su sucursal: no se puede cambiar."})
         if "tope_gasto" in attrs and attrs["tope_gasto"] is not None and attrs["tope_gasto"] < 0:
             raise serializers.ValidationError({"detail": "El tope no puede ser negativo."})
         return attrs
@@ -200,6 +208,19 @@ class MovimientoCajaSerializer(serializers.ModelSerializer):
 
 
 # ---------------------------------------------------------------- helpers
+
+
+def asegurar_cajas():
+    """Cada sucursal tiene su caja chica, siempre: crea las que falten."""
+    from inventario.models import Sucursal
+
+    faltan = Sucursal.objects.filter(caja_chica__isnull=True)
+    for sucursal in faltan:
+        Caja.objects.get_or_create(sucursal=sucursal, defaults={"nombre": f"Caja chica {sucursal.nombre}"})
+
+
+def caja_configurada(caja):
+    return caja.movimientos.filter(tipo=M.Tipos.APERTURA).exists()
 
 
 def _cajas_visibles(user):
@@ -337,36 +358,33 @@ class CajaViewSet(viewsets.ModelViewSet):
         if not is_app_admin(self.request.user):
             raise PermissionDenied(f"Solo un administrador puede {accion}.")
 
-    def perform_create(self, serializer):
-        self._solo_admin()
-        with transaction.atomic():
-            caja = serializer.save()
-            MovimientoCaja.objects.create(
-                caja=caja,
-                tipo=M.Tipos.APERTURA,
-                estado=M.Estados.APROBADO,
-                fecha=timezone.localdate(),
-                monto=caja.monto_fondo,
-                descripcion="Apertura del fondo de caja chica.",
-                registrado_por=self.request.user,
-                revisado_por=self.request.user,
-                revisado_en=timezone.now(),
-            )
+    def list(self, request, *args, **kwargs):
+        asegurar_cajas()
+        return super().list(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        raise ValidationError({"detail": "Cada sucursal ya tiene su caja chica: configúrala en vez de crear otra."})
 
     def perform_update(self, serializer):
         self._solo_admin()
-        serializer.save()
+        with transaction.atomic():
+            caja = serializer.save()
+            # La primera vez que se pone el fondo se abre la caja con ese monto.
+            if caja.monto_fondo > 0 and not caja_configurada(caja):
+                MovimientoCaja.objects.create(
+                    caja=caja,
+                    tipo=M.Tipos.APERTURA,
+                    estado=M.Estados.APROBADO,
+                    fecha=timezone.localdate(),
+                    monto=caja.monto_fondo,
+                    descripcion="Apertura del fondo de caja chica.",
+                    registrado_por=self.request.user,
+                    revisado_por=self.request.user,
+                    revisado_en=timezone.now(),
+                )
 
     def destroy(self, request, *args, **kwargs):
-        self._solo_admin("eliminar cajas")
-        caja = self.get_object()
-        if caja.movimientos.exclude(tipo=M.Tipos.APERTURA).exists() or caja.arqueos.exists():
-            caja.activa = False
-            caja.save(update_fields=["activa"])
-            return Response(CajaSerializer(caja).data)
-        caja.movimientos.all().delete()
-        caja.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        raise ValidationError({"detail": "La caja chica de una sucursal no se elimina. Si no se usa, desactívala."})
 
     @action(detail=False, methods=["get"], url_path="opciones")
     def opciones(self, request):
@@ -565,6 +583,8 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
         caja = _caja_para(request.user, request.data.get("caja"))
         if not caja.activa:
             raise ValidationError({"detail": "Esa caja está desactivada."})
+        if not caja_configurada(caja):
+            raise ValidationError({"detail": "La caja todavía no tiene fondo: el administrador debe configurarla."})
         valores = _datos_movimiento(request.data, tipo)
         with transaction.atomic():
             caja = Caja.objects.select_for_update().get(pk=caja.pk)

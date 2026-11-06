@@ -29,13 +29,15 @@ class CajaChicaTests(TestCase):
 
         self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="x")
         self.sucursal2 = Sucursal.objects.create(nombre="Norte", direccion="y")
-        r = self.admin_api.post(
-            f"{BASE}/cajas/",
-            {"sucursal": self.sucursal.id, "monto_fondo": "300", "tope_gasto": "50", "custodio": self.custodio.id},
+        # La caja de la sucursal se crea sola; el admin la configura.
+        self.caja = Caja.objects.get(sucursal=self.sucursal)
+        r = self.admin_api.patch(
+            f"{BASE}/cajas/{self.caja.id}/",
+            {"monto_fondo": "300", "tope_gasto": "50", "custodio": self.custodio.id},
             format="json",
         )
-        self.assertEqual(r.status_code, 201, r.content)
-        self.caja = Caja.objects.get(pk=r.json()["id"])
+        self.assertEqual(r.status_code, 200, r.content)
+        self.caja.refresh_from_db()
 
     def _gasto(self, monto, client=None, **extra):
         data = {
@@ -132,18 +134,30 @@ class CajaChicaTests(TestCase):
         self.assertEqual(self.caja.saldo(), Decimal("300"))
 
     def test_solo_admin_configura(self):
-        self.assertEqual(self.api.post(f"{BASE}/cajas/", {"sucursal": self.sucursal2.id, "monto_fondo": "10"}, format="json").status_code, 403)
+        caja2 = Caja.objects.get(sucursal=self.sucursal2)
+        self.assertEqual(self.api.patch(f"{BASE}/cajas/{caja2.id}/", {"monto_fondo": "10"}, format="json").status_code, 403)
         self.assertEqual(self.api.post(f"{BASE}/categorias/", {"nombre": "X"}, format="json").status_code, 403)
 
-    def test_una_caja_por_sucursal(self):
+    def test_cada_sucursal_tiene_su_caja(self):
+        from inventario.models import Sucursal
+
         self.assertEqual(self.caja.nombre, "Caja chica Matriz")
-        r = self.admin_api.post(f"{BASE}/cajas/", {"sucursal": self.sucursal.id, "monto_fondo": "100"}, format="json")
+        nueva = Sucursal.objects.create(nombre="Sur", direccion="z")
+        caja = Caja.objects.get(sucursal=nueva)
+        self.assertEqual((caja.nombre, caja.monto_fondo), ("Caja chica Sur", Decimal("0")))
+        # No se crean ni eliminan a mano, ni cambian de sucursal.
+        self.assertEqual(self.admin_api.post(f"{BASE}/cajas/", {"sucursal": nueva.id, "monto_fondo": "1"}, format="json").status_code, 400)
+        self.assertEqual(self.admin_api.delete(f"{BASE}/cajas/{caja.id}/").status_code, 400)
+        r = self.admin_api.patch(f"{BASE}/cajas/{caja.id}/", {"sucursal": self.sucursal2.id}, format="json")
         self.assertEqual(r.status_code, 400)
-        self.assertIn("ya tiene su caja", str(r.json()["detail"]))
-        r = self.admin_api.post(f"{BASE}/cajas/", {"monto_fondo": "100"}, format="json")
-        self.assertEqual(r.status_code, 400)
-        r = self.admin_api.post(f"{BASE}/cajas/", {"sucursal": self.sucursal2.id, "monto_fondo": "100"}, format="json")
-        self.assertEqual(r.status_code, 201, r.content)
-        opciones = self.admin_api.get(f"{BASE}/cajas/opciones/").json()["sucursales"]
-        mias = {s["id"]: s["caja"] for s in opciones if s["id"] in (self.sucursal.id, self.sucursal2.id)}
-        self.assertEqual(mias, {self.sucursal.id: "Caja chica Matriz", self.sucursal2.id: "Caja chica Norte"})
+        # Sin fondo no se registra nada; al configurarlo se abre con ese monto.
+        gasto = {"caja": caja.id, "tipo": "gasto", "monto": "5", "categoria": self.categoria.id, "descripcion": "x", "comprobante_tipo": "sin"}
+        self.assertEqual(self.admin_api.post(f"{BASE}/movimientos/", gasto, format="json").status_code, 400)
+        listado = {c["id"]: c for c in self.admin_api.get(f"{BASE}/cajas/").json()}
+        self.assertFalse(listado[caja.id]["configurada"])
+        self.admin_api.patch(f"{BASE}/cajas/{caja.id}/", {"monto_fondo": "200"}, format="json")
+        caja.refresh_from_db()
+        self.assertEqual(caja.saldo(), Decimal("200"))
+        # Cambiar luego el fondo no vuelve a abrirla.
+        self.admin_api.patch(f"{BASE}/cajas/{caja.id}/", {"monto_fondo": "250"}, format="json")
+        self.assertEqual(caja.saldo(), Decimal("200"))

@@ -22,7 +22,7 @@ class Caja(models.Model):
         blank=True,
         related_name="cajas_chicas",
     )
-    monto_fondo = models.DecimalField(max_digits=10, decimal_places=2)
+    monto_fondo = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
     # Gastos por encima de este monto necesitan aprobacion del administrador.
     tope_gasto = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("50"))
     # Bajo este porcentaje del fondo se avisa que hay que pedir reposicion.

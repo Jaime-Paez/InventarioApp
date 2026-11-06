@@ -245,7 +245,8 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   const porcentaje = fondo > 0 ? Math.max(0, Math.min(100, (saldo / fondo) * 100)) : 0
   const bajo = caja && porcentaje < Number(caja.alerta_reposicion || 0)
   const esCustodio = caja && String(caja.custodio) === String(user?.id)
-  const puedeRegistrar = Boolean(caja?.activa && canCreate && (isAdmin || esCustodio))
+  const configurada = Boolean(caja?.configurada)
+  const puedeRegistrar = Boolean(caja?.activa && configurada && canCreate && (isAdmin || esCustodio))
 
   return (
     <div className="caja-page">
@@ -253,20 +254,11 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
 
       {error && <BlockerNotice title="No se pudo cargar la caja chica" reason={error} actionLabel="Reintentar" onAction={loadCajas} />}
 
-      {!cajas.length && !error && (
-        isAdmin ? (
-          <BlockerNotice
-            title="Todavía no hay cajas chicas"
-            reason="Cada sucursal tiene su caja: elige la sucursal, el fondo, el custodio y el tope de gasto sin aprobación."
-            actionLabel="Crear caja"
-            onAction={() => setDialog({ kind: 'caja' })}
-          />
-        ) : (
-          <BlockerNotice
-            title="No tienes una caja chica asignada"
-            reason="Un administrador debe crear la caja de tu sucursal y ponerte como custodio."
-          />
-        )
+      {!cajas.length && !error && !isAdmin && (
+        <BlockerNotice
+          title="No tienes una caja chica asignada"
+          reason="Cada sucursal tiene su caja: pide al administrador que te ponga como custodio de la caja de tu sucursal."
+        />
       )}
 
       {cajas.length > 0 && (
@@ -289,12 +281,27 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
               <div className="caja-top__admin">
                 {caja && <button type="button" className="taller-mini-btn" onClick={() => setDialog({ kind: 'caja', caja })}><i className="pi pi-cog" /> Configurar</button>}
                 <button type="button" className="taller-mini-btn" onClick={() => setDialog({ kind: 'categorias' })}><i className="pi pi-tags" /> Categorías</button>
-                <button type="button" className="taller-mini-btn taller-mini-btn--ok" onClick={() => setDialog({ kind: 'caja' })}><i className="pi pi-plus" /> Caja de otra sucursal</button>
               </div>
             )}
           </div>
 
-          {caja && (
+          {caja && !configurada && (
+            isAdmin ? (
+              <BlockerNotice
+                title={`Configura la caja chica de ${caja.sucursal_nombre}`}
+                reason="Todavía no tiene fondo ni custodio. Indica el monto del fondo, quién la maneja y el tope de gasto sin aprobación: con eso queda abierta."
+                actionLabel="Configurar caja"
+                onAction={() => setDialog({ kind: 'caja', caja })}
+              />
+            ) : (
+              <BlockerNotice
+                title="Esta caja todavía no está configurada"
+                reason="El administrador debe ponerle el fondo y el custodio antes de registrar gastos."
+              />
+            )
+          )}
+
+          {caja && configurada && (
             <>
               <div className="caja-cards">
                 <div className="caja-card caja-card--saldo">

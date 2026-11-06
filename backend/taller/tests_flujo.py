@@ -32,7 +32,7 @@ class FlujoTallerTests(TestCase):
         EstadoMovimiento.objects.get_or_create(nombre="Vendido")
         EstadoProducto.objects.get_or_create(nombre="Nuevo")
 
-        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="x")
+        self.sucursal, _ = Sucursal.objects.get_or_create(nombre="9 de Octubre (Matriz)", defaults={"direccion": "x"})
         bodega = Bodega.objects.create(sucursal=self.sucursal, nombre="Almacen")
         tipo = TipoDivision.objects.create(nombre="Percha")
         division = Division.objects.create(bodega=bodega, nombre="A", tipo_division=tipo)
@@ -249,3 +249,51 @@ class FlujoTallerTests(TestCase):
         r = self.admin_api.delete(f"/movimientos/movimiento_inventario/{salida.id}/")
         self.assertEqual(r.status_code, 400)
         self.assertTrue(MovimientoInventario.objects.filter(pk=salida.id).exists())
+
+    def test_despacho_desde_otra_sucursal_y_salida_por_sucursal(self):
+        from inventario.models import Bodega, Division, Inventario, Sucursal, SubDivision
+        from movimientos.models import MovimientoInventario
+        from taller.models import Taller
+        from tipos.models import TipoDivision
+
+        taller = Taller.objects.get(sucursal=self.sucursal)
+        norte = Sucursal.objects.create(nombre="Norte test", direccion="n")
+        bodega = Bodega.objects.create(sucursal=norte, nombre="Almacen N")
+        division = Division.objects.create(bodega=bodega, nombre="B", tipo_division=TipoDivision.objects.first())
+        sub_norte = SubDivision.objects.create(division=division, nombre="1")
+        Inventario.objects.create(producto=self.filtro, subdivision=sub_norte, cantidad=4)
+
+        orden = self._orden_de_trabajo(filtro=7)
+        self.assertEqual(orden["taller"], taller.id)
+        linea = next(l for l in orden["lineas"] if l["tipo"] == "repuesto")
+        # En 9 de Octubre solo hay 5: no alcanza y avisa que hay en Norte.
+        r = self._entregar(orden["id"], [{"linea": linea["id"], "cantidad": 7}])
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("Norte test", r.json()["detail"])
+        # La busqueda muestra el stock de las otras sucursales.
+        encontrados = self.api.get(f"{BASE}/buscar-productos/?q=P1268CL&sucursal={self.sucursal.id}").json()
+        self.assertEqual((encontrados[0]["stock"], encontrados[0]["stock_otras"]), (5, 4))
+        # 5 de aqui y 2 de Norte.
+        self._entregar(orden["id"], [{"linea": linea["id"], "cantidad": 5}])
+        r = self._entregar(orden["id"], [{"linea": linea["id"], "cantidad": 2, "subdivision_id": sub_norte.id}])
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(Inventario.objects.get(subdivision=sub_norte, producto=self.filtro).cantidad, 2)
+        from taller.stock import en_taller_por_producto_sucursal
+
+        en_taller = en_taller_por_producto_sucursal([self.filtro.id])
+        self.assertEqual(en_taller[(self.filtro.id, norte.id)]["cantidad"], 2)
+        self.assertEqual(en_taller[(self.filtro.id, self.sucursal.id)]["cantidad"], 5)
+
+        self.assertEqual(self.api.post(f"{BASE}/{orden['id']}/cerrar/").status_code, 200)
+        salidas = {m.sucursal_id: m for m in MovimientoInventario.objects.filter(ordenes_taller__id=orden["id"])}
+        self.assertEqual(set(salidas), {self.sucursal.id, norte.id})
+        self.assertEqual(salidas[norte.id].detalles.get().cantidad, 2)
+        self.assertEqual(salidas[self.sucursal.id].detalles.get().cantidad, 5)
+
+    def test_talleres_solo_admin(self):
+        r = self.api.post("/taller/talleres/", {"nombre": "Taller Norte", "sucursal": self.sucursal.id}, format="json")
+        self.assertEqual(r.status_code, 403)
+        r = self.admin_api.post("/taller/talleres/", {"nombre": "Taller Norte", "sucursal": self.sucursal.id}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        orden = self.api.post(f"{BASE}/", {"taller": r.json()["id"]}, format="json").json()
+        self.assertEqual(orden["taller_nombre"], "Taller Norte")

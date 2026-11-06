@@ -92,9 +92,17 @@ function DespachoDialog({ open, orden, token, onClose, onDone, notify }) {
   const receptorRol = receptor === 'tecnico' ? 'Técnico' : receptor === 'asesor' ? 'Asesor de servicio' : ''
 
   const elegidos = pendientes.filter((item) => seleccion[item.key]?.incluir && Number(seleccion[item.key]?.cantidad) > 0)
+  // Lo que no alcanza donde se va a sacar: en automatico, la sucursal del
+  // taller; con una ubicacion elegida, la sucursal de esa ubicacion.
   const sinStock = elegidos.filter((item) => {
-    const total = (ubicaciones[String(item.producto)] || []).reduce((acc, u) => acc + Number(u.cantidad || 0), 0)
-    return Object.keys(ubicaciones).length > 0 && total < Number(seleccion[item.key]?.cantidad || 0)
+    if (!Object.keys(ubicaciones).length) return false
+    const lista = ubicaciones[String(item.producto)] || []
+    const sub = seleccion[item.key]?.subdivision ?? 'auto'
+    const elegida = lista.find((u) => String(u.subdivision_id) === String(sub))
+    const total = lista
+      .filter((u) => (sub === 'auto' || !elegida ? u.es_sucursal_taller : u.sucursal_id === elegida.sucursal_id))
+      .reduce((acc, u) => acc + Number(u.cantidad || 0), 0)
+    return total < Number(seleccion[item.key]?.cantidad || 0)
   })
 
   const motivoBloqueo = !elegidos.length
@@ -104,7 +112,7 @@ function DespachoDialog({ open, orden, token, onClose, onDone, notify }) {
       : !firma
         ? 'Falta la firma de quien recibe.'
         : sinStock.length
-          ? `No hay stock suficiente de ${sinStock.map((item) => item.codigo).join(', ')}.`
+          ? `No alcanza ${sinStock.map((item) => item.codigo).join(', ')} donde se va a sacar: elige una ubicación de otra sucursal.`
           : ''
 
   const submit = async () => {
@@ -175,7 +183,8 @@ function DespachoDialog({ open, orden, token, onClose, onDone, notify }) {
               {pendientes.map((item) => {
                 const sel = seleccion[item.key] || {}
                 const opciones = (ubicaciones[String(item.producto)] || []).filter((u) => Number(u.cantidad) > 0)
-                const total = opciones.reduce((acc, u) => acc + Number(u.cantidad || 0), 0)
+                const total = opciones.filter((u) => u.es_sucursal_taller).reduce((acc, u) => acc + Number(u.cantidad || 0), 0)
+                const otras = opciones.filter((u) => !u.es_sucursal_taller).reduce((acc, u) => acc + Number(u.cantidad || 0), 0)
                 return (
                   <tr key={item.key} className={item.bloqueo ? 'is-pending' : ''}>
                     <td>
@@ -189,6 +198,9 @@ function DespachoDialog({ open, orden, token, onClose, onDone, notify }) {
                     </td>
                     <td>
                       <strong>{item.codigo}</strong> {item.descripcion}
+                      {(sel.subdivision ?? 'auto') === 'auto' && Number(sel.cantidad || 0) > total && otras > 0 && (
+                        <span className="taller-chip taller-chip--pendiente">{`En ${orden?.sucursal_nombre || 'el taller'} hay ${total}: elige una ubicación de otra sucursal`}</span>
+                      )}
                       {item.aPrueba && <span className="taller-chip taller-chip--prueba">A prueba</span>}
                       {item.bloqueo && <span className="taller-chip taller-chip--pendiente">{item.bloqueo}</span>}
                     </td>
@@ -212,8 +224,11 @@ function DespachoDialog({ open, orden, token, onClose, onDone, notify }) {
                         placeholder="Ubicación"
                         searchPlaceholder="Buscar ubicación"
                         options={[
-                          { id: 'auto', etiqueta: `Automático: principal primero (stock ${total})` },
-                          ...opciones.map((u) => ({ id: u.subdivision_id, etiqueta: `${u.ubicacion} · ${u.cantidad}${u.principal ? ' (principal)' : ''}` })),
+                          { id: 'auto', etiqueta: `Automático: ${orden?.sucursal_nombre || 'sucursal del taller'} (stock ${total})` },
+                          ...opciones.map((u) => ({
+                            id: u.subdivision_id,
+                            etiqueta: `${u.es_sucursal_taller ? '' : `${u.sucursal_nombre} · `}${u.ubicacion} · ${u.cantidad}${u.principal ? ' (principal)' : ''}`,
+                          })),
                         ]}
                         valueId={sel.subdivision ?? 'auto'}
                         getOptionLabel={(o) => o.etiqueta}

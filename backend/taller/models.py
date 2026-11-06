@@ -33,6 +33,30 @@ class ManoObra(models.Model):
         return f"{self.nombre} (${self.precio})"
 
 
+class Taller(models.Model):
+    """Taller de servicio. Sus repuestos salen primero de su sucursal
+    principal; si ahi no hay, se pueden despachar desde otras sucursales."""
+
+    nombre = models.CharField(max_length=150)
+    sucursal = models.ForeignKey(
+        "inventario.Sucursal",
+        on_delete=models.PROTECT,
+        related_name="talleres",
+        help_text="Sucursal de la que salen primero los repuestos.",
+    )
+    direccion = models.CharField(max_length=255, blank=True)
+    activo = models.BooleanField(default=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["nombre"]
+        verbose_name = "Taller"
+        verbose_name_plural = "Talleres"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.nombre
+
+
 class Tecnico(models.Model):
     """Tecnico del taller: se elige en cada orden y firma lo que recibe."""
 
@@ -80,13 +104,21 @@ class OrdenTaller(models.Model):
         related_name="garantias",
         help_text="Orden original cuando esta es una orden por garantia.",
     )
+    taller = models.ForeignKey(
+        Taller,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="ordenes",
+    )
+    # Sucursal principal del taller (de donde salen primero los repuestos).
     sucursal = models.ForeignKey(
         "inventario.Sucursal",
         on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="ordenes_taller",
-        help_text="Sucursal de cuyo inventario salen los repuestos.",
+        help_text="Sucursal principal del taller de la orden.",
     )
     # Numero de pedido: distinto del numero de orden (lo pide el negocio asi).
     numero_pedido = models.CharField(max_length=60, blank=True)
@@ -146,6 +178,12 @@ class OrdenTaller(models.Model):
         null=True,
         blank=True,
         related_name="orden_taller",
+    )
+    # Todas las salidas del cierre (una por sucursal de la que salieron repuestos).
+    salidas = models.ManyToManyField(
+        "movimientos.MovimientoInventario",
+        blank=True,
+        related_name="ordenes_taller",
     )
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
@@ -355,6 +393,8 @@ class OrdenTallerEntregaItem(models.Model):
     linea = models.ForeignKey(OrdenTallerLinea, on_delete=models.SET_NULL, null=True, blank=True, related_name="entregas")
     prueba = models.ForeignKey(OrdenTallerPrueba, on_delete=models.SET_NULL, null=True, blank=True, related_name="entregas")
     producto = models.ForeignKey("productos.Producto", on_delete=models.PROTECT, related_name="+")
+    # Sucursal de la que salio (puede no ser la del taller).
+    sucursal = models.ForeignKey("inventario.Sucursal", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
     cantidad = models.PositiveIntegerField()
     # [{"subdivision_id", "ubicacion", "cantidad"}] de donde salio.
     ubicaciones = models.JSONField(default=list, blank=True)

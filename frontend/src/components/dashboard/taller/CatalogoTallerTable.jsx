@@ -4,6 +4,7 @@ import { Column } from 'primereact/column'
 import { Button } from 'primereact/button'
 import Toast from '../common/AppToast'
 import MoneyInput from '../common/MoneyInput'
+import CascadeDropdown from '../common/CascadeDropdown'
 import BlockerNotice from '../common/BlockerNotice'
 import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
 import TallerDialog from './TallerDialog'
@@ -37,6 +38,23 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [toDelete, setToDelete] = useState(null)
+  const [selectOptions, setSelectOptions] = useState({})
+
+  // Campos tipo dropdown (p. ej. la sucursal del taller): opciones del servidor.
+  useEffect(() => {
+    let cancelled = false
+    config.fields.filter((f) => f.type === 'select' && f.optionsEndpoint).forEach(async (f) => {
+      try {
+        const response = await authFetch(`${API_URL}${f.optionsEndpoint}`, {}, token)
+        if (!response.ok) return
+        const data = await response.json()
+        if (!cancelled) setSelectOptions((prev) => ({ ...prev, [f.key]: Array.isArray(data) ? data : data?.results || [] }))
+      } catch {
+        // sin opciones
+      }
+    })
+    return () => { cancelled = true }
+  }, [config.fields, token])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -69,7 +87,9 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
     if (row ? !canEdit : !canCreate) return
     const initial = { activo: true }
     config.fields.forEach((f) => {
-      initial[f.key] = row ? (f.type === 'money' ? Number(row[f.key] || 0) : row[f.key] || '') : (f.type === 'money' ? null : '')
+      initial[f.key] = row
+        ? (f.type === 'money' ? Number(row[f.key] || 0) : f.type === 'select' ? (row[f.key] ?? '') : row[f.key] || '')
+        : (f.type === 'money' ? null : '')
     })
     if (row) initial.activo = row.activo
     setForm(initial)
@@ -85,7 +105,9 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
     try {
       const body = { activo: form.activo }
       config.fields.forEach((f) => {
-        body[f.key] = f.type === 'money' ? Number(form[f.key] || 0).toFixed(2) : String(form[f.key] || '').trim()
+        if (f.type === 'money') body[f.key] = Number(form[f.key] || 0).toFixed(2)
+        else if (f.type === 'select') body[f.key] = form[f.key] === '' ? null : form[f.key]
+        else body[f.key] = String(form[f.key] || '').trim()
       })
       const isNew = editing === 'new'
       const response = await authFetch(
@@ -221,7 +243,20 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
         }
       >
         <div className="create-user__grid create-user__grid--two">
-          {config.fields.map((f) => (
+          {config.fields.map((f) => f.type === 'select' ? (
+            <div key={f.key} className={`create-user__field${f.full ? ' create-user__field--full' : ''}`}>
+              <span>{f.label}</span>
+              <CascadeDropdown
+                placeholder={f.placeholder || 'Elige...'}
+                searchPlaceholder="Buscar"
+                options={selectOptions[f.key] || []}
+                valueId={form[f.key]}
+                getOptionLabel={(o) => o.nombre}
+                onSelect={(o) => setForm((prev) => ({ ...prev, [f.key]: o.id }))}
+              />
+              {f.help && <small className="taller-muted">{f.help}</small>}
+            </div>
+          ) : (
             <label key={f.key} className={`create-user__field${f.full ? ' create-user__field--full' : ''}`}>
               <span>{f.label}</span>
               {f.type === 'money' ? (

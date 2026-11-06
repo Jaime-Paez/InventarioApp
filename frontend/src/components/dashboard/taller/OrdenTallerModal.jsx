@@ -54,8 +54,8 @@ function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit
   const [motivo, setMotivo] = useState('')
   const [factura, setFactura] = useState('')
   const [manoObraCatalogo, setManoObraCatalogo] = useState([])
-  const [sucursales, setSucursales] = useState([])
   const [tecnicos, setTecnicos] = useState([])
+  const [talleres, setTalleres] = useState([])
   const [showDespacho, setShowDespacho] = useState(false)
   const [devolucion, setDevolucion] = useState(null)
   const [crearProducto, setCrearProducto] = useState(null)
@@ -118,15 +118,15 @@ function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit
       }
     }
     ;(async () => {
-      const [mano, sucs, tecs] = await Promise.all([
+      const [mano, tecs, tals] = await Promise.all([
         getList('/taller/mano-obra/?activos=1'),
-        getList('/taller/ordenes/sucursales/'),
         getList('/taller/tecnicos/?activos=1'),
+        getList('/taller/talleres/?activos=1'),
       ])
       if (cancelled) return
       setManoObraCatalogo(mano)
-      setSucursales(sucs)
       setTecnicos(tecs)
+      setTalleres(tals)
     })()
     return () => { cancelled = true }
   }, [open, token])
@@ -350,7 +350,6 @@ function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit
     saved: 'Guardado',
     error: 'No se guardó: revisa la conexión',
   }[headerStatus]
-  const sucursalBloqueada = Boolean((orden?.entregas || []).length)
 
   const field = (key, label, props = {}) => (
     <label className={`create-user__field${props.full ? ' taller-field--full' : ''}`}>
@@ -471,6 +470,21 @@ function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit
                         </div>
                         {field('numero_pedido', 'N° de pedido')}
                         <div className="create-user__field">
+                          <span>Taller</span>
+                          <CascadeDropdown
+                            placeholder="Elige el taller"
+                            searchPlaceholder="Buscar taller"
+                            options={talleres.some((t) => t.id === orden.taller) || !orden.taller ? talleres : [...talleres, { id: orden.taller, nombre: orden.taller_nombre }]}
+                            valueId={orden.taller}
+                            selectedLabel={orden.taller_nombre}
+                            getOptionLabel={(t) => t.nombre}
+                            emptyMessage="No hay talleres: créalos en Taller → Talleres."
+                            onSelect={(t) => patchOrden({ taller: t.id }, 'No se pudo cambiar el taller.').catch(() => {})}
+                            disabled={!editable || busy || Boolean((orden.entregas || []).length)}
+                          />
+                          {orden.sucursal_nombre && <small className="taller-muted">{`Repuestos primero de ${orden.sucursal_nombre}`}</small>}
+                        </div>
+                        <div className="create-user__field">
                           <span>Técnico</span>
                           <CascadeDropdown
                             placeholder={tecnicos.length ? 'Elige el técnico' : 'No hay técnicos'}
@@ -487,19 +501,6 @@ function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit
                         <div className="create-user__field">
                           <span>Asesor</span>
                           <div className="create-salida__static-value taller-static">{orden.asesor_nombre || '-'}</div>
-                        </div>
-                        <div className="create-user__field">
-                          <span>Sucursal (salen los repuestos)</span>
-                          <CascadeDropdown
-                            placeholder="Elige la sucursal"
-                            searchPlaceholder="Buscar sucursal"
-                            options={sucursales}
-                            valueId={orden.sucursal}
-                            selectedLabel={orden.sucursal_nombre}
-                            getOptionLabel={(s) => s.nombre}
-                            onSelect={(s) => patchOrden({ sucursal: s.id }, 'No se pudo cambiar la sucursal.').catch(() => {})}
-                            disabled={!editable || busy || sucursalBloqueada}
-                          />
                         </div>
                         {orden.estado === 'cerrada' && (
                           <label className="create-user__field">

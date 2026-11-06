@@ -156,7 +156,8 @@ function TallerProductDropdown({ token, sucursalId, value, onSelect, disabled, p
               <div className="create-salida__results-header">
                 <span>Código</span>
                 <span>Descripción</span>
-                <span>Stock</span>
+                <span>Stock taller</span>
+                <span>Otras suc.</span>
                 <span>PVP</span>
               </div>
             )}
@@ -174,7 +175,13 @@ function TallerProductDropdown({ token, sucursalId, value, onSelect, disabled, p
                     onSelect(producto)
                     close()
                   }}
-                  title={producto.stock > 0 ? undefined : 'Sin stock en la sucursal: se puede cotizar, pero no despachar hasta que llegue'}
+                  title={
+                    producto.stock > 0
+                      ? undefined
+                      : producto.stock_otras > 0
+                        ? `No hay en la sucursal del taller; hay en ${(producto.otras_sucursales || []).map((o) => `${o.sucursal} (${o.cantidad})`).join(', ')}: se despacha desde allá`
+                        : 'Sin stock en ninguna sucursal: se puede cotizar, pero no despachar hasta que llegue'
+                  }
                 >
                   <span className="result-codigo">
                     {producto.codigo}
@@ -182,6 +189,7 @@ function TallerProductDropdown({ token, sucursalId, value, onSelect, disabled, p
                   </span>
                   <span className="result-nombre">{producto.nombre || '-'}</span>
                   <span className="result-stock">{producto.stock}</span>
+                  <span className={`result-otras${producto.stock_otras > 0 ? ' has-stock' : ''}`}>{producto.stock_otras || 0}</span>
                   <span className="result-stock">{producto.precio != null ? formatMoney(producto.precio) : 'Sin PVP'}</span>
                 </button>
               )

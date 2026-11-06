@@ -114,7 +114,7 @@ function DevolucionDialog({ open, orden, prueba, token, onClose, onDone, notify 
                   checked={String(subdivision) === String(u.subdivision_id)}
                   onChange={() => setSubdivision(String(u.subdivision_id))}
                 />
-                <span className="taller-ubicacion__name">{u.ubicacion}</span>
+                <span className="taller-ubicacion__name">{u.es_sucursal_taller ? u.ubicacion : `${u.sucursal_nombre} · ${u.ubicacion}`}</span>
                 {u.principal && <span className="taller-chip taller-chip--orden">Recomendada: principal</span>}
                 {!u.por_ubicar && <span className="taller-muted">{`Hay ${u.cantidad}`}</span>}
               </label>

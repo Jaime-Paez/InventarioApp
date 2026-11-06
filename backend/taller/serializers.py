@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from .models import (
     ManoObra,
+    Taller,
     Tecnico,
     OrdenTaller,
     OrdenTallerDevolucion,
@@ -36,6 +37,25 @@ class ManoObraSerializer(serializers.ModelSerializer):
     def validate_precio(self, value):
         if value is None or value < 0:
             raise serializers.ValidationError("El precio no puede ser negativo.")
+        return value
+
+
+class TallerSerializer(serializers.ModelSerializer):
+    sucursal_nombre = serializers.CharField(source="sucursal.nombre", read_only=True)
+    ordenes_abiertas = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Taller
+        fields = ["id", "nombre", "sucursal", "sucursal_nombre", "direccion", "activo", "ordenes_abiertas", "creado_en"]
+        read_only_fields = ["id", "creado_en"]
+
+    def get_ordenes_abiertas(self, obj):
+        return obj.ordenes.filter(estado=OrdenTaller.Estados.ORDEN).count()
+
+    def validate_nombre(self, value):
+        value = str(value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Escribe el nombre del taller.")
         return value
 
 
@@ -167,6 +187,8 @@ class OrdenTallerEntregaSerializer(serializers.ModelSerializer):
                 "producto": item.producto_id,
                 "producto_codigo": item.producto.codigo,
                 "producto_nombre": item.producto.nombre,
+                "sucursal": item.sucursal_id,
+                "sucursal_nombre": item.sucursal.nombre if item.sucursal_id else "",
                 "cantidad": item.cantidad,
                 "ubicaciones": item.ubicaciones or [],
                 "a_prueba": item.prueba_id is not None,
@@ -229,6 +251,7 @@ class OrdenTallerListSerializer(serializers.ModelSerializer):
     estado_label = serializers.CharField(source="get_estado_display", read_only=True)
     asesor_nombre = serializers.SerializerMethodField()
     sucursal_nombre = serializers.CharField(source="sucursal.nombre", read_only=True, default="")
+    taller_nombre = serializers.CharField(source="taller.nombre", read_only=True, default="")
     garantia_de_numero = serializers.IntegerField(source="garantia_de.numero", read_only=True, default=None)
     total = serializers.SerializerMethodField()
     lineas_count = serializers.IntegerField(read_only=True, default=0)
@@ -247,6 +270,8 @@ class OrdenTallerListSerializer(serializers.ModelSerializer):
             "tipo",
             "garantia_de",
             "garantia_de_numero",
+            "taller",
+            "taller_nombre",
             "sucursal",
             "sucursal_nombre",
             "numero_factura",
@@ -319,7 +344,7 @@ class OrdenTallerDetailSerializer(OrdenTallerListSerializer):
     eventos = OrdenTallerEventoSerializer(many=True, read_only=True)
     aceptada_por_nombre = serializers.SerializerMethodField()
     cerrada_por_nombre = serializers.SerializerMethodField()
-    salida_documento = serializers.CharField(source="movimiento_salida.no_documento", read_only=True, default="")
+    salida_documento = serializers.SerializerMethodField()
     garantia_de_resumen = serializers.SerializerMethodField()
     iva_rate = serializers.SerializerMethodField()
 
@@ -341,6 +366,12 @@ class OrdenTallerDetailSerializer(OrdenTallerListSerializer):
     def get_aceptada_por_nombre(self, obj):
         return nombre_usuario(obj.aceptada_por)
 
+    def get_salida_documento(self, obj):
+        salidas = list(obj.salidas.all())
+        if salidas:
+            return ", ".join(m.no_documento for m in salidas)
+        return obj.movimiento_salida.no_documento if obj.movimiento_salida_id else ""
+
     def get_cerrada_por_nombre(self, obj):
         return nombre_usuario(obj.cerrada_por)
 
@@ -361,9 +392,14 @@ class OrdenTallerHeaderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrdenTaller
-        fields = ORDEN_CAMPOS_EDITABLES + ["sucursal", "numero_factura"]
+        fields = ORDEN_CAMPOS_EDITABLES + ["taller", "numero_factura"]
 
     def validate(self, attrs):
+        if "taller" in attrs:
+            taller = attrs["taller"]
+            if taller is None:
+                raise serializers.ValidationError({"detail": "Elige el taller."})
+            attrs["sucursal"] = taller.sucursal
         if "tecnico_asignado" in attrs:
             tecnico = attrs["tecnico_asignado"]
             attrs["tecnico"] = tecnico.nombre if tecnico else ""

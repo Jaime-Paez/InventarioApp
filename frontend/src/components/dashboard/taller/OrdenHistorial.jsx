@@ -34,6 +34,7 @@ function OrdenHistorial({ orden }) {
                         <strong>{item.producto_codigo}</strong>
                         {` x${item.cantidad}`}
                         {item.a_prueba && ' (a prueba)'}
+                        {item.sucursal_nombre && item.sucursal !== orden.sucursal && <span className="taller-chip taller-chip--pendiente">{`desde ${item.sucursal_nombre}`}</span>}
                         {Array.isArray(item.ubicaciones) && item.ubicaciones.length > 0 && (
                           <span className="taller-muted">{` · de ${item.ubicaciones.map((u) => `${u.ubicacion} (${u.cantidad})`).join(', ')}`}</span>
                         )}

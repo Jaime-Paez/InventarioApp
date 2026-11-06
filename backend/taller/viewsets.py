@@ -17,10 +17,11 @@ from usuarios.permissions import TallerModulePermission
 from usuarios.utils import is_app_admin
 
 from . import stock as taller_stock
-from .cierre import crear_salida_taller
+from .cierre import crear_salidas_taller
 from .codigos import sugerir_codigo
 from .models import (
     ManoObra,
+    Taller,
     Tecnico,
     OrdenTaller,
     OrdenTallerDevolucion,
@@ -32,6 +33,7 @@ from .models import (
 )
 from .serializers import (
     ManoObraSerializer,
+    TallerSerializer,
     TecnicoSerializer,
     OrdenTallerDetailSerializer,
     OrdenTallerHeaderSerializer,
@@ -130,14 +132,17 @@ def _aplicar_estado_precio(linea, user):
     linea.precio_revisado_en = revisado_en
 
 
-def _sucursal_por_defecto(user):
-    from usuarios.models import UsuarioSucursal
+def _taller_por_defecto():
+    """Si hay un solo taller activo (o ninguno elegido), el primero activo."""
+    return Taller.objects.filter(activo=True).order_by("id").first()
 
-    asignadas = list(
-        UsuarioSucursal.objects.filter(usuario=user).values_list("sucursal_id", flat=True).distinct()[:2]
-    )
-    if len(asignadas) == 1:
-        return Sucursal.objects.filter(pk=asignadas[0]).first()
+
+def _sucursal_por_defecto(user=None):
+    """Solo hay un taller: el de la sucursal 9 de Octubre (la matriz).
+    Sus repuestos salen siempre del inventario de esa sucursal."""
+    sucursal = Sucursal.objects.filter(nombre__icontains="octubre").order_by("id").first()
+    if sucursal is not None:
+        return sucursal
     try:
         from app.reposicion import central_branch_id
 
@@ -148,7 +153,7 @@ def _sucursal_por_defecto(user):
                 return sucursal
     except Exception:  # pragma: no cover - sin configuracion de reposicion
         pass
-    return Sucursal.objects.order_by("id").first()
+    return Sucursal.objects.filter(nombre__icontains="matriz").order_by("id").first() or Sucursal.objects.order_by("id").first()
 
 
 def _quitar_despachado(orden, linea, cantidad, user):
@@ -191,6 +196,40 @@ class ManoObraViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class TallerViewSet(viewsets.ModelViewSet):
+    serializer_class = TallerSerializer
+    permission_classes = [IsAuthenticated, TallerModulePermission]
+    pagination_class = None
+
+    def get_queryset(self):
+        queryset = Taller.objects.select_related("sucursal").order_by("-activo", "nombre", "id")
+        if str(self.request.query_params.get("activos") or "").strip() in ("1", "true"):
+            queryset = queryset.filter(activo=True)
+        return queryset
+
+    def _solo_admin(self):
+        if not is_app_admin(self.request.user):
+            raise PermissionDenied("Solo un administrador puede configurar los talleres.")
+
+    def perform_create(self, serializer):
+        self._solo_admin()
+        serializer.save()
+
+    def perform_update(self, serializer):
+        self._solo_admin()
+        serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        self._solo_admin()
+        taller = self.get_object()
+        if taller.ordenes.exists():
+            taller.activo = False
+            taller.save(update_fields=["activo"])
+            return Response(TallerSerializer(taller).data, status=status.HTTP_200_OK)
+        taller.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class TecnicoViewSet(viewsets.ModelViewSet):
     serializer_class = TecnicoSerializer
     permission_classes = [IsAuthenticated, TallerModulePermission]
@@ -230,7 +269,7 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = OrdenTaller.objects.select_related(
-            "asesor", "aceptada_por", "cerrada_por", "sucursal", "garantia_de", "movimiento_salida"
+            "asesor", "aceptada_por", "cerrada_por", "sucursal", "taller", "garantia_de", "movimiento_salida"
         )
         if self.action != "list":
             return queryset.prefetch_related(
@@ -241,6 +280,8 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
                 "pruebas__creado_por",
                 "entregas__entregado_por",
                 "entregas__items__producto",
+                "entregas__items__sucursal",
+                "salidas",
                 "devoluciones__producto",
                 "devoluciones__recibido_por",
                 "eventos__usuario",
@@ -402,9 +443,9 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
                 "tecnico", "tecnico_asignado",
             ):
                 valores.setdefault(campo, getattr(garantia_de, campo))
-            valores.setdefault("sucursal", garantia_de.sucursal)
-        if not valores.get("sucursal"):
-            valores["sucursal"] = _sucursal_por_defecto(request.user)
+        taller = valores.get("taller") or (garantia_de.taller if garantia_de is not None else None) or _taller_por_defecto()
+        valores["taller"] = taller
+        valores["sucursal"] = taller.sucursal if taller is not None else _sucursal_por_defecto(request.user)
         for _attempt in range(5):
             try:
                 with transaction.atomic():
@@ -447,13 +488,10 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
             if not (orden.estado == Estados.CERRADA and campos <= {"numero_factura"}):
                 # La factura se puede anotar despues de cerrar; lo demas no.
                 self._exigir_editable(orden)
-            if "sucursal" in campos:
-                nueva = request.data.get("sucursal")
-                if str(nueva or "") != str(orden.sucursal_id or "") and (
-                    orden.entregas.exists() or orden.pruebas.filter(cantidad_entregada__gt=0).exists()
-                ):
+            if "taller" in campos and str(request.data.get("taller") or "") != str(orden.taller_id or ""):
+                if orden.entregas.exists():
                     raise ValidationError(
-                        {"detail": "Ya se despacharon repuestos de esta sucursal: no se puede cambiar."}
+                        {"detail": "Ya se despacharon repuestos para este taller: no se puede cambiar."}
                     )
             header = OrdenTallerHeaderSerializer(orden, data=request.data, partial=True)
             header.is_valid(raise_exception=True)
@@ -586,7 +624,8 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
 
             if numero_factura:
                 orden.numero_factura = numero_factura
-            movimiento = crear_salida_taller(orden, lineas, request.user)
+            salidas = crear_salidas_taller(orden, lineas, request.user)
+            movimiento = salidas[0] if salidas else None
             orden.movimiento_salida = movimiento
             orden.estado = Estados.CERRADA
             orden.cerrada_en = timezone.now()
@@ -601,9 +640,13 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
                     "actualizado_en",
                 ]
             )
+            if salidas:
+                orden.salidas.set(salidas)
             texto = "Cerró la orden"
-            if movimiento is not None:
-                texto += f": salida tipo Taller {movimiento.no_documento}"
+            if salidas:
+                texto += ": salida tipo Taller " + ", ".join(
+                    f"{m.no_documento} ({m.sucursal.nombre})" for m in salidas
+                )
             if orden.numero_factura:
                 texto += f" (factura {orden.numero_factura})"
             _registrar(orden, request.user, "cerrada", texto + ".")
@@ -1062,19 +1105,19 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
             )
             resumen = []
             for kind, obj, producto_id, cantidad, subdivision_id in preparados:
-                tomado = taller_stock.descontar(orden.sucursal_id, producto_id, cantidad, subdivision_id)
+                origen, tomado = taller_stock.descontar(orden.sucursal_id, producto_id, cantidad, subdivision_id)
                 if kind == "linea":
                     obj.cantidad_despachada += cantidad
                     obj.save(update_fields=["cantidad_despachada", "actualizado_en"])
                     OrdenTallerEntregaItem.objects.create(
-                        entrega=entrega, linea=obj, producto_id=producto_id, cantidad=cantidad, ubicaciones=tomado
+                        entrega=entrega, linea=obj, producto_id=producto_id, sucursal_id=origen, cantidad=cantidad, ubicaciones=tomado
                     )
                     resumen.append(f"{obj.producto.codigo} x{cantidad}")
                 else:
                     obj.cantidad_entregada += cantidad
                     obj.save(update_fields=["cantidad_entregada"])
                     OrdenTallerEntregaItem.objects.create(
-                        entrega=entrega, prueba=obj, producto_id=producto_id, cantidad=cantidad, ubicaciones=tomado
+                        entrega=entrega, prueba=obj, producto_id=producto_id, sucursal_id=origen, cantidad=cantidad, ubicaciones=tomado
                     )
                     resumen.append(f"{obj.producto.codigo} x{cantidad} (a prueba)")
             _registrar(
@@ -1113,7 +1156,7 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
             taller_stock.devolver(subdivision, prueba.producto_id, cantidad)
             prueba.cantidad_devuelta += cantidad
             prueba.save(update_fields=["cantidad_devuelta"])
-            ubicacion = taller_stock.etiqueta_ubicacion(subdivision)
+            ubicacion = taller_stock.etiqueta_ubicacion(subdivision, con_sucursal=True)
             devuelto_por = str(request.data.get("devuelto_por") or "").strip()[:150]
             OrdenTallerDevolucion.objects.create(
                 orden=orden,
@@ -1147,13 +1190,20 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
             .order_by("codigo")
             .values("id", "codigo", "nombre", "precio")[:25]
         )
-        stock_qs = Inventario.objects.filter(producto_id__in=[p["id"] for p in productos])
+        # Stock en la sucursal del taller y en las demas (se puede pedir de alla).
         sucursal = str(request.query_params.get("sucursal") or "").strip()
-        if sucursal.isdigit():
-            stock_qs = stock_qs.filter(subdivision__division__bodega__sucursal_id=int(sucursal))
-        stock = dict(
-            stock_qs.values("producto_id").annotate(total=Sum("cantidad")).values_list("producto_id", "total")
-        )
+        sucursal_id = int(sucursal) if sucursal.isdigit() else None
+        stock = {}
+        otras = {}
+        for pid, sid, nombre, qty in (
+            Inventario.objects.filter(producto_id__in=[p["id"] for p in productos], cantidad__gt=0)
+            .values_list("producto_id", "subdivision__division__bodega__sucursal_id", "subdivision__division__bodega__sucursal__nombre", "cantidad")
+        ):
+            if sucursal_id is None or sid == sucursal_id:
+                stock[pid] = stock.get(pid, 0) + int(qty)
+            else:
+                otras.setdefault(pid, {})
+                otras[pid][nombre] = otras[pid].get(nombre, 0) + int(qty)
         upper = term.upper()
         productos.sort(key=lambda p: (str(p["codigo"]).upper() != upper, not str(p["codigo"]).upper().startswith(upper)))
         return Response(
@@ -1162,6 +1212,10 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
                     **p,
                     "precio": str(p["precio"]) if p["precio"] is not None else None,
                     "stock": int(stock.get(p["id"]) or 0),
+                    "stock_otras": sum((otras.get(p["id"]) or {}).values()),
+                    "otras_sucursales": [
+                        {"sucursal": nombre, "cantidad": qty} for nombre, qty in sorted((otras.get(p["id"]) or {}).items())
+                    ],
                 }
                 for p in productos
             ]

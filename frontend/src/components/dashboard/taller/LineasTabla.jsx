@@ -3,6 +3,7 @@ import { Check, PackagePlus, X } from 'lucide-react'
 import { formatDateTime } from '../../../utils/dateFormat'
 import CascadeDropdown from '../common/CascadeDropdown'
 import MoneyInput from '../common/MoneyInput'
+import useTableCellHover from '../common/useTableCellHover.jsx'
 import TallerProductDropdown from './TallerProductDropdown'
 import { LINEA_TIPOS, formatMoney, lineaCodigo } from './tallerConstants'
 
@@ -110,8 +111,8 @@ function FormRow({ token, sucursalId, busy, onAdd, manoObraCatalogo, esGarantia,
         </span>
         <span>
           {draft.tipo === 'repuesto' ? (
-            <span className="create-salida__table-static-value create-salida__table-static-value--name" title={draft.producto?.nombre || undefined}>
-              {draft.producto?.nombre || '-'}
+            <span className="create-salida__table-static-value create-salida__table-static-value--name taller-lines__draft-name">
+              <span className="create-salida__product-name-text">{draft.producto?.nombre || '-'}</span>
             </span>
           ) : (
             <input
@@ -168,7 +169,7 @@ function FormRow({ token, sucursalId, busy, onAdd, manoObraCatalogo, esGarantia,
 // ---------------------------------------------------------------------------
 // Fila guardada: cantidad, precio y descripcion se guardan al salir del campo.
 // ---------------------------------------------------------------------------
-function LineaRow({ linea, editable, enOrden, esGarantia, isAdmin, busy, onUpdate, onDelete, onReviewPrice, onCrearProducto }) {
+function LineaRow({ linea, editable, enOrden, esGarantia, isAdmin, busy, onUpdate, onDelete, onReviewPrice, onCrearProducto, showHover, hideHover }) {
   const [cantidad, setCantidad] = useState(String(linea.cantidad))
   const [precio, setPrecio] = useState(toNumber(linea.precio))
   const [descripcion, setDescripcion] = useState(linea.descripcion || '')
@@ -229,7 +230,13 @@ function LineaRow({ linea, editable, enOrden, esGarantia, isAdmin, busy, onUpdat
           {linea.tipo === 'sin_codigo' && editable ? (
             <input value={referencia} placeholder="OEM / referencia" onChange={(event) => setReferencia(event.target.value)} onBlur={() => commitText('referencia', referencia, linea.referencia, setReferencia)} onKeyDown={onEnterBlur} disabled={busy} />
           ) : (
-            <strong>{lineaCodigo(linea)}</strong>
+            <strong
+              className="create-salida__product-name-text"
+              onMouseEnter={(e) => showHover(e, [lineaCodigo(linea)].filter((t) => t && t !== '-'), 'Código')}
+              onMouseLeave={hideHover}
+            >
+              {lineaCodigo(linea)}
+            </strong>
           )}
           {linea.tipo === 'sin_codigo' && enOrden && isAdmin && (
             <button type="button" className="taller-mini-btn taller-mini-btn--warn" onClick={() => onCrearProducto(linea)} disabled={busy}>
@@ -237,11 +244,17 @@ function LineaRow({ linea, editable, enOrden, esGarantia, isAdmin, busy, onUpdat
             </button>
           )}
         </span>
-        <span className="taller-lines__left" title={linea.descripcion || undefined}>
+        <span className="taller-lines__left">
           {editable && !esRepuesto ? (
             <input value={descripcion} onChange={(event) => setDescripcion(event.target.value)} onBlur={() => commitText('descripcion', descripcion, linea.descripcion, setDescripcion)} onKeyDown={onEnterBlur} disabled={busy} />
           ) : (
-            linea.descripcion || '-'
+            <span
+              className="create-salida__product-name-text"
+              onMouseEnter={(e) => showHover(e, [linea.descripcion].filter(Boolean), 'Descripción')}
+              onMouseLeave={hideHover}
+            >
+              {linea.descripcion || '-'}
+            </span>
           )}
         </span>
         <span>
@@ -344,6 +357,7 @@ function LineaRow({ linea, editable, enOrden, esGarantia, isAdmin, busy, onUpdat
 
 function LineasTabla({ orden, lineas, token, editable, enOrden, esGarantia, isAdmin, busy, manoObraCatalogo, onAdd, onUpdate, onDelete, onReviewPrice, onCrearProducto }) {
   const addedIds = useMemo(() => new Set(lineas.filter((l) => l.producto).map((l) => String(l.producto))), [lineas])
+  const { showHover, hideHover, portal: cellHoverPortal } = useTableCellHover()
   return (
     <div className="create-user__locations-table create-salida__products-table taller-lines">
       <div className="create-user__locations-row create-user__locations-row--head">
@@ -386,8 +400,11 @@ function LineasTabla({ orden, lineas, token, editable, enOrden, esGarantia, isAd
           onDelete={onDelete}
           onReviewPrice={onReviewPrice}
           onCrearProducto={onCrearProducto}
+          showHover={showHover}
+          hideHover={hideHover}
         />
       ))}
+      {cellHoverPortal}
     </div>
   )
 }
