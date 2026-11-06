@@ -151,13 +151,19 @@
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  border-bottom: 0;
-  padding-bottom: 0;
+  /* Linea que separa Entradas/Salidas/Totales de los titulos de abajo. */
+  border-bottom: 1px solid var(--color-border);
 }
 
 /* Lineas verticales que separan Entradas, Salidas y Totales. */
 .producto-movs__kardex .sep {
   border-left: 1px solid var(--color-border);
+}
+
+/* La columna Fecha (fija) ya dibuja su linea a la derecha: la de Documento
+   no se repite (si no, se ve doble). */
+.producto-movs__kardex tr:not(.producto-movs__group) > :nth-child(2).sep {
+  border-left: 0;
 }
 
 .producto-movs__group-in {
