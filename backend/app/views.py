@@ -1768,6 +1768,8 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
         "agregado_por_revisor": bool(getattr(item, "agregado_por_revisor", False)),
         "movido_por_revisor": bool(getattr(item, "movido_por_revisor", False)),
         "movimiento_decision": str(getattr(item, "movimiento_decision", "") or ""),
+        # Ubicacion nueva por aceptar o rechazar antes de reenviar el conteo.
+        "ubicacion_por_decidir": (not hide_expected) and _new_location_awaiting_decision(item),
         "encontrado_en":_serialize_found_location(getattr(item, "encontrado_en", None))
         if getattr(item, "encontrado_en_id", None)
         else None,
@@ -1891,9 +1893,34 @@ def _attach_random_inspection_locations(items, *, division_id=None, subdivision_
             }
         )
 
+    # Reconteos: las ubicaciones donde los conteos anteriores encontraron el
+    # producto (aunque el sistema no lo tenga ahi) se vuelven a pedir. Si no,
+    # lo encontrado en una ubicacion nueva se perdia al mandar a reconteo.
+    previous_found = _previous_count_found_subdivisions(inspection_items)
+
     for item in inspection_items:
         key = (int(item.sucursal_id), int(item.producto_id))
         locations = list(stocked_map.get(key) or empty_map.get(key, []))
+        known_ids = {location.get("subdivision_id") for location in locations}
+        for found in previous_found.get(int(item.id), []):
+            if found["subdivision_id"] in known_ids:
+                continue
+            known_ids.add(found["subdivision_id"])
+            locations.append(
+                {
+                    "sucursal_id": int(item.sucursal_id),
+                    "producto_id": int(item.producto_id),
+                    "subdivision_id": found["subdivision_id"],
+                    "division_id": found["division_id"],
+                    "sucursal_nombre": _normalize_text(getattr(getattr(item, "sucursal", None), "nombre", "")),
+                    "bodega_nombre": found["bodega_nombre"],
+                    "division_nombre": found["division_nombre"],
+                    "subdivision_nombre": found["subdivision_nombre"],
+                    "cantidad": 0,
+                    "label": found["label"],
+                    "encontrado_en_conteo_anterior": True,
+                }
+            )
         found_here = getattr(item, "encontrado_en", None) if getattr(item, "encontrado_en_id", None) else None
         if (
             (getattr(item, "agregado_por_revisor", False) or getattr(item, "movido_por_revisor", False))
@@ -1928,6 +1955,64 @@ def _attach_random_inspection_locations(items, *, division_id=None, subdivision_
         }
 
     return inspection_items
+
+
+def _previous_count_found_subdivisions(inspection_items):
+    """{item_id: [ubicacion]} con las subdivisiones donde algun conteo
+    anterior de la cadena de reconteos encontro el producto (cantidad > 0)."""
+    from inventario.models import SubDivision
+
+    chains = {}
+    pending = {}
+    for item in inspection_items:
+        if getattr(item, "reconteo_de_id", None):
+            chains[int(item.id)] = []
+            pending[int(item.id)] = int(item.reconteo_de_id)
+    if not pending:
+        return {}
+
+    # Sube por la cadena (reconteo de reconteo...), maximo unos pocos niveles.
+    for _ in range(6):
+        if not pending:
+            break
+        previous = {
+            row.id: row
+            for row in InspeccionAleatoriaItem.objects.filter(id__in=set(pending.values())).only(
+                "id", "reconteo_de_id", "conteo_ubicaciones"
+            )
+        }
+        next_pending = {}
+        for item_id, previous_id in pending.items():
+            row = previous.get(previous_id)
+            if row is None:
+                continue
+            for entry in row.conteo_ubicaciones if isinstance(row.conteo_ubicaciones, list) else []:
+                if not isinstance(entry, dict):
+                    continue
+                sub_id = _normalize_int(entry.get("subdivision_id"), 0)
+                if sub_id and _normalize_int(entry.get("cantidad_contada"), 0) > 0:
+                    chains[item_id].append(sub_id)
+            if row.reconteo_de_id:
+                next_pending[item_id] = int(row.reconteo_de_id)
+        pending = next_pending
+
+    all_ids = {sub_id for ids in chains.values() for sub_id in ids}
+    if not all_ids:
+        return {}
+    subdivisions = {
+        sub.id: sub
+        for sub in SubDivision.objects.filter(id__in=all_ids).select_related("division__bodega")
+    }
+    result = {}
+    for item_id, ids in chains.items():
+        seen = set()
+        for sub_id in ids:
+            sub = subdivisions.get(sub_id)
+            if sub is None or sub_id in seen:
+                continue
+            seen.add(sub_id)
+            result.setdefault(item_id, []).append(_serialize_found_location(sub))
+    return result
 
 
 def _is_random_inspection_pending(inspection):
@@ -3577,14 +3662,100 @@ def _normalize_random_inspection_verify_action(value):
 
 
 def _moved_item_awaiting_decision(item):
-    """El revisor lo paso a otra fila y administracion aun no decide si
-    aprueba ese cambio (eso va antes de ajustar o recontar)."""
-    return bool(
+    """El revisor lo paso a otra fila (o lo encontro en una ubicacion nueva) y
+    administracion aun no decide si aprueba ese cambio. Va antes de ajustar o
+    recontar: asi el reconteo ya busca en la ubicacion decidida."""
+    if str(getattr(item, "movimiento_decision", "") or "").strip():
+        return False
+    if (
         getattr(item, "movido_por_revisor", False)
         and not getattr(item, "agregado_por_revisor", False)
         and item.encontrado_en_id
-        and not str(getattr(item, "movimiento_decision", "") or "").strip()
+    ):
+        return True
+    return _new_location_awaiting_decision(item)
+
+
+def _new_location_awaiting_decision(item):
+    """Producto que el revisor agrego en una fila donde no estaba (eligio
+    "Llevarlas a su ubicacion" o "Pasar a esta ubicacion") o que conto en una
+    ubicacion donde el sistema no lo tiene, y la cantidad no cuadra.
+    Administracion acepta o rechaza la ubicacion nueva antes de reenviar el
+    conteo (si cuadra, el cambio se aprueba o rechaza directo)."""
+    if str(getattr(item, "movimiento_decision", "") or "").strip():
+        return False
+    if getattr(item, "movido_por_revisor", False) and not getattr(item, "agregado_por_revisor", False):
+        return False
+    if str(getattr(item, "verificacion_estado", "") or "") != InspeccionAleatoriaItem.EstadosVerificacion.PENDIENTE:
+        return False
+    if item.cantidad_reportada is None or int(item.cantidad_reportada) == int(item.cantidad_esperada or 0):
+        return False
+    entries = _valid_location_counts(item)
+    if len(entries) < 2:
+        return False
+    if getattr(item, "agregado_por_revisor", False) and item.encontrado_en_id:
+        return True
+    return any(entry["cantidad_contada"] > 0 and entry["cantidad_sistema"] == 0 for entry in entries) and any(
+        entry["cantidad_sistema"] > 0 for entry in entries
     )
+
+
+def _redistribute_to_counted_locations(item):
+    """Acepta la ubicacion nueva: el stock del sistema (el total no cambia) se
+    reparte como lo conto el revisor. Si conto menos, lo que falta queda en la
+    ubicacion nueva; si conto mas, se descuenta de donde sobro. Devuelve el
+    reparto nuevo {subdivision_id: cantidad} y lo movido."""
+    entries = _valid_location_counts(item)
+    total_system = sum(entry["cantidad_sistema"] for entry in entries)
+    target = {entry["subdivision_id"]: entry["cantidad_contada"] for entry in entries}
+    system = {entry["subdivision_id"]: entry["cantidad_sistema"] for entry in entries}
+    residual = total_system - sum(target.values())
+    if residual > 0:
+        found_id = int(item.encontrado_en_id or 0)
+        if target.get(found_id, 0) > 0:
+            receiver = found_id
+        else:
+            # La ubicacion nueva: donde se conto algo y el sistema no tenia.
+            new_ids = [sub_id for sub_id in target if target[sub_id] > 0 and system[sub_id] == 0]
+            receiver = new_ids[0] if new_ids else max(target, key=lambda sub_id: target[sub_id])
+        target[receiver] += residual
+    elif residual < 0:
+        missing = -residual
+        # Primero de donde se conto de mas respecto al sistema.
+        for sub_id in sorted(target, key=lambda sub_id: target[sub_id] - system[sub_id], reverse=True):
+            if missing <= 0:
+                break
+            take = min(missing, max(0, target[sub_id] - system[sub_id]))
+            target[sub_id] -= take
+            missing -= take
+        for sub_id in sorted(target, key=lambda sub_id: target[sub_id], reverse=True):
+            if missing <= 0:
+                break
+            take = min(missing, target[sub_id])
+            target[sub_id] -= take
+            missing -= take
+
+    division_id = _inspection_division_scope(item.inspeccion)
+    scope_subdivision_id = _inspection_subdivision_scope(item.inspeccion)
+    moved = 0
+    deltas = []
+    # Primero las restas: si algo no alcanza, falla antes de sumar.
+    for sub_id in sorted(target, key=lambda sub_id: target[sub_id] - system[sub_id]):
+        delta = target[sub_id] - system[sub_id]
+        if not delta:
+            continue
+        _adjust_inventory_at_subdivision(
+            subdivision_id=sub_id,
+            sucursal_id=item.sucursal_id,
+            producto_id=item.producto_id,
+            delta=delta,
+            division_id=division_id,
+            scope_subdivision_id=scope_subdivision_id,
+        )
+        if delta > 0:
+            moved += delta
+        deltas.append({"subdivision_id": sub_id, "delta": delta})
+    return {"reparto": target, "cantidad": moved, "por_ubicacion": deltas}
 
 
 def _get_random_inspection_queryset():
@@ -4938,16 +5109,51 @@ class RandomInspectionVerifyItemAPIView(APIView):
                 )
             if action != "decidir_movimiento" and awaiting_move_decision:
                 return Response(
-                    {"detail": "Primero decide si apruebas el cambio de fila que hizo el revisor."},
+                    {
+                        "detail": (
+                            "Primero acepta o rechaza la ubicacion nueva que encontro el revisor: "
+                            "asi el reconteo busca en la ubicacion correcta."
+                            if _new_location_awaiting_decision(item)
+                            else "Primero decide si apruebas el cambio de fila que hizo el revisor."
+                        )
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             if action == "decidir_movimiento":
-                target = item.encontrado_en
-                target_label = _subdivision_label(target)
+                target = item.encontrado_en if item.encontrado_en_id else None
+                target_label = _subdivision_label(target) if target is not None else "la ubicacion nueva"
                 approve_move = bool(request.data.get("aprobar_movimiento"))
                 entries = [entry for entry in (item.conteo_ubicaciones or []) if isinstance(entry, dict)]
-                if approve_move:
+                new_location = _new_location_awaiting_decision(item)
+                if approve_move and new_location:
+                    # Ubicacion nueva aceptada: el stock queda repartido como lo
+                    # conto el revisor (el total no cambia). El reconteo ya
+                    # busca ahi y no en la ubicacion de antes.
+                    moved = _redistribute_to_counted_locations(item)
+                    item.conteo_ubicaciones = [
+                        {
+                            **entry,
+                            "cantidad_sistema": moved["reparto"].get(
+                                _normalize_int(entry.get("subdivision_id"), 0), entry.get("cantidad_sistema")
+                            ),
+                        }
+                        for entry in entries
+                    ]
+                    _record_random_inspection_audit(
+                        item,
+                        request.user,
+                        (
+                            f"Inspeccion aleatoria #{int(item.inspeccion_id)}: ubicacion nueva aprobada; "
+                            f"{moved['cantidad']} unidad(es) movidas como las conto el revisor."
+                        ),
+                        {"por_ubicacion": moved["por_ubicacion"], "cantidad": moved["cantidad"]},
+                    )
+                    if target is not None:
+                        item.reubicado_a = target
+                    item.movimiento_decision = "aprobado"
+                    move_note = f"Ubicacion nueva aprobada: {moved['cantidad']} movida(s) como las conto el revisor."
+                elif approve_move:
                     moved = _move_inspection_item_stock(item, target)
                     # La "foto" del sistema al contar pasa a la fila nueva: asi
                     # un ajuste posterior compara lo contado aqui contra todo.
@@ -4982,7 +5188,11 @@ class RandomInspectionVerifyItemAPIView(APIView):
                     # sobre el total (no repartido por las filas del revisor).
                     item.conteo_ubicaciones = []
                     item.movimiento_decision = "rechazado"
-                    move_note = f"Cambio de fila a {target_label} no aprobado: queda donde estaba."
+                    move_note = (
+                        f"Ubicacion nueva ({target_label}) no aprobada: queda donde estaba."
+                        if new_location
+                        else f"Cambio de fila a {target_label} no aprobado: queda donde estaba."
+                    )
                 note = f"{note} · {move_note}" if note else move_note
 
                 if int(item.cantidad_reportada or 0) != int(item.cantidad_esperada or 0):
