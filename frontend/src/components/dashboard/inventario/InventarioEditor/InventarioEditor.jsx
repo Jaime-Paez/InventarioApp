@@ -64,6 +64,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     disabled = false,
     onSaved,
     onError,
+    onAjusteConfirmado,
   },
   ref
 ) {
@@ -455,6 +456,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
 
   const savedTotalsRef = useRef(new Map())
   const motivoAjusteRef = useRef('')
+  const onAjusteConfirmadoRef = useRef(onAjusteConfirmado)
+  onAjusteConfirmadoRef.current = onAjusteConfirmado
   const cantidadAntesRef = useRef({})
 
   const resetEditorState = useCallback(() => {
@@ -930,6 +933,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     }])
     if (motivo) {
       motivoAjusteRef.current = motivo
+      // Guardar ajuste ya guarda el producto (no hay que pulsar Guardar cambios).
+      onAjusteConfirmadoRef.current?.()
       return
     }
     setLocations((prev) => prev.map((loc) => (loc.uid === location.uid ? { ...loc, cantidad: antes } : loc)))

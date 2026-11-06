@@ -1303,6 +1303,11 @@ function ProductoDetails({
     }
   }
 
+  // Al confirmar el motivo de un ajuste de cantidad se guarda directo, igual
+  // que Guardar cambios (sin tener que pulsar guardar dos veces).
+  const handleSaveRef = useRef(handleSave)
+  handleSaveRef.current = handleSave
+
   const handleDelete = async () => {
     if (!allowDelete) return
     if (!isEditing || deleteLoading || !resolvedProductoId) return
@@ -2238,6 +2243,7 @@ function ProductoDetails({
                     disabled={editorDisabled}
                     onSaved={() => { resolvedInventoryContext?.onSaved?.(); refreshInventoryContext() }}
                     onError={notifyError}
+                    onAjusteConfirmado={() => handleSaveRef.current?.()}
                   />
                 )}
                 {!inventoryLoading && !resolvedInventoryContext && (
