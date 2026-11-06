@@ -58,7 +58,6 @@ const getVerifiableLocations =(item) => (Array.isArray(item?.ubicaciones_conteo)
 const isLocationChangeAwaitingDecision = (row) => (
   Boolean(row?.cambio_ubicacion) &&
   !row?.movido_por_revisor &&
-  !row?.agregado_por_revisor &&
   String(row?.verificacion_estado || '').trim().toLowerCase() === 'pendiente' &&
   row?.cantidad_reportada != null &&
   Number(row.cantidad_reportada) === Number(row?.cantidad_esperada) &&
@@ -1809,8 +1808,9 @@ function RandomInspectionAdminTable({
                               {row?.movimiento_decision === 'aprobado' ? ' · cambio aprobado' : row?.movimiento_decision === 'rechazado' ? ' · se quedó donde estaba' : ''}
                             </small>
                           ) : null}
-                          {row?.cambio_ubicacion && !row?.movido_por_revisor && !row?.agregado_por_revisor && getVerifiableLocations(row).length >= 2 ? (
+                          {row?.cambio_ubicacion && !row?.movido_por_revisor && getVerifiableLocations(row).length >= 2 ? (
                             <small className="inspection-admin__moved-note">
+                              {row?.agregado_por_revisor && row?.encontrado_en?.label ? `No estaba en la lista: lo encontró en ${String(row.encontrado_en.label).trim()}. ` : ''}
                               {`Repartido distinto: ${getVerifiableLocations(row)
                                 .map((location) => `${String(location?.label || 'Ubicación').trim()} (había ${toCount(location.cantidad_sistema)}, contó ${toCount(location.cantidad_contada)})`)
                                 .join(' · ')}`}
