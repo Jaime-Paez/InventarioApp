@@ -1541,9 +1541,9 @@ function RandomInspectionAdminTable({
       .map((u) => String(u?.nombre_completo || u?.correo || '').trim())
       .filter(Boolean)
     const reason = inactiveNames.length
-      ? `Los revisores asignados a ${nombre} (${inactiveNames.join(', ')}) tienen el usuario inactivo, y una revisión solo se puede enviar a un usuario activo. Activa el usuario en Administrar o asigna a otro revisor a ${nombre} en Configuración.`
+      ? `Los revisores asignados a ${nombre} (${inactiveNames.join(', ')}) tienen el usuario inactivo, y una revisión solo se puede enviar a un usuario activo. Activa el usuario en Administración › Usuarios o asigna a otro revisor a ${nombre} en Configuración.`
       : `Ningún usuario tiene asignada la revisión de inventario de ${nombre}, así que no hay a quién enviársela. Asigna al menos un revisor activo a ${nombre} en Configuración y vuelve a intentarlo.`
-    return { title: `No se puede enviar a ${nombre}: no tiene revisores`, reason, goTo: inactiveNames.length ? 'Administrar' : null }
+    return { title: `No se puede enviar a ${nombre}: no tiene revisores`, reason, goTo: inactiveNames.length ? 'Usuarios' : null }
   }, [reviewersByBranch, assignmentsLoading])
 
   const divisionReviewers = useMemo(() => {

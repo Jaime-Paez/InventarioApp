@@ -9,7 +9,6 @@ import {
   Box,
   Building,
   UsersRound,
-  IdCard,
   ClipboardCheck,
   ScrollText,
   PackagePlus,
@@ -24,6 +23,8 @@ import {
   UserCog,
   Warehouse,
   Package,
+  Users,
+  ShieldCheck,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -73,8 +74,14 @@ export const MENU_STRUCTURE = [
   { label: 'Clientes', icon: UsersRound, moduleKey: 'clientes' },
   { label: 'Revision inventario', icon: ClipboardCheck, moduleKey: 'usuarios', requiresAdmin: true },
   { label: 'Reposición', icon: PackageSearch, moduleKey: 'usuarios', requiresAdmin: true },
-  { label: 'Administrar', icon: IdCard, moduleKey: 'usuarios' },
-  { label: 'Auditoría', icon: ScrollText, moduleKey: 'usuarios', requiresAdmin: true },
+  {
+    label: 'Administración',
+    icon: ShieldCheck,
+    children: [
+      { label: 'Usuarios', icon: Users, moduleKey: 'usuarios' },
+      { label: 'Auditoría', icon: ScrollText, moduleKey: 'usuarios', requiresAdmin: true },
+    ],
+  },
 ]
 
 const STANDALONE_LABEL_RULES = {

@@ -1259,8 +1259,8 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         {showLocationForm && !hasEditableBranch && (
           <BlockerNotice
             title="No puedes agregar ubicaciones: no tienes permiso en ninguna sucursal"
-            reason="Solo puedes agregar ubicaciones en las sucursales asignadas a tu usuario. Pide al administrador que te las asigne en Administrar › Usuarios."
-            goTo="Administrar"
+            reason="Solo puedes agregar ubicaciones en las sucursales asignadas a tu usuario. Pide al administrador que te las asigne en Administración › Usuarios."
+            goTo="Usuarios"
           />
         )}
         {locationError && (

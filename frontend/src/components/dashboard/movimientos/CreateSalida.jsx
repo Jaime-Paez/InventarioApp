@@ -4920,8 +4920,8 @@ function CreateSalida({
                       {hasSelectedReminderTargetBranch && !reminderUsersLoading && !reminderUsersError && !hasAdminReminderRecipients && (
                         <BlockerNotice
                           title="No se puede enviar el traslado: no hay un administrador para el recordatorio"
-                          reason="El recordatorio del envío siempre incluye a un administrador y no se encontró ningún usuario administrador. Pide que se marque al menos un usuario como administrador en Administrar › Usuarios."
-                          goTo="Administrar"
+                          reason="El recordatorio del envío siempre incluye a un administrador y no se encontró ningún usuario administrador. Pide que se marque al menos un usuario como administrador en Administración › Usuarios."
+                          goTo="Usuarios"
                         />
                       )}
                     </div>
@@ -4942,8 +4942,8 @@ function CreateSalida({
                       {hasSelectedReminderTargetBranch && !reminderUsersLoading && !reminderUsersError && !selectableReminderUsers.length && (
                         <BlockerNotice
                           title={`No se puede enviar el traslado a ${selectedObjetivoBranchName || 'esta sucursal'}: no hay usuarios para el recordatorio`}
-                          reason={`El envío necesita al menos un usuario adicional que reciba el recordatorio, y ningún usuario tiene permiso de crear y editar en Movimientos - Salidas de ${selectedObjetivoBranchName || 'esta sucursal'}. Pide al administrador que asigne ese permiso a un usuario de la sucursal en Administrar › Usuarios › permisos.`}
-                          goTo="Administrar"
+                          reason={`El envío necesita al menos un usuario adicional que reciba el recordatorio, y ningún usuario tiene permiso de crear y editar en Movimientos - Salidas de ${selectedObjetivoBranchName || 'esta sucursal'}. Pide al administrador que asigne ese permiso a un usuario de la sucursal en Administración › Usuarios › permisos.`}
+                          goTo="Usuarios"
                         />
                       )}
                       {hasSelectedReminderTargetBranch && !reminderUsersLoading && selectableReminderUsers.length > 0 && !hasAdditionalReminderRecipients && (

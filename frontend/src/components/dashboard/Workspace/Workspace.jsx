@@ -56,7 +56,7 @@ const MOVIMIENTOS_SCOPE_BY_TAB = {
 }
 const MODULE_KEY_BY_TAB = {
   Inventario: 'inventario',
-  Administrar: 'usuarios',
+  Usuarios: 'usuarios',
   'Auditoría': 'usuarios',
   'Reposición': 'usuarios',
   [INVENTORY_REVIEW_TAB]: 'usuarios',
@@ -199,7 +199,7 @@ function Workspace({
 
   const tabComponentMap = {
     Inventario: InventarioTable,
-    Administrar: UsersTable,
+    Usuarios: UsersTable,
     [INVENTORY_REVIEW_TAB]: RandomInspectionAdminTable,
     [INVENTORY_REVIEW_TAB_LEGACY]: RandomInspectionAdminTable,
     'Reposición': ReposicionTable,
@@ -595,7 +595,7 @@ function Workspace({
           tab === 'Entradas' || tab === 'Salidas' || tab === 'Solicitudes' ||
           tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY ||
           tab === 'Importaciones' || tab === 'En proceso' || tab === 'En camino' || tab === 'Importadas' ||
-          tab === 'Administrar' || tab === 'Órdenes de taller' || tab === 'Caja chica'
+          tab === 'Usuarios' || tab === 'Órdenes de taller' || tab === 'Caja chica'
             ? isActive
             : undefined
         }

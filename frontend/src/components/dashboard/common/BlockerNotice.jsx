@@ -7,7 +7,7 @@ import './BlockerNotice.css'
 // Se usa en todo el sistema cuando una accion se bloquea por falta de datos
 // (sin revisores, sin ubicaciones, sin destinatarios, sin productos...).
 // `compact` = version de una linea para dentro de desplegables.
-// `goTo` = seccion del menu donde se arregla (p. ej. 'Administrar'): agrega
+// `goTo` = seccion del menu donde se arregla (p. ej. 'Usuarios'): agrega
 // un boton "Ir a …" que abre esa pestana.
 function BlockerNotice({ title, reason, actionLabel, onAction, goTo, goToLabel, compact = false, className = '' }) {
   const [noAccess, setNoAccess] = useState(false)

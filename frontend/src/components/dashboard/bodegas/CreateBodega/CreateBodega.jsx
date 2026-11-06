@@ -695,7 +695,7 @@ function CreateBodega({ open, onClose, onCreated, token, onError }) {
               {branchesStatus === 'ready' && !branches.length && (
                 <BlockerNotice
                   title="No se puede crear la bodega: no hay sucursales disponibles"
-                  reason="No hay sucursales registradas o tu usuario no tiene permiso de Sucursales/Bodegas en ninguna. Crea una sucursal en Sucursales › Sucursales o pide al administrador que te asigne el permiso en Administrar › Usuarios."
+                  reason="No hay sucursales registradas o tu usuario no tiene permiso de Sucursales/Bodegas en ninguna. Crea una sucursal en Sucursales › Sucursales o pide al administrador que te asigne el permiso en Administración › Usuarios."
                   actionLabel="Volver a cargar"
                   onAction={fetchBranches}
                   goTo="Sucursales"

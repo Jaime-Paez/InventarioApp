@@ -721,14 +721,14 @@ function EntradaDetails({
     } else if (!hasAdminReminderRecipients) {
       reminderBlocker = {
         title: 'No se puede crear la solicitud de traslado: no hay administradores para el recordatorio',
-        reason: 'Toda solicitud de traslado avisa obligatoriamente a los administradores y no se encontró ningún usuario administrador activo. Pide que se marque al menos un usuario activo como administrador en Administrar › Usuarios.',
-        goTo: 'Administrar',
+        reason: 'Toda solicitud de traslado avisa obligatoriamente a los administradores y no se encontró ningún usuario administrador activo. Pide que se marque al menos un usuario activo como administrador en Administración › Usuarios.',
+        goTo: 'Usuarios',
       }
     } else if (!selectableReminderUsers.length) {
       reminderBlocker = {
         title: `No se puede crear la solicitud de traslado: ${proveedorSucursalLabel} no tiene usuarios que puedan recibirla`,
-        reason: `Se necesita al menos un usuario (además de los administradores) con permiso de crear y editar Salidas en ${proveedorSucursalLabel}. Asígnalo en Administrar › Usuarios › permisos de Movimientos - Salidas para ${proveedorSucursalLabel}.`,
-        goTo: 'Administrar',
+        reason: `Se necesita al menos un usuario (además de los administradores) con permiso de crear y editar Salidas en ${proveedorSucursalLabel}. Asígnalo en Administración › Usuarios › permisos de Movimientos - Salidas para ${proveedorSucursalLabel}.`,
+        goTo: 'Usuarios',
       }
     }
   }

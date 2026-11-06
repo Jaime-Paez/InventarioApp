@@ -1781,15 +1781,15 @@ function CreateSolicitud({
     if (!sucursalesLoading && !sucursales.length) {
       return {
         title: 'No se puede crear la solicitud: no tienes sucursales',
-        reason: 'Tu usuario no tiene permiso de Solicitudes en ninguna sucursal. Pide al administrador que te lo asigne en Administrar › Usuarios › Permisos.',
-        goTo: 'Administrar',
+        reason: 'Tu usuario no tiene permiso de Solicitudes en ninguna sucursal. Pide al administrador que te lo asigne en Administración › Usuarios › Permisos.',
+        goTo: 'Usuarios',
       }
     }
     if (!reminderUsersLoading && sucursalId && !hasAdminRecipients) {
       return {
         title: 'No se puede crear la solicitud: no hay a quién avisar',
-        reason: 'Cada solicitud le llega a un administrador como recordatorio, y no se encontró ningún administrador activo. Activa o crea un usuario administrador en Administrar › Usuarios.',
-        goTo: 'Administrar',
+        reason: 'Cada solicitud le llega a un administrador como recordatorio, y no se encontró ningún administrador activo. Activa o crea un usuario administrador en Administración › Usuarios.',
+        goTo: 'Usuarios',
       }
     }
     if (submitAttempted) {

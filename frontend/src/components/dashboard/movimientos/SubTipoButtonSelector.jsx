@@ -91,8 +91,8 @@ function SubTipoButtonSelector({
       {allBlocked ? (
         <BlockerNotice
           title={`No puedes crear ningún tipo de ${movimientoLabel} en esta sucursal`}
-          reason={`Tu usuario no tiene permiso para crear ${movimientoLabel}s en esta sucursal. Pide al administrador que te asigne los permisos en Administrar › Usuarios.`}
-          goTo="Administrar"
+          reason={`Tu usuario no tiene permiso para crear ${movimientoLabel}s en esta sucursal. Pide al administrador que te asigne los permisos en Administración › Usuarios.`}
+          goTo="Usuarios"
         />
       ) : (
         <p className={helperClassName} aria-live="polite">

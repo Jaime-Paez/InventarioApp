@@ -54,7 +54,7 @@ const getEmptyLevelMessage = (field, parentName, query) => {
   const term = String(query ?? '').trim()
   if (term) return `Ninguna opción coincide con "${term}".`
   if (field === 'sucursal') {
-    return 'No hay sucursales disponibles: no hay sucursales registradas o no tienes permiso de Productos en ninguna. Crea una en Sucursales › Sucursales o pide al administrador que te la asigne en Administrar › Usuarios.'
+    return 'No hay sucursales disponibles: no hay sucursales registradas o no tienes permiso de Productos en ninguna. Crea una en Sucursales › Sucursales o pide al administrador que te la asigne en Administración › Usuarios.'
   }
   if (field === 'bodega') return `${parentName || 'Esta sucursal'} no tiene bodegas. Créalas en Sucursales › Bodegas.`
   if (field === 'division') return `${parentName ? `La bodega ${parentName}` : 'Esta bodega'} no tiene divisiones. ${LOCATION_PLAN_HINT}`

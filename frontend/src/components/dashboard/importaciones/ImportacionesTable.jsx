@@ -2192,8 +2192,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   <div style={{ padding: 16 }}>
                     <BlockerNotice
                       title="No se puede distribuir: no tienes sucursales con permiso de Entradas"
-                      reason="Para repartir la mercadería necesitas permiso de Entradas en al menos una sucursal. Pide a un administrador que lo asigne en Administrar › Usuarios › editar tu usuario › Permisos (Entradas) y vuelve a abrir este paso."
-                      goTo="Administrar"
+                      reason="Para repartir la mercadería necesitas permiso de Entradas en al menos una sucursal. Pide a un administrador que lo asigne en Administración › Usuarios › editar tu usuario › Permisos (Entradas) y vuelve a abrir este paso."
+                      goTo="Usuarios"
                     />
                   </div>
                 ) : (() => {
@@ -2329,8 +2329,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                             <BlockerNotice
                               compact
                               title={`No se puede enviar a ${suc.nombre}: no tiene destinatarios`}
-                              reason="Ningún usuario (que no sea administrador) tiene permiso de Entradas en esta sucursal. Para resolverlo: Administrar › Usuarios › editar el usuario › Permisos de Entradas en esta sucursal. Luego vuelve a abrir este paso."
-                              goTo="Administrar"
+                              reason="Ningún usuario (que no sea administrador) tiene permiso de Entradas en esta sucursal. Para resolverlo: Administración › Usuarios › editar el usuario › Permisos de Entradas en esta sucursal. Luego vuelve a abrir este paso."
+                              goTo="Usuarios"
                             />
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>

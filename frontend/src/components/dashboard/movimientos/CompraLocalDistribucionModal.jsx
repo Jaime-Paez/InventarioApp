@@ -367,8 +367,8 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
             <div style={{ padding: 16 }}>
               <BlockerNotice
                 title="No se puede enviar: no tienes otras sucursales con permiso de Entradas"
-                reason="Para repartir la compra necesitas permiso de Entradas en las sucursales destino. Pide a un administrador que lo asigne en Administrar › Usuarios › editar tu usuario › Permisos (Entradas)."
-                goTo="Administrar"
+                reason="Para repartir la compra necesitas permiso de Entradas en las sucursales destino. Pide a un administrador que lo asigne en Administración › Usuarios › editar tu usuario › Permisos (Entradas)."
+                goTo="Usuarios"
               />
             </div>
           ) : step === 1 ? (
@@ -504,8 +504,8 @@ function CompraLocalDistribucionModal({ open, entradaId, token, onClose, onSent 
                           <BlockerNotice
                             compact
                             title={`No se puede enviar a ${suc.nombre}: no tiene destinatarios`}
-                            reason="Ningún usuario (que no sea administrador) tiene permiso de Entradas en esta sucursal. Para resolverlo: Administrar › Usuarios › editar el usuario › Permisos de Entradas en esta sucursal."
-                            goTo="Administrar"
+                            reason="Ningún usuario (que no sea administrador) tiene permiso de Entradas en esta sucursal. Para resolverlo: Administración › Usuarios › editar el usuario › Permisos de Entradas en esta sucursal."
+                            goTo="Usuarios"
                           />
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>

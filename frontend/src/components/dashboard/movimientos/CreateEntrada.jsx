@@ -3783,14 +3783,14 @@ function CreateEntrada({
     } else if (!hasAdminReminderRecipients) {
       reminderBlocker = {
         title: 'No se puede crear la solicitud de traslado: no hay administradores para el recordatorio',
-        reason: 'Toda solicitud de traslado avisa obligatoriamente a los administradores y no se encontró ningún usuario administrador activo. Pide que se marque al menos un usuario activo como administrador en Administrar › Usuarios. Mientras tanto puedes usar "Guardar" para no perder la solicitud.',
-        goTo: 'Administrar',
+        reason: 'Toda solicitud de traslado avisa obligatoriamente a los administradores y no se encontró ningún usuario administrador activo. Pide que se marque al menos un usuario activo como administrador en Administración › Usuarios. Mientras tanto puedes usar "Guardar" para no perder la solicitud.',
+        goTo: 'Usuarios',
       }
     } else if (!selectableReminderUsers.length) {
       reminderBlocker = {
         title: `No se puede crear la solicitud de traslado: ${proveedorSucursalLabel} no tiene usuarios que puedan recibirla`,
-        reason: `Se necesita al menos un usuario (además de los administradores) con permiso de crear y editar Salidas en ${proveedorSucursalLabel}. Asígnalo en Administrar › Usuarios › permisos de Movimientos - Salidas para ${proveedorSucursalLabel}. Mientras tanto puedes usar "Guardar" para no perder la solicitud.`,
-        goTo: 'Administrar',
+        reason: `Se necesita al menos un usuario (además de los administradores) con permiso de crear y editar Salidas en ${proveedorSucursalLabel}. Asígnalo en Administración › Usuarios › permisos de Movimientos - Salidas para ${proveedorSucursalLabel}. Mientras tanto puedes usar "Guardar" para no perder la solicitud.`,
+        goTo: 'Usuarios',
       }
     }
   }
@@ -3798,7 +3798,7 @@ function CreateEntrada({
     isTraslado && isFormStep && !catalogsLoading && providerBranchPool.length > 0 && hasSelectedSucursal && !destinationBranches.length
       ? {
           title: 'No se puede solicitar un traslado: no hay otra sucursal disponible como proveedora',
-          reason: `La sucursal proveedora debe ser distinta de ${selectedSucursalName || 'la sucursal destino'} y no hay ninguna otra sucursal a la que puedas pedir. Registra otra sucursal en Sucursales o pide a un administrador acceso a otra sucursal en Administrar › Usuarios.`,
+          reason: `La sucursal proveedora debe ser distinta de ${selectedSucursalName || 'la sucursal destino'} y no hay ninguna otra sucursal a la que puedas pedir. Registra otra sucursal en Sucursales o pide a un administrador acceso a otra sucursal en Administración › Usuarios.`,
           goTo: 'Sucursales',
         }
       : null
