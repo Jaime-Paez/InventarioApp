@@ -45,6 +45,7 @@ class RolPermiso(models.Model):
         CLIENTES = "clientes", "Clientes"
         IMPORTACIONES = "importaciones", "Importaciones"
         TALLER = "taller", "Taller"
+        CAJA_CHICA = "caja_chica", "Caja chica"
         USUARIOS = "usuarios", "Administrar"
         CONFIGURACION = "configuracion", "Configuraciones"
 

@@ -123,6 +123,7 @@ INSTALLED_APPS = [
     "contacto_web",
     "rendimiento",
     "taller",
+    "caja_chica",
 ]
 
 

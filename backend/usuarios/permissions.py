@@ -320,6 +320,10 @@ class TallerModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.TALLER
 
 
+class CajaChicaModulePermission(ModulePermission):
+    module_key = RolPermiso.Modulos.CAJA_CHICA
+
+
 class SolicitudesModulePermission(ModulePermission):
     module_key = RolPermiso.Modulos.SOLICITUDES
 

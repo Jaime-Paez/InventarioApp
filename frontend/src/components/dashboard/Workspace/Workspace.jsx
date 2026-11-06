@@ -19,6 +19,7 @@ import SalidasTable from '../movimientos/SalidasTable'
 import TrasladosInconvenientesTable from '../movimientos/TrasladosInconvenientesTable'
 import OrdenesTallerTable from '../taller/OrdenesTallerTable'
 import ManoObraTable from '../taller/ManoObraTable'
+import CajaChicaPage from '../cajaChica/CajaChicaPage'
 import './Workspace.css'
 import { getModuleActions, labelHasAccess } from '../menuConfig'
 import { API_URL, authFetch } from '../../../utils/api'
@@ -68,6 +69,7 @@ const MODULE_KEY_BY_TAB = {
   Clientes: 'clientes',
   'Órdenes de taller': 'taller',
   'Mano de obra': 'taller',
+  'Caja chica': 'caja_chica',
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',
   [INCONVENIENTES_TAB]: 'movimientos_inconvenientes',
@@ -206,6 +208,7 @@ function Workspace({
     Clientes: ClientesTable,
     'Órdenes de taller': OrdenesTallerTable,
     'Mano de obra': ManoObraTable,
+    'Caja chica': CajaChicaPage,
     Entradas: EntradasTable,
     Salidas: SalidasTable,
     [INCONVENIENTES_TAB]: TrasladosInconvenientesTable,
@@ -583,7 +586,7 @@ function Workspace({
           tab === 'Entradas' || tab === 'Salidas' || tab === 'Solicitudes' ||
           tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY ||
           tab === 'Importaciones' || tab === 'En proceso' || tab === 'En camino' || tab === 'Importadas' ||
-          tab === 'Administrar' || tab === 'Órdenes de taller'
+          tab === 'Administrar' || tab === 'Órdenes de taller' || tab === 'Caja chica'
             ? isActive
             : undefined
         }

@@ -20,6 +20,7 @@ import {
   Wrench,
   ClipboardList,
   HardHat,
+  Wallet,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -48,6 +49,7 @@ export const MENU_STRUCTURE = [
       { label: 'Mano de obra', icon: HardHat, moduleKey: 'taller' },
     ],
   },
+  { label: 'Caja chica', icon: Wallet, moduleKey: 'caja_chica' },
   {
     label: 'Inconvenientes',
     icon: AlertTriangle,
