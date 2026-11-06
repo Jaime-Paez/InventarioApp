@@ -155,6 +155,12 @@ function RecountDots({ row, onlyIfRecounted = false }) {
     }]
   if (onlyIfRecounted && history.length < 2) return null
   const current = history.find((entry) => entry.es_este) || history[history.length - 1]
+  // Conteos que dieron la misma cantidad (dos o mas): esos puntos van en verde.
+  const qtyTimes = history.reduce((acc, entry) => {
+    if (entry?.cantidad != null) acc[Number(entry.cantidad)] = (acc[Number(entry.cantidad)] || 0) + 1
+    return acc
+  }, {})
+  const isMatch = (entry) => entry?.cantidad != null && qtyTimes[Number(entry.cantidad)] >= 2
 
   const showCard = (event, index) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -167,7 +173,7 @@ function RecountDots({ row, onlyIfRecounted = false }) {
         {Array.from({ length: max }, (_, index) => {
           const entry = history[index]
           const classes = entry
-            ? [entry.cantidad != null ? 'is-on' : 'is-waiting', entry.actual ? 'is-current' : ''].filter(Boolean).join(' ')
+            ? [entry.cantidad != null ? 'is-on' : 'is-waiting', entry.actual ? 'is-current' : '', isMatch(entry) ? 'is-match' : ''].filter(Boolean).join(' ')
             : ''
           return (
             <i

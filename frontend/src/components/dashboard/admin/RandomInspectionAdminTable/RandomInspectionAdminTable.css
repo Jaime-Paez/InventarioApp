@@ -2319,6 +2319,17 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   pointer-events: none;
 }
 
+/* Dos o mas conteos con la misma cantidad: esos puntos en verde. */
+.inspection-admin__recount-dots > i.is-match,
+.inspection-admin__recount-dots > i.is-current.is-match {
+  border-color: #16a34a;
+  background: #16a34a;
+}
+
+.inspection-admin__recount-dots > i.is-current.is-match::after {
+  background: #16a34a;
+}
+
 @keyframes inspection-recount-live {
   0% {
     transform: scale(1);
