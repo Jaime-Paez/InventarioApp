@@ -41,9 +41,19 @@ const normalizeId = (value) => (value == null ? '' : String(value).trim())
 // El revisor lo paso todo a otra fila: primero se decide si se aprueba ese
 // cambio. Solo despues, y solo si la cantidad no cuadra, se puede ajustar o
 // reenviar a contar.
+// Lo mismo cuando lo encontro en una ubicacion nueva ("Llevarlas" o "Pasar a
+// esta ubicacion") y la cantidad no cuadra: se acepta o rechaza la ubicacion
+// antes de reenviar el conteo, asi el reconteo busca donde quedo decidido.
+const isNewLocationAwaitingDecision = (row) => (
+  Boolean(row?.ubicacion_por_decidir) &&
+  !String(row?.movimiento_decision || '').trim() &&
+  String(row?.verificacion_estado || '').trim().toLowerCase() === 'pendiente'
+)
 const isMoveAwaitingDecision = (row) => (
-  Boolean(row?.movido_por_revisor) &&
-  !row?.agregado_por_revisor &&
+  (
+    (Boolean(row?.movido_por_revisor) && !row?.agregado_por_revisor) ||
+    Boolean(row?.ubicacion_por_decidir)
+  ) &&
   !String(row?.movimiento_decision || '').trim() &&
   String(row?.verificacion_estado || '').trim().toLowerCase() === 'pendiente'
 )
@@ -1627,9 +1637,11 @@ function RandomInspectionAdminTable({
     }
     return payload
   }, [token])
-  const describeMoveDecision = (codigo, approve, payload) => {
+  const describeMoveDecision = (codigo, approve, payload, isNew = false) => {
     if (payload?.ya_verificado) return `${codigo} ya lo decidió otro administrador.`
-    const base = approve ? `${codigo}: cambio de fila aprobado.` : `${codigo}: se queda en su fila de antes.`
+    const base = isNew
+      ? (approve ? `${codigo}: ubicación nueva aprobada.` : `${codigo}: se queda en su ubicación de antes.`)
+      : (approve ? `${codigo}: cambio de fila aprobado.` : `${codigo}: se queda en su fila de antes.`)
     return payload?.pendiente_cantidad
       ? `${base} La cantidad no cuadra: ahora puedes reenviar el conteo o verificarla.`
       : base
@@ -1644,7 +1656,7 @@ function RandomInspectionAdminTable({
     setVerifyWizardSubmitting(true)
     try {
       const payload = await postMoveDecision(itemId, approve)
-      notifySuccess(describeMoveDecision(String(item?.producto_codigo || 'El producto').trim(), approve, payload))
+      notifySuccess(describeMoveDecision(String(item?.producto_codigo || 'El producto').trim(), approve, payload, isNewLocationAwaitingDecision(item)))
       if (payload?.pendiente_cantidad) {
         setVerifyWizardItems((prev) => prev.map((row) => (
           normalizeId(row?.id) === itemId
@@ -1682,7 +1694,7 @@ function RandomInspectionAdminTable({
     setMovedDecidingId(itemId)
     try {
       const payload = await postMoveDecision(itemId, approve)
-      notifySuccess(describeMoveDecision(String(row?.producto_codigo || 'El producto').trim(), approve, payload))
+      notifySuccess(describeMoveDecision(String(row?.producto_codigo || 'El producto').trim(), approve, payload, isNewLocationAwaitingDecision(row)))
     } catch (error) {
       notifyError(error?.message || 'No se pudo guardar la decisión.')
     } finally {
@@ -1842,6 +1854,11 @@ function RandomInspectionAdminTable({
                               {status.key === 'solucionado' ? ' · cambio aprobado' : status.key === 'mantenido' ? ' · se quedó como estaba' : ''}
                             </small>
                           ) : null}
+                          {awaitingMove && isNewLocationAwaitingDecision(row) ? (
+                            <small className="inspection-admin__moved-note">
+                              {`Lo encontró en una ubicación nueva${row?.encontrado_en?.label ? ` (${String(row.encontrado_en.label).trim()})` : ''}. Acepta o rechaza la ubicación antes de reenviar el conteo: así el reconteo busca donde corresponde.`}
+                            </small>
+                          ) : null}
                           <RecountDots row={row} onlyIfRecounted={status.key !== 'pendiente'} />
                         </div>
                         {diff ? (
@@ -1867,7 +1884,7 @@ function RandomInspectionAdminTable({
                                 disabled={Boolean(movedDecidingId)}
                               >
                                 {movedDecidingId === normalizeId(row?.id) ? <Loader2 size={13} /> : <PackageCheck size={13} />}
-                                Aprobar cambio
+                                {isNewLocationAwaitingDecision(row) ? 'Aprobar ubicación nueva' : 'Aprobar cambio'}
                               </button>
                             </>
                           ) : null}
@@ -2561,7 +2578,18 @@ function RandomInspectionAdminTable({
                       {item?.agregado_por_revisor && !decision && Array.isArray(item?.ubicaciones_conteo) && item.ubicaciones_conteo.length > 1 && (
                         <div className="inspection-admin__relocate inspection-admin__relocate--found">
                           <strong>{`No estaba en la lista: el revisor lo encontró en ${String(item?.encontrado_en?.label || 'esta fila')} y ya estaba en otras ubicaciones`}</strong>
-                          <p>Lo movió y lo volvió a contar en todas sus ubicaciones (ver la nota). "Aprobar ajuste" deja cada ubicación como la contó.</p>
+                          {isNewLocationAwaitingDecision(item) ? (
+                            <p>
+                              {'Lo movió y lo volvió a contar en todas sus ubicaciones (ver la nota). Primero acepta o rechaza la ubicación: "Aprobar ubicación nueva" reparte el stock como lo contó el revisor (el total no cambia); "Mantener como estaba" no mueve nada.'}
+                              {` Después queda la diferencia de cantidad (contó ${reported ?? 0}, había ${expected}) para reenviar el conteo, que ya buscará en la ubicación decidida, o ajustar.`}
+                            </p>
+                          ) : item?.movimiento_decision ? (
+                            <p>{item.movimiento_decision === 'aprobado'
+                              ? `Ubicación nueva aprobada. Falta resolver la cantidad (contó ${reported ?? 0}, había ${expected}).`
+                              : `Se quedó en su ubicación de antes. Falta resolver la cantidad (contó ${reported ?? 0}, había ${expected}).`}</p>
+                          ) : (
+                            <p>Lo movió y lo volvió a contar en todas sus ubicaciones (ver la nota). "Aprobar ajuste" deja cada ubicación como la contó.</p>
+                          )}
                         </div>
                       )}
 
@@ -2887,7 +2915,7 @@ function RandomInspectionAdminTable({
                           onClick={() => void decideMoveInWizard(true)}
                           disabled={busy}
                         >
-                          {verifyWizardSubmitting ? 'Guardando...' : 'Aprobar cambio de fila'}
+                          {verifyWizardSubmitting ? 'Guardando...' : isNewLocationAwaitingDecision(item) ? 'Aprobar ubicación nueva' : 'Aprobar cambio de fila'}
                         </button>
                       </>
                     )}
