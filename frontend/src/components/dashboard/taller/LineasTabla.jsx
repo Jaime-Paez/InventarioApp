@@ -16,7 +16,7 @@ const TIPO_OPCIONES = [
   { id: 'repuesto', nombre: 'Repuesto' },
   { id: 'mano_obra', nombre: 'Mano de obra' },
   { id: 'insumo', nombre: 'Insumo' },
-  { id: 'sin_codigo', nombre: 'Sin código' },
+  { id: 'sin_codigo', nombre: 'Repuesto nuevo' },
 ]
 
 const EMPTY_DRAFT = { tipo: 'repuesto', producto: null, mano_obra: null, insumo: null, referencia: '', descripcion: '', cantidad: '1', precio: null, garantia: false }

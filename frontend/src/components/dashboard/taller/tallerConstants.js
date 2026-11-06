@@ -26,7 +26,7 @@ export const ORDEN_PASOS = [
 
 export const LINEA_TIPOS = {
   repuesto: { label: 'Repuesto', short: 'Repuesto' },
-  sin_codigo: { label: 'Repuesto sin código', short: 'Sin código' },
+  sin_codigo: { label: 'Repuesto nuevo', short: 'Repuesto nuevo' },
   insumo: { label: 'Insumo', short: 'Insumo' },
   mano_obra: { label: 'Mano de obra', short: 'Mano de obra' },
 }
