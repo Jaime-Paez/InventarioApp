@@ -53,6 +53,17 @@ const getVerifiableLocations =(item) => (Array.isArray(item?.ubicaciones_conteo)
     location?.cantidad_sistema != null &&
     location?.cantidad_contada != null
   ))
+// Total correcto pero repartido distinto entre ubicaciones: solo se decide
+// si se aprueba el reparto del revisor o se deja como estaba.
+const isLocationChangeAwaitingDecision = (row) => (
+  Boolean(row?.cambio_ubicacion) &&
+  !row?.movido_por_revisor &&
+  !row?.agregado_por_revisor &&
+  String(row?.verificacion_estado || '').trim().toLowerCase() === 'pendiente' &&
+  row?.cantidad_reportada != null &&
+  Number(row.cantidad_reportada) === Number(row?.cantidad_esperada) &&
+  getVerifiableLocations(row).length >= 2
+)
 
 const formatSignedInteger = (value) => {
   const numeric = Number.parseInt(String(value ?? 0), 10) || 0
@@ -1657,6 +1668,44 @@ function RandomInspectionAdminTable({
       void loadItems({ silent: true })
     }
   }
+  // Repartido distinto (total correcto): aprobar deja cada ubicacion como la
+  // conto el revisor; mantener no mueve nada.
+  const decideLocationChangeRow = async (row, approve) => {
+    const itemId = normalizeId(row?.id)
+    if (!token || !itemId || movedDecidingId) return
+    const codigo = String(row?.producto_codigo || 'El producto').trim()
+    const body = { accion: approve ? 'aprobar' : 'rechazar', nota: '' }
+    if (approve) {
+      const parsed = getVerifiableLocations(row).map((location) => ({
+        subdivision_id: Number(location.subdivision_id),
+        cantidad: Math.max(0, Number.parseInt(String(location.cantidad_contada ?? 0), 10) || 0),
+      }))
+      body.cantidades_por_ubicacion = parsed
+      body.cantidad_confirmada = parsed.reduce((total, entry) => total + entry.cantidad, 0)
+    }
+    setMovedDecidingId(itemId)
+    try {
+      const response = await authFetch(
+        `${API_URL}/recordatorios/inspeccion-aleatoria/items/${encodeURIComponent(itemId)}/verificar/`,
+        { method: 'POST', body: JSON.stringify(body) },
+        token
+      )
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok && !payload?.ya_verificado) {
+        throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar la decisión.')
+      }
+      notifySuccess(payload?.ya_verificado
+        ? `${codigo} ya lo decidió otro administrador.`
+        : approve ? `${codigo}: cambio de ubicación aprobado.` : `${codigo}: las ubicaciones quedan como estaban.`)
+    } catch (error) {
+      notifyError(error?.message || 'No se pudo guardar la decisión.')
+    } finally {
+      setMovedDecidingId('')
+      void loadRevisionItems({ silent: true })
+      void loadSummary({ silent: true })
+      void loadItems({ silent: true })
+    }
+  }
 
   const renderRevisionDetail = () => {
     const revision = itemsRows.find((row) => normalizeId(row?.id) === normalizeId(expandedRevisionId)) || null
@@ -1666,7 +1715,8 @@ function RandomInspectionAdminTable({
     const isRecountable = (row) => (
       getItemStatus(row).key === 'pendiente' &&
       Number(row?.reconteos || 0) < Number(row?.max_reconteos || 2) &&
-      !isMoveAwaitingDecision(row)
+      !isMoveAwaitingDecision(row) &&
+      !isLocationChangeAwaitingDecision(row)
     )
     const recountableCount = revisionItems.filter(isRecountable).length
     const solvedCount = revisionItems.filter((row) => ['solucionado', 'mantenido', 'reconteo'].includes(getItemStatus(row).key)).length
@@ -1735,8 +1785,10 @@ function RandomInspectionAdminTable({
                     const reported = row?.cantidad_reportada == null ? null : toCount(row.cantidad_reportada)
                     const diff = reported == null ? null : reported - expected
                     const awaitingMove = canUpdate && status.key === 'pendiente' && isMoveAwaitingDecision(row)
-                    // Hasta decidir el cambio de fila no se reenvia ni se verifica.
-                    const canFix = canUpdate && status.key === 'pendiente' && !awaitingMove
+                    const awaitingLocationChange = canUpdate && status.key === 'pendiente' && isLocationChangeAwaitingDecision(row)
+                    // Hasta decidir el cambio de fila no se reenvia ni se verifica;
+                    // si solo cambio el reparto (total correcto) basta con decidirlo.
+                    const canFix = canUpdate && status.key === 'pendiente' && !awaitingMove && !awaitingLocationChange
                     const note = String(row?.nota_verificacion || row?.observacion || '').trim()
                     return (
                       <div
@@ -1755,6 +1807,14 @@ function RandomInspectionAdminTable({
                             <small className="inspection-admin__moved-note">
                               {`El revisor lo pasó a ${String(row.encontrado_en.label).trim()}`}
                               {row?.movimiento_decision === 'aprobado' ? ' · cambio aprobado' : row?.movimiento_decision === 'rechazado' ? ' · se quedó donde estaba' : ''}
+                            </small>
+                          ) : null}
+                          {row?.cambio_ubicacion && !row?.movido_por_revisor && !row?.agregado_por_revisor && getVerifiableLocations(row).length >= 2 ? (
+                            <small className="inspection-admin__moved-note">
+                              {`Repartido distinto: ${getVerifiableLocations(row)
+                                .map((location) => `${String(location?.label || 'Ubicación').trim()} (había ${toCount(location.cantidad_sistema)}, contó ${toCount(location.cantidad_contada)})`)
+                                .join(' · ')}`}
+                              {status.key === 'solucionado' ? ' · cambio aprobado' : status.key === 'mantenido' ? ' · se quedó como estaba' : ''}
                             </small>
                           ) : null}
                           <RecountDots row={row} onlyIfRecounted={status.key !== 'pendiente'} />
@@ -1779,6 +1839,27 @@ function RandomInspectionAdminTable({
                                 type="button"
                                 className="inspection-admin__action inspection-admin__action--approve"
                                 onClick={() => void decideMovedRow(row, true)}
+                                disabled={Boolean(movedDecidingId)}
+                              >
+                                {movedDecidingId === normalizeId(row?.id) ? <Loader2 size={13} /> : <PackageCheck size={13} />}
+                                Aprobar cambio
+                              </button>
+                            </>
+                          ) : null}
+                          {awaitingLocationChange ? (
+                            <>
+                              <button
+                                type="button"
+                                className="inspection-admin__action"
+                                onClick={() => void decideLocationChangeRow(row, false)}
+                                disabled={Boolean(movedDecidingId)}
+                              >
+                                Mantener como estaba
+                              </button>
+                              <button
+                                type="button"
+                                className="inspection-admin__action inspection-admin__action--approve"
+                                onClick={() => void decideLocationChangeRow(row, true)}
                                 disabled={Boolean(movedDecidingId)}
                               >
                                 {movedDecidingId === normalizeId(row?.id) ? <Loader2 size={13} /> : <PackageCheck size={13} />}
