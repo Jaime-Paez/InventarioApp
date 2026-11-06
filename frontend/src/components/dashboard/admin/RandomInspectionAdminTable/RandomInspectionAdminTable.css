@@ -2247,17 +2247,6 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   background: #fde68a !important;
 }
 
-.inspection-admin__recount-btn.inspection-admin__recount-btn--solid {
-  background: #f59e0b !important;
-  border-color: #d97706 !important;
-  color: #1f1300 !important;
-}
-
-.inspection-admin__recount-btn.inspection-admin__recount-btn--solid:hover:not(:disabled) {
-  background: #d97706 !important;
-  color: #fff !important;
-}
-
 /* Conteos: un punto por cada vez que se cuenta el producto (de 3). Lleno =
    ya contado; punteado = enviado y sin contar; con anillo = el actual. Al
    pasar el mouse dice cuanto conto esa vez. */

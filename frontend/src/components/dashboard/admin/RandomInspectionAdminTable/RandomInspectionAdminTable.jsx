@@ -1926,7 +1926,7 @@ function RandomInspectionAdminTable({
                   {recountableCount > 0 && (
                     <button
                       type="button"
-                      className="create-user__action create-user__action--secondary inspection-admin__footer-recount"
+                      className="create-user__action create-user__action--secondary inspection-admin__footer-recount inspection-admin__recount-btn"
                       onClick={() => setRecountConfirmRows(revisionItems.filter(isRecountable))}
                       disabled={Boolean(recountSendingId)}
                     >
@@ -2886,7 +2886,7 @@ function RandomInspectionAdminTable({
                     {!decision && canResend && (
                       <button
                         type="button"
-                        className="quick-actions__inspection-btn inspection-admin__recount-btn inspection-admin__recount-btn--solid"
+                        className="quick-actions__inspection-btn inspection-admin__recount-btn"
                         onClick={() => void submitVerifyDecision('recontar')}
                         disabled={busy || verifyWizardConfirming}
                         data-title={`Manda a contar de nuevo este producto al mismo revisor (conteo ${getNextCountLabel(item)}). No ajusta nada.`}
