@@ -75,11 +75,6 @@
 .taller-row { cursor: pointer; }
 
 /* ===== Ventana ===== */
-.taller-modal__header--cotizacion { box-shadow: inset 0 -3px 0 rgba(59, 130, 246, 0.55); }
-.taller-modal__header--orden { box-shadow: inset 0 -3px 0 rgba(34, 197, 94, 0.6); }
-.taller-modal__header--cerrada { box-shadow: inset 0 -3px 0 rgba(148, 163, 184, 0.7); }
-.taller-modal__header--rechazada { box-shadow: inset 0 -3px 0 rgba(251, 146, 60, 0.65); }
-.taller-modal__header--anulada { box-shadow: inset 0 -3px 0 rgba(248, 113, 113, 0.7); }
 
 .taller-modal__title {
   display: flex;
