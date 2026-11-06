@@ -150,6 +150,7 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
         life: 3500,
       })
       setToDelete(null)
+      setEditing(null)
       load()
     } catch (err) {
       toast.current?.show({ severity: 'error', summary: config.title, detail: err.message, life: 5000 })
@@ -221,20 +222,6 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
             body={(row) => <span className={`taller-chip taller-chip--${row.activo ? 'orden' : 'cerrada'}`}>{row.activo ? 'Activo' : 'Inactivo'}</span>}
             style={{ width: 110 }}
           />}
-          <Column
-            header=""
-            body={(row) => (
-              <span className="taller-row-actions">
-                {canEdit && <button type="button" className="taller-open-btn" onClick={() => openForm(row)}>Editar</button>}
-                {canDelete && (sinActivo || row.activo) && (
-                  <button type="button" className="taller-icon-btn taller-icon-btn--no" onClick={() => setToDelete(row)} title="Eliminar (si ya se usó, solo se desactiva)">
-                    <i className="pi pi-trash" />
-                  </button>
-                )}
-              </span>
-            )}
-            style={{ width: 120 }}
-          />
         </DataTable>
       </div>
 
@@ -247,6 +234,16 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
         onClose={() => setEditing(null)}
         footer={
           <>
+            {canDelete && editing && editing !== 'new' && (sinActivo || editing.activo) && (
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel taller-dialog__delete"
+                onClick={() => setToDelete(editing)}
+                disabled={saving}
+              >
+                Eliminar
+              </button>
+            )}
             {motivo && <span className="taller-muted taller-dialog__why">{`Falta: ${motivo.label}.`}</span>}
             <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setEditing(null)} disabled={saving}>Cancelar</button>
             <button type="button" className="create-user__action create-user__action--primary" onClick={submit} disabled={saving || Boolean(motivo)}>

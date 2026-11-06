@@ -932,3 +932,6 @@
 .taller-color-field input[type='color'] { width: 44px; height: 30px; padding: 0; border: 1px solid var(--color-border); border-radius: 6px; background: none; cursor: pointer; }
 .taller-color-swatch { display: inline-flex; align-items: center; gap: 8px; }
 .taller-color-swatch > i { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, 0.15); display: inline-block; }
+
+.taller-dialog-footer .taller-dialog__delete { margin-right: auto; background: var(--color-error-text); }
+.taller-dialog-footer .taller-dialog__delete + .taller-dialog__why { margin-right: 0; }
