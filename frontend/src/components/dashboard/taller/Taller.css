@@ -868,3 +868,8 @@
   .taller-lines { overflow-x: auto; }
   .create-user__locations-table.taller-lines .create-user__locations-row { min-width: 920px; }
 }
+
+/* Ventanas secundarias con el formato del sistema */
+.create-user__overlay.taller-dialog-overlay { z-index: 4000; }
+.taller-dialog-section { gap: 12px; }
+.taller-dialog-footer { justify-content: flex-end; gap: 8px; flex-wrap: wrap; }

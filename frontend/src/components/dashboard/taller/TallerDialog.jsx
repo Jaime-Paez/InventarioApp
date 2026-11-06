@@ -1,31 +1,84 @@
 import { createPortal } from 'react-dom'
+import '../admin/CreateUsuario/CreateUsuario.css'
+import { getAppPortalRoot } from '../../../utils/portalRoot'
+import useModalAnimation from '../common/useModalAnimation'
+import useResizableModal from '../common/useResizableModal'
 
-// Ventana secundaria del taller (despacho, devolucion, garantia...). Va por
-// encima de la ventana de la orden.
-function TallerDialog({ open, title, subtitle, children, footer, onClose, busy = false, wide = false }) {
-  if (!open || typeof document === 'undefined') return null
+// Ventana del taller y de caja chica con el mismo formato que el resto de la
+// app (crear cliente, crear usuario...): barra con titulo, maximizar y cerrar,
+// se arrastra y cambia de tamano, pestana, seccion y pie con los botones.
+// Va por encima de la ventana de la orden cuando se abre desde ella.
+function TallerDialog({
+  open,
+  title,
+  subtitle,
+  eyebrow = 'General',
+  tab = 'General',
+  children,
+  footer,
+  onClose,
+  busy = false,
+  wide = false,
+}) {
+  const { shouldRender, isClosing } = useModalAnimation(open)
+  const modal = useResizableModal(open, {
+    initialSize: wide ? { width: 1000, height: 760 } : { width: 760, height: 600 },
+    minSize: { width: 420, height: 320 },
+  })
+  if (!shouldRender || typeof document === 'undefined') return null
+
+  const close = () => {
+    if (!busy) onClose?.()
+  }
+
   return createPortal(
-    <div
-      className="taller-dialog"
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose?.() }}
-    >
-      <div className={`taller-dialog__card${wide ? ' taller-dialog__card--wide' : ''}`}>
-        <header className="taller-dialog__header">
-          <div>
-            <h4>{title}</h4>
-            {subtitle && <p>{subtitle}</p>}
+    <div className={`create-user__overlay taller-dialog-overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true">
+      <div className={`create-user__modal taller-dialog-modal${isClosing ? ' create-user__modal--closing' : ''}`} style={modal.style}>
+        <header className="create-user__header" {...modal.headerProps}>
+          <div className="create-user__header-text">
+            <h3>{title}</h3>
           </div>
-          <button type="button" className="create-user__icon-button" onClick={onClose} disabled={busy} aria-label="Cerrar">
-            <i className="pi pi-times" aria-hidden="true" />
-          </button>
+          <div className="create-user__header-actions">
+            <button
+              type="button"
+              className="create-user__icon-button create-user__icon-button--maximize"
+              onClick={modal.toggleMaximize}
+              aria-label={modal.maximized ? 'Restaurar' : 'Maximizar'}
+            >
+              <i className={modal.maximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
+            </button>
+            <button type="button" className="create-user__icon-button" onClick={close} disabled={busy} aria-label="Cerrar">
+              <i className="pi pi-times" aria-hidden="true" />
+            </button>
+          </div>
         </header>
-        <div className="taller-dialog__body">{children}</div>
-        {footer && <footer className="taller-dialog__footer">{footer}</footer>}
+
+        <div className="create-user__form">
+          <div className="create-user__tabs" role="tablist">
+            <button type="button" className="create-user__tab create-user__tab--active" disabled>
+              {tab}
+            </button>
+          </div>
+
+          <div className="create-user__body">
+            <section className="create-user__section taller-dialog-section">
+              <div className="create-user__section-header">
+                <div>
+                  <p className="create-user__eyebrow">{eyebrow}</p>
+                  <h4>{subtitle || title}</h4>
+                </div>
+              </div>
+              {children}
+            </section>
+          </div>
+
+          {footer && <div className="create-user__footer taller-dialog-footer">{footer}</div>}
+        </div>
+
+        <div className="create-user__resize-handle" {...modal.resizeHandleProps} aria-hidden="true" />
       </div>
     </div>,
-    document.body
+    getAppPortalRoot()
   )
 }
 

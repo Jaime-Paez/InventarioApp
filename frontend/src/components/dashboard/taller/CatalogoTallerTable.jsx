@@ -206,7 +206,9 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
       <TallerDialog
         open={Boolean(editing)}
         busy={saving}
-        title={editing === 'new' ? `Nuevo ${config.singular}` : `Editar ${config.singular}`}
+        title={editing === 'new' ? `Crear ${config.singular}` : `Editar ${config.singular}`}
+        eyebrow={config.title}
+        subtitle={`Datos del ${config.singular}`}
         onClose={() => setEditing(null)}
         footer={
           <>
@@ -218,15 +220,15 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
           </>
         }
       >
-        <div className="taller-dialog__grid">
+        <div className="create-user__grid create-user__grid--two">
           {config.fields.map((f) => (
-            <label key={f.key} className={`create-user__field${f.full ? ' taller-field--full' : ''}`}>
+            <label key={f.key} className={`create-user__field${f.full ? ' create-user__field--full' : ''}`}>
               <span>{f.label}</span>
               {f.type === 'money' ? (
-                <MoneyInput className="taller-input" value={form[f.key]} onValueChange={(value) => setForm((prev) => ({ ...prev, [f.key]: value }))} />
+                <MoneyInput value={form[f.key]} onValueChange={(value) => setForm((prev) => ({ ...prev, [f.key]: value }))} />
               ) : (
                 <input
-                  className="taller-input"
+                  type="text"
                   value={form[f.key] ?? ''}
                   placeholder={f.placeholder}
                   autoFocus={f === config.fields[0]}
