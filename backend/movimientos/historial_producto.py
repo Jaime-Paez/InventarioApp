@@ -108,6 +108,42 @@ def _origen_texto(mov, tipo, subtipo, importacion):
     return getattr(mov.sub_tipo_movimiento, "nombre", "") or ""
 
 
+def _nombre_usuario(usuario):
+    if not usuario:
+        return ""
+    return (usuario.get_full_name() or "").strip() or usuario.get_username()
+
+
+def _usuarios_registro_movimientos(movement_ids):
+    """{movimiento_id: nombre} de quien registro cada movimiento (el usuario
+    de su creacion en la auditoria)."""
+    from django.contrib.contenttypes.models import ContentType
+
+    from auditoria.models import RegistroAuditoria
+
+    if not movement_ids:
+        return {}
+    content_type = ContentType.objects.get_for_model(MovimientoInventario)
+    registros = (
+        RegistroAuditoria.objects.filter(
+            content_type=content_type,
+            accion=RegistroAuditoria.Acciones.CREACION,
+            object_id__in=[str(mov_id) for mov_id in movement_ids],
+        )
+        .select_related("usuario")
+        .order_by("registrado_en", "id")
+    )
+    result = {}
+    for registro in registros:
+        try:
+            mov_id = int(registro.object_id)
+        except (TypeError, ValueError):
+            continue
+        if mov_id not in result and registro.usuario_id:
+            result[mov_id] = _nombre_usuario(registro.usuario)
+    return result
+
+
 def _horas_registro_movimientos(movement_ids):
     """{movimiento_id: datetime} de cuando se registro cada movimiento (su
     creacion en la auditoria)."""
@@ -431,6 +467,7 @@ def build_product_movement_history(
         "casa_comercial",
     ).in_bulk()
     importaciones = _importaciones_by_movement(set(ids))
+    usuarios = _usuarios_registro_movimientos(ids)
 
     results = []
     for row in page_rows:
@@ -438,10 +475,7 @@ def build_product_movement_history(
             ajuste = ajustes_por_id.get(row["ajuste_id"])
             if not ajuste:
                 continue
-            usuario = ajuste.usuario
-            usuario_nombre = ""
-            if usuario:
-                usuario_nombre = (usuario.get_full_name() or "").strip() or usuario.get_username()
+            usuario_nombre = _nombre_usuario(ajuste.usuario)
             results.append(
                 {
                     "movimiento_id": None,
@@ -492,6 +526,7 @@ def build_product_movement_history(
                 "sucursal": str(mov.sucursal) if mov.sucursal_id else "",
                 "origen": _origen_texto(mov, tipo_key, subtipo, importacion),
                 "importacion": importacion,
+                "usuario": usuarios.get(mov.id, ""),
                 "cantidad": row["cantidad"],
                 "valor_total": str(row["valor_total"]),
                 "costo_unitario": _money(row["costo_unitario"]),

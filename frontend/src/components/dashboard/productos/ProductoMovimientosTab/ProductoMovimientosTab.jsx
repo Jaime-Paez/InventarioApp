@@ -220,7 +220,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
           <table className="producto-movs__kardex">
             <thead>
               <tr className="producto-movs__group">
-                <th colSpan={3} />
+                <th colSpan={4} />
                 <th colSpan={3} className="sep producto-movs__group-in">Entradas</th>
                 <th colSpan={3} className="sep producto-movs__group-out">Salidas</th>
                 <th colSpan={2} className="sep">Totales</th>
@@ -230,6 +230,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
                 <th>Fecha</th>
                 <th className="sep">Documento</th>
                 <th className="sep">De dónde / a dónde</th>
+                <th className="sep">Usuario</th>
                 <th className="num sep">Cantidad</th>
                 <th className="num">P. Unitario</th>
                 <th className="num">Total</th>
@@ -244,7 +245,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
             <tbody>
               <tr className="producto-movs__saldo">
                 {/* El texto acompaña el scroll horizontal (sticky dentro de la celda). */}
-                <td colSpan={9}>
+                <td colSpan={10}>
                   <span className="producto-movs__saldo-sticky">
                     {fechaDesde ? `Saldo anterior al ${formatDate(fechaDesde)}` : 'Saldo inicial (sistema anterior)'}
                     {fechaDesde && saldoInicial > 0 && (
@@ -259,7 +260,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
 
               {!rows.length && (
                 <tr className="producto-movs__empty">
-                  <td colSpan={12}>Este producto no tiene entradas, salidas ni ajustes{tipo || fechaDesde || fechaHasta ? ' con este filtro' : ''}.</td>
+                  <td colSpan={13}>Este producto no tiene entradas, salidas ni ajustes{tipo || fechaDesde || fechaHasta ? ' con este filtro' : ''}.</td>
                 </tr>
               )}
 
@@ -272,7 +273,6 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
                   ? [
                     origen,
                     `${row.cantidad_anterior} → ${row.cantidad_nueva}`,
-                    row.usuario ? `por ${row.usuario}` : '',
                     row.sucursal,
                   ].filter(Boolean).join(' · ')
                   : [origen, row.estado, row.sucursal].filter(Boolean).join(' · ')
@@ -295,6 +295,7 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
                       {isAjuste ? `Ajuste ${Number(row.diferencia) > 0 ? '+' : '−'}${row.cantidad}` : (row.no_documento || '-')}
                     </td>
                     <td className="producto-movs__origen sep" data-title={detalle}>{origen}</td>
+                    <td className="producto-movs__usuario nowrap sep">{row.usuario || '-'}</td>
                     {isEntrada ? (
                       <>
                         <td className="num sep producto-movs__qty--in">{row.cantidad}</td>
@@ -332,12 +333,12 @@ function ProductoMovimientosTab({ productoId, token, currentUser, onError }) {
                 {/* Fila propia para el texto: asi acompaña el scroll a lo ancho
                     de toda la tabla sin tapar los totales de la fila de abajo. */}
                 <tr className="producto-movs__saldo producto-movs__saldo--title">
-                  <td colSpan={12}>
+                  <td colSpan={13}>
                     <span className="producto-movs__saldo-sticky">Saldo actual{fechaHasta ? ` al ${formatDate(fechaHasta)}` : ''}</span>
                   </td>
                 </tr>
                 <tr className="producto-movs__saldo">
-                  <td colSpan={3} />
+                  <td colSpan={4} />
                   <td className="num sep">{totales.entradas}</td>
                   <td className="num">{totales.entradas && !costosIncompletos ? money(Number(totales.entradas_total) / totales.entradas, 4) : '—'}</td>
                   <td className="num">{money(totales.entradas_total)}</td>
