@@ -257,14 +257,14 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
         isAdmin ? (
           <BlockerNotice
             title="Todavía no hay cajas chicas"
-            reason="Crea la primera: nombre, fondo, custodio y el tope de gasto sin aprobación."
+            reason="Cada sucursal tiene su caja: elige la sucursal, el fondo, el custodio y el tope de gasto sin aprobación."
             actionLabel="Crear caja"
             onAction={() => setDialog({ kind: 'caja' })}
           />
         ) : (
           <BlockerNotice
             title="No tienes una caja chica asignada"
-            reason="Un administrador debe crear la caja y ponerte como custodio."
+            reason="Un administrador debe crear la caja de tu sucursal y ponerte como custodio."
           />
         )
       )}
@@ -280,7 +280,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                   className={`caja-selector__btn${String(c.id) === String(cajaId) ? ' is-active' : ''}${c.activa ? '' : ' is-inactive'}`}
                   onClick={() => setCajaId(String(c.id))}
                 >
-                  {c.nombre}
+                  {c.sucursal_nombre || c.nombre}
                   {c.pendientes > 0 && isAdmin && <span className="taller-toggle__count">{c.pendientes}</span>}
                 </button>
               ))}
@@ -289,7 +289,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
               <div className="caja-top__admin">
                 {caja && <button type="button" className="taller-mini-btn" onClick={() => setDialog({ kind: 'caja', caja })}><i className="pi pi-cog" /> Configurar</button>}
                 <button type="button" className="taller-mini-btn" onClick={() => setDialog({ kind: 'categorias' })}><i className="pi pi-tags" /> Categorías</button>
-                <button type="button" className="taller-mini-btn taller-mini-btn--ok" onClick={() => setDialog({ kind: 'caja' })}><i className="pi pi-plus" /> Nueva caja</button>
+                <button type="button" className="taller-mini-btn taller-mini-btn--ok" onClick={() => setDialog({ kind: 'caja' })}><i className="pi pi-plus" /> Caja de otra sucursal</button>
               </div>
             )}
           </div>

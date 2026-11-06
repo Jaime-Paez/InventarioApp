@@ -25,9 +25,13 @@ class CajaChicaTests(TestCase):
         self.api = APIClient()
         self.api.force_authenticate(self.custodio)
         self.categoria = CategoriaGasto.objects.get(nombre="Movilización")
+        from inventario.models import Sucursal
+
+        self.sucursal = Sucursal.objects.create(nombre="Matriz", direccion="x")
+        self.sucursal2 = Sucursal.objects.create(nombre="Norte", direccion="y")
         r = self.admin_api.post(
             f"{BASE}/cajas/",
-            {"nombre": "Caja Matriz", "monto_fondo": "300", "tope_gasto": "50", "custodio": self.custodio.id},
+            {"sucursal": self.sucursal.id, "monto_fondo": "300", "tope_gasto": "50", "custodio": self.custodio.id},
             format="json",
         )
         self.assertEqual(r.status_code, 201, r.content)
@@ -128,5 +132,17 @@ class CajaChicaTests(TestCase):
         self.assertEqual(self.caja.saldo(), Decimal("300"))
 
     def test_solo_admin_configura(self):
-        self.assertEqual(self.api.post(f"{BASE}/cajas/", {"nombre": "X", "monto_fondo": "10"}, format="json").status_code, 403)
+        self.assertEqual(self.api.post(f"{BASE}/cajas/", {"sucursal": self.sucursal2.id, "monto_fondo": "10"}, format="json").status_code, 403)
         self.assertEqual(self.api.post(f"{BASE}/categorias/", {"nombre": "X"}, format="json").status_code, 403)
+
+    def test_una_caja_por_sucursal(self):
+        self.assertEqual(self.caja.nombre, "Caja chica Matriz")
+        r = self.admin_api.post(f"{BASE}/cajas/", {"sucursal": self.sucursal.id, "monto_fondo": "100"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("ya tiene su caja", str(r.json()["detail"]))
+        r = self.admin_api.post(f"{BASE}/cajas/", {"monto_fondo": "100"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        r = self.admin_api.post(f"{BASE}/cajas/", {"sucursal": self.sucursal2.id, "monto_fondo": "100"}, format="json")
+        self.assertEqual(r.status_code, 201, r.content)
+        opciones = self.admin_api.get(f"{BASE}/cajas/opciones/").json()["sucursales"]
+        self.assertTrue(all(s["caja"] for s in opciones))

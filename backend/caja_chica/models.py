@@ -9,12 +9,11 @@ class Caja(models.Model):
     """Fondo fijo de caja chica, con un custodio responsable."""
 
     nombre = models.CharField(max_length=120)
-    sucursal = models.ForeignKey(
+    # Una caja chica por sucursal.
+    sucursal = models.OneToOneField(
         "inventario.Sucursal",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="cajas_chicas",
+        on_delete=models.PROTECT,
+        related_name="caja_chica",
     )
     custodio = models.ForeignKey(
         settings.AUTH_USER_MODEL,

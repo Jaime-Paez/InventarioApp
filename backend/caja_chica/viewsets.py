@@ -103,11 +103,28 @@ class CajaSerializer(serializers.ModelSerializer):
             return None
         return {"fecha": arqueo.creado_en, "diferencia": str(arqueo.diferencia)}
 
+    def get_unique_together_validators(self):
+        return []
+
+    def get_fields(self):
+        fields = super().get_fields()
+        # La unicidad de la sucursal se valida abajo con un mensaje claro.
+        fields["sucursal"].validators = []
+        fields["nombre"].required = False
+        fields["nombre"].allow_blank = True
+        return fields
+
     def validate(self, attrs):
-        if "nombre" in attrs:
-            attrs["nombre"] = str(attrs["nombre"] or "").strip()
-            if not attrs["nombre"]:
-                raise serializers.ValidationError({"detail": "Escribe el nombre de la caja."})
+        sucursal = attrs.get("sucursal", getattr(self.instance, "sucursal", None))
+        if sucursal is None:
+            raise serializers.ValidationError({"detail": "Elige la sucursal: cada sucursal tiene su caja chica."})
+        otra = Caja.objects.filter(sucursal=sucursal)
+        if self.instance is not None:
+            otra = otra.exclude(pk=self.instance.pk)
+        if otra.exists():
+            raise serializers.ValidationError({"detail": f"{sucursal.nombre} ya tiene su caja chica."})
+        if "nombre" in attrs or self.instance is None:
+            attrs["nombre"] = str(attrs.get("nombre") or "").strip() or f"Caja chica {sucursal.nombre}"
         if "monto_fondo" in attrs and (attrs["monto_fondo"] is None or attrs["monto_fondo"] <= 0):
             raise serializers.ValidationError({"detail": "El fondo debe ser mayor que cero."})
         if "tope_gasto" in attrs and attrs["tope_gasto"] is not None and attrs["tope_gasto"] < 0:
@@ -363,9 +380,13 @@ class CajaViewSet(viewsets.ModelViewSet):
             {"id": u.id, "nombre": _nombre(u)}
             for u in get_user_model().objects.filter(is_active=True).order_by("first_name", "last_name", "email")
         ]
+        con_caja = dict(Caja.objects.values_list("sucursal_id", "nombre"))
         return Response(
             {
-                "sucursales": list(Sucursal.objects.order_by("nombre").values("id", "nombre")),
+                "sucursales": [
+                    {**row, "caja": con_caja.get(row["id"], "")}
+                    for row in Sucursal.objects.order_by("nombre").values("id", "nombre")
+                ],
                 "usuarios": usuarios,
             }
         )

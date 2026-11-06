@@ -438,7 +438,10 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
       .catch(() => {})
   }, [open, caja, token])
 
-  const motivo = !form.nombre.trim() ? 'Escribe el nombre.' : !(Number(form.monto_fondo) > 0) ? 'Indica el monto del fondo.' : !form.custodio ? 'Elige el custodio (responsable).' : ''
+  // Una caja por sucursal: solo se ofrecen las que no tienen caja (y la propia).
+  const sucursalesLibres = opciones.sucursales.filter((s) => !s.caja || String(s.id) === String(caja?.sucursal || ''))
+  const sucursalNombre = opciones.sucursales.find((s) => String(s.id) === form.sucursal)?.nombre || caja?.sucursal_nombre || ''
+  const motivo = !form.sucursal ? 'Elige la sucursal.' : !(Number(form.monto_fondo) > 0) ? 'Indica el monto del fondo.' : !form.custodio ? 'Elige el custodio (responsable).' : ''
 
   const submit = async () => {
     if (motivo) return
@@ -447,7 +450,7 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
     try {
       const body = {
         nombre: form.nombre.trim(),
-        sucursal: form.sucursal ? Number(form.sucursal) : null,
+        sucursal: Number(form.sucursal),
         custodio: form.custodio ? Number(form.custodio) : null,
         monto_fondo: Number(form.monto_fondo).toFixed(2),
         tope_gasto: Number(form.tope_gasto || 0).toFixed(2),
@@ -469,27 +472,33 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
     <TallerDialog
       open={open}
       busy={busy}
-      title={caja ? 'Configurar caja' : 'Nueva caja chica'}
-      subtitle={caja ? '' : 'Se abre con el monto del fondo como primer ingreso.'}
+      title={caja ? 'Configurar caja chica' : 'Crear caja chica'}
+      eyebrow="Caja chica"
+      subtitle={caja ? `Caja de ${caja.sucursal_nombre || 'la sucursal'}` : 'Una caja por sucursal: se abre con el fondo como primer ingreso'}
       onClose={onClose}
       footer={<DialogFooter motivo={motivo} busy={busy} onClose={onClose} onSubmit={submit} label={caja ? 'Guardar' : 'Crear caja'} />}
     >
-      <label className="create-user__field">
-        <span>Nombre</span>
-        <input className="taller-input" value={form.nombre} placeholder="Caja chica Matriz" onChange={(event) => setForm((prev) => ({ ...prev, nombre: event.target.value }))} />
-      </label>
+      {!caja && opciones.sucursales.length > 0 && !sucursalesLibres.length && (
+        <BlockerNotice title="Todas las sucursales ya tienen su caja chica" reason="Cada sucursal tiene una sola caja. Para cambiar una, usa Configurar en esa caja." />
+      )}
       <div className="taller-dialog__grid">
         <div className="create-user__field">
           <span>Sucursal</span>
           <CascadeDropdown
-            placeholder="General (sin sucursal)"
+            placeholder="Elige la sucursal"
             searchPlaceholder="Buscar sucursal"
-            options={[{ id: '', nombre: 'General (sin sucursal)' }, ...opciones.sucursales]}
+            options={sucursalesLibres}
             valueId={form.sucursal}
+            selectedLabel={caja?.sucursal_nombre}
             getOptionLabel={(o) => o.nombre}
+            emptyMessage="Todas las sucursales ya tienen su caja chica."
             onSelect={(o) => setForm((prev) => ({ ...prev, sucursal: String(o.id) }))}
           />
         </div>
+        <label className="create-user__field">
+          <span>Nombre (opcional)</span>
+          <input value={form.nombre} placeholder={sucursalNombre ? `Caja chica ${sucursalNombre}` : 'Caja chica de la sucursal'} onChange={(event) => setForm((prev) => ({ ...prev, nombre: event.target.value }))} />
+        </label>
         <div className="create-user__field">
           <span>Custodio (responsable)</span>
           <CascadeDropdown
