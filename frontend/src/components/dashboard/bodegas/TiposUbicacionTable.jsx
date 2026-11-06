@@ -4,7 +4,7 @@ const CONFIG = {
   endpoint: '/tipos/tipos-division/',
   listQuery: '?page_size=500&ordering=nombre',
   sinActivo: true,
-  title: 'Tipos de ubicación',
+  title: 'Tipos',
   singular: 'tipo de ubicación',
   plural: 'los tipos de ubicación',
   empty: 'Todavía no hay tipos. Crea el primero con "Crear" (Estantería, Cajonera, Puerta...).',

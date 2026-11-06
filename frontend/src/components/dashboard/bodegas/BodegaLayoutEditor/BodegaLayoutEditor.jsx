@@ -315,10 +315,10 @@ const TypeSelect = ({
             className="bodega-type-select__create"
             onClick={() => {
               setIsOpen(false)
-              goToSection('Tipos de ubicación')
+              goToSection('Tipos')
             }}
           >
-            ¿Falta un tipo? Créalo en Sucursales → Tipos de ubicación
+            ¿Falta un tipo? Créalo en Sucursales → Tipos
           </button>
           <p className="bodega-type-select__legend">
             <Eye size={12} aria-hidden="true" /> Solo visual: sirve para identificar en el mapa, no lleva subdivisiones.

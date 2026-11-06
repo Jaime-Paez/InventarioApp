@@ -209,7 +209,7 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
           rowsPerPageOptions={[10, 25, 50, 100]}
           removableSort
           onRowDoubleClick={(event) => openForm(event.data)}
-          rowClassName={(row) => `taller-row${row.activo ? '' : ' taller-row--inactive'}`}
+          rowClassName={(row) => `taller-row${sinActivo || row.activo ? '' : ' taller-row--inactive'}`}
         >
           {config.columns.map((col) => (
             <Column key={col.field} field={col.field} header={col.header} sortable body={col.body} style={col.style} />
