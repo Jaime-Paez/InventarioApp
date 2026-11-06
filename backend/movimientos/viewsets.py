@@ -844,6 +844,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             "traslado": "trasl",
             "compra_local": "compra",
             "importacion": "import",
+            "taller": "taller",
         }
         token = subtype_tokens.get(subtipo)
         if not token:
@@ -1323,6 +1324,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 {"detail": "Este movimiento es de una importacion y se actualiza solo al recibirla; no se puede editar."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if hasattr(instance, "orden_taller"):
+            return Response(
+                {"detail": "Esta salida la genero el cierre de una orden de taller; no se puede editar."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
@@ -1510,6 +1516,11 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         if self._is_importacion_movement(instance):
             return Response(
                 {"detail": "Este movimiento es de una importacion, asi que no se puede eliminar."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if hasattr(instance, "orden_taller"):
+            return Response(
+                {"detail": "Esta salida la genero el cierre de una orden de taller; no se puede eliminar."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if instance.envios_compra.exists() or instance.traslados_compra.exists():

@@ -1382,6 +1382,15 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         in_transit = in_transit_by_product_branch(product_ids)
 
+        # Repuestos despachados a ordenes de taller abiertas (ya no estan en
+        # el stock de la sucursal; se muestran aparte, en verde).
+        try:
+            from taller.stock import en_taller_por_producto_sucursal
+
+            en_taller = en_taller_por_producto_sucursal(product_ids)
+        except Exception:  # pragma: no cover - el taller nunca debe romper el inventario
+            en_taller = {}
+
         products = (
             Producto.objects.filter(id__in=product_ids)
             .prefetch_related("casas_comerciales", "oem_productos__oem", "referencias")
@@ -1439,6 +1448,9 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 transit = in_transit.get((product_id, int(branch.id)))
                 if transit:
                     item[f"en_camino_sucursal_{branch.id}"] = transit
+                taller = en_taller.get((product_id, int(branch.id)))
+                if taller:
+                    item[f"en_taller_sucursal_{branch.id}"] = taller
             serialized.append(item)
 
         return serialized

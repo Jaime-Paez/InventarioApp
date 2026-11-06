@@ -9,9 +9,18 @@ import './Taller.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDateTime } from '../../../utils/dateFormat'
 import OrdenTallerModal from './OrdenTallerModal'
+import GarantiaDialog from './GarantiaDialog'
 import { ESTADO_FILTROS, estadoInfo, formatMoney, formatOrdenNumero, parseApiError } from './tallerConstants'
 
 const SEARCH_DELAY_MS = 350
+
+// Avisos de la tabla: cada uno filtra las ordenes que necesitan esa accion.
+const AVISOS = [
+  { key: 'despachar', label: 'Por despachar', hint: 'Repuestos de la orden o a prueba que faltan entregar al taller' },
+  { key: 'devolver', label: 'Por devolver', hint: 'Repuestos en el taller que deben volver a bodega' },
+  { key: 'precios', label: 'Precios por aprobar', hint: 'Precios distintos al del inventario esperando al administrador' },
+  { key: 'sin_codigo', label: 'Productos por crear', hint: 'Repuestos sin código en órdenes de trabajo: hay que comprarlos y crearlos' },
+]
 
 function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
   const toast = useRef(null)
@@ -26,18 +35,20 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
 
   const [rows, setRows] = useState([])
   const [totalRecords, setTotalRecords] = useState(0)
+  const [avisos, setAvisos] = useState({})
   const [first, setFirst] = useState(0)
   const [pageSize, setPageSize] = useState(25)
   const [sortField, setSortField] = useState(null)
   const [sortOrder, setSortOrder] = useState(null)
   const [estadoFilter, setEstadoFilter] = useState('')
-  const [soloPendientes, setSoloPendientes] = useState(false)
+  const [alerta, setAlerta] = useState('')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
   const [openId, setOpenId] = useState(null)
+  const [showGarantia, setShowGarantia] = useState(false)
   const requestSeq = useRef(0)
 
   const notify = useCallback(({ severity = 'info', summary = 'Taller', detail }) => {
@@ -49,7 +60,7 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
     return () => clearTimeout(timer)
   }, [search])
 
-  useEffect(() => { setFirst(0) }, [debouncedSearch, estadoFilter, soloPendientes])
+  useEffect(() => { setFirst(0) }, [debouncedSearch, estadoFilter, alerta])
 
   const load = useCallback(async () => {
     const seq = ++requestSeq.current
@@ -57,7 +68,7 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
     params.set('page', String(Math.floor(first / pageSize) + 1))
     params.set('page_size', String(pageSize))
     if (estadoFilter) params.set('estado', estadoFilter)
-    if (soloPendientes) params.set('precios_pendientes', '1')
+    if (alerta) params.set('alerta', alerta)
     if (debouncedSearch) params.set('search', debouncedSearch)
     if (sortField && sortOrder) params.set('ordering', `${sortOrder < 0 ? '-' : ''}${sortField}`)
     setLoading(true)
@@ -68,6 +79,7 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
       if (seq !== requestSeq.current) return
       setRows(Array.isArray(data) ? data : data?.results || [])
       setTotalRecords(Number(data?.count ?? (Array.isArray(data) ? data.length : 0)))
+      setAvisos(data?.avisos || {})
       setError('')
     } catch (err) {
       if (seq !== requestSeq.current) return
@@ -75,7 +87,7 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
     } finally {
       if (seq === requestSeq.current) setLoading(false)
     }
-  }, [debouncedSearch, estadoFilter, first, pageSize, soloPendientes, sortField, sortOrder, token])
+  }, [alerta, debouncedSearch, estadoFilter, first, pageSize, sortField, sortOrder, token])
 
   useEffect(() => { load() }, [load])
 
@@ -111,6 +123,8 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
       total: total.toFixed(2),
       lineas_count: (orden.lineas || []).length,
       precios_pendientes: (orden.lineas || []).filter((linea) => linea.precio_estado === 'pendiente').length,
+      por_devolver: (orden.pruebas || []).some((p) => p.en_taller > 0),
+      sin_codigo: (orden.lineas || []).some((l) => l.tipo === 'sin_codigo'),
     }
     setRows((prev) => {
       const exists = prev.some((row) => row.id === orden.id)
@@ -129,11 +143,19 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
     return (
       <span className="taller-cell-estado">
         <span className={`taller-chip taller-chip--${info.chip}`}>{info.label}</span>
+        {row.tipo === 'garantia' && (
+          <span className="taller-chip taller-chip--garantia" title={row.garantia_de_numero ? `Garantía de la orden ${formatOrdenNumero(row.garantia_de_numero)}` : 'Garantía'}>
+            Garantía
+          </span>
+        )}
+        {row.por_despachar && <span className="taller-chip taller-chip--prueba">Por despachar</span>}
+        {row.por_devolver && <span className="taller-chip taller-chip--rechazada">Por devolver</span>}
         {Number(row.precios_pendientes) > 0 && (
           <span className="taller-chip taller-chip--pendiente" title="Precios distintos al del inventario esperando aprobación">
             {`${row.precios_pendientes} por aprobar`}
           </span>
         )}
+        {row.sin_codigo && row.estado === 'orden' && <span className="taller-chip taller-chip--pendiente">Sin código</span>}
       </span>
     )
   }
@@ -147,21 +169,28 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             className="search-input"
-            placeholder="Buscar por N°, pedido, placa, cliente, técnico, VIN"
+            placeholder="Buscar por N°, pedido, factura, placa, cliente, técnico, VIN"
           />
           <i className={`pi ${loading && search ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
         </div>
         <button className="rounded-icon-btn" type="button" onClick={load} disabled={loading} title="Recargar">
           <i className="pi pi-refresh" />
         </button>
-        <button
-          className={`taller-toggle${soloPendientes ? ' is-active' : ''}`}
-          type="button"
-          onClick={() => setSoloPendientes((prev) => !prev)}
-          title="Solo órdenes con precios esperando aprobación"
-        >
-          Precios por aprobar
-        </button>
+        {AVISOS.map((aviso) => {
+          const count = Number(avisos?.[aviso.key] || 0)
+          return (
+            <button
+              key={aviso.key}
+              className={`taller-toggle${alerta === aviso.key ? ' is-active' : ''}${count ? ' has-count' : ''}`}
+              type="button"
+              onClick={() => setAlerta((prev) => (prev === aviso.key ? '' : aviso.key))}
+              title={aviso.hint}
+            >
+              {aviso.label}
+              <span className="taller-toggle__count">{count}</span>
+            </button>
+          )
+        })}
       </div>
       <div className="users-header__right">
         <span className="users-header__count">Reg. {totalRecords}</span>
@@ -175,14 +204,23 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
       <div className="users-page__top">
         <div className="users-page__actions">
           {canCreate && (
-            <Button
-              label={creating ? 'Creando...' : 'Nueva cotización'}
-              icon="pi pi-plus"
-              className="users-topbtn users-topbtn--create"
-              onClick={handleCreate}
-              disabled={creating}
-              type="button"
-            />
+            <>
+              <Button
+                label={creating ? 'Creando...' : 'Nueva cotización'}
+                icon="pi pi-plus"
+                className="users-topbtn users-topbtn--create"
+                onClick={handleCreate}
+                disabled={creating}
+                type="button"
+              />
+              <Button
+                label="Nueva por garantía"
+                icon="pi pi-shield"
+                className="users-topbtn users-topbtn--search"
+                onClick={() => setShowGarantia(true)}
+                type="button"
+              />
+            </>
           )}
           <div className="entradas-type-filter" role="group" aria-label="Filtrar por estado">
             {ESTADO_FILTROS.map((option) => (
@@ -218,7 +256,7 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
           header={header}
           className={`users-datatable users-datatable--compact${loading ? ' users-datatable--loading-content' : ''}`}
           tableStyle={{ width: '100%' }}
-          emptyMessage={debouncedSearch || estadoFilter || soloPendientes ? 'Ninguna orden coincide.' : 'Todavía no hay cotizaciones. Crea la primera con "Nueva cotización".'}
+          emptyMessage={debouncedSearch || estadoFilter || alerta ? 'Ninguna orden coincide.' : 'Todavía no hay cotizaciones. Crea la primera con "Nueva cotización".'}
           showGridlines
           size="small"
           scrollable
@@ -239,13 +277,14 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
         >
           <Column field="numero" header="N° orden" sortable body={(row) => formatOrdenNumero(row.numero)} style={{ minWidth: 90 }} />
           <Column field="numero_pedido" header="Pedido" sortable body={(row) => row.numero_pedido || '-'} style={{ minWidth: 80 }} />
-          <Column field="estado" header="Estado" sortable body={estadoBody} style={{ minWidth: 170 }} />
+          <Column field="estado" header="Estado" sortable body={estadoBody} style={{ minWidth: 220 }} />
           <Column field="placa" header="Placa" sortable body={(row) => row.placa || '-'} style={{ minWidth: 90 }} />
           <Column field="modelo" header="Modelo" sortable body={(row) => row.modelo || '-'} style={{ minWidth: 160 }} />
           <Column field="cliente_nombre" header="Cliente" sortable body={(row) => row.cliente_nombre || '-'} style={{ minWidth: 160 }} />
           <Column field="tecnico" header="Técnico" sortable body={(row) => row.tecnico || '-'} style={{ minWidth: 120 }} />
           <Column field="asesor_nombre" header="Asesor" body={(row) => row.asesor_nombre || '-'} style={{ minWidth: 120 }} />
-          <Column field="total" header="Total" sortable body={(row) => formatMoney(row.total)} style={{ minWidth: 90, textAlign: 'right' }} />
+          <Column field="numero_factura" header="Factura" body={(row) => row.numero_factura || '-'} style={{ minWidth: 100 }} />
+          <Column field="total" header="Subtotal" sortable body={(row) => formatMoney(row.total)} style={{ minWidth: 90, textAlign: 'right' }} />
           <Column field="actualizado_en" header="Actualizado" sortable body={(row) => formatDateTime(row.actualizado_en)} style={{ minWidth: 140 }} />
           <Column
             header=""
@@ -263,11 +302,22 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
         open={Boolean(openId)}
         ordenId={openId}
         token={token}
+        user={user}
         isAdmin={isAdmin}
         canEdit={canEdit}
         onClose={handleCloseModal}
         onChanged={handleOrdenChanged}
         notify={notify}
+      />
+      <GarantiaDialog
+        open={showGarantia}
+        token={token}
+        onClose={() => setShowGarantia(false)}
+        onCreated={(orden) => {
+          setShowGarantia(false)
+          notify({ severity: 'success', detail: `Cotización por garantía ${formatOrdenNumero(orden.numero)} creada.` })
+          setOpenId(orden.id)
+        }}
       />
     </div>
   )

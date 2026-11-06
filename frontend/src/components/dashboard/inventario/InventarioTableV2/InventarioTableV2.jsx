@@ -1114,6 +1114,18 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       ].join(' · ')
       : ''
     const shown = Number.isFinite(n) ? Math.max(0, n - porContarTotal) : 0
+    // En taller (verde): despachado a ordenes de trabajo abiertas. Ya salio
+    // del stock (no se puede vender ni sacar en otra salida).
+    const taller = branchId != null ? rowData?.[`en_taller_sucursal_${branchId}`] : null
+    const tallerTotal = Number(taller?.cantidad || 0)
+    const tallerTooltip = tallerTotal > 0
+      ? [
+        `En taller: ${tallerTotal} (no se pueden vender)`,
+        ...(Array.isArray(taller?.documentos) ? taller.documentos : []).map(
+          (doc) => `Orden #${String(doc?.numero || '').padStart(5, '0')}${doc?.placa ? ` (${doc.placa})` : ''}: ${Number(doc?.cantidad || 0)}`
+        ),
+      ].join(' · ')
+      : ''
     return (
       <span className="inventario-v2__quantity-wrap">
         <span
@@ -1135,6 +1147,15 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
             aria-label={importTooltip}
           >
             {`(${importTotal})`}
+          </span>
+        )}
+        {tallerTotal > 0 && (
+          <span
+            className="inventario-v2__in-transit inventario-v2__in-transit--taller"
+            data-pr-tooltip={tallerTooltip}
+            aria-label={tallerTooltip}
+          >
+            {`(${tallerTotal})`}
           </span>
         )}
       </span>

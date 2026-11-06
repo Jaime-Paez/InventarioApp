@@ -47,7 +47,28 @@ class OrdenTaller(models.Model):
         CERRADA = "cerrada", "Cerrada"
         ANULADA = "anulada", "Anulada"
 
+    class TiposOrden(models.TextChoices):
+        NORMAL = "normal", "Normal"
+        GARANTIA = "garantia", "Garantía"
+
     numero = models.PositiveIntegerField(unique=True)
+    tipo = models.CharField(max_length=20, choices=TiposOrden.choices, default=TiposOrden.NORMAL)
+    garantia_de = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="garantias",
+        help_text="Orden original cuando esta es una orden por garantia.",
+    )
+    sucursal = models.ForeignKey(
+        "inventario.Sucursal",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="ordenes_taller",
+        help_text="Sucursal de cuyo inventario salen los repuestos.",
+    )
     # Numero de pedido: distinto del numero de orden (lo pide el negocio asi).
     numero_pedido = models.CharField(max_length=60, blank=True)
     estado = models.CharField(max_length=20, choices=Estados.choices, default=Estados.COTIZACION)
@@ -74,6 +95,8 @@ class OrdenTaller(models.Model):
     observaciones = models.TextField(blank=True)
     motivo_rechazo = models.TextField(blank=True)
 
+    numero_factura = models.CharField(max_length=60, blank=True)
+
     aceptada_en = models.DateTimeField(null=True, blank=True)
     aceptada_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -81,6 +104,21 @@ class OrdenTaller(models.Model):
         null=True,
         blank=True,
         related_name="+",
+    )
+    cerrada_en = models.DateTimeField(null=True, blank=True)
+    cerrada_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    movimiento_salida = models.OneToOneField(
+        "movimientos.MovimientoInventario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="orden_taller",
     )
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
@@ -154,6 +192,12 @@ class OrdenTallerLinea(models.Model):
         related_name="+",
     )
     precio_revisado_en = models.DateTimeField(null=True, blank=True)
+    # Unidades que el administrador ya entrego al taller (estan "en taller").
+    cantidad_despachada = models.PositiveIntegerField(default=0)
+    # En una orden por garantia: el repuesto va sin costo para el cliente.
+    es_garantia = models.BooleanField(default=False)
+    # Se agrego sin codigo y luego el administrador creo/vinculo el producto.
+    era_sin_codigo = models.BooleanField(default=False)
     # True si se agrego despues de que el cliente acepto la cotizacion.
     agregada_en_orden = models.BooleanField(default=False)
     posicion = models.PositiveIntegerField(default=0)
@@ -179,6 +223,12 @@ class OrdenTallerLinea(models.Model):
     def total(self) -> Decimal:
         return (self.precio or Decimal("0")) * Decimal(self.cantidad or 0)
 
+    @property
+    def pendiente_despacho(self) -> int:
+        if self.tipo != self.Tipos.REPUESTO or not self.producto_id:
+            return 0
+        return max(0, int(self.cantidad or 0) - int(self.cantidad_despachada or 0))
+
 
 class OrdenTallerEvento(models.Model):
     """Historial de la orden: quien hizo que y cuando."""
@@ -199,3 +249,114 @@ class OrdenTallerEvento(models.Model):
         ordering = ["-creado_en", "-id"]
         verbose_name = "Evento de orden de taller"
         verbose_name_plural = "Eventos de orden de taller"
+
+
+class OrdenTallerPrueba(models.Model):
+    """Repuesto en el taller que NO es parte de la orden.
+
+    - origen "prueba": se pidio aparte para probar. Puede pasar a la orden o
+      debe volver a bodega.
+    - origen "quitado": estaba despachado en la orden y el administrador lo
+      quito o bajo la cantidad; tiene que volver a bodega.
+    """
+
+    class Origenes(models.TextChoices):
+        PRUEBA = "prueba", "A prueba"
+        QUITADO = "quitado", "Quitado de la orden"
+
+    orden = models.ForeignKey(OrdenTaller, on_delete=models.CASCADE, related_name="pruebas")
+    producto = models.ForeignKey("productos.Producto", on_delete=models.PROTECT, related_name="pruebas_taller")
+    origen = models.CharField(max_length=20, choices=Origenes.choices, default=Origenes.PRUEBA)
+    cantidad_solicitada = models.PositiveIntegerField(default=1)
+    cantidad_entregada = models.PositiveIntegerField(default=0)
+    cantidad_usada = models.PositiveIntegerField(default=0)
+    cantidad_devuelta = models.PositiveIntegerField(default=0)
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Repuesto a prueba"
+        verbose_name_plural = "Repuestos a prueba"
+
+    @property
+    def pendiente_entrega(self) -> int:
+        return max(0, int(self.cantidad_solicitada) - int(self.cantidad_entregada))
+
+    @property
+    def en_taller(self) -> int:
+        return max(0, int(self.cantidad_entregada) - int(self.cantidad_usada) - int(self.cantidad_devuelta))
+
+
+class OrdenTallerEntrega(models.Model):
+    """Entrega fisica de repuestos al taller (despacho), con firma de quien recibe."""
+
+    class Tipos(models.TextChoices):
+        ORDEN = "orden", "Repuestos de la orden"
+        PRUEBA = "prueba", "Repuestos a prueba"
+
+    orden = models.ForeignKey(OrdenTaller, on_delete=models.CASCADE, related_name="entregas")
+    tipo = models.CharField(max_length=20, choices=Tipos.choices)
+    entregado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Administrador que despacho.",
+    )
+    recibido_por = models.CharField(max_length=150)
+    recibido_rol = models.CharField(max_length=40, blank=True)
+    firma = models.TextField(help_text="Firma en pantalla (imagen PNG en data URL).")
+    nota = models.TextField(blank=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-creado_en", "-id"]
+        verbose_name = "Entrega a taller"
+        verbose_name_plural = "Entregas a taller"
+
+
+class OrdenTallerEntregaItem(models.Model):
+    entrega = models.ForeignKey(OrdenTallerEntrega, on_delete=models.CASCADE, related_name="items")
+    linea = models.ForeignKey(OrdenTallerLinea, on_delete=models.SET_NULL, null=True, blank=True, related_name="entregas")
+    prueba = models.ForeignKey(OrdenTallerPrueba, on_delete=models.SET_NULL, null=True, blank=True, related_name="entregas")
+    producto = models.ForeignKey("productos.Producto", on_delete=models.PROTECT, related_name="+")
+    cantidad = models.PositiveIntegerField()
+    # [{"subdivision_id", "ubicacion", "cantidad"}] de donde salio.
+    ubicaciones = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ["id"]
+
+
+class OrdenTallerDevolucion(models.Model):
+    """Repuesto que volvio del taller a bodega, verificado por el administrador."""
+
+    orden = models.ForeignKey(OrdenTaller, on_delete=models.CASCADE, related_name="devoluciones")
+    prueba = models.ForeignKey(OrdenTallerPrueba, on_delete=models.SET_NULL, null=True, blank=True, related_name="devoluciones")
+    producto = models.ForeignKey("productos.Producto", on_delete=models.PROTECT, related_name="+")
+    cantidad = models.PositiveIntegerField()
+    subdivision = models.ForeignKey("inventario.SubDivision", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    ubicacion = models.CharField(max_length=255, blank=True)
+    devuelto_por = models.CharField(max_length=150, blank=True)
+    recibido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Administrador que verifico que se guardo.",
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-creado_en", "-id"]
+        verbose_name = "Devolución de taller"
+        verbose_name_plural = "Devoluciones de taller"

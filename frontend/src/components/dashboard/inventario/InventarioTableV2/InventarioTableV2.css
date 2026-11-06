@@ -480,6 +480,15 @@
   color: #fbbf24;
 }
 
+/* En taller (verde): despachado a una orden de trabajo; no se puede vender. */
+.inventario-v2__in-transit--taller {
+  color: #15803d;
+}
+
+.dashboard-shell.dark .inventario-v2__in-transit--taller {
+  color: #4ade80;
+}
+
 /* ---------- Busqueda avanzada ---------- */
 .inv-search .create-user__section {
   gap: 10px;

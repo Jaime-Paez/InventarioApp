@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Plus, Trash2, X } from 'lucide-react'
+import { Check, PackagePlus, Plus, Trash2, Truck, X } from 'lucide-react'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import './Taller.css'
 import { API_URL, authFetch } from '../../../utils/api'
-import { formatDateTime } from '../../../utils/dateFormat'
+import { formatDate, formatDateTime } from '../../../utils/dateFormat'
 import useModalAnimation from '../common/useModalAnimation'
 import useResizableModal from '../common/useResizableModal'
 import MoneyInput from '../common/MoneyInput'
 import BlockerNotice from '../common/BlockerNotice'
 import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
+import ProductoBuscador from './ProductoBuscador'
+import PruebasPanel from './PruebasPanel'
+import DespachoDialog from './DespachoDialog'
+import DevolucionDialog from './DevolucionDialog'
+import CrearProductoDialog from './CrearProductoDialog'
 import {
   LINEA_TIPOS,
   ORDEN_PASOS,
@@ -51,7 +56,7 @@ const lineaCodigo = (linea) => {
 // Fila del detalle: cantidad, precio y descripcion se guardan al salir del
 // campo (o con Enter). Si el servidor rechaza el cambio, vuelve al valor real.
 // ---------------------------------------------------------------------------
-function LineaRow({ linea, index, editable, enOrden, isAdmin, busy, onUpdate, onDelete, onReviewPrice }) {
+function LineaRow({ linea, index, editable, enOrden, esGarantia, isAdmin, busy, onUpdate, onDelete, onReviewPrice, onCrearProducto }) {
   const [cantidad, setCantidad] = useState(String(linea.cantidad))
   const [precio, setPrecio] = useState(toNumber(linea.precio))
   const [descripcion, setDescripcion] = useState(linea.descripcion || '')
@@ -68,6 +73,7 @@ function LineaRow({ linea, index, editable, enOrden, isAdmin, busy, onUpdate, on
   const minCantidad = enOrden && !isAdmin ? linea.cantidad : 1
   const canDelete = editable && (!enOrden || isAdmin)
   const descripcionEditable = editable && linea.tipo !== 'repuesto'
+  const precioEditable = editable && !linea.es_garantia
 
   const commitCantidad = () => {
     const parsed = parseInt(cantidad, 10)
@@ -118,17 +124,20 @@ function LineaRow({ linea, index, editable, enOrden, isAdmin, busy, onUpdate, on
   const total = toNumber(linea.precio) * toNumber(linea.cantidad)
   const precioPendiente = linea.precio_estado === 'pendiente'
   const precioAprobado = linea.precio_estado === 'aprobado'
+  const esRepuesto = linea.tipo === 'repuesto'
 
   return (
-    <tr className={`taller-lineas__row${precioPendiente ? ' is-pending' : ''}`}>
+    <tr className={`taller-lineas__row${precioPendiente ? ' is-pending' : ''}${linea.tipo === 'sin_codigo' && enOrden ? ' is-missing' : ''}`}>
       <td className="taller-lineas__index">{index + 1}</td>
       <td>
         <span className={`taller-tipo taller-tipo--${linea.tipo}`}>{LINEA_TIPOS[linea.tipo]?.short || linea.tipo}</span>
+        {linea.es_garantia && <span className="taller-chip taller-chip--garantia">Garantía</span>}
         {linea.agregada_en_orden && (
           <span className="taller-lineas__added" title={`Agregado con la orden en curso${linea.creado_por_nombre ? ` por ${linea.creado_por_nombre}` : ''}`}>
             Agregado
           </span>
         )}
+        {linea.era_sin_codigo && <span className="taller-lineas__added" title="Llegó sin código y se creó en el inventario">Nuevo</span>}
       </td>
       <td className="taller-lineas__code">
         {linea.tipo === 'sin_codigo' && editable ? (
@@ -143,6 +152,15 @@ function LineaRow({ linea, index, editable, enOrden, isAdmin, busy, onUpdate, on
           />
         ) : (
           lineaCodigo(linea)
+        )}
+        {linea.tipo === 'sin_codigo' && enOrden && (
+          isAdmin ? (
+            <button type="button" className="taller-mini-btn taller-mini-btn--warn" onClick={() => onCrearProducto(linea)} disabled={busy}>
+              <PackagePlus size={13} /> Crear producto
+            </button>
+          ) : (
+            <small className="taller-lineas__error">No existe: el administrador debe crearlo</small>
+          )
         )}
       </td>
       <td className="taller-lineas__desc">
@@ -178,11 +196,23 @@ function LineaRow({ linea, index, editable, enOrden, isAdmin, busy, onUpdate, on
         )}
         {cantidadError && <small className="taller-lineas__error">{cantidadError}</small>}
       </td>
+      <td className="taller-lineas__desp">
+        {esRepuesto && linea.producto ? (
+          <span
+            className={`taller-desp${linea.cantidad_despachada >= linea.cantidad ? ' is-done' : linea.cantidad_despachada > 0 ? ' is-partial' : ''}`}
+            title={linea.cantidad_despachada >= linea.cantidad ? 'Todo entregado al taller' : `Faltan entregar ${linea.pendiente_despacho}`}
+          >
+            {`${linea.cantidad_despachada}/${linea.cantidad}`}
+          </span>
+        ) : (
+          <span className="taller-muted">-</span>
+        )}
+      </td>
       <td className="taller-lineas__money taller-lineas__pvp">
-        {linea.tipo === 'repuesto' ? (linea.precio_lista != null ? formatMoney(linea.precio_lista) : <span className="taller-muted">Sin PVP</span>) : <span className="taller-muted">-</span>}
+        {esRepuesto ? (linea.precio_lista != null ? formatMoney(linea.precio_lista) : <span className="taller-muted">Sin PVP</span>) : <span className="taller-muted">-</span>}
       </td>
       <td className="taller-lineas__money">
-        {editable ? (
+        {precioEditable ? (
           <MoneyInput
             className={`taller-input taller-input--money${precioPendiente ? ' is-pending' : ''}`}
             value={precio}
@@ -193,6 +223,17 @@ function LineaRow({ linea, index, editable, enOrden, isAdmin, busy, onUpdate, on
           />
         ) : (
           formatMoney(linea.precio)
+        )}
+        {esGarantia && esRepuesto && editable && (
+          <label className="taller-garantia-toggle">
+            <input
+              type="checkbox"
+              checked={Boolean(linea.es_garantia)}
+              onChange={(event) => onUpdate(linea.id, { es_garantia: event.target.checked }).catch(() => {})}
+              disabled={busy}
+            />
+            Garantía (sin costo)
+          </label>
         )}
         {precioPendiente && (
           <div className="taller-price-review">
@@ -229,7 +270,13 @@ function LineaRow({ linea, index, editable, enOrden, isAdmin, busy, onUpdate, on
       <td className="taller-lineas__money taller-lineas__total">{formatMoney(total)}</td>
       <td className="taller-lineas__actions">
         {canDelete && (
-          <button type="button" className="taller-icon-btn taller-icon-btn--no" onClick={() => onDelete(linea)} disabled={busy} title="Quitar">
+          <button
+            type="button"
+            className="taller-icon-btn taller-icon-btn--no"
+            onClick={() => onDelete(linea)}
+            disabled={busy}
+            title={linea.cantidad_despachada ? 'Quitar (lo entregado queda por devolver a bodega)' : 'Quitar'}
+          >
             <Trash2 size={14} />
           </button>
         )}
@@ -250,47 +297,13 @@ const ADD_TABS = [
 ]
 const EMPTY_FREE_FORM = { descripcion: '', referencia: '', cantidad: '1', precio: null, mano_obra: null }
 
-function AgregarLinea({ token, busy, onAdd, manoObraCatalogo, inputRef }) {
+function AgregarLinea({ token, busy, onAdd, manoObraCatalogo, inputRef, sucursalId, esGarantia }) {
   const [tab, setTab] = useState('repuesto')
-  const [query, setQuery] = useState('')
   const [cantidad, setCantidad] = useState('1')
-  const [results, setResults] = useState([])
-  const [searching, setSearching] = useState(false)
-  const [searchError, setSearchError] = useState('')
+  const [garantia, setGarantia] = useState(Boolean(esGarantia))
   const [form, setForm] = useState(EMPTY_FREE_FORM)
   const [formError, setFormError] = useState('')
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const searchSeq = useRef(0)
-
-  useEffect(() => {
-    if (tab !== 'repuesto') return undefined
-    const term = query.trim()
-    if (!term) {
-      setResults([])
-      setSearching(false)
-      setSearchError('')
-      return undefined
-    }
-    const seq = ++searchSeq.current
-    setSearching(true)
-    const timer = setTimeout(async () => {
-      try {
-        const response = await authFetch(`${API_URL}/taller/ordenes/buscar-productos/?q=${encodeURIComponent(term)}`, {}, token)
-        if (!response.ok) throw new Error(await parseApiError(response, 'No se pudo buscar.'))
-        const data = await response.json()
-        if (seq !== searchSeq.current) return
-        setResults(Array.isArray(data) ? data : [])
-        setSearchError('')
-      } catch (error) {
-        if (seq !== searchSeq.current) return
-        setResults([])
-        setSearchError(error.message || 'No se pudo buscar.')
-      } finally {
-        if (seq === searchSeq.current) setSearching(false)
-      }
-    }, 280)
-    return () => clearTimeout(timer)
-  }, [query, tab, token])
 
   const parsedCantidad = (raw) => {
     const value = parseInt(raw, 10)
@@ -300,23 +313,22 @@ function AgregarLinea({ token, busy, onAdd, manoObraCatalogo, inputRef }) {
   const addProducto = async (producto) => {
     const qty = parsedCantidad(cantidad)
     if (!qty) {
-      setSearchError('La cantidad debe ser al menos 1.')
-      return
+      setFormError('La cantidad debe ser al menos 1.')
+      return false
     }
     try {
-      await onAdd({ tipo: 'repuesto', producto: producto.id, cantidad: qty })
-      setQuery('')
+      await onAdd({ tipo: 'repuesto', producto: producto.id, cantidad: qty, es_garantia: esGarantia && garantia })
       setCantidad('1')
-      setResults([])
-      inputRef?.current?.focus()
+      setFormError('')
+      return true
     } catch {
-      // el error ya se mostro
+      return false
     }
   }
 
-  const switchTab = (key) => {
+  const switchTab = (key, preset = {}) => {
     setTab(key)
-    setForm(EMPTY_FREE_FORM)
+    setForm({ ...EMPTY_FREE_FORM, ...preset })
     setFormError('')
     setShowSuggestions(false)
   }
@@ -377,7 +389,7 @@ function AgregarLinea({ token, busy, onAdd, manoObraCatalogo, inputRef }) {
             type="button"
             role="tab"
             aria-selected={tab === item.key}
-            className={`taller-add__tab taller-add__tab--${item.key}${tab === item.key ? ' is-active' : ''}`}
+            className={`taller-add__tab${tab === item.key ? ' is-active' : ''}`}
             onClick={() => switchTab(item.key)}
           >
             {item.label}
@@ -387,48 +399,24 @@ function AgregarLinea({ token, busy, onAdd, manoObraCatalogo, inputRef }) {
 
       {tab === 'repuesto' ? (
         <div className="taller-add__row">
-          <div className="taller-add__search">
-            <input
-              ref={inputRef}
-              className="taller-input"
-              placeholder="Buscar repuesto por código, nombre, referencia u OEM"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && results.length) {
-                  event.preventDefault()
-                  addProducto(results[0])
-                }
-              }}
-              disabled={busy}
-            />
-            {query.trim() && (
-              <div className="taller-add__results" role="listbox">
-                {searching && <div className="taller-add__result taller-add__result--info"><i className="pi pi-spin pi-spinner" /> Buscando...</div>}
-                {!searching && searchError && <div className="taller-add__result taller-add__result--error">{searchError}</div>}
-                {!searching && !searchError && !results.length && (
-                  <div className="taller-add__result taller-add__result--info">
-                    {`No hay repuestos con "${query.trim()}". Si no lo tenemos, agrégalo en la pestaña "Sin código".`}
-                    <button type="button" className="taller-link" onClick={() => { switchTab('sin_codigo'); setForm({ ...EMPTY_FREE_FORM, referencia: query.trim() }) }}>
-                      Agregar sin código
-                    </button>
-                  </div>
-                )}
-                {!searching && results.map((producto) => (
-                  <button key={producto.id} type="button" className="taller-add__result" onClick={() => addProducto(producto)} disabled={busy}>
-                    <strong>{producto.codigo}</strong>
-                    <span className="taller-add__result-name">{producto.nombre}</span>
-                    <span className={`taller-add__stock${producto.stock > 0 ? '' : ' is-empty'}`}>{`Stock ${producto.stock}`}</span>
-                    <span className="taller-add__pvp">{producto.precio != null ? formatMoney(producto.precio) : 'Sin PVP'}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <ProductoBuscador
+            token={token}
+            sucursalId={sucursalId}
+            onPick={addProducto}
+            disabled={busy}
+            inputRef={inputRef}
+            emptyAction={{ label: 'Agregar sin código', run: (texto) => switchTab('sin_codigo', { referencia: texto }) }}
+          />
           <label className="taller-add__field taller-add__field--qty">
             <span>Cant.</span>
             <input className="taller-input taller-input--qty" type="number" min={1} step={1} value={cantidad} onChange={(event) => setCantidad(event.target.value)} disabled={busy} />
           </label>
+          {esGarantia && (
+            <label className="taller-garantia-toggle taller-garantia-toggle--add">
+              <input type="checkbox" checked={garantia} onChange={(event) => setGarantia(event.target.checked)} />
+              Garantía (sin costo)
+            </label>
+          )}
         </div>
       ) : (
         <form className="taller-add__row" onSubmit={submitFree}>
@@ -485,11 +473,127 @@ function AgregarLinea({ token, busy, onAdd, manoObraCatalogo, inputRef }) {
 }
 
 // ---------------------------------------------------------------------------
+// Historial: entregas con firma, devoluciones y eventos.
+// ---------------------------------------------------------------------------
+function HistorialTab({ orden }) {
+  const entregas = orden.entregas || []
+  const devoluciones = orden.devoluciones || []
+  const eventos = orden.eventos || []
+  return (
+    <>
+      <section className="create-user__section">
+        <div className="create-user__section-header">
+          <div>
+            <p className="create-user__eyebrow">Despachos</p>
+            <h4>{`Entregas al taller (${entregas.length})`}</h4>
+          </div>
+        </div>
+        {!entregas.length ? (
+          <p className="taller-muted">Todavía no se entregó nada al taller.</p>
+        ) : (
+          <div className="taller-entregas">
+            {entregas.map((entrega) => (
+              <div key={entrega.id} className="taller-entrega">
+                <div className="taller-entrega__info">
+                  <div className="taller-entrega__head">
+                    <strong>{formatDateTime(entrega.creado_en)}</strong>
+                    <span className={`taller-chip taller-chip--${entrega.tipo === 'prueba' ? 'prueba' : 'orden'}`}>{entrega.tipo_label}</span>
+                  </div>
+                  <div className="taller-muted">
+                    {`Despachó ${entrega.entregado_por_nombre || '-'} · Recibió ${entrega.recibido_por}${entrega.recibido_rol ? ` (${entrega.recibido_rol})` : ''}`}
+                  </div>
+                  <ul className="taller-entrega__items">
+                    {entrega.items.map((item) => (
+                      <li key={item.id}>
+                        <strong>{item.producto_codigo}</strong>
+                        {` x${item.cantidad}`}
+                        {item.a_prueba && ' (a prueba)'}
+                        {Array.isArray(item.ubicaciones) && item.ubicaciones.length > 0 && (
+                          <span className="taller-muted">{` · de ${item.ubicaciones.map((u) => `${u.ubicacion} (${u.cantidad})`).join(', ')}`}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {entrega.nota && <p className="taller-muted">{entrega.nota}</p>}
+                </div>
+                <img className="taller-entrega__firma" src={entrega.firma} alt={`Firma de ${entrega.recibido_por}`} />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {devoluciones.length > 0 && (
+        <section className="create-user__section">
+          <div className="create-user__section-header">
+            <div>
+              <p className="create-user__eyebrow">Retornos</p>
+              <h4>{`Devoluciones a bodega (${devoluciones.length})`}</h4>
+            </div>
+          </div>
+          <ol className="taller-history">
+            {devoluciones.map((dev) => (
+              <li key={dev.id}>
+                <span className="taller-history__when">{formatDateTime(dev.creado_en)}</span>
+                <span className="taller-history__who">{dev.recibido_por_nombre || '-'}</span>
+                <span className="taller-history__what">
+                  {`${dev.producto_codigo} x${dev.cantidad} guardado en ${dev.ubicacion}${dev.devuelto_por ? ` (lo trajo ${dev.devuelto_por})` : ''}`}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      <section className="create-user__section">
+        <div className="create-user__section-header">
+          <div>
+            <p className="create-user__eyebrow">Todo</p>
+            <h4>Historial de la orden</h4>
+          </div>
+        </div>
+        {!eventos.length ? (
+          <p className="taller-muted">Sin movimientos todavía.</p>
+        ) : (
+          <ol className="taller-history">
+            {eventos.map((evento) => (
+              <li key={evento.id}>
+                <span className="taller-history__when">{formatDateTime(evento.creado_en)}</span>
+                <span className="taller-history__who">{evento.usuario_nombre || 'Sistema'}</span>
+                <span className="taller-history__what">{evento.descripcion}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </>
+  )
+}
+
+// Por que todavia no se puede cerrar (lo mismo que valida el servidor).
+const motivosNoCierre = (orden) => {
+  const motivos = []
+  const lineas = orden?.lineas || []
+  const pruebas = orden?.pruebas || []
+  const sinCodigo = lineas.filter((l) => l.tipo === 'sin_codigo')
+  if (sinCodigo.length) motivos.push(`${sinCodigo.length} repuesto(s) sin código por crear en el inventario`)
+  const precios = lineas.filter((l) => l.precio_estado === 'pendiente')
+  if (precios.length) motivos.push(`${precios.length} precio(s) por aprobar`)
+  const porDespachar = lineas.filter((l) => l.pendiente_despacho > 0)
+  if (porDespachar.length) motivos.push(`faltan despachar: ${porDespachar.map((l) => `${l.producto_codigo} (${l.pendiente_despacho})`).join(', ')}`)
+  const porEntregar = pruebas.filter((p) => p.pendiente_entrega > 0)
+  if (porEntregar.length) motivos.push(`pruebas pedidas sin entregar: ${porEntregar.map((p) => p.producto_codigo).join(', ')} (entrégalas o cancélalas)`)
+  const porDevolver = pruebas.filter((p) => p.en_taller > 0)
+  if (porDevolver.length) motivos.push(`faltan devolver a bodega: ${porDevolver.map((p) => `${p.producto_codigo} (${p.en_taller})`).join(', ')}`)
+  return motivos
+}
+
+// ---------------------------------------------------------------------------
 // Ventana de la orden
 // ---------------------------------------------------------------------------
-function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = true, onClose, onChanged, notify }) {
+function OrdenTallerModal({ open, ordenId, token, user, isAdmin = false, canEdit = true, onClose, onChanged, notify }) {
   const { shouldRender, isClosing } = useModalAnimation(open)
-  const modal = useResizableModal(open, { initialSize: { width: 1240, height: 860 }, minSize: { width: 640, height: 420 } })
+  const modal = useResizableModal(open, { initialSize: { width: 1360, height: 880 }, minSize: { width: 640, height: 420 } })
   const [orden, setOrden] = useState(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
@@ -499,7 +603,12 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
   const [activeTab, setActiveTab] = useState('detalle')
   const [confirm, setConfirm] = useState(null)
   const [motivo, setMotivo] = useState('')
+  const [factura, setFactura] = useState('')
   const [manoObraCatalogo, setManoObraCatalogo] = useState([])
+  const [sucursales, setSucursales] = useState([])
+  const [showDespacho, setShowDespacho] = useState(false)
+  const [devolucion, setDevolucion] = useState(null)
+  const [crearProducto, setCrearProducto] = useState(null)
   const pendingHeaderRef = useRef({})
   const headerTimerRef = useRef(null)
   const addInputRef = useRef(null)
@@ -518,44 +627,54 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
     onChanged?.(data)
   }, [onChanged])
 
+  const loadOrden = useCallback(async (id, { silent = false } = {}) => {
+    if (!silent) setLoading(true)
+    try {
+      const response = await authFetch(`${API_URL}/taller/ordenes/${id}/`, {}, token)
+      if (!response.ok) throw new Error(await parseApiError(response, 'No se pudo cargar la orden.'))
+      const data = await response.json()
+      setOrden(data)
+      setHeader({ ...headerFromOrden(data), ...pendingHeaderRef.current })
+      setLoadError('')
+    } catch (error) {
+      setLoadError(error.message || 'No se pudo cargar la orden.')
+    } finally {
+      if (!silent) setLoading(false)
+    }
+  }, [token])
+
   useEffect(() => {
-    if (!open || !ordenId) return undefined
-    let cancelled = false
+    if (!open || !ordenId) return
     pendingHeaderRef.current = {}
     setOrden(null)
     setLoadError('')
     setActiveTab('detalle')
     setHeaderStatus('idle')
-    setLoading(true)
-    ;(async () => {
-      try {
-        const response = await authFetch(`${API_URL}/taller/ordenes/${ordenId}/`, {}, token)
-        if (!response.ok) throw new Error(await parseApiError(response, 'No se pudo cargar la orden.'))
-        const data = await response.json()
-        if (!cancelled) {
-          setOrden(data)
-          setHeader(headerFromOrden(data))
-        }
-      } catch (error) {
-        if (!cancelled) setLoadError(error.message || 'No se pudo cargar la orden.')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [open, ordenId, token])
+    setShowDespacho(false)
+    setDevolucion(null)
+    setCrearProducto(null)
+    loadOrden(ordenId)
+  }, [open, ordenId, loadOrden])
 
   useEffect(() => {
     if (!open) return undefined
     let cancelled = false
     ;(async () => {
       try {
-        const response = await authFetch(`${API_URL}/taller/mano-obra/?activos=1`, {}, token)
-        if (!response.ok) return
-        const data = await response.json()
-        if (!cancelled) setManoObraCatalogo(Array.isArray(data) ? data : data?.results || [])
+        const [manoResp, sucResp] = await Promise.all([
+          authFetch(`${API_URL}/taller/mano-obra/?activos=1`, {}, token),
+          authFetch(`${API_URL}/taller/ordenes/sucursales/`, {}, token),
+        ])
+        if (manoResp.ok) {
+          const data = await manoResp.json()
+          if (!cancelled) setManoObraCatalogo(Array.isArray(data) ? data : data?.results || [])
+        }
+        if (sucResp.ok) {
+          const data = await sucResp.json()
+          if (!cancelled) setSucursales(Array.isArray(data) ? data : [])
+        }
       } catch {
-        // sin catalogo igual se puede escribir el trabajo
+        // sin catalogos igual se puede trabajar
       }
     })()
     return () => { cancelled = true }
@@ -563,6 +682,7 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
 
   const editable = Boolean(orden && canEdit && (orden.estado === 'cotizacion' || orden.estado === 'orden'))
   const enOrden = orden?.estado === 'orden'
+  const esGarantia = orden?.tipo === 'garantia'
 
   // ---- Cabecera: se guarda sola mientras se escribe ----
   const flushHeader = useCallback(async () => {
@@ -626,10 +746,28 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
     }
   }, [applyOrden, report, token])
 
+  const patchOrden = (body, fallback) => callOrden('', { method: 'PATCH', body: JSON.stringify(body) }, fallback)
   const addLinea = (body) => callOrden('lineas/', { method: 'POST', body: JSON.stringify(body) }, 'No se pudo agregar.')
   const updateLinea = (id, body) => callOrden(`lineas/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }, 'No se pudo guardar el cambio.')
   const reviewPrice = (id, aprobar) =>
     callOrden(`lineas/${id}/revisar-precio/`, { method: 'POST', body: JSON.stringify({ aprobar }) }, 'No se pudo revisar el precio.').catch(() => {})
+  const addPrueba = (body) => callOrden('pruebas/', { method: 'POST', body: JSON.stringify(body) }, 'No se pudo pedir a prueba.')
+
+  const cancelPrueba = (prueba) => {
+    const run = prueba.cantidad_entregada
+      ? () => callOrden(`pruebas/${prueba.id}/`, { method: 'PATCH', body: JSON.stringify({ cantidad_solicitada: prueba.cantidad_entregada }) }, 'No se pudo cancelar.')
+      : () => callOrden(`pruebas/${prueba.id}/`, { method: 'DELETE' }, 'No se pudo cancelar.')
+    run().catch(() => {})
+  }
+
+  const pasarPrueba = (prueba) => {
+    setConfirm({
+      title: `¿${prueba.producto_codigo} entra a la orden?`,
+      message: `Funcionó: pasan ${prueba.en_taller} unidad(es) a la orden con su PVP. Ya están en el taller, no se vuelven a despachar.`,
+      confirmLabel: 'Pasar a la orden',
+      run: () => callOrden(`pruebas/${prueba.id}/pasar-a-orden/`, { method: 'POST', body: JSON.stringify({ cantidad: prueba.en_taller }) }, 'No se pudo pasar a la orden.'),
+    })
+  }
 
   const requestDelete = (linea) => {
     if (!enOrden) {
@@ -637,9 +775,8 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
       return
     }
     setConfirm({
-      kind: 'quitar',
       title: '¿Quitar de la orden de trabajo?',
-      message: `"${linea.descripcion || lineaCodigo(linea)}" ya se le confirmó al cliente. Quedará registrado en el historial que lo quitaste.`,
+      message: `"${linea.descripcion || lineaCodigo(linea)}" ya se le confirmó al cliente.${linea.cantidad_despachada ? ` Las ${linea.cantidad_despachada} unidad(es) ya entregadas quedan por devolver a bodega.` : ''} Queda registrado en el historial.`,
       confirmLabel: 'Quitar',
       run: () => callOrden(`lineas/${linea.id}/`, { method: 'DELETE' }, 'No se pudo quitar.'),
     })
@@ -668,20 +805,28 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
       },
       anular: {
         title: '¿Anular esta orden?',
-        message: 'La orden queda anulada y ya no se puede modificar.',
+        message: 'La orden queda anulada y ya no se puede modificar. Si hay repuestos en el taller, primero deben volver a bodega.',
         confirmLabel: 'Anular',
         withMotivo: true,
         run: (texto) => callOrden('anular/', { method: 'POST', body: JSON.stringify({ motivo: texto }) }, 'No se pudo anular.'),
       },
+      cerrar: {
+        title: '¿Cerrar la orden?',
+        message: 'Se registra la salida tipo Taller con los repuestos de la orden: salen definitivamente (ya no están ni en el taller ni en el inventario).',
+        confirmLabel: 'Cerrar orden',
+        withFactura: true,
+        run: (_texto, numeroFactura) => callOrden('cerrar/', { method: 'POST', body: JSON.stringify({ numero_factura: numeroFactura }) }, 'No se pudo cerrar la orden.'),
+      },
     }
     setMotivo('')
+    setFactura(ordenRef.current?.numero_factura || '')
     setConfirm({ kind, ...configs[kind] })
   }
 
   const confirmRun = async () => {
     if (!confirm) return
     try {
-      await confirm.run(motivo.trim())
+      await confirm.run(motivo.trim(), factura.trim())
       setConfirm(null)
     } catch {
       // el error ya se mostro; el dialogo se queda abierto
@@ -691,6 +836,7 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
   const isEmptyDraft = (current) =>
     current &&
     current.estado === 'cotizacion' &&
+    current.tipo !== 'garantia' &&
     !(current.lineas || []).length &&
     HEADER_FIELDS.every((key) => !String(current[key] ?? '').trim())
 
@@ -710,16 +856,26 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
     onClose?.()
   }
 
+  const afterDialog = (data) => {
+    if (data) applyOrden(data)
+  }
+
   const lineas = useMemo(() => orden?.lineas || [], [orden])
+  const ivaRate = toNumber(orden?.iva_rate || 0.15)
   const totales = useMemo(() => {
     const byTipo = { repuesto: 0, sin_codigo: 0, insumo: 0, mano_obra: 0 }
     lineas.forEach((linea) => {
       byTipo[linea.tipo] = (byTipo[linea.tipo] || 0) + toNumber(linea.precio) * toNumber(linea.cantidad)
     })
-    return { byTipo, total: Object.values(byTipo).reduce((acc, value) => acc + value, 0) }
-  }, [lineas])
+    const subtotal = Object.values(byTipo).reduce((acc, value) => acc + value, 0)
+    const iva = Math.round(subtotal * ivaRate * 100) / 100
+    return { byTipo, subtotal, iva, total: subtotal + iva }
+  }, [lineas, ivaRate])
   const preciosPendientes = lineas.filter((linea) => linea.precio_estado === 'pendiente').length
   const sinCodigo = lineas.filter((linea) => linea.tipo === 'sin_codigo').length
+  const porDespachar = lineas.reduce((acc, l) => acc + (l.pendiente_despacho || 0), 0)
+    + (orden?.pruebas || []).reduce((acc, p) => acc + (p.pendiente_entrega || 0), 0)
+  const motivosCierre = enOrden ? motivosNoCierre(orden) : []
 
   if (!shouldRender) return null
 
@@ -736,6 +892,7 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
     saved: 'Guardado',
     error: 'No se guardó: revisa la conexión',
   }[headerStatus]
+  const sucursalBloqueada = Boolean((orden?.entregas || []).length)
 
   const field = (key, label, props = {}) => (
     <label className={`create-user__field${props.full ? ' create-user__field--full' : ''}`}>
@@ -757,6 +914,9 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
     </label>
   )
 
+  const anterior = orden?.garantia_de_resumen
+  const lineasGarantiaIds = new Set(lineas.filter((l) => l.es_garantia).map((l) => l.producto))
+
   return (
     <div className={`create-user__overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true">
       <div className={`create-user__modal taller-modal${isClosing ? ' create-user__modal--closing' : ''}`} style={modal.style}>
@@ -764,6 +924,7 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
           <div className="create-user__header-text taller-modal__title">
             <h3>{titulo}</h3>
             {orden && <span className={`taller-chip taller-chip--${estado.chip}`}>{estado.label}</span>}
+            {esGarantia && <span className="taller-chip taller-chip--garantia">Garantía</span>}
           </div>
           <div className="create-user__header-actions">
             <button type="button" className="create-user__icon-button create-user__icon-button--maximize" onClick={modal.toggleMaximize} aria-label={modal.maximized ? 'Restaurar' : 'Maximizar'}>
@@ -784,7 +945,7 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
           )}
           {loadError && !loading && (
             <div className="taller-modal__load-error">
-              <BlockerNotice title="No se pudo abrir la orden" reason={loadError} />
+              <BlockerNotice title="No se pudo abrir la orden" reason={loadError} actionLabel="Reintentar" onAction={() => loadOrden(ordenId)} />
             </div>
           )}
 
@@ -794,15 +955,13 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
                 {ORDEN_PASOS.map((paso, index) => {
                   const done = !fueraDeFlujo && index < pasoActual
                   const current = index === pasoActual
+                  const fecha = index === 0 ? orden.creado_en : index === 1 ? orden.aceptada_en : orden.cerrada_en
                   return (
                     <div key={paso.key} className={`taller-steps__step${done ? ' is-done' : ''}${current ? ' is-current' : ''}`}>
-                      <span className="taller-steps__dot">{done ? <Check size={13} /> : index + 1}</span>
+                      <span className="taller-steps__dot">{done || (current && orden.estado === 'cerrada') ? <Check size={13} /> : index + 1}</span>
                       <span className="taller-steps__label">{paso.label}</span>
                       {current && fueraDeFlujo && <span className={`taller-chip taller-chip--${estado.chip}`}>{estado.label}</span>}
-                      {index === 1 && orden.aceptada_en && (
-                        <span className="taller-steps__date">{formatDateTime(orden.aceptada_en)}</span>
-                      )}
-                      {index === 0 && <span className="taller-steps__date">{formatDateTime(orden.creado_en)}</span>}
+                      {fecha && <span className="taller-steps__date">{formatDateTime(fecha)}</span>}
                     </div>
                   )
                 })}
@@ -813,13 +972,46 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
                   Orden
                 </button>
                 <button type="button" className={`create-user__tab${activeTab === 'historial' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('historial')}>
-                  {`Historial (${(orden.eventos || []).length})`}
+                  {`Despachos e historial (${(orden.entregas || []).length})`}
                 </button>
               </div>
 
               <div className="create-user__body taller-modal__body">
                 {activeTab === 'detalle' && (
                   <>
+                    {esGarantia && anterior && (
+                      <section className="create-user__section taller-garantia-panel">
+                        <div className="create-user__section-header">
+                          <div>
+                            <p className="create-user__eyebrow">Garantía</p>
+                            <h4>{`Orden original ${formatOrdenNumero(anterior.numero)}`}</h4>
+                          </div>
+                          <span className="taller-muted">
+                            {[anterior.placa, anterior.cliente_nombre, anterior.numero_factura && `Factura ${anterior.numero_factura}`, anterior.cerrada_en && `Cerrada ${formatDate(anterior.cerrada_en)}`]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </span>
+                        </div>
+                        <div className="taller-garantia-parts">
+                          {anterior.repuestos.length ? anterior.repuestos.map((r) => (
+                            <div key={r.linea} className="taller-garantia-part">
+                              <span><strong>{r.producto_codigo}</strong>{` ${r.descripcion} · x${r.cantidad}`}</span>
+                              {editable && (
+                                <button
+                                  type="button"
+                                  className="taller-mini-btn taller-mini-btn--ok"
+                                  onClick={() => addLinea({ tipo: 'repuesto', producto: r.producto, cantidad: 1, es_garantia: true }).catch(() => {})}
+                                  disabled={busy}
+                                >
+                                  {lineasGarantiaIds.has(r.producto) ? '+1 por garantía' : 'Agregar por garantía'}
+                                </button>
+                              )}
+                            </div>
+                          )) : <span className="taller-muted">La orden original no tenía repuestos.</span>}
+                        </div>
+                      </section>
+                    )}
+
                     <section className="create-user__section">
                       <div className="create-user__section-header">
                         <div>
@@ -839,6 +1031,18 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
                           <span>Asesor</span>
                           <div className="create-salida__static-value taller-static">{orden.asesor_nombre || '-'}</div>
                         </div>
+                        <label className="create-user__field">
+                          <span>Sucursal (de dónde salen los repuestos)</span>
+                          <select
+                            value={orden.sucursal ?? ''}
+                            disabled={!editable || busy || sucursalBloqueada}
+                            title={sucursalBloqueada ? 'Ya se despacharon repuestos: no se puede cambiar' : undefined}
+                            onChange={(event) => patchOrden({ sucursal: event.target.value ? Number(event.target.value) : null }, 'No se pudo cambiar la sucursal.').catch(() => {})}
+                          >
+                            <option value="">Elige la sucursal...</option>
+                            {sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                          </select>
+                        </label>
                         {field('placa', 'Placa', { upper: true })}
                         {field('modelo', 'Modelo / cilindraje', { placeholder: '3008 1.6 Turbo EP6 Gasolina' })}
                         {field('vin', 'VIN', { upper: true })}
@@ -846,110 +1050,156 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
                         {field('cliente_nombre', 'Cliente')}
                         {field('cliente_identificacion', 'Cédula / RUC')}
                         {field('cliente_telefono', 'Teléfono')}
+                        {orden.estado === 'cerrada' && (
+                          <label className="create-user__field">
+                            <span>N° de factura</span>
+                            <input
+                              type="text"
+                              defaultValue={orden.numero_factura}
+                              disabled={!canEdit || busy}
+                              onBlur={(event) => {
+                                const value = event.target.value.trim()
+                                if (value !== (orden.numero_factura || '')) patchOrden({ numero_factura: value }, 'No se pudo guardar la factura.').catch(() => {})
+                              }}
+                            />
+                          </label>
+                        )}
                         {field('observaciones', 'Observaciones', { textarea: true })}
                       </div>
                     </section>
 
-                    <section className="create-user__section">
-                      <div className="create-user__section-header">
-                        <div>
-                          <p className="create-user__eyebrow">Detalle</p>
-                          <h4>Repuestos, insumos y mano de obra</h4>
+                    <div className="taller-split">
+                      <section className="create-user__section taller-split__main">
+                        <div className="create-user__section-header">
+                          <div>
+                            <p className="create-user__eyebrow">Detalle</p>
+                            <h4>Repuestos, insumos y mano de obra</h4>
+                          </div>
+                          {enOrden && isAdmin && (
+                            <button
+                              type="button"
+                              className="create-user__action create-user__action--primary taller-despachar-btn"
+                              onClick={() => setShowDespacho(true)}
+                              disabled={busy || !porDespachar}
+                              title={porDespachar ? undefined : 'No hay nada pendiente de entregar'}
+                            >
+                              <Truck size={15} /> {porDespachar ? `Despachar (${porDespachar})` : 'Todo despachado'}
+                            </button>
+                          )}
                         </div>
                         {enOrden && !isAdmin && editable && (
-                          <span className="taller-muted">En la orden de trabajo solo se puede agregar o aumentar cantidades.</span>
+                          <p className="taller-muted taller-hint">
+                            {porDespachar
+                              ? `Hay ${porDespachar} unidad(es) por retirar: pídeselas al administrador; él las despacha y quien recibe firma.`
+                              : 'Solo se puede agregar o aumentar cantidades.'}
+                          </p>
                         )}
-                      </div>
 
-                      {preciosPendientes > 0 && (
-                        <BlockerNotice
-                          title={`${preciosPendientes} ${preciosPendientes === 1 ? 'precio por aprobar' : 'precios por aprobar'}`}
-                          reason={
-                            isAdmin
-                              ? 'Tienen un precio distinto al del inventario. Apruébalos o recházalos con ✓ / ✕ en la columna Precio: hasta entonces esos repuestos no se pueden despachar.'
-                              : 'Tienen un precio distinto al del inventario: un administrador debe verificarlos antes de que se puedan despachar.'
-                          }
-                        />
-                      )}
-                      {sinCodigo > 0 && enOrden && (
-                        <BlockerNotice
-                          title={`${sinCodigo} ${sinCodigo === 1 ? 'repuesto no existe' : 'repuestos no existen'} en el inventario`}
-                          reason="Se agregaron sin código: el administrador debe comprarlos y crear el producto antes de despacharlos."
-                        />
-                      )}
+                        {preciosPendientes > 0 && (
+                          <BlockerNotice
+                            title={`${preciosPendientes} ${preciosPendientes === 1 ? 'precio por aprobar' : 'precios por aprobar'}`}
+                            reason={
+                              isAdmin
+                                ? 'Tienen un precio distinto al del inventario. Apruébalos o recházalos con ✓ / ✕ en la columna Precio: hasta entonces no se pueden despachar.'
+                                : 'Tienen un precio distinto al del inventario: un administrador debe verificarlos antes de que se puedan despachar.'
+                            }
+                          />
+                        )}
+                        {sinCodigo > 0 && enOrden && (
+                          <BlockerNotice
+                            title={`${sinCodigo} ${sinCodigo === 1 ? 'repuesto no existe' : 'repuestos no existen'} en el inventario`}
+                            reason={
+                              isAdmin
+                                ? 'Cómpralos y créalos con el botón "Crear producto" de cada línea (con el código sugerido); así quedan en el catálogo para la próxima vez.'
+                                : 'Se agregaron sin código: el administrador debe comprarlos y crear el producto antes de despacharlos.'
+                            }
+                          />
+                        )}
 
-                      {editable && (
-                        <AgregarLinea token={token} busy={busy} onAdd={addLinea} manoObraCatalogo={manoObraCatalogo} inputRef={addInputRef} />
-                      )}
+                        {editable && (
+                          <AgregarLinea
+                            token={token}
+                            busy={busy}
+                            onAdd={addLinea}
+                            manoObraCatalogo={manoObraCatalogo}
+                            inputRef={addInputRef}
+                            sucursalId={orden.sucursal}
+                            esGarantia={esGarantia}
+                          />
+                        )}
 
-                      <div className="taller-lineas__wrap">
-                        <table className="taller-lineas">
-                          <thead>
-                            <tr>
-                              <th>#</th>
-                              <th>Tipo</th>
-                              <th>Código / OEM</th>
-                              <th>Descripción</th>
-                              <th>Cant.</th>
-                              <th>PVP</th>
-                              <th>Precio</th>
-                              <th>Total</th>
-                              <th aria-label="Acciones" />
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {lineas.length === 0 && (
+                        <div className="taller-lineas__wrap">
+                          <table className="taller-lineas">
+                            <thead>
                               <tr>
-                                <td colSpan={9} className="taller-lineas__empty">
-                                  {editable ? 'Todavía no hay nada. Agrega repuestos, mano de obra o insumos con la barra de arriba.' : 'Sin detalle.'}
-                                </td>
+                                <th>#</th>
+                                <th>Tipo</th>
+                                <th>Código / OEM</th>
+                                <th>Descripción</th>
+                                <th>Cant.</th>
+                                <th title="Entregado al taller / pedido">Desp.</th>
+                                <th>PVP</th>
+                                <th>Precio</th>
+                                <th>Total</th>
+                                <th aria-label="Acciones" />
                               </tr>
-                            )}
-                            {lineas.map((linea, index) => (
-                              <LineaRow
-                                key={linea.id}
-                                linea={linea}
-                                index={index}
-                                editable={editable}
-                                enOrden={enOrden}
-                                isAdmin={isAdmin}
-                                busy={busy}
-                                onUpdate={updateLinea}
-                                onDelete={requestDelete}
-                                onReviewPrice={reviewPrice}
-                              />
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                            </thead>
+                            <tbody>
+                              {lineas.length === 0 && (
+                                <tr>
+                                  <td colSpan={10} className="taller-lineas__empty">
+                                    {editable ? 'Todavía no hay nada. Agrega repuestos, mano de obra o insumos con la barra de arriba.' : 'Sin detalle.'}
+                                  </td>
+                                </tr>
+                              )}
+                              {lineas.map((linea, index) => (
+                                <LineaRow
+                                  key={linea.id}
+                                  linea={linea}
+                                  index={index}
+                                  editable={editable}
+                                  enOrden={enOrden}
+                                  esGarantia={esGarantia}
+                                  isAdmin={isAdmin}
+                                  busy={busy}
+                                  onUpdate={updateLinea}
+                                  onDelete={requestDelete}
+                                  onReviewPrice={reviewPrice}
+                                  onCrearProducto={setCrearProducto}
+                                />
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
 
-                      <div className="taller-totals">
-                        <div><span>Repuestos</span><strong>{formatMoney(totales.byTipo.repuesto + totales.byTipo.sin_codigo)}</strong></div>
-                        <div><span>Insumos</span><strong>{formatMoney(totales.byTipo.insumo)}</strong></div>
-                        <div><span>Mano de obra</span><strong>{formatMoney(totales.byTipo.mano_obra)}</strong></div>
-                        <div className="taller-totals__grand"><span>Total</span><strong>{formatMoney(totales.total)}</strong></div>
-                      </div>
-                    </section>
+                        <div className="taller-totals">
+                          <div><span>Repuestos</span><strong>{formatMoney(totales.byTipo.repuesto + totales.byTipo.sin_codigo)}</strong></div>
+                          <div><span>Insumos</span><strong>{formatMoney(totales.byTipo.insumo)}</strong></div>
+                          <div><span>Mano de obra</span><strong>{formatMoney(totales.byTipo.mano_obra)}</strong></div>
+                          <div><span>Subtotal</span><strong>{formatMoney(totales.subtotal)}</strong></div>
+                          <div><span>{`IVA ${Math.round(ivaRate * 100)}%`}</span><strong>{formatMoney(totales.iva)}</strong></div>
+                          <div className="taller-totals__grand"><span>Total</span><strong>{formatMoney(totales.total)}</strong></div>
+                        </div>
+                      </section>
+
+                      {(enOrden || (orden.pruebas || []).length > 0) && (
+                        <PruebasPanel
+                          orden={orden}
+                          token={token}
+                          isAdmin={isAdmin}
+                          canEdit={canEdit}
+                          busy={busy}
+                          onAdd={addPrueba}
+                          onCancel={cancelPrueba}
+                          onPasar={pasarPrueba}
+                          onDevolver={setDevolucion}
+                        />
+                      )}
+                    </div>
                   </>
                 )}
 
-                {activeTab === 'historial' && (
-                  <section className="create-user__section">
-                    {(orden.eventos || []).length === 0 ? (
-                      <p className="taller-muted">Sin movimientos todavía.</p>
-                    ) : (
-                      <ol className="taller-history">
-                        {orden.eventos.map((evento) => (
-                          <li key={evento.id}>
-                            <span className="taller-history__when">{formatDateTime(evento.creado_en)}</span>
-                            <span className="taller-history__who">{evento.usuario_nombre || 'Sistema'}</span>
-                            <span className="taller-history__what">{evento.descripcion}</span>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </section>
-                )}
+                {activeTab === 'historial' && <HistorialTab orden={orden} />}
               </div>
 
               <footer className="create-user__footer taller-modal__footer">
@@ -961,6 +1211,11 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
                   )}
                   {orden.estado === 'rechazada' && orden.motivo_rechazo && (
                     <span className="taller-muted">{`Motivo del rechazo: ${orden.motivo_rechazo}`}</span>
+                  )}
+                  {orden.estado === 'cerrada' && (
+                    <span className="taller-muted">
+                      {`Cerrada por ${orden.cerrada_por_nombre || '-'}${orden.salida_documento ? ` · Salida ${orden.salida_documento}` : ''}`}
+                    </span>
                   )}
                 </div>
                 <div className="create-user__footer-group">
@@ -988,8 +1243,23 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
                       Reabrir cotización
                     </button>
                   )}
+                  {enOrden && canEdit && (
+                    <>
+                      {motivosCierre.length > 0 && (
+                        <BlockerNotice compact title="Aún no se puede cerrar" reason={`${motivosCierre.join('; ')}.`} />
+                      )}
+                      <button
+                        type="button"
+                        className="create-user__action create-user__action--primary"
+                        onClick={() => runStep('cerrar')}
+                        disabled={busy || motivosCierre.length > 0}
+                      >
+                        Orden finalizada: cerrar
+                      </button>
+                    </>
+                  )}
                   <button type="button" className="create-user__action create-user__action--cancel" onClick={handleClose} disabled={busy}>
-                    Cerrar
+                    Cerrar ventana
                   </button>
                 </div>
               </footer>
@@ -1013,8 +1283,41 @@ function OrdenTallerModal({ open, ordenId, token, isAdmin = false, canEdit = tru
               <span>Motivo (opcional)</span>
               <textarea rows={2} value={motivo} onChange={(event) => setMotivo(event.target.value)} />
             </label>
+          ) : confirm?.withFactura ? (
+            <label className="create-user__field taller-confirm-field">
+              <span>N° de factura (opcional, del sistema de facturación)</span>
+              <input type="text" value={factura} onChange={(event) => setFactura(event.target.value)} />
+            </label>
           ) : null
         }
+      />
+
+      <DespachoDialog
+        open={showDespacho}
+        orden={orden}
+        token={token}
+        notify={notify}
+        onClose={() => setShowDespacho(false)}
+        onDone={(data) => { setShowDespacho(false); afterDialog(data) }}
+      />
+      <DevolucionDialog
+        open={Boolean(devolucion)}
+        orden={orden}
+        prueba={devolucion}
+        token={token}
+        notify={notify}
+        onClose={() => setDevolucion(null)}
+        onDone={(data) => { setDevolucion(null); afterDialog(data) }}
+      />
+      <CrearProductoDialog
+        open={Boolean(crearProducto)}
+        orden={orden}
+        linea={crearProducto}
+        token={token}
+        user={user}
+        notify={notify}
+        onClose={() => setCrearProducto(null)}
+        onDone={(data) => { setCrearProducto(null); afterDialog(data) }}
       />
     </div>
   )

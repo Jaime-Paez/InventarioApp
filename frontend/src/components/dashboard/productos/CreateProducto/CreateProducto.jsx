@@ -589,11 +589,21 @@ function CreateProducto({
       ? nextInitialData.referencias.map((item) => String(item || '').trim()).filter(Boolean).map((valor) => ({ valor }))
       : (String(nextInitialData.referencia || '').trim() ? [{ valor: String(nextInitialData.referencia).trim() }] : [])
 
+    // Opcional: proveedor(es) y precio ya elegidos por quien abre el
+    // formulario (p. ej. Taller, al crear un repuesto que llego sin codigo).
+    const nextCasas = Array.isArray(nextInitialData.casas)
+      ? nextInitialData.casas.filter((casa) => casa && casa.id != null)
+      : []
+    const nextPrecio = nextInitialData.precio != null && nextInitialData.precio !== ''
+      ? String(nextInitialData.precio)
+      : ''
     setFormData({
       ...initialForm,
       codigo: nextCodigo,
       nombre: nextNombre,
       descripcion: nextDescripcion,
+      precio: nextPrecio,
+      casasIds: nextCasas.map((casa) => String(casa.id)),
     })
     setCasaSearch('')
     setLoading(false)
@@ -613,7 +623,7 @@ function CreateProducto({
     setReferenciaError('')
     setShowCasaDropdown(false)
     setIsMaximized(false)
-    setSelectedCasas([])
+    setSelectedCasas(nextCasas)
     setBranches([])
     setBodegas([])
     setDivisions([])

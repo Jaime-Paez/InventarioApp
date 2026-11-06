@@ -83,6 +83,7 @@ const SUBTYPE_FILTERS = [
   { key: 'venta', label: 'Ventas' },
   { key: 'devolucion', label: 'Garantias' },
   { key: 'traslado', label: 'Traslados' },
+  { key: 'taller', label: 'Taller' },
 ]
 
 const SALIDAS_FILTER_FIELDS = [
