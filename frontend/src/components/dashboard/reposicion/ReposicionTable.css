@@ -873,6 +873,8 @@ body.app-theme-dark .reposicion__class.is-C { color: #cbd5e1; }
 .reposicion-panel__tabs.create-user__tabs {
   width: 100%;
   margin: 0;
+  /* Siempre del mismo alto: el contenido largo (Calculo) no las aplasta. */
+  flex-shrink: 0;
 }
 
 .reposicion-panel__tabs .create-user__tab {
