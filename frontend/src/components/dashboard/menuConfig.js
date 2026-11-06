@@ -48,6 +48,11 @@ export const MENU_STRUCTURE = [
     ],
   },
   {
+    label: 'Inconvenientes',
+    icon: AlertTriangle,
+    moduleKey: 'movimientos_inconvenientes',
+  },
+  {
     label: 'Taller',
     icon: Wrench,
     children: [
@@ -57,11 +62,6 @@ export const MENU_STRUCTURE = [
       { label: 'Mano de obra', icon: HardHat, moduleKey: 'taller' },
       { label: 'Insumos', icon: Package, moduleKey: 'taller' },
     ],
-  },
-  {
-    label: 'Inconvenientes',
-    icon: AlertTriangle,
-    moduleKey: 'movimientos_inconvenientes',
   },
   {
     label: 'Sucursales',
