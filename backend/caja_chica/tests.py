@@ -145,4 +145,5 @@ class CajaChicaTests(TestCase):
         r = self.admin_api.post(f"{BASE}/cajas/", {"sucursal": self.sucursal2.id, "monto_fondo": "100"}, format="json")
         self.assertEqual(r.status_code, 201, r.content)
         opciones = self.admin_api.get(f"{BASE}/cajas/opciones/").json()["sucursales"]
-        self.assertTrue(all(s["caja"] for s in opciones))
+        mias = {s["id"]: s["caja"] for s in opciones if s["id"] in (self.sucursal.id, self.sucursal2.id)}
+        self.assertEqual(mias, {self.sucursal.id: "Caja chica Matriz", self.sucursal2.id: "Caja chica Norte"})
