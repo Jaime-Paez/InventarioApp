@@ -55,3 +55,28 @@ export const parseApiError = async (response, fallback) => {
   }
   return fallback
 }
+
+export const lineaCodigo = (linea) => {
+  if (linea.tipo === 'repuesto') return linea.producto_codigo || '-'
+  if (linea.tipo === 'sin_codigo') return linea.referencia || '-'
+  return '-'
+}
+
+// Por que todavia no se puede cerrar (lo mismo que valida el servidor).
+export const motivosNoCierre = (orden) => {
+  const motivos = []
+  const lineas = orden?.lineas || []
+  const pruebas = orden?.pruebas || []
+  const sinCodigo = lineas.filter((l) => l.tipo === 'sin_codigo')
+  if (sinCodigo.length) motivos.push(`${sinCodigo.length} repuesto(s) sin código por crear en el inventario`)
+  const precios = lineas.filter((l) => l.precio_estado === 'pendiente')
+  if (precios.length) motivos.push(`${precios.length} precio(s) por aprobar`)
+  const porDespachar = lineas.filter((l) => l.pendiente_despacho > 0)
+  if (porDespachar.length) motivos.push(`faltan despachar: ${porDespachar.map((l) => `${l.producto_codigo} (${l.pendiente_despacho})`).join(', ')}`)
+  const porEntregar = pruebas.filter((p) => p.pendiente_entrega > 0)
+  if (porEntregar.length) motivos.push(`pruebas pedidas sin entregar: ${porEntregar.map((p) => p.producto_codigo).join(', ')} (entrégalas o cancélalas)`)
+  const porDevolver = pruebas.filter((p) => p.en_taller > 0)
+  if (porDevolver.length) motivos.push(`faltan devolver a bodega: ${porDevolver.map((p) => `${p.producto_codigo} (${p.en_taller})`).join(', ')}`)
+  return motivos
+}
+

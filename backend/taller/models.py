@@ -33,6 +33,25 @@ class ManoObra(models.Model):
         return f"{self.nombre} (${self.precio})"
 
 
+class Tecnico(models.Model):
+    """Tecnico del taller: se elige en cada orden y firma lo que recibe."""
+
+    nombre = models.CharField(max_length=150)
+    cedula = models.CharField(max_length=25, blank=True)
+    telefono = models.CharField(max_length=50, blank=True)
+    especialidad = models.CharField(max_length=120, blank=True)
+    activo = models.BooleanField(default=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["nombre"]
+        verbose_name = "Técnico"
+        verbose_name_plural = "Técnicos"
+
+    def __str__(self) -> str:  # pragma: no cover
+        return self.nombre
+
+
 class OrdenTaller(models.Model):
     """Cotizacion de taller que, si el cliente acepta, pasa a orden de trabajo.
 
@@ -81,6 +100,14 @@ class OrdenTaller(models.Model):
         related_name="ordenes_taller_asesor",
         help_text="Asistente/asesor de servicio que creo la cotizacion.",
     )
+    tecnico_asignado = models.ForeignKey(
+        Tecnico,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ordenes",
+    )
+    # Nombre del tecnico al momento de asignarlo (se ve aunque luego se renombre).
     tecnico = models.CharField(max_length=150, blank=True)
 
     cliente_nombre = models.CharField(max_length=255, blank=True)

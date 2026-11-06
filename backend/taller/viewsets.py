@@ -21,6 +21,7 @@ from .cierre import crear_salida_taller
 from .codigos import sugerir_codigo
 from .models import (
     ManoObra,
+    Tecnico,
     OrdenTaller,
     OrdenTallerDevolucion,
     OrdenTallerEntrega,
@@ -31,6 +32,7 @@ from .models import (
 )
 from .serializers import (
     ManoObraSerializer,
+    TecnicoSerializer,
     OrdenTallerDetailSerializer,
     OrdenTallerHeaderSerializer,
     OrdenTallerListSerializer,
@@ -186,6 +188,34 @@ class ManoObraViewSet(viewsets.ModelViewSet):
             trabajo.save(update_fields=["activo", "actualizado_en"])
             return Response(ManoObraSerializer(trabajo).data, status=status.HTTP_200_OK)
         trabajo.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class TecnicoViewSet(viewsets.ModelViewSet):
+    serializer_class = TecnicoSerializer
+    permission_classes = [IsAuthenticated, TallerModulePermission]
+    pagination_class = None
+
+    def get_queryset(self):
+        queryset = Tecnico.objects.all().order_by("-activo", "nombre", "id")
+        params = self.request.query_params
+        if str(params.get("activos") or "").strip() in ("1", "true"):
+            queryset = queryset.filter(activo=True)
+        search = str(params.get("search") or "").strip()
+        if search:
+            queryset = queryset.filter(
+                Q(nombre__icontains=search) | Q(cedula__icontains=search) | Q(especialidad__icontains=search)
+            )
+        return queryset
+
+    def destroy(self, request, *args, **kwargs):
+        tecnico = self.get_object()
+        if tecnico.ordenes.exists():
+            # Ya tiene ordenes: se desactiva para no perder el historial.
+            tecnico.activo = False
+            tecnico.save(update_fields=["activo"])
+            return Response(TecnicoSerializer(tecnico).data, status=status.HTTP_200_OK)
+        tecnico.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -367,7 +397,10 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
         header.is_valid(raise_exception=True)
         valores = dict(header.validated_data)
         if garantia_de is not None:
-            for campo in ("cliente_nombre", "cliente_identificacion", "cliente_telefono", "placa", "modelo", "vin", "tecnico"):
+            for campo in (
+                "cliente_nombre", "cliente_identificacion", "cliente_telefono", "placa", "modelo", "vin",
+                "tecnico", "tecnico_asignado",
+            ):
                 valores.setdefault(campo, getattr(garantia_de, campo))
             valores.setdefault("sucursal", garantia_de.sucursal)
         if not valores.get("sucursal"):

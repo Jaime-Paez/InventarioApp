@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from .models import (
     ManoObra,
+    Tecnico,
     OrdenTaller,
     OrdenTallerDevolucion,
     OrdenTallerEntrega,
@@ -35,6 +36,24 @@ class ManoObraSerializer(serializers.ModelSerializer):
     def validate_precio(self, value):
         if value is None or value < 0:
             raise serializers.ValidationError("El precio no puede ser negativo.")
+        return value
+
+
+class TecnicoSerializer(serializers.ModelSerializer):
+    ordenes_abiertas = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Tecnico
+        fields = ["id", "nombre", "cedula", "telefono", "especialidad", "activo", "ordenes_abiertas", "creado_en"]
+        read_only_fields = ["id", "creado_en"]
+
+    def get_ordenes_abiertas(self, obj):
+        return obj.ordenes.filter(estado=OrdenTaller.Estados.ORDEN).count()
+
+    def validate_nombre(self, value):
+        value = str(value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Escribe el nombre del técnico.")
         return value
 
 
@@ -193,6 +212,7 @@ class OrdenTallerEventoSerializer(serializers.ModelSerializer):
 
 ORDEN_CAMPOS_EDITABLES = [
     "numero_pedido",
+    "tecnico_asignado",
     "tecnico",
     "cliente_nombre",
     "cliente_identificacion",
@@ -344,6 +364,9 @@ class OrdenTallerHeaderSerializer(serializers.ModelSerializer):
         fields = ORDEN_CAMPOS_EDITABLES + ["sucursal", "numero_factura"]
 
     def validate(self, attrs):
+        if "tecnico_asignado" in attrs:
+            tecnico = attrs["tecnico_asignado"]
+            attrs["tecnico"] = tecnico.nombre if tecnico else ""
         for key in ("placa", "vin"):
             if key in attrs and attrs[key] is not None:
                 attrs[key] = str(attrs[key]).strip().upper()

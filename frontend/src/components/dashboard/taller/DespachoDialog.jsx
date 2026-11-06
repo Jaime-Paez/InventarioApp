@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { API_URL, authFetch } from '../../../utils/api'
 import BlockerNotice from '../common/BlockerNotice'
+import CascadeDropdown from '../common/CascadeDropdown'
 import SignaturePad from './SignaturePad'
 import TallerDialog from './TallerDialog'
 import { parseApiError } from './tallerConstants'
@@ -207,19 +208,18 @@ function DespachoDialog({ open, orden, token, onClose, onDone, notify }) {
                       />
                     </td>
                     <td>
-                      <select
-                        className="taller-input"
-                        value={sel.subdivision ?? 'auto'}
+                      <CascadeDropdown
+                        placeholder="Ubicación"
+                        searchPlaceholder="Buscar ubicación"
+                        options={[
+                          { id: 'auto', etiqueta: `Automático: principal primero (stock ${total})` },
+                          ...opciones.map((u) => ({ id: u.subdivision_id, etiqueta: `${u.ubicacion} · ${u.cantidad}${u.principal ? ' (principal)' : ''}` })),
+                        ]}
+                        valueId={sel.subdivision ?? 'auto'}
+                        getOptionLabel={(o) => o.etiqueta}
+                        onSelect={(o) => update(item.key, { subdivision: o.id })}
                         disabled={!sel.incluir || busy}
-                        onChange={(event) => update(item.key, { subdivision: event.target.value })}
-                      >
-                        <option value="auto">{`Automático: principal primero (stock ${total})`}</option>
-                        {opciones.map((u) => (
-                          <option key={u.subdivision_id} value={u.subdivision_id}>
-                            {`${u.ubicacion} · ${u.cantidad}${u.principal ? ' (principal)' : ''}`}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </td>
                   </tr>
                 )

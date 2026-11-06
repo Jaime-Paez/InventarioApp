@@ -1,27 +1,27 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { ArrowLeft, Trash2, Undo2 } from 'lucide-react'
-import ProductoBuscador from './ProductoBuscador'
+import TallerProductDropdown from './TallerProductDropdown'
 
 // Tabla secundaria de la orden: repuestos en el taller que NO son parte de la
 // orden. Los "a prueba" pueden pasar a la orden; lo que no entra (y lo que el
 // administrador quito de la orden) tiene que volver a bodega, verificado.
 function PruebasPanel({ orden, token, isAdmin, canEdit, busy, onAdd, onCancel, onPasar, onDevolver }) {
   const [cantidad, setCantidad] = useState('1')
-  const inputRef = useRef(null)
+  const [producto, setProducto] = useState(null)
   const pruebas = orden?.pruebas || []
   const abierta = orden?.estado === 'orden'
   const visibles = pruebas.filter((p) => p.pendiente_entrega > 0 || p.en_taller > 0 || p.cantidad_usada > 0 || p.cantidad_devuelta > 0)
   const enTaller = pruebas.reduce((acc, p) => acc + p.en_taller, 0)
+  const qty = parseInt(cantidad, 10)
 
-  const add = async (producto) => {
-    const qty = parseInt(cantidad, 10)
-    if (!Number.isFinite(qty) || qty < 1) return false
+  const add = async () => {
+    if (!producto || !Number.isFinite(qty) || qty < 1) return
     try {
       await onAdd({ producto: producto.id, cantidad: qty })
       setCantidad('1')
-      return true
+      setProducto(null)
     } catch {
-      return false
+      // el error ya se mostro
     }
   }
 
@@ -36,21 +36,24 @@ function PruebasPanel({ orden, token, isAdmin, canEdit, busy, onAdd, onCancel, o
       </div>
 
       {abierta && canEdit && (
-        <div className="taller-add taller-add--compact">
-          <span className="taller-add__label">Pedir a prueba</span>
-          <div className="taller-add__row">
-            <ProductoBuscador
-              token={token}
-              sucursalId={orden?.sucursal}
-              onPick={add}
-              disabled={busy}
-              inputRef={inputRef}
-              placeholder="Repuesto para probar"
-            />
-            <label className="taller-add__field taller-add__field--qty">
-              <span>Cant.</span>
-              <input className="taller-input taller-input--qty" type="number" min={1} value={cantidad} onChange={(event) => setCantidad(event.target.value)} disabled={busy} />
-            </label>
+        <div className="create-user__locations-table taller-pruebas__form">
+          <div className="create-user__locations-row create-user__locations-row--head">
+            <span>Pedir a prueba</span>
+            <span>Cant.</span>
+            <span>Acción</span>
+          </div>
+          <div className="create-user__locations-row create-user__locations-row--form">
+            <span>
+              <TallerProductDropdown token={token} sucursalId={orden?.sucursal} value={producto} onSelect={setProducto} disabled={busy} placeholder="Repuesto para probar" />
+            </span>
+            <span>
+              <input type="number" min={1} value={cantidad} onChange={(event) => setCantidad(event.target.value)} disabled={busy} />
+            </span>
+            <span className="create-user__locations-cell create-user__locations-cell--action">
+              <button type="button" className="create-user__ghost create-salida__ghost--add" onClick={add} disabled={busy || !producto || !(qty >= 1)}>
+                Pedir
+              </button>
+            </span>
           </div>
         </div>
       )}

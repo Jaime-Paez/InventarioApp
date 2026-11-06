@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Toast from '../common/AppToast'
 import BlockerNotice from '../common/BlockerNotice'
+import CascadeDropdown from '../common/CascadeDropdown'
 import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
 import '../admin/UsersTable/UsersTable.css'
 import '../admin/CreateUsuario/CreateUsuario.css'
@@ -379,18 +380,36 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                   <label>Hasta <input className="taller-input" type="date" value={filtros.hasta} onChange={(event) => setFiltros((prev) => ({ ...prev, hasta: event.target.value }))} /></label>
                   {tab === 'movimientos' && (
                     <>
-                      <select className="taller-input" value={filtros.tipo} onChange={(event) => setFiltros((prev) => ({ ...prev, tipo: event.target.value }))}>
-                        <option value="">Todos los tipos</option>
-                        <option value="gasto">Gastos</option>
-                        <option value="anticipo">Anticipos</option>
-                        <option value="ingreso,reposicion,apertura,vuelto">Ingresos y reposiciones</option>
-                      </select>
-                      <select className="taller-input" value={filtros.estado} onChange={(event) => setFiltros((prev) => ({ ...prev, estado: event.target.value }))}>
-                        <option value="">Todos los estados</option>
-                        <option value="pendiente">Por aprobar</option>
-                        <option value="aprobado">Aprobados</option>
-                        <option value="rechazado">Rechazados</option>
-                      </select>
+                      <div className="caja-filtro-dropdown">
+                        <CascadeDropdown
+                          placeholder="Todos los tipos"
+                          searchPlaceholder="Buscar"
+                          options={[
+                            { id: '', nombre: 'Todos los tipos' },
+                            { id: 'gasto', nombre: 'Gastos' },
+                            { id: 'anticipo', nombre: 'Anticipos' },
+                            { id: 'ingreso,reposicion,apertura,vuelto', nombre: 'Ingresos y reposiciones' },
+                          ]}
+                          valueId={filtros.tipo}
+                          getOptionLabel={(o) => o.nombre}
+                          onSelect={(o) => setFiltros((prev) => ({ ...prev, tipo: o.id }))}
+                        />
+                      </div>
+                      <div className="caja-filtro-dropdown">
+                        <CascadeDropdown
+                          placeholder="Todos los estados"
+                          searchPlaceholder="Buscar"
+                          options={[
+                            { id: '', nombre: 'Todos los estados' },
+                            { id: 'pendiente', nombre: 'Por aprobar' },
+                            { id: 'aprobado', nombre: 'Aprobados' },
+                            { id: 'rechazado', nombre: 'Rechazados' },
+                          ]}
+                          valueId={filtros.estado}
+                          getOptionLabel={(o) => o.nombre}
+                          onSelect={(o) => setFiltros((prev) => ({ ...prev, estado: o.id }))}
+                        />
+                      </div>
                       <div className="search-input-container">
                         <input className="search-input" placeholder="Buscar descripción, beneficiario, comprobante" value={filtros.search} onChange={(event) => setFiltros((prev) => ({ ...prev, search: event.target.value }))} />
                         <i className={`pi ${loadingMovs ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />

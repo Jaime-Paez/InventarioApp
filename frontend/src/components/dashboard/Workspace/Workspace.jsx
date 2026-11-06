@@ -19,6 +19,7 @@ import SalidasTable from '../movimientos/SalidasTable'
 import TrasladosInconvenientesTable from '../movimientos/TrasladosInconvenientesTable'
 import OrdenesTallerTable from '../taller/OrdenesTallerTable'
 import ManoObraTable from '../taller/ManoObraTable'
+import TecnicosTable from '../taller/TecnicosTable'
 import CajaChicaPage from '../cajaChica/CajaChicaPage'
 import './Workspace.css'
 import { getModuleActions, labelHasAccess } from '../menuConfig'
@@ -69,6 +70,7 @@ const MODULE_KEY_BY_TAB = {
   Clientes: 'clientes',
   'Órdenes de taller': 'taller',
   'Mano de obra': 'taller',
+  'Técnicos': 'taller',
   'Caja chica': 'caja_chica',
   Entradas: 'movimientos_entradas',
   Salidas: 'movimientos_salidas',
@@ -208,6 +210,7 @@ function Workspace({
     Clientes: ClientesTable,
     'Órdenes de taller': OrdenesTallerTable,
     'Mano de obra': ManoObraTable,
+    'Técnicos': TecnicosTable,
     'Caja chica': CajaChicaPage,
     Entradas: EntradasTable,
     Salidas: SalidasTable,

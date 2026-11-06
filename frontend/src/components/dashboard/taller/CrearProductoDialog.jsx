@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { API_URL, authFetch } from '../../../utils/api'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
 import BlockerNotice from '../common/BlockerNotice'
+import CascadeDropdown from '../common/CascadeDropdown'
 import CreateProducto from '../productos/CreateProducto/CreateProducto'
 import TallerDialog from './TallerDialog'
 import { formatMoney, parseApiError } from './tallerConstants'
@@ -125,15 +126,18 @@ function CrearProductoDialog({ open, orden, linea, token, user, onClose, onDone,
           </>
         }
       >
-        <label className="create-user__field">
+        <div className="create-user__field">
           <span>Proveedor (casa comercial)</span>
-          <select className="taller-input" value={casaId} onChange={(event) => setCasaId(event.target.value)}>
-            <option value="">Elige el proveedor...</option>
-            {casas.map((item) => (
-              <option key={item.id} value={item.id}>{`${item.nombre}${item.codigo ? ` (${item.codigo})` : ''}`}</option>
-            ))}
-          </select>
-        </label>
+          <CascadeDropdown
+            placeholder="Elige el proveedor..."
+            searchPlaceholder="Buscar proveedor"
+            options={casas}
+            valueId={casaId}
+            getOptionLabel={(item) => `${item.nombre}${item.codigo ? ` (${item.codigo})` : ''}`}
+            emptyMessage="No hay proveedores registrados."
+            onSelect={(item) => setCasaId(String(item.id))}
+          />
+        </div>
 
         {loading && <span className="taller-muted"><i className="pi pi-spin pi-spinner" /> Buscando el OEM en el catálogo...</span>}
 

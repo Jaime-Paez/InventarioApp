@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { API_URL, authFetch } from '../../../utils/api'
 import BlockerNotice from '../common/BlockerNotice'
+import CascadeDropdown from '../common/CascadeDropdown'
 import MoneyInput from '../common/MoneyInput'
 import TallerDialog from '../taller/TallerDialog'
 import {
@@ -47,13 +48,18 @@ function ComprobanteFields({ form, setForm, disabled }) {
   return (
     <>
       <div className="taller-dialog__grid">
-        <label className="create-user__field">
+        <div className="create-user__field">
           <span>Comprobante</span>
-          <select className="taller-input" value={form.comprobante_tipo} onChange={(event) => setForm((prev) => ({ ...prev, comprobante_tipo: event.target.value }))} disabled={disabled}>
-            <option value="">Elige...</option>
-            {COMPROBANTES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-          </select>
-        </label>
+          <CascadeDropdown
+            placeholder="Elige..."
+            searchPlaceholder="Buscar"
+            options={COMPROBANTES.map((c) => ({ id: c.key, nombre: c.label }))}
+            valueId={form.comprobante_tipo}
+            getOptionLabel={(o) => o.nombre}
+            onSelect={(o) => setForm((prev) => ({ ...prev, comprobante_tipo: o.id, ...(o.id === 'sin' ? { comprobante_numero: '', comprobante_imagen: '' } : {}) }))}
+            disabled={disabled}
+          />
+        </div>
         <label className="create-user__field">
           <span>N° de comprobante</span>
           <input
@@ -197,13 +203,19 @@ export function MovimientoDialog({ open, tipo, caja, categorias, movimiento, tok
         </label>
       </div>
       {realTipo === 'gasto' && (
-        <label className="create-user__field">
+        <div className="create-user__field">
           <span>Categoría</span>
-          <select className="taller-input" value={form.categoria} onChange={(event) => setForm((prev) => ({ ...prev, categoria: event.target.value }))} disabled={busy}>
-            <option value="">Elige la categoría...</option>
-            {categorias.filter((c) => c.activa || String(c.id) === form.categoria).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-          </select>
-        </label>
+          <CascadeDropdown
+            placeholder="Elige la categoría..."
+            searchPlaceholder="Buscar categoría"
+            options={categorias.filter((c) => c.activa || String(c.id) === form.categoria)}
+            valueId={form.categoria}
+            getOptionLabel={(o) => o.nombre}
+            emptyMessage="No hay categorías: el administrador las crea en Categorías."
+            onSelect={(o) => setForm((prev) => ({ ...prev, categoria: String(o.id) }))}
+            disabled={busy}
+          />
+        </div>
       )}
       <label className="create-user__field">
         <span>{realTipo === 'anticipo' ? 'Para qué es' : 'Descripción'}</span>
@@ -285,13 +297,17 @@ export function LiquidarDialog({ open, anticipo, categorias, token, onClose, onD
           {diferencia > 0 ? `Vuelve a la caja (vuelto): ${formatMoney(diferencia)}` : `Se gastó ${formatMoney(-diferencia)} más: sale de la caja como gasto adicional.`}
         </p>
       )}
-      <label className="create-user__field">
+      <div className="create-user__field">
         <span>Categoría</span>
-        <select className="taller-input" value={form.categoria} onChange={(event) => setForm((prev) => ({ ...prev, categoria: event.target.value }))}>
-          <option value="">Elige la categoría...</option>
-          {categorias.filter((c) => c.activa).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-        </select>
-      </label>
+        <CascadeDropdown
+          placeholder="Elige la categoría..."
+          searchPlaceholder="Buscar categoría"
+          options={categorias.filter((c) => c.activa)}
+          valueId={form.categoria}
+          getOptionLabel={(o) => o.nombre}
+          onSelect={(o) => setForm((prev) => ({ ...prev, categoria: String(o.id) }))}
+        />
+      </div>
       <label className="create-user__field">
         <span>Descripción</span>
         <textarea rows={2} value={form.descripcion} onChange={(event) => setForm((prev) => ({ ...prev, descripcion: event.target.value }))} />
@@ -463,20 +479,28 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
         <input className="taller-input" value={form.nombre} placeholder="Caja chica Matriz" onChange={(event) => setForm((prev) => ({ ...prev, nombre: event.target.value }))} />
       </label>
       <div className="taller-dialog__grid">
-        <label className="create-user__field">
+        <div className="create-user__field">
           <span>Sucursal</span>
-          <select className="taller-input" value={form.sucursal} onChange={(event) => setForm((prev) => ({ ...prev, sucursal: event.target.value }))}>
-            <option value="">General (sin sucursal)</option>
-            {opciones.sucursales.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-          </select>
-        </label>
-        <label className="create-user__field">
+          <CascadeDropdown
+            placeholder="General (sin sucursal)"
+            searchPlaceholder="Buscar sucursal"
+            options={[{ id: '', nombre: 'General (sin sucursal)' }, ...opciones.sucursales]}
+            valueId={form.sucursal}
+            getOptionLabel={(o) => o.nombre}
+            onSelect={(o) => setForm((prev) => ({ ...prev, sucursal: String(o.id) }))}
+          />
+        </div>
+        <div className="create-user__field">
           <span>Custodio (responsable)</span>
-          <select className="taller-input" value={form.custodio} onChange={(event) => setForm((prev) => ({ ...prev, custodio: event.target.value }))}>
-            <option value="">Elige...</option>
-            {opciones.usuarios.map((u) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
-          </select>
-        </label>
+          <CascadeDropdown
+            placeholder="Elige..."
+            searchPlaceholder="Buscar usuario"
+            options={opciones.usuarios}
+            valueId={form.custodio}
+            getOptionLabel={(o) => o.nombre}
+            onSelect={(o) => setForm((prev) => ({ ...prev, custodio: String(o.id) }))}
+          />
+        </div>
         <label className="create-user__field">
           <span>{caja ? 'Monto del fondo (referencia para reponer)' : 'Monto del fondo'}</span>
           <MoneyInput className="taller-input" value={form.monto_fondo} onValueChange={(value) => setForm((prev) => ({ ...prev, monto_fondo: value }))} />

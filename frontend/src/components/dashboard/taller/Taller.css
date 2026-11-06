@@ -555,7 +555,7 @@
   align-items: start;
 }
 @container (min-width: 1100px) {
-  .taller-split { grid-template-columns: minmax(0, 1fr) 340px; }
+  .taller-split--con-pruebas { grid-template-columns: minmax(0, 1fr) 340px; }
 }
 .taller-split__main { min-width: 0; }
 .taller-despachar-btn { display: inline-flex; align-items: center; gap: 6px; }
@@ -786,4 +786,90 @@
 
 @media (max-width: 560px) {
   .taller-dialog__grid { grid-template-columns: 1fr; }
+}
+
+/* ===== v2: datos en bloques y tabla del sistema ===== */
+.taller-header-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.taller-header-grid > .create-user__field:last-child { grid-column: auto; }
+.taller-field--full { grid-column: 1 / -1; }
+
+.taller-datos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.taller-datos__card {
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+.dashboard-shell.dark .taller-datos__card { border-color: var(--color-border-dark); }
+.taller-observaciones { margin-top: 10px; }
+.taller-observaciones textarea { resize: vertical; }
+
+.create-user__locations-table.taller-lines .create-user__locations-row {
+  grid-template-columns:
+    minmax(104px, 0.8fr)
+    minmax(150px, 1.25fr)
+    minmax(170px, 1.9fr)
+    74px
+    62px
+    78px
+    110px
+    86px
+    84px;
+}
+.create-user__locations-table.taller-lines .create-user__locations-row--empty { grid-template-columns: 1fr; }
+.taller-lines .create-user__locations-row--form > span { padding: 6px; min-width: 0; }
+.taller-lines .create-user__locations-row > span.taller-lines__wrap {
+  flex-wrap: wrap;
+  gap: 4px;
+  white-space: normal;
+}
+.taller-lines .create-user__locations-row > span.taller-lines__left { justify-content: flex-start; }
+.taller-lines .create-user__locations-row > span input { min-width: 0; }
+.taller-lines__row.is-pending { background: rgba(250, 204, 21, 0.08); }
+.taller-lines__row.is-missing { background: rgba(250, 204, 21, 0.12); }
+.taller-lines__total { font-weight: 700; }
+.taller-lines__note > span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px 12px;
+  padding: 5px 10px;
+  text-align: left;
+}
+.taller-lines .taller-lines__note { opacity: 1; background: color-mix(in srgb, var(--color-primary) 3%, transparent); }
+.taller-lines__review { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.taller-lines__warn { color: #b45309; font-weight: 700; }
+.taller-lines__error { color: var(--color-error-text); font-weight: 700; }
+.dashboard-shell.dark .taller-lines__warn { color: #fbbf24; }
+.dashboard-shell.dark .taller-lines__error { color: var(--color-error-text-dark); }
+.taller-money--pending { border-color: rgba(234, 179, 8, 0.9) !important; background: rgba(250, 204, 21, 0.14) !important; }
+.taller-garantia-toggle--inline { margin: 0; justify-content: flex-start; }
+
+/* Selector de repuestos: codigo, descripcion, stock y PVP */
+.taller-product-panel .create-salida__results-header,
+.taller-product-panel .create-salida__result-row {
+  grid-template-columns: minmax(110px, 0.9fr) minmax(200px, 2fr) 56px 76px;
+}
+.taller-product-panel .create-salida__results-header span:nth-child(3) { text-align: right; }
+.taller-result--sin-stock .result-stock:nth-child(3) { color: var(--color-error-text); font-weight: 700; }
+.taller-product-dropdown { width: 100%; min-width: 0; }
+
+.create-user__locations-table.taller-pruebas__form .create-user__locations-row { grid-template-columns: minmax(0, 1fr) 64px 72px; }
+.taller-pruebas__form .create-user__locations-row--form > span { padding: 6px; min-width: 0; }
+
+.taller-row--inactive { opacity: 0.55; }
+.taller-row-actions { display: inline-flex; align-items: center; gap: 6px; }
+
+.caja-filtro-dropdown { width: 210px; }
+
+@media (max-width: 960px) {
+  .taller-header-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .taller-datos { grid-template-columns: 1fr; }
+  .taller-lines { overflow-x: auto; }
+  .create-user__locations-table.taller-lines .create-user__locations-row { min-width: 920px; }
 }
