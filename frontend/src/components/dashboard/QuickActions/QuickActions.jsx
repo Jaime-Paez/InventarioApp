@@ -7496,13 +7496,20 @@ function QuickActions({
                                   >
                                     {randomInspectionLocations.loading && <small className="muted">Cargando ubicaciones...</small>}
                                     {!randomInspectionLocations.loading && !filteredRandomInspectionLocations.length && (
-                                      <small className="muted">
-                                        {randomInspectionLocations.failed
-                                          ? 'No se pudieron cargar las ubicaciones. Cierra y vuelve a abrir esta lista para reintentar.'
-                                          : String(randomInspectionAdd.locationQuery || '').trim()
-                                            ? 'Sin resultados.'
-                                            : 'Esta sucursal no tiene subdivisiones registradas. Un administrador debe crearlas en Sucursales > Bodegas.'}
-                                      </small>
+                                      !randomInspectionLocations.failed && !String(randomInspectionAdd.locationQuery || '').trim() ? (
+                                        <BlockerNotice
+                                          compact
+                                          title="No hay ubicaciones para elegir"
+                                          reason="Esta sucursal no tiene subdivisiones registradas. Créalas en Bodegas y aparecerán aquí."
+                                          goTo="Bodegas"
+                                        />
+                                      ) : (
+                                        <small className="muted">
+                                          {randomInspectionLocations.failed
+                                            ? 'No se pudieron cargar las ubicaciones. Cierra y vuelve a abrir esta lista para reintentar.'
+                                            : 'Sin resultados.'}
+                                        </small>
+                                      )
                                     )}
                                     {filteredRandomInspectionLocations.map((location) => (
                                       <button

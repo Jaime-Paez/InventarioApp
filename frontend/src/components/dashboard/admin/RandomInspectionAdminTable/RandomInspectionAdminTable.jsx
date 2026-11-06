@@ -3314,6 +3314,20 @@ function RandomInspectionAdminTable({
                       disabled={!divisionSucursalId || !divisionReviewers.length || divisionSending}
                     />
                   </label>
+                  {divisionSucursalId && !divisionBodegasLoading && !divisionBodegas.length && (
+                    <SendBlocker
+                      title="No se puede enviar por división: la sucursal no tiene bodegas"
+                      reason="Para revisar por división hacen falta bodegas con divisiones. Créalas en Bodegas y aparecerán aquí."
+                      goTo="Bodegas"
+                    />
+                  )}
+                  {divisionBodegaId && !divisionDivisionesLoading && !divisionDivisiones.length && (
+                    <SendBlocker
+                      title="No se puede enviar por división: la bodega no tiene divisiones"
+                      reason="Crea sus divisiones en Bodegas (en el plano de la bodega) y aparecerán aquí."
+                      goTo="Bodegas"
+                    />
+                  )}
                   {(() => {
                     const block = branchBlocker(divisionSucursalId)
                     return block ? (

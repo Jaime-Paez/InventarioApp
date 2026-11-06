@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import CascadeDropdown from '../common/CascadeDropdown'
+import BlockerNotice from '../common/BlockerNotice'
 import '../common/BlockerNotice.css'
 import './EntradaAjustePreview.css'
 
@@ -109,6 +110,14 @@ function EntradaAjustePreview({ token, entradaId, details, overrides, onOverride
                       emptyMessage="Esta sucursal no tiene ubicaciones registradas."
                       onSelect={(option) => onOverridesChange?.({ ...(overrides || {}), [item.producto_id]: option.id })}
                     />
+                    {!options.length && (
+                      <BlockerNotice
+                        compact
+                        title="No hay dónde guardarlo"
+                        reason="Esta sucursal no tiene ubicaciones registradas. Créalas en Bodegas y aparecerán aquí."
+                        goTo="Bodegas"
+                      />
+                    )}
                   </div>
                 ) : null}
               </li>

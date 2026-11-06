@@ -10,6 +10,7 @@ import './ReposicionTable.css'
 import ReposicionProductDialog from './ReposicionProductDialog'
 import ReposicionImportDialog from './ReposicionImportDialog'
 import CascadeDropdown from '../common/CascadeDropdown'
+import BlockerNotice from '../common/BlockerNotice'
 import ReposicionHint from './ReposicionHint'
 import { ESTADO_LABEL, causaInfo, claseInfo, estadoInfo } from './reposicionConstants'
 import MoneyInput from '../common/MoneyInput'
@@ -620,8 +621,16 @@ function ReposicionTable({ token, onOpenImportacionPrefill, onOpenCompraLocalPre
                   valueId={configDraft.sucursal_central_id || ''}
                   getOptionLabel={optionName}
                   onSelect={(option) => setConfigDraft((prev) => ({ ...prev, sucursal_central_id: option.id }))}
-                  emptyMessage="No hay sucursales registradas. Créalas en Sucursales > Sucursales."
+                  emptyMessage="No hay sucursales registradas. Créalas en Sucursales."
                 />
+                {!(configDraft.sucursales || []).length && (
+                  <BlockerNotice
+                    compact
+                    title="No hay sucursales para elegir"
+                    reason="La reposición necesita una sucursal central. Crea las sucursales en Sucursales y aparecerán aquí."
+                    goTo="Sucursales"
+                  />
+                )}
               </div>
               {CONFIG_FIELDS.map((field) => (
                 <label key={field.key} className="reposicion__field" title={field.hint}>

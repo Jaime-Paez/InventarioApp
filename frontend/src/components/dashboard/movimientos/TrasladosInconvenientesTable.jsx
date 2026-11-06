@@ -18,6 +18,7 @@ import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/export
 import { getAppPortalRoot } from '../../../utils/portalRoot'
 import { useCloseDropdownsOnTabSwitch } from '../../../hooks/useCloseDropdownsOnTabSwitch'
 import useModalAnimation from '../common/useModalAnimation'
+import BlockerNotice from '../common/BlockerNotice'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../admin/UsersTable/UsersTable.css'
 import './CreateSalida.css'
@@ -380,6 +381,7 @@ function TrasladosInconvenientesTable({
   const [resolverSubdivisionId, setResolverSubdivisionId] = useState('')
   const [resolverSubdivisions, setResolverSubdivisions] = useState([])
   const [resolverSubdivisionsLoading, setResolverSubdivisionsLoading] = useState(false)
+  const [resolverSubdivisionsLoaded, setResolverSubdivisionsLoaded] = useState(false)
   const [resolverNeedsManualLocation, setResolverNeedsManualLocation] = useState(false)
   const [resolverLocationDropdownField, setResolverLocationDropdownField] = useState('')
   const [resolverLocationDropdownDirection, setResolverLocationDropdownDirection] = useState('down')
@@ -394,6 +396,7 @@ function TrasladosInconvenientesTable({
   const [resolverProvSubdivisionId, setResolverProvSubdivisionId] = useState('')
   const [resolverProvSubdivisions, setResolverProvSubdivisions] = useState([])
   const [resolverProvSubdivisionsLoading, setResolverProvSubdivisionsLoading] = useState(false)
+  const [resolverProvSubdivisionsLoaded, setResolverProvSubdivisionsLoaded] = useState(false)
   const [resolverProvNeedsManualLocation, setResolverProvNeedsManualLocation] = useState(false)
   const [resolverProvLocationDropdownField, setResolverProvLocationDropdownField] = useState('')
   const [resolverProvLocationDropdownDirection, setResolverProvLocationDropdownDirection] = useState('down')
@@ -872,6 +875,7 @@ function TrasladosInconvenientesTable({
   useEffect(() => {
     if (!showDetailsModal || !token || !resolverTargetBranchId) {
       setResolverSubdivisions([])
+      setResolverSubdivisionsLoaded(false)
       setResolverBodegaId('')
       setResolverDivisionId('')
       setResolverSubdivisionId('')
@@ -972,7 +976,10 @@ function TrasladosInconvenientesTable({
         setResolverNeedsManualLocation(false)
         showErrorToast(message)
       } finally {
-        if (!cancelled) setResolverSubdivisionsLoading(false)
+        if (!cancelled) {
+          setResolverSubdivisionsLoading(false)
+          setResolverSubdivisionsLoaded(true)
+        }
       }
     }
 
@@ -990,6 +997,7 @@ function TrasladosInconvenientesTable({
   useEffect(() => {
     if (!showDetailsModal || !token || !resolverProvTargetBranchId) {
       setResolverProvSubdivisions([])
+      setResolverProvSubdivisionsLoaded(false)
       setResolverProvBodegaId('')
       setResolverProvDivisionId('')
       setResolverProvSubdivisionId('')
@@ -1087,7 +1095,10 @@ function TrasladosInconvenientesTable({
         setResolverProvNeedsManualLocation(false)
         showErrorToast(message)
       } finally {
-        if (!cancelled) setResolverProvSubdivisionsLoading(false)
+        if (!cancelled) {
+          setResolverProvSubdivisionsLoading(false)
+          setResolverProvSubdivisionsLoaded(true)
+        }
       }
     }
 
@@ -1107,6 +1118,7 @@ function TrasladosInconvenientesTable({
     setResolverSubdivisionId('')
     setResolverSubdivisions([])
     setResolverSubdivisionsLoading(false)
+    setResolverSubdivisionsLoaded(false)
     setResolverNeedsManualLocation(false)
     setResolverLocationDropdownField('')
     setResolverLocationDropdownDirection('down')
@@ -1120,6 +1132,7 @@ function TrasladosInconvenientesTable({
     setResolverProvSubdivisionId('')
     setResolverProvSubdivisions([])
     setResolverProvSubdivisionsLoading(false)
+    setResolverProvSubdivisionsLoaded(false)
     setResolverProvNeedsManualLocation(false)
     setResolverProvLocationDropdownField('')
     setResolverProvLocationDropdownDirection('down')
@@ -3107,6 +3120,14 @@ function TrasladosInconvenientesTable({
                                 Este producto no tiene ubicación previa en esta sucursal. Selecciona bodega, división y subdivisión.
                               </small>
                             ) : null}
+                            {resolverSubdivisionsLoaded && !resolverSubdivisionsLoading && !resolverSubdivisions.length ? (
+                              <BlockerNotice
+                                compact
+                                title="No hay ubicaciones donde guardar"
+                                reason="Esta sucursal no tiene bodegas con divisiones y subdivisiones. Créalas en Bodegas y aparecerán aquí."
+                                goTo="Bodegas"
+                              />
+                            ) : null}
                           </label>
                         )}
 
@@ -3315,6 +3336,14 @@ function TrasladosInconvenientesTable({
                               <small className="transfer-issues-details__manual-location-hint">
                                 Este producto no tiene ubicación previa en la sucursal proveedora. Selecciona bodega, división y subdivisión.
                               </small>
+                            ) : null}
+                            {resolverProvSubdivisionsLoaded && !resolverProvSubdivisionsLoading && !resolverProvSubdivisions.length ? (
+                              <BlockerNotice
+                                compact
+                                title="La sucursal proveedora no tiene ubicaciones"
+                                reason="No tiene bodegas con divisiones y subdivisiones donde sumar el producto. Créalas en Bodegas y aparecerán aquí."
+                                goTo="Bodegas"
+                              />
                             ) : null}
                           </label>
                         )}

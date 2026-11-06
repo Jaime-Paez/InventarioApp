@@ -433,7 +433,17 @@ function PorGuardar({ token, darkMode, onSaved }) {
     const subdivisions = division
       ? options.filter((option) => option.bodega === bodega && option.division === division)
       : []
+    const sinUbicaciones = Array.isArray(locationsByBranch[String(branchId)]) && !options.length
     return (
+      <>
+      {sinUbicaciones && (
+        <BlockerNotice
+          compact
+          title="No hay dónde guardarlo"
+          reason="Esta sucursal no tiene bodegas con divisiones y subdivisiones. Créalas en Bodegas y aparecerán aquí."
+          goTo="Bodegas"
+        />
+      )}
       <div className="quick-actions__receive-location-row quick-actions__receive-location-row--review">
         <ReceiveDropdown
           label="Bodega"
@@ -472,6 +482,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
           searchPlaceholder="Buscar subdivision"
         />
       </div>
+      </>
     )
   }
 

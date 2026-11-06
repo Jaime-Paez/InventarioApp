@@ -426,6 +426,7 @@ function CreateEntrada({
   const [branches, setBranches] = useState([])
   const [providerBranches, setProviderBranches] = useState([])
   const [catalogsLoading, setCatalogsLoading] = useState(false)
+  const [catalogsLoaded, setCatalogsLoaded] = useState(false)
   const [tipoMovimientos, setTipoMovimientos] = useState(() => preloadedTipoMovimientos)
   const [subTipos, setSubTipos] = useState(() => preloadedSubTipos)
   const [estados, setEstados] = useState([])
@@ -822,6 +823,12 @@ function CreateEntrada({
 
     return String(estadoOptions[0].id)
   }, [estadoOptions, isCompraEntrada, isDevolucion, isTraslado, isVenta])
+
+  // Sin estos catalogos la entrada no se puede registrar: se avisa de
+  // entrada (no solo con un error al agregar o al guardar).
+  const missingEstadoMovimiento = Boolean(
+    formData.subTipoId && catalogsLoaded && !catalogsLoading && !defaultEstadoMovimientoId
+  )
 
   const defaultEstadoProductoId = useMemo(() => {
     if (!estadosProducto.length) return ''
@@ -1401,6 +1408,7 @@ function CreateEntrada({
       setEstados(parseApiList(estadosData))
       setProductos(parseApiList(productosData))
       setEstadosProducto(parseApiList(estadosProductoData))
+      setCatalogsLoaded(true)
 
       const configRes = await authFetch(`${API_URL}/configuracion/sistema/`, {}, token)
       if (configRes.ok) {
@@ -3966,15 +3974,24 @@ function CreateEntrada({
                           <div className="create-user__dropdown-results">
                             {casaComercialLoading && <small className="muted">Buscando...</small>}
                             {!casaComercialLoading && !casaComercialOptions.length && (
-                              <small className="muted">
-                                {casaComercialLastSearch?.query !== casaComercialQuery.trim()
-                                  ? 'Escribe para buscar.'
-                                  : casaComercialLastSearch.failed
-                                    ? 'No se pudieron cargar las casas comerciales. Vuelve a escribir para reintentar.'
-                                    : casaComercialQuery.trim()
-                                      ? `No hay casas comerciales de tipo Local que coincidan con "${casaComercialQuery.trim()}". Si el proveedor existe como Importación, cámbiale el tipo en Casas comerciales.`
-                                      : 'No hay casas comerciales locales registradas: créala en Casas comerciales.'}
-                              </small>
+                              casaComercialLastSearch?.query === casaComercialQuery.trim() &&
+                              !casaComercialLastSearch.failed &&
+                              !casaComercialQuery.trim() ? (
+                                <BlockerNotice
+                                  compact
+                                  title="No hay proveedores locales para elegir"
+                                  reason="La compra local necesita una casa comercial de tipo Local. Créala en Proveedores y aparecerá aquí."
+                                  goTo="Proveedores"
+                                />
+                              ) : (
+                                <small className="muted">
+                                  {casaComercialLastSearch?.query !== casaComercialQuery.trim()
+                                    ? 'Escribe para buscar.'
+                                    : casaComercialLastSearch.failed
+                                      ? 'No se pudieron cargar las casas comerciales. Vuelve a escribir para reintentar.'
+                                      : `No hay casas comerciales de tipo Local que coincidan con "${casaComercialQuery.trim()}". Si el proveedor existe como Importación, cámbiale el tipo en Proveedores.`}
+                                </small>
+                              )
                             )}
                             {casaComercialOptions.map((casa) => (
                               <button
@@ -4351,6 +4368,12 @@ function CreateEntrada({
                     )}
                   </div>
 
+                  {catalogsLoaded && !catalogsLoading && !estadosProducto.length && (
+                    <BlockerNotice
+                      title="No se pueden agregar productos: no hay estado de producto configurado"
+                      reason="El catálogo de estados de producto está vacío y cada producto de la entrada necesita uno. Pide al administrador que cree al menos un estado de producto (por ejemplo, «Disponible»)."
+                    />
+                  )}
                   {noProviderBranchBlocker ? (
                     <BlockerNotice title={noProviderBranchBlocker.title} reason={noProviderBranchBlocker.reason} goTo={noProviderBranchBlocker.goTo} />
                   ) : isTraslado && !hasSelectedProveedorSucursal ? (
@@ -5192,6 +5215,16 @@ function CreateEntrada({
               </div>
             </div>
             </>
+          )}
+
+          {isFormStep && missingEstadoMovimiento && (
+            <div style={{ padding: '8px 15px 0' }}>
+              <BlockerNotice
+                compact
+                title="No se puede registrar la entrada: no hay estado de movimiento configurado"
+                reason="El catálogo de estados de movimiento está vacío para este tipo de entrada y sin él no se puede guardar. Pide al administrador que lo configure."
+              />
+            </div>
           )}
 
           {isFormStep && (noLocationsBlocker || (reminderBlocker && activeTab !== 'recordatorio')) && (

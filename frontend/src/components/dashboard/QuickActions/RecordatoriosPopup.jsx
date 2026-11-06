@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Info, Loader2, X } from 'lucide-react'
 import useModalAnimation from '../common/useModalAnimation'
 import BodegaLocationPreview from '../inventario/InventarioEditor/BodegaLocationPreview'
 import TrasladoRechazados from '../common/TrasladoRechazados'
+import BlockerNotice from '../common/BlockerNotice'
 import { API_URL, authFetch } from '../../../utils/api'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
 import { formatDate, formatDateTime } from '../../../utils/dateFormat'
@@ -4668,6 +4669,14 @@ function RecordatoriosPopup({
                                 >
                                   + Agregar una ubicación donde lo encontraste
                                 </button>
+                                {ubicacionesState?.data && opcionesSucursal.length === 0 && (
+                                  <BlockerNotice
+                                    compact
+                                    title="No se puede agregar otra ubicación"
+                                    reason="Esta sucursal no tiene bodegas con divisiones y subdivisiones registradas. Créalas en Bodegas y aparecerán aquí."
+                                    goTo="Bodegas"
+                                  />
+                                )}
                                 <p className="recordatorios-popup__conteo-total">
                                   {contadas} de {filas.length} ubicaciones contadas · Total: <strong>{totalContado}</strong>
                                 </p>

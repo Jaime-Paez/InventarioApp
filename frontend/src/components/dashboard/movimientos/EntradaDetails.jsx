@@ -455,6 +455,7 @@ function EntradaDetails({
   const [estados, setEstados] = useState([])
   const [productos, setProductos] = useState([])
   const [estadosProducto, setEstadosProducto] = useState([])
+  const [estadosProductoLoaded, setEstadosProductoLoaded] = useState(false)
 
   const [details, setDetails] = useState([])
   // Buscador rapido de productos dentro de este movimiento.
@@ -1665,6 +1666,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
       setEstados(estadosList)
       setProductos(productosList)
       setEstadosProducto(estadosProductoList)
+      setEstadosProductoLoaded(true)
 
       const normalized = buildFormData(salidaData, {
         branchesList: resolvedBranches,
@@ -1798,6 +1800,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
           setEstados(estadosList)
           setProductos(productosList)
           setEstadosProducto(estadosProductoList)
+          setEstadosProductoLoaded(true)
           hydrateFromPreviewData(previewData)
         })
         .catch((err) => {
@@ -3309,6 +3312,13 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       <h4>Listado de productos</h4>
                     </div>
                   </div>
+
+                  {!lineItemsReadOnly && !loadingData && estadosProductoLoaded && !estadosProducto.length && (
+                    <BlockerNotice
+                      title="No se pueden agregar productos: no hay estado de producto configurado"
+                      reason="El catálogo de estados de producto está vacío y cada producto de la entrada necesita uno. Pide al administrador que cree al menos un estado de producto."
+                    />
+                  )}
 
                   {details.length > 0 && (
                     <ProductListSearch

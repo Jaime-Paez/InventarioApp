@@ -3975,6 +3975,14 @@ function CreateSalida({
                                         </option>
                                       ))}
                                     </select>
+                                    {branches.length > 0 && !transferDestinationBranches.length && (
+                                      <BlockerNotice
+                                        compact
+                                        title="No hay otra sucursal a la cual trasladar"
+                                        reason="Para un traslado se necesita una sucursal distinta de la de origen. Créala en Sucursales y aparecerá aquí."
+                                        goTo="Sucursales"
+                                      />
+                                    )}
                                   </label>
                                 )}
 
