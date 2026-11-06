@@ -25,6 +25,7 @@ import {
   Package,
   Users,
   ShieldCheck,
+  Shapes,
 } from 'lucide-react'
 
 export const MENU_STRUCTURE = [
@@ -68,6 +69,7 @@ export const MENU_STRUCTURE = [
     children: [
       { label: 'Sucursales', icon: Compass, moduleKey: 'sucursales_sucursales' },
       { label: 'Bodegas', icon: Box, moduleKey: 'sucursales_bodegas' },
+      { label: 'Tipos de ubicación', icon: Shapes, moduleKey: 'sucursales_bodegas' },
     ],
   },
   { label: 'Proveedores', icon: Truck, moduleKey: 'proveedores_casas' },

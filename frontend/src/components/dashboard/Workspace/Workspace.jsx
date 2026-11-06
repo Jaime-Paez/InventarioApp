@@ -22,6 +22,7 @@ import ManoObraTable from '../taller/ManoObraTable'
 import TecnicosTable from '../taller/TecnicosTable'
 import TalleresTable from '../taller/TalleresTable'
 import InsumosTable from '../taller/InsumosTable'
+import TiposUbicacionTable from '../bodegas/TiposUbicacionTable'
 import CajaChicaPage from '../cajaChica/CajaChicaPage'
 import './Workspace.css'
 import { getModuleActions, labelHasAccess } from '../menuConfig'
@@ -63,6 +64,7 @@ const MODULE_KEY_BY_TAB = {
   [INVENTORY_REVIEW_TAB_LEGACY]: 'usuarios',
   Sucursales: 'sucursales_sucursales',
   Bodegas: 'sucursales_bodegas',
+  'Tipos de ubicación': 'sucursales_bodegas',
   'Proveedores': 'proveedores_casas',
   Importaciones: 'importaciones',
   'En proceso': 'importaciones',
@@ -205,6 +207,7 @@ function Workspace({
     'Reposición': ReposicionTable,
     Sucursales: SucursalesTable,
     Bodegas: BodegasTable,
+    'Tipos de ubicación': TiposUbicacionTable,
     'Proveedores': CasasComercialesTable,
     Importaciones: ImportacionesTable,
     'En proceso': ImportacionesTable,

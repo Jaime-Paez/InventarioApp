@@ -59,7 +59,7 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await authFetch(`${API_URL}${config.endpoint}`, {}, token)
+      const response = await authFetch(`${API_URL}${config.endpoint}${config.listQuery || ''}`, {}, token)
       if (!response.ok) throw new Error(await parseApiError(response, `No se pudo cargar ${config.plural}.`))
       const data = await response.json()
       setRows(Array.isArray(data) ? data : data?.results || [])
@@ -69,7 +69,7 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
     } finally {
       setLoading(false)
     }
-  }, [config.endpoint, config.plural, token])
+  }, [config.endpoint, config.listQuery, config.plural, token])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
@@ -77,16 +77,25 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
     return () => clearTimeout(timer)
   }, [search])
 
+  const sinActivo = Boolean(config.sinActivo)
   const visibles = useMemo(() => rows.filter((row) => {
-    if (!verInactivos && !row.activo) return false
+    if (!sinActivo && !verInactivos && !row.activo) return false
     if (!debounced) return true
     return config.fields.some((f) => normalize(row[f.key]).includes(debounced))
-  }), [config.fields, debounced, rows, verInactivos])
+  }), [config.fields, debounced, rows, sinActivo, verInactivos])
 
   const openForm = (row) => {
     if (row ? !canEdit : !canCreate) return
     const initial = { activo: true }
     config.fields.forEach((f) => {
+      if (f.type === 'boolean') {
+        initial[f.key] = row ? Boolean(row[f.key]) : Boolean(f.default)
+        return
+      }
+      if (f.type === 'color') {
+        initial[f.key] = row?.[f.key] || f.default || '#4f8df8'
+        return
+      }
       initial[f.key] = row
         ? (f.type === 'money' ? Number(row[f.key] || 0) : f.type === 'select' ? (row[f.key] ?? '') : row[f.key] || '')
         : (f.type === 'money' ? null : '')
@@ -103,9 +112,11 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
     setSaving(true)
     setFormError('')
     try {
-      const body = { activo: form.activo }
+      const body = sinActivo ? {} : { activo: form.activo }
       config.fields.forEach((f) => {
-        if (f.type === 'money') body[f.key] = Number(form[f.key] || 0).toFixed(2)
+        if (f.type === 'boolean') body[f.key] = Boolean(form[f.key])
+        else if (f.type === 'color') body[f.key] = form[f.key] || ''
+        else if (f.type === 'money') body[f.key] = Number(form[f.key] || 0).toFixed(2)
         else if (f.type === 'select') body[f.key] = form[f.key] === '' ? null : form[f.key]
         else body[f.key] = String(form[f.key] || '').trim()
       })
@@ -157,9 +168,11 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
         <button className="rounded-icon-btn" type="button" onClick={load} disabled={loading} title="Recargar">
           <i className="pi pi-refresh" />
         </button>
-        <button className={`taller-toggle${verInactivos ? ' is-active' : ''}`} type="button" onClick={() => setVerInactivos((v) => !v)}>
-          Ver inactivos
-        </button>
+        {!sinActivo && (
+          <button className={`taller-toggle${verInactivos ? ' is-active' : ''}`} type="button" onClick={() => setVerInactivos((v) => !v)}>
+            Ver inactivos
+          </button>
+        )}
       </div>
       <div className="users-header__right">
         <span className="users-header__count">Reg. {visibles.length}</span>
@@ -201,19 +214,19 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
           {config.columns.map((col) => (
             <Column key={col.field} field={col.field} header={col.header} sortable body={col.body} style={col.style} />
           ))}
-          <Column
+          {!sinActivo && <Column
             field="activo"
             header="Estado"
             sortable
             body={(row) => <span className={`taller-chip taller-chip--${row.activo ? 'orden' : 'cerrada'}`}>{row.activo ? 'Activo' : 'Inactivo'}</span>}
             style={{ width: 110 }}
-          />
+          />}
           <Column
             header=""
             body={(row) => (
               <span className="taller-row-actions">
                 {canEdit && <button type="button" className="taller-open-btn" onClick={() => openForm(row)}>Editar</button>}
-                {canDelete && row.activo && (
+                {canDelete && (sinActivo || row.activo) && (
                   <button type="button" className="taller-icon-btn taller-icon-btn--no" onClick={() => setToDelete(row)} title="Eliminar (si ya se usó, solo se desactiva)">
                     <i className="pi pi-trash" />
                   </button>
@@ -243,7 +256,21 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
         }
       >
         <div className="create-user__grid create-user__grid--two">
-          {config.fields.map((f) => f.type === 'select' ? (
+          {config.fields.map((f) => f.type === 'boolean' ? (
+            <label key={f.key} className="taller-switch create-user__field--full">
+              <input type="checkbox" checked={Boolean(form[f.key])} onChange={(event) => setForm((prev) => ({ ...prev, [f.key]: event.target.checked }))} />
+              <span>{f.label}</span>
+              {f.help && <small className="taller-muted">{f.help}</small>}
+            </label>
+          ) : f.type === 'color' ? (
+            <label key={f.key} className="create-user__field">
+              <span>{f.label}</span>
+              <span className="taller-color-field">
+                <input type="color" value={form[f.key] || '#4f8df8'} onChange={(event) => setForm((prev) => ({ ...prev, [f.key]: event.target.value }))} />
+                <span>{form[f.key]}</span>
+              </span>
+            </label>
+          ) : f.type === 'select' ? (
             <div key={f.key} className={`create-user__field${f.full ? ' create-user__field--full' : ''}`}>
               <span>{f.label}</span>
               <CascadeDropdown
@@ -275,7 +302,7 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
               )}
             </label>
           ))}
-          {editing !== 'new' && (
+          {editing !== 'new' && !sinActivo && (
             <label className="taller-switch">
               <input type="checkbox" checked={Boolean(form.activo)} onChange={(event) => setForm((prev) => ({ ...prev, activo: event.target.checked }))} />
               <span>{form.activo ? 'Activo' : 'Inactivo'}</span>
@@ -289,7 +316,7 @@ function CatalogoTallerTable({ token, moduleActions, config }) {
         open={Boolean(toDelete)}
         busy={saving}
         title={`¿Eliminar ${toDelete?.nombre || ''}?`}
-        message="Si ya se usó en alguna orden, queda inactivo para no perder el historial."
+        message={config.deleteMessage || 'Si ya se usó en alguna orden, queda inactivo para no perder el historial.'}
         confirmLabel="Eliminar"
         onCancel={() => setToDelete(null)}
         onConfirm={remove}

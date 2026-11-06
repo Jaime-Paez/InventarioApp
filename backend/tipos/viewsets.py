@@ -1,5 +1,6 @@
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from usuarios.permissions import (
     BodegasModulePermission,
@@ -93,3 +94,13 @@ class TipoDivisionViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["nombre"]
     ordering_fields = ["nombre"]
+
+    def destroy(self, request, *args, **kwargs):
+        tipo = self.get_object()
+        usadas = tipo.divisiones.count()
+        if usadas:
+            return Response(
+                {"detail": f"No se puede eliminar: lo usan {usadas} división(es) de las bodegas. Cámbialas de tipo primero."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)

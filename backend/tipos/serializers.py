@@ -61,6 +61,23 @@ class TipoPagoSerializer(serializers.ModelSerializer):
 
 
 class TipoDivisionSerializer(serializers.ModelSerializer):
+    divisiones_count = serializers.SerializerMethodField()
+
     class Meta:
         model = TipoDivision
-        fields = ["id", "nombre", "descripcion"]
+        fields = ["id", "nombre", "descripcion", "color", "es_referencia", "divisiones_count"]
+
+    def get_divisiones_count(self, obj):
+        return obj.divisiones.count()
+
+    def validate_nombre(self, value):
+        value = str(value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Escribe el nombre del tipo.")
+        return value
+
+    def validate_color(self, value):
+        value = str(value or "").strip()
+        if value and not (value.startswith("#") and len(value) in (4, 7)):
+            raise serializers.ValidationError("El color no es válido.")
+        return value

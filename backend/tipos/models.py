@@ -99,6 +99,11 @@ class TipoDivision(models.Model):
 
     nombre = models.CharField(max_length=80, unique=True)
     descripcion = models.TextField(blank=True)
+    # Color con el que se pinta en el plano de la bodega (#rrggbb).
+    color = models.CharField(max_length=9, blank=True, default="")
+    # Solo visual (puerta, pasillo...): identifica algo en el plano, no guarda
+    # productos, asi que no crea division ni lleva subdivisiones.
+    es_referencia = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["nombre"]

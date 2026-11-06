@@ -13,4 +13,15 @@ export const REFERENCE_TYPE_COLORS = {
 
 const REFERENCE_KEYS = new Set(REFERENCE_TYPES.map((type) => type.toLowerCase()))
 
-export const isReferenceType = (tipo) => REFERENCE_KEYS.has(String(tipo ?? '').trim().toLowerCase())
+// Tipos marcados "solo visual" en el catalogo (Sucursales -> Tipos de
+// ubicacion). Se actualiza al cargar el catalogo en el plano.
+const catalogReferenceKeys = new Set()
+export const setCatalogReferenceTypes = (names) => {
+  catalogReferenceKeys.clear()
+  ;(names || []).forEach((name) => catalogReferenceKeys.add(String(name ?? '').trim().toLowerCase()))
+}
+
+export const isReferenceType = (tipo) => {
+  const key = String(tipo ?? '').trim().toLowerCase()
+  return REFERENCE_KEYS.has(key) || catalogReferenceKeys.has(key)
+}

@@ -2,8 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import { Eye } from 'lucide-react'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
+import { API_URL, authFetch } from '../../../../utils/api'
+import { goToSection } from '../../../../utils/navigation'
 import './BodegaLayoutEditor.css'
-import { REFERENCE_TYPES, REFERENCE_TYPE_COLORS, isReferenceType } from './referenceTypes'
+import { REFERENCE_TYPES, REFERENCE_TYPE_COLORS, isReferenceType, setCatalogReferenceTypes } from './referenceTypes'
 
 const buildId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
@@ -179,8 +181,6 @@ const TypeSelect = ({
   disabled,
   placeholder,
   onSelect,
-  onCreate,
-  onColorChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -240,14 +240,6 @@ const TypeSelect = ({
     setIsOpen(false)
   }
 
-  const handleCreate = () => {
-    const created = onCreate(query)
-    if (created) {
-      setQuery('')
-      setIsOpen(false)
-    }
-  }
-
   return (
     <div
       ref={containerRef}
@@ -266,22 +258,12 @@ const TypeSelect = ({
           <span>{value || placeholder}</span>
         </span>
         <div className="bodega-type-select__control-actions">
-          <label
-            className="bodega-type-select__color"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <input
-              type="color"
-              value={colors?.[value] || DEFAULT_COLOR}
-              onChange={(event) => onColorChange?.(value, event.target.value)}
-              aria-label={`Color para ${value}`}
-              disabled={disabled || !value}
-            />
+          <span className="bodega-type-select__color">
             <span
               className="bodega-type-select__color-dot"
               style={{ backgroundColor: colors?.[value] || DEFAULT_COLOR }}
             />
-          </label>
+          </span>
           <i className={`pi pi-chevron-${isOpen ? 'up' : 'down'}`} />
         </div>
       </button>
@@ -319,31 +301,24 @@ const TypeSelect = ({
                   )}
                   <span>{option}</span>
                 </span>
-                <label
-                  className="bodega-type-select__color"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <input
-                    type="color"
-                    value={colors?.[option] || DEFAULT_COLOR}
-                    onChange={(event) => onColorChange?.(option, event.target.value)}
-                    aria-label={`Color para ${option}`}
-                  />
+                <span className="bodega-type-select__color">
                   <span
                     className="bodega-type-select__color-dot"
                     style={{ backgroundColor: colors?.[option] || DEFAULT_COLOR }}
                   />
-                </label>
+                </span>
               </button>
             ))}
           </div>
           <button
             type="button"
             className="bodega-type-select__create"
-            onClick={handleCreate}
-            disabled={!query.trim()}
+            onClick={() => {
+              setIsOpen(false)
+              goToSection('Tipos de ubicación')
+            }}
           >
-            Escribe para crear un tipo
+            ¿Falta un tipo? Créalo en Sucursales → Tipos de ubicación
           </button>
           <p className="bodega-type-select__legend">
             <Eye size={12} aria-hidden="true" /> Solo visual: sirve para identificar en el mapa, no lleva subdivisiones.
@@ -414,15 +389,38 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     }
   }, [locations, types])
 
+  // Tipos y colores del catalogo (Sucursales -> Tipos de ubicacion).
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await authFetch(`${API_URL}/tipos/tipos-division/?page_size=500&ordering=nombre`)
+        if (!response.ok) return
+        const data = await response.json()
+        const list = (Array.isArray(data) ? data : data?.results || [])
+          .filter((tipo) => String(tipo?.nombre || '').trim() && String(tipo.nombre).trim().toLowerCase() !== 'temporal')
+        if (cancelled || !list.length) return
+        setCatalogReferenceTypes(list.filter((tipo) => tipo.es_referencia).map((tipo) => tipo.nombre))
+        const names = list.map((tipo) => String(tipo.nombre).trim())
+        setTypes((prev) => Array.from(new Set([...names, ...prev.filter((type) => !DEFAULT_TYPES.includes(type))])))
+        setTypeColors((prev) => {
+          const next = { ...prev }
+          list.forEach((tipo) => {
+            if (tipo.color) next[String(tipo.nombre).trim()] = tipo.color
+          })
+          return next
+        })
+      } catch {
+        // sin catalogo: quedan los tipos de siempre
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
   const resolveTypeColor = useCallback(
     (type) => typeColors[type] || DEFAULT_COLOR,
     [typeColors]
   )
-
-  const handleTypeColorChange = (type, color) => {
-    if (!type) return
-    setTypeColors((prev) => ({ ...prev, [type]: color }))
-  }
 
   const clampLocation = (location) => {
     const clampedX = clamp(location.x, 0, Math.max(0, safeWidth - location.ancho))
@@ -509,22 +507,7 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
     updateLocation(id, (prev) => ({ ...prev, [field]: nextValue }))
   }
 
-  const ensureType = (rawType) => {
-    const trimmed = rawType.trim()
-    if (!trimmed) return null
-    if (types.includes(trimmed)) return trimmed
-    const nextTypes = [...types, trimmed]
-    setTypes(nextTypes)
-    setTypeColors((prev) => ({
-      ...prev,
-      [trimmed]: TYPE_COLORS[(nextTypes.length - 1) % TYPE_COLORS.length],
-    }))
-    return trimmed
-  }
-
   const handleTypeChange = (locationId, value) => updateLocation(locationId, { tipo: value })
-  const handleAddType = (value) => ensureType(value)
-
   const [removingId, setRemovingId] = useState(null)
 
   // onBeforeRemoveLocation (opcional) revisa antes si se puede quitar, p. ej.
@@ -946,10 +929,8 @@ function BodegaLayoutEditor({ widthMeters, heightMeters, locations, onChange, di
                   value={location.tipo || types[0] || DEFAULT_TYPES[0]}
                   options={types}
                   colors={typeColors}
-                  placeholder="Selecciona o escribe para crear un tipo"
+                  placeholder="Buscar tipo"
                   onSelect={(value) => handleTypeChange(location.id, value)}
-                  onCreate={handleAddType}
-                  onColorChange={handleTypeColorChange}
                   disabled={disabled}
                 />
               </label>
