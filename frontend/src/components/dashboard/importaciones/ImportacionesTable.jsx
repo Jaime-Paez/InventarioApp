@@ -7452,10 +7452,20 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const XLSXStyle = (await import('xlsx-js-style')).default
       const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
       const border = { top: bt, bottom: bt, left: bt, right: bt }
-      const RO = 6; const ED = 3; const DIFF_CI = RO + ED
+      const RO = 7; const ED = 3; const DIFF_CI = RO + ED
+      const COMENT_CI = RO + 2
       const precioEditLabel = isVerificar ? 'PVP APROX.' : 'Precio conf.'
       const cantEditLabel = isVerificar ? 'Cant. aprox.' : 'Cant. conf.'
-      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'PVP JP', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', 'Estado', '_key']
+      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'PVP JP', 'Casa comercial', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', 'Estado', '_key']
+      // Casa comercial del PVP JP: la de la importacion (catalogo) o la de la
+      // coincidencia escogida; vacia si es un producto totalmente nuevo.
+      const casaImportacion = imp?.casa_comercial?.nombre || selectedCasa?.nombre || ''
+      const casaPvpJpDe = (item) => {
+        if (item.producto?.id) return casaImportacion
+        if (item.coincidencia_precio != null && item.coincidencia_precio !== '') return String(item._sugeridoCasa || '').trim()
+        const porDefecto = coincidenciaPorDefectoRef.current(item)
+        return porDefecto ? (porDefecto.casas_comerciales_nombres || []).join(', ') : ''
+      }
       const ESTADO_CI = DIFF_CI + 1
       const mkH = (fill, bot) => ({ font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: fill }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: bot } }, left: bt, right: bt } })
       const hdrS = headers.map((_, ci) => ci < RO ? mkH('1e3a5f', '2563EB') : ci < RO + ED ? mkH('15803d', '166534') : ci === DIFF_CI || ci === ESTADO_CI ? mkH('374151', '374151') : null)
@@ -7506,9 +7516,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         // diff uses real price so static color is meaningful; null for SIN CATÁLOGO
         // Mismo signo que la tabla: PVP Aprox. - PVP JP (negativo = mas barato).
         const diff = !(isVerificar && item.quitado) && precioReal != null && precioConf != null ? +(precioConf - precioReal).toFixed(2) : null
-        // precio in cell is always numeric: 0 for SIN CATÁLOGO so formula =E-G can always compute
-        const precio = precioReal ?? 0
-        return [codigo, nombre, oem, referencia, precio, cantidad, precioConf, cantConf, item.comentario || '', diff, ESTADO[tipos[idx]], item._key]
+        // Totalmente nuevo (sin PVP JP): PVP JP vacio y diferencia 0 (mismo precio).
+        const precio = precioReal
+        const diffFinal = diff ?? (!(isVerificar && item.quitado) && precioReal == null && precioConf != null ? 0 : null)
+        return [codigo, nombre, oem, referencia, precio, precioReal != null ? casaPvpJpDe(item) : '', cantidad, precioConf, cantConf, item.comentario || '', diffFinal, ESTADO[tipos[idx]], item._key]
       })
 
       // Build worksheet manually for precise type control
@@ -7537,16 +7548,16 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           // (verde/amarillo/rojo) salvo en los quitados.
           let bg = FONDO[tipo] || 'FFFFFF'
           if (isDiff && !isEmpty && !quitado) bg = val <= 0 ? 'dcfce7' : val <= 1 ? 'fef9c3' : 'fee2e2'
-          const numFmt = ci === 4 || ci === RO ? '0.00' : ci === 5 || ci === RO + 1 ? '0' : isDiff ? '0.00' : null
+          const numFmt = ci === 4 || ci === RO ? '0.00' : ci === 6 || ci === RO + 1 ? '0' : isDiff ? '0.00' : null
           // Tachado en rojo, salvo el comentario y el estado (se leen normal).
-          const font = quitado ? (ci === 8 || ci === ESTADO_CI ? { color: { rgb: 'B91C1C' } } : { strike: true, color: { rgb: 'B91C1C' } }) : undefined
+          const font = quitado ? (ci === COMENT_CI || ci === ESTADO_CI ? { color: { rgb: 'B91C1C' } } : { strike: true, color: { rgb: 'B91C1C' } }) : undefined
           const s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(font ? { font } : {}), ...(numFmt ? { numFmt } : {}) }
-          const formula = isDiff && !quitado ? `IF(${editCol}${excelRow}="","",${editCol}${excelRow}-${precioCol}${excelRow})` : undefined
+          const formula = isDiff && !quitado ? `IF(${editCol}${excelRow}="","",IF(${precioCol}${excelRow}="",0,${editCol}${excelRow}-${precioCol}${excelRow}))` : undefined
           setCell(ri + 1, ci, val, s, formula)
         })
       })
 
-      worksheet['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 12 }, { wch: 24 }, { wch: 0, hidden: true }]
+      worksheet['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 18 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 12 }, { wch: 24 }, { wch: 0, hidden: true }]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
       XLSXStyle.utils.book_append_sheet(workbook, worksheet, isVerificar ? 'Verificar' : 'Confirmacion')
