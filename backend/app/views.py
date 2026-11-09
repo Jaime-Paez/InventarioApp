@@ -2803,6 +2803,9 @@ def _apply_random_inspection_adjustment(item, cantidad_confirmada, confirmed_by_
             for entry in location_counts
         ]
     applied = 0
+    # Lo que ya estaba corregido a mano: cuenta como aplicado pero no mueve
+    # stock (ni entra al Kardex ni deja faltante).
+    ya_corregido = 0
     per_location = []
     if location_counts and int(cantidad_confirmada) == sum(
         entry["cantidad_contada"] for entry in location_counts
@@ -2815,6 +2818,24 @@ def _apply_random_inspection_adjustment(item, cantidad_confirmada, confirmed_by_
         for entry in ordered:
             location_delta = entry["cantidad_contada"] - entry["cantidad_sistema"]
             if location_delta == 0:
+                continue
+            # Ya corregida a mano despues del conteo (p. ej. se encontro el
+            # resto en otra ubicacion y se repartio desde Inventario): si la
+            # ubicacion ya tiene lo confirmado no se vuelve a restar/sumar; si
+            # no, el ajuste caia sobre la otra ubicacion y la dejaba en 0.
+            stock_actual = (
+                Inventario.objects.filter(
+                    producto_id=int(item.producto_id),
+                    subdivision_id=int(entry["subdivision_id"]),
+                    subdivision__division__bodega__sucursal_id=int(item.sucursal_id),
+                ).aggregate(total=Sum("cantidad"))["total"]
+            )
+            if stock_actual is not None and int(stock_actual) == int(entry["cantidad_contada"]):
+                applied += location_delta
+                ya_corregido += location_delta
+                per_location.append(
+                    {"subdivision_id": entry["subdivision_id"], "delta": 0, "ya_corregida": True}
+                )
                 continue
             _adjust_inventory_at_subdivision(
                 subdivision_id=entry["subdivision_id"],
@@ -2836,7 +2857,13 @@ def _apply_random_inspection_adjustment(item, cantidad_confirmada, confirmed_by_
             division_id=division_id,
             subdivision_id=scope_subdivision_id,
         )
-    return {"delta_total": total_delta, "por_ubicacion": per_location, "residual": residual}
+    return {
+        "delta_total": total_delta - ya_corregido,
+        "delta_conteo": total_delta,
+        "ya_corregido": ya_corregido,
+        "por_ubicacion": per_location,
+        "residual": residual,
+    }
 
 
 def _move_inspection_item_stock(item, target_subdivision):
