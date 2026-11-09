@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import './BodegaLocationPreview.css'
 
@@ -87,7 +87,10 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
   const [isOpen, setIsOpen] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [portalRoot, setPortalRoot] = useState(null)
-  const activeLocationRef = useRef(null)
+  // Espacio disponible para el plano: se ajusta completo a la pantalla
+  // (sin scroll) manteniendo la proporcion real en metros.
+  const fitAreaRef = useRef(null)
+  const [fitArea, setFitArea] = useState({ width: 0, height: 0 })
   useEffect(() => {
     if (portalRoot) return
     setPortalRoot(getPortalHost())
@@ -123,17 +126,46 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
     }
 
     document.addEventListener('keydown', handleKeyDown)
-    // El plano se ve a escala real (con scroll si es alto): se lleva la vista
-    // hasta la ubicacion del producto.
-    const frame = window.requestAnimationFrame(() => {
-      activeLocationRef.current?.scrollIntoView({ block: 'center', inline: 'center' })
-    })
     return () => {
-      window.cancelAnimationFrame(frame)
       document.removeEventListener('keydown', handleKeyDown)
       document.body.style.overflow = previousOverflow
     }
   }, [isOpen])
+
+  useLayoutEffect(() => {
+    if (!isOpen) return undefined
+    const node = fitAreaRef.current
+    if (!node) return undefined
+    const measure = () => {
+      const rect = node.getBoundingClientRect()
+      setFitArea((prev) => (
+        Math.abs(prev.width - rect.width) < 0.5 && Math.abs(prev.height - rect.height) < 0.5
+          ? prev
+          : { width: rect.width, height: rect.height }
+      ))
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [isOpen, portalRoot, hasPlan])
+
+  // Tamano del plano: el mas grande que entra completo en el area ("contain").
+  const fittedPlanStyle = useMemo(() => {
+    if (!hasPlan || !fitArea.width || !fitArea.height) return { visibility: 'hidden' }
+    const ratio = planSize.width / planSize.height
+    let width = fitArea.width
+    let height = width / ratio
+    if (height > fitArea.height) {
+      height = fitArea.height
+      width = height * ratio
+    }
+    return { width: `${Math.floor(width)}px`, height: `${Math.floor(height)}px` }
+  }, [fitArea, hasPlan, planSize])
 
   const popup = isOpen && portalRoot
     ? createPortal(
@@ -171,9 +203,10 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
           <div className="inventario-map-popup__body">
             {hasPlan ? (
               <div className="inventario-map-preview__plan-wrapper inventario-map-preview__plan-wrapper--popup">
+                <div className="inventario-map-preview__fit-area" ref={fitAreaRef}>
                 <div
                   className="inventario-map-preview__plan inventario-map-preview__plan--popup"
-                  style={{ aspectRatio: `${planSize.width} / ${planSize.height}` }}
+                  style={fittedPlanStyle}
                 >
                   {locations.map((location) => {
                     const left = planSize.width ? (location.x / planSize.width) * 100 : 0
@@ -184,13 +217,12 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
                     const isVertical = location.alto > location.ancho * VERTICAL_LABEL_RATIO
                     const baseColor = typeColors.get(location.tipo || DEFAULT_TYPES[0]) || DEFAULT_COLOR
                     const borderColor = isActive ? HIGHLIGHT_COLOR : baseColor
-                    // Mismo relleno que el editor de Bodegas (color del tipo al ~13%).
-                    const backgroundColor = isActive ? toRgba(HIGHLIGHT_COLOR, 0.22) : toRgba(baseColor, 0.13)
+                    // Mismo relleno que el editor de Sucursales (color del tipo al 30%).
+                    const backgroundColor = isActive ? toRgba(HIGHLIGHT_COLOR, 0.3) : toRgba(baseColor, 0.3)
 
                     return (
                       <div
                         key={location.id}
-                        ref={isActive ? activeLocationRef : undefined}
                         className={`inventario-map-preview__location${isActive ? ' inventario-map-preview__location--active' : ''}${isVertical ? ' inventario-map-preview__location--vertical' : ''}`}
                         style={{
                           left: `${left}%`,
@@ -205,6 +237,7 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
                       </div>
                     )
                   })}
+                </div>
                 </div>
               </div>
             ) : (

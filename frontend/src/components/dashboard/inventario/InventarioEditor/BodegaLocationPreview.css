@@ -123,11 +123,21 @@
 .inventario-map-preview__plan-wrapper--popup {
   flex: 1;
   min-height: 0;
-  /* El plano va a escala real (como en Bodegas): si es mas alto que la
-     ventana se recorre con scroll en vez de aplastarlo. */
-  overflow: auto;
+  /* El plano entra completo en la ventana (sin scroll) con la proporcion
+     real en metros: el JS lo dimensiona al tamano que cabe en el area. */
+  overflow: hidden;
   padding: 12px;
   border-radius: 12px;
+  display: flex;
+}
+
+.inventario-map-preview__fit-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .inventario-map-preview__plan {
@@ -145,29 +155,26 @@
 }
 
 .inventario-map-preview__plan--popup {
-  width: 100%;
-  height: auto;
+  flex: none;
   min-height: 0;
-  max-width: 1500px;
-  margin: 0 auto;
-  border-radius: 10px;
-  background-size: 24px 24px;
+  margin: 0;
 }
 
+/* Igual que las perchas del editor de Sucursales (BodegaLayoutEditor). */
 .inventario-map-preview__location {
   position: absolute;
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  padding: 6px;
+  border-radius: 6px;
+  border: 2px solid var(--color-primary);
+  padding: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: 0.68rem;
+  font-weight: 700;
   color: var(--color-text-primary);
   text-align: center;
   overflow: hidden;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .inventario-map-preview__location span {
@@ -188,7 +195,6 @@
 
 .inventario-map-preview__location--active {
   z-index: 1;
-  border-width: 2px;
   color: #b91c1c;
   box-shadow: 0 0 0 4px color-mix(in srgb, #dc2626 22%, transparent);
 }
@@ -238,8 +244,11 @@
 }
 
 .inventario-map-popup--dark .inventario-map-preview__plan {
-  background-color: color-mix(in srgb, var(--color-surface-darker) 90%, transparent);
-  border-color: var(--color-border);
+  border-color: var(--color-border-dark);
+  background-color: color-mix(in srgb, var(--color-surface-darker) 92%, transparent);
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
 }
 
 .inventario-map-popup--dark .inventario-map-popup__header {
@@ -262,10 +271,9 @@
   background: color-mix(in srgb, var(--color-primary-dark) 24%, var(--color-surface-darker));
 }
 
+/* En oscuro las perchas conservan su color (como en Sucursales). */
 .inventario-map-popup--dark .inventario-map-preview__location {
-  color: rgba(255, 255, 255, 0.92);
-  border-color: rgba(255, 255, 255, 0.2);
-  background: color-mix(in srgb, var(--color-border) 10%, rgba(255, 255, 255, 0.08));
+  color: var(--color-text-title-dark);
 }
 
 .inventario-map-popup--dark .inventario-map-preview__location--active {
@@ -286,10 +294,5 @@
 
   .inventario-map-popup__body {
     padding: 10px 12px 12px;
-  }
-
-  .inventario-map-preview__plan--popup {
-    max-height: calc(96vh - 230px);
-    max-height: calc(96dvh - 230px);
   }
 }
