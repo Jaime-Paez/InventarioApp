@@ -1184,7 +1184,7 @@ export const buildReminderStatusForUser = (reminder, userIdSet) => {
   if (isRandomInspectionVerify) {
     if (seenByCurrentUser) {
       return {
-        label: 'Visto',
+        label: 'Contado y solucionado',
         className: 'seen',
         canMarkSeen: false,
       }
