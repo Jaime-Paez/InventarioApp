@@ -7391,7 +7391,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       )
       if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo guardar la importación.'))
       const payload = await response.json()
-      onSaved?.(payload)
+      onSaved?.(payload, { cerrar })
       if (cerrar) onClose?.()
       return true
     } catch (error) {
@@ -10700,8 +10700,9 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         imp={editImp}
         token={token}
         onClose={() => setShowEditImp(false)}
-        onSaved={(payload) => {
-          setShowEditImp(false)
+        onSaved={(payload, { cerrar = true } = {}) => {
+          // Guardar antes de descargar el Excel no cierra el modal.
+          if (cerrar) setShowEditImp(false)
           invalidateImportacionesItemsCache()
           fetchItems(true)
           if (payload?.estado === 'en_camino' && !statusProp) setActiveStatus('en_camino')
