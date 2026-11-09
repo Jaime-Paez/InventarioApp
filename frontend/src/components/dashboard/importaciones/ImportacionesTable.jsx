@@ -4886,11 +4886,22 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
       setOemMatchesHover({ triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left, matches, filaExcel })
     }, 150)
   }
+  // El aviso de una fila de la tarjeta ("Clic para usar...") se quita junto
+  // con la tarjeta: al desaparecer bajo el mouse no llega el mouseout y el
+  // aviso se quedaba pegado (sobre todo con una sola opcion).
+  const hideTitleTipFromOemCard = () => {
+    const current = titleHoverRef.current
+    if (current && (!current.isConnected || oemMatchesHoverCardRef.current?.contains(current))) {
+      titleHoverRef.current = null
+      hideCellHover()
+    }
+  }
   // Se oculta con un pequeno retraso para poder pasar del icono a la tarjeta.
   const hideOemMatchesHover = () => {
     if (oemMatchesHoverTimerRef.current) { clearTimeout(oemMatchesHoverTimerRef.current); oemMatchesHoverTimerRef.current = null }
     oemMatchesHoverTimerRef.current = setTimeout(() => {
       oemMatchesHoverTimerRef.current = null
+      hideTitleTipFromOemCard()
       setOemMatchesHover(null)
       setOemMatchesHoverPos(null)
     }, 250)
@@ -5563,6 +5574,9 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                       onClick={canPick ? () => {
                         if (p.nombre) updateRowDescripcion(oemMatchesHover.filaExcel, p.nombre)
                         if (p.precio != null) updateRowPrecioCentavos(oemMatchesHover.filaExcel, String(Math.round(Number(p.precio) * 100)), (p.casas_comerciales_nombres || []).join(', '))
+                        // El aviso de esta fila se va ya, no cuando cierre la tarjeta.
+                        titleHoverRef.current = null
+                        hideCellHover()
                         hideOemMatchesHover()
                       } : undefined}
                       className={canPick ? 'imp-alternos-hover-card__row--pickable' : undefined}
