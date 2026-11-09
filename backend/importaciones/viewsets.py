@@ -278,6 +278,20 @@ def _split_codes(value):
     return [code.strip() for code in str(value or "").split(",") if code.strip()]
 
 
+# Codigo base de un producto: los primeros 5 caracteres (P2484QH -> P2484).
+# Los productos con el mismo codigo base son la misma pieza en otras casas
+# (ver sync_grupo_producto); los que llevan "-" despues de la base (P2484CL-M,
+# P0254S-L) son variantes especiales y no entran al grupo.
+CODIGO_BASE_LENGTH = 5
+
+
+def _codigo_base(codigo):
+    codigo = str(codigo or "").strip().upper()
+    if len(codigo) <= CODIGO_BASE_LENGTH or "-" in codigo[CODIGO_BASE_LENGTH:]:
+        return ""
+    return codigo[:CODIGO_BASE_LENGTH]
+
+
 def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=False):
     """Busca en el catalogo cada fila de una sugerencia (codigo, referencia,
     OEM) y devuelve, por fila, el producto vinculado, las coincidencias por
@@ -289,7 +303,7 @@ def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=Fa
     las tablas), sin vincular cada fila: son pocas consultas para todas las
     filas en vez de varias por fila.
     """
-    from django.db.models.functions import Lower
+    from django.db.models.functions import Lower, Substr, Upper
 
     # Junta los códigos OEM y las referencias para resolverlos en pocas
     # consultas (en vez de una por fila). Referencia y OEM se tratan igual:
@@ -375,8 +389,42 @@ def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=Fa
         ):
             product_ids_by_code.setdefault(valor_lower, set()).add(producto_id)
 
+    # Mismo codigo base (P2484QH <-> P2484S): tambien son coincidencias, asi
+    # la fila muestra el OEM y los precios de esa pieza en las otras casas.
+    grupo_by_base = {}
+    bases = {_codigo_base(item.get("codigo")) for item in rows} - {""}
+    if bases:
+        for producto_id, codigo_producto in (
+            Producto.objects.annotate(base=Upper(Substr("codigo", 1, CODIGO_BASE_LENGTH)))
+            .filter(base__in=bases)
+            .values_list("id", "codigo")
+        ):
+            base = _codigo_base(codigo_producto)
+            if base in bases:
+                grupo_by_base.setdefault(base, []).append((producto_id, str(codigo_producto).strip().upper()))
+
+    def grupo_matches(codigo):
+        codigo = str(codigo or "").strip().upper()
+        return [
+            payload_by_product_id[producto_id]
+            for producto_id, codigo_producto in sorted(grupo_by_base.get(_codigo_base(codigo), []), key=lambda x: x[1])
+            if codigo_producto != codigo and producto_id in payload_by_product_id
+        ]
+
+    def ordenar(matches, grupo_ids=()):
+        # Primero las coincidencias por OEM/referencia y despues las del
+        # grupo; dentro de cada una, COMPRA LOCAL primero.
+        return sorted(
+            matches,
+            key=lambda m: (
+                m["producto_id"] in grupo_ids,
+                "COMPRA LOCAL" not in (m.get("casas_comerciales_nombres") or []),
+            ),
+        )
+
     payload_by_product_id = {}
     matched_ids = set().union(*product_ids_by_code.values()) if product_ids_by_code else set()
+    matched_ids |= {producto_id for grupo in grupo_by_base.values() for producto_id, _ in grupo}
     if matched_ids:
         for producto in (
             Producto.objects.filter(pk__in=matched_ids).prefetch_related(
@@ -406,12 +454,14 @@ def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=Fa
                 for producto_id in sorted(product_ids_by_code.get(code.lower(), ())):
                     if producto_id in payload_by_product_id:
                         matches[producto_id] = payload_by_product_id[producto_id]
+            grupo_ids = set()
+            for match in grupo_matches(codigo):
+                if match["producto_id"] not in matches:
+                    matches[match["producto_id"]] = match
+                    grupo_ids.add(match["producto_id"])
             parsed.append({
                 "fila_excel": item.get("fila_excel"),
-                "oem_matches": sorted(
-                    matches.values(),
-                    key=lambda m: "COMPRA LOCAL" not in (m.get("casas_comerciales_nombres") or []),
-                ),
+                "oem_matches": ordenar(matches.values(), grupo_ids),
             })
             continue
 
@@ -488,6 +538,15 @@ def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=Fa
                 # el OEM es ambiguo entre varias casas).
                 matched = None  # treat as unmatched so it never enters the import
 
+        # Mismo codigo base: se agregan al final (despues de vincular, para no
+        # cambiar que producto se vincula ni el codigo sugerido).
+        grupo_ids = set()
+        for match in grupo_matches(matched.codigo if matched else codigo):
+            if match["producto_id"] not in oem_matches_dict and (not matched or match["producto_id"] != matched.id):
+                oem_matches_dict[match["producto_id"]] = match
+                grupo_ids.add(match["producto_id"])
+        oem_matches = list(oem_matches_dict.values())
+
         # Si el producto ya existe (por código, referencia u OEM), completa
         # código/referencia/descripción con los datos del catálogo cuando el
         # Excel no los trae: cualquiera de esos identificadores solo ya
@@ -543,10 +602,7 @@ def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=Fa
             "matched_producto_precio": float(matched.precio) if matched and matched.precio is not None else None,
             # Los productos de COMPRA LOCAL van primero: de la primera
             # coincidencia salen el codigo sugerido y el PVP JP.
-            "oem_matches": sorted(
-                oem_matches,
-                key=lambda m: "COMPRA LOCAL" not in (m.get("casas_comerciales_nombres") or []),
-            ),
+            "oem_matches": ordenar(oem_matches, grupo_ids),
             "sucursal_quantities": item.get("sucursal_quantities") or {},
             "conflicto_casa": conflicto_casa,
             "conflicto_casa_nombre": conflicto_casa_nombre,

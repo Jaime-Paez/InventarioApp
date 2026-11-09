@@ -36,6 +36,12 @@ const getPortalRoot = () => getAppPortalRoot()
 const getProductoOem = (producto) =>
   (producto?.oem_productos || []).map((r) => r?.oem?.codigo).filter(Boolean).join(', ')
 
+// OEM de las coincidencias del catalogo (misma referencia u OEM, o mismo
+// codigo base: P2484QH <-> P2484S): se muestra cuando la fila no trae el suyo.
+const getOemDeCoincidencias = (matches) => [...new Set(
+  (Array.isArray(matches) ? matches : []).flatMap((m) => m?.oems || []).map((o) => String(o || '').trim()).filter(Boolean)
+)].join(', ')
+
 // Fila de la sugerencia a partir de un producto del catalogo (vinculada).
 const buildCatalogSugerenciaRow = (producto, extra = {}) => ({
   codigo: producto.codigo || '',
@@ -2807,6 +2813,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   // La "i" del OEM: coincidencias del catalogo de cada producto.
   const coincidenciaItems = useMemo(() => (imp?.detalles || []).map((d) => ({
     key: d.id,
+    codigo: d.producto?.codigo || d.codigo || '',
     oem: getProductoOem(d.producto) || d.oem || '',
     referencia: getDetalleReferencia(d),
   })), [imp?.detalles])
@@ -3277,7 +3284,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const creadoAqui = !sinCat && d.producto?.creado_desde_importacion === imp.id
                       const codigo = d.producto?.codigo || d.codigo || '-'
                       const nombre = d.producto?.nombre || d.nombre || '-'
-                      const oem = String(getProductoOem(d.producto) || d.oem || '').trim() || '-'
+                      const oem = String(getProductoOem(d.producto) || d.oem || getOemDeCoincidencias(coincidenciasByKey[d.id]) || '').trim() || '-'
                       const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                       const referencia = getDetalleReferencia(d) || '-'
                       const precio = d.precio_confirmado != null ? `$${Number(d.precio_confirmado).toFixed(2)}` : '-'
@@ -5548,7 +5555,7 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
               </tbody>
             </table>
           ) : (
-            <div className="imp-alternos-hover-card__message">Ningún producto del catálogo tiene este OEM o esta referencia registrados.</div>
+            <div className="imp-alternos-hover-card__message">Ningún producto del catálogo tiene este OEM, esta referencia o el mismo código base.</div>
           )}
         </div>,
         getPortalRoot()
@@ -5562,7 +5569,7 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
 // usan la misma tabla (SugerenciaTabla) que la sugerencia ya guardada.
 // Coincidencias del catalogo de las filas de una importacion (para la "i"
 // del OEM), pedidas una sola vez por fila. items = [{ key, oem, referencia }].
-// Devuelve { [key]: matches }; una fila sin OEM ni referencia queda en [].
+// Devuelve { [key]: matches }; una fila sin OEM, referencia ni codigo queda en [].
 const useCoincidencias = (token, casaId, items) => {
   const [byKey, setByKey] = useState({})
   const pedidasRef = useRef(new Set())
@@ -5575,13 +5582,13 @@ const useCoincidencias = (token, casaId, items) => {
     const nuevas = items.filter((it) => it.key != null && !pedidasRef.current.has(String(it.key)))
     if (!nuevas.length) return
     nuevas.forEach((it) => pedidasRef.current.add(String(it.key)))
-    const sinDatos = nuevas.filter((it) => !String(it.oem || '').trim() && !String(it.referencia || '').trim())
+    const sinDatos = nuevas.filter((it) => !String(it.oem || '').trim() && !String(it.referencia || '').trim() && !String(it.codigo || '').trim())
     const conDatos = nuevas.filter((it) => !sinDatos.includes(it))
     if (sinDatos.length) {
       setByKey((prev) => ({ ...prev, ...Object.fromEntries(sinDatos.map((it) => [String(it.key), []])) }))
     }
     if (!conDatos.length) return
-    fetchCoincidencias(token, casaId, conDatos.map((it) => ({ key: String(it.key), oem: it.oem || '', referencia: it.referencia || '' })), { soloCoincidencias: true })
+    fetchCoincidencias(token, casaId, conDatos.map((it) => ({ key: String(it.key), codigo: it.codigo || '', oem: it.oem || '', referencia: it.referencia || '' })), { soloCoincidencias: true })
       .then((rows) => setByKey((prev) => {
         const next = { ...prev }
         rows.forEach((r) => { next[String(r.fila_excel)] = r.oem_matches || [] })
@@ -5595,7 +5602,7 @@ const useCoincidencias = (token, casaId, items) => {
 // Icono "i" junto al OEM en las tablas de importaciones: que productos del
 // catalogo tienen ese OEM o esa referencia (la misma tarjeta que en la
 // sugerencia). Sin coincidencias el icono se ve opaco.
-function CoincidenciasInfo({ matches }) {
+function CoincidenciasInfo({ matches, onPick }) {
   const [hover, setHover] = useState(null)
   const [pos, setPos] = useState(null)
   const cardRef = useRef(null)
@@ -5650,7 +5657,12 @@ function CoincidenciasInfo({ matches }) {
               </thead>
               <tbody>
                 {lista.map((p, i) => (
-                  <tr key={i}>
+                  <tr
+                    key={i}
+                    data-title={onPick ? 'Clic para usar el PVP (sin IVA) de este producto' : undefined}
+                    className={onPick ? 'imp-alternos-hover-card__row--pickable' : undefined}
+                    onClick={onPick ? () => { onPick(p); cancelar(); setHover(null); setPos(null) } : undefined}
+                  >
                     <td>{p.codigo || '-'}</td>
                     <td>{p.nombre || '-'}</td>
                     <td>{(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ') || '-'}</td>
@@ -5663,7 +5675,7 @@ function CoincidenciasInfo({ matches }) {
               </tbody>
             </table>
           ) : (
-            <div className="imp-alternos-hover-card__message">Ningún producto del catálogo tiene este OEM o esta referencia registrados.</div>
+            <div className="imp-alternos-hover-card__message">Ningún producto del catálogo tiene este OEM, esta referencia o el mismo código base.</div>
           )}
         </div>,
         getPortalRoot()
@@ -7189,12 +7201,37 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }))
   }
 
+  // Producto nuevo: al tocar una coincidencia del catalogo se usa su PVP como
+  // PVP JP (y su descripcion u OEM si la fila no los tiene), igual que en la
+  // sugerencia.
+  const usarCoincidencia = (_key, p) => {
+    setDetails((prev) => prev.map((item) => {
+      if (item._key !== _key) return item
+      return {
+        ...item,
+        ...(p.precio != null ? {
+          precio: Number(p.precio),
+          coincidencia_precio: Number(p.precio).toFixed(2),
+          _sugeridoCasa: (p.casas_comerciales_nombres || []).join(', '),
+        } : {}),
+        ...(!String(item.nombre || '').trim() && p.nombre ? { nombre: p.nombre } : {}),
+        ...(!String(item.oem || '').trim() && p.oems?.length ? { oem: p.oems.join(', ') } : {}),
+      }
+    }))
+    toastRef.current?.show({
+      severity: 'success',
+      summary: 'Precio elegido',
+      detail: `${p.codigo || 'Producto'}${p.precio != null ? `: PVP $${Number(p.precio).toFixed(2)}` : ''}. Recuerda guardar.`,
+      life: 3500,
+    })
+  }
+
   const handleComentarioChange = (_key, value) => {
     setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, comentario: value } : item))
   }
 
   const handleConfirmedChange = (_key, field, value) => {
-    setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, [field]: String(value || ''), ...(field === 'precio_estimado' ? { _ceroFilaExcel: undefined } : {}) } : item))
+    setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, [field]: String(value || '') } : item))
   }
 
   // El backend borra y vuelve a crear los detalles al guardar: la
@@ -7595,14 +7632,24 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const precio = parseFloat(texto(row, precioIdx).replace(',', '.'))
       return !isNaN(precio) && precio >= 0 ? String(Math.round(precio * 100)) : null
     }
+    // Precio 0 en el Excel: esta mal, no se aplica nada (ni se marca) y se
+    // avisa que filas hay que corregir en el Excel.
+    const filasCero = filas
+      .filter(({ row }) => texto(row, codigoIdx) || texto(row, refIdx) || texto(row, oemIdx))
+      .filter(({ row }) => precioDe(row) === '0')
+    if (filasCero.length) {
+      toastRef.current?.show({
+        severity: 'error',
+        summary: 'Excel con precios en 0',
+        detail: `No se cargó nada. ${filasCero.length === 1 ? 'La fila' : 'Las filas'} ${unirFilas(filasCero.map(({ row, fila }) => `${fila} (${texto(row, codigoIdx) || texto(row, refIdx) || texto(row, oemIdx)})`))} ${filasCero.length === 1 ? 'tiene' : 'tienen'} precio 0: está mal, verifica el Excel y vuelve a subirlo.`,
+        life: 15000,
+      })
+      return
+    }
     const precios = new Map()
-    // Precio 0 en el Excel: la fila queda en rojo con su numero de fila.
-    const ceros = new Map()
-    const cerosAviso = []
-    porProducto.forEach(([{ row, fila, etiqueta }], key) => {
+    porProducto.forEach(([{ row }], key) => {
       const precio = precioDe(row)
       if (precio != null) precios.set(key, precio)
-      if (precio === '0') { ceros.set(key, fila); cerosAviso.push({ fila, etiqueta }) }
     })
 
     // Filas que no estan en la lista: se buscan en el catalogo (como al
@@ -7645,15 +7692,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
             if (!enExcel.has(enLista._key)) {
               enExcel.add(enLista._key)
               if (n.item.precio_estimado) precios.set(enLista._key, n.item.precio_estimado)
-              if (n.item.precio_estimado === '0') { ceros.set(enLista._key, n.fila); cerosAviso.push({ fila: n.fila, etiqueta: n.etiqueta }) }
             }
             return
           }
           if (agregados.some((a) => String(a.producto?.id ?? '') === id)) return
-          if (n.item.precio_estimado === '0') cerosAviso.push({ fila: n.fila, etiqueta: n.etiqueta })
           agregados.push({
             ...n.item,
-            ...(n.item.precio_estimado === '0' ? { _ceroFilaExcel: n.fila } : {}),
             _key: id,
             producto: {
               id: found.matched_producto_id,
@@ -7668,10 +7712,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           return
         }
         const precioJp = found ? (found.conflicto_precio ?? found.sugerido_precio ?? null) : null
-        if (n.item.precio_estimado === '0') cerosAviso.push({ fila: n.fila, etiqueta: n.etiqueta })
         agregados.push({
           ...n.item,
-          ...(n.item.precio_estimado === '0' ? { _ceroFilaExcel: n.fila } : {}),
           codigo: n.item.codigo || found?.codigo || '',
           nombre: found?.descripcion || '',
           oem: n.item.oem || found?.oem || '',
@@ -7695,8 +7737,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     setDetails((prev) => {
       const next = prev.map((item) => {
         let out = precios.has(item._key) ? { ...item, precio_estimado: precios.get(item._key) } : item
-        if (ceros.has(item._key)) out = { ...out, _ceroFilaExcel: ceros.get(item._key) }
-        else if (out._ceroFilaExcel) out = { ...out, _ceroFilaExcel: undefined }
         if (enExcel.has(item._key) && out.quitado) {
           out = { ...out, quitado: false, comentario: withoutNotaVerificacion(out.comentario, NOTA_QUITADO_VERIFICACION) }
         } else if (!enExcel.has(item._key) && !out.quitado) {
@@ -7709,10 +7749,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     const etiquetaDe = (item) => item.producto?.codigo || item.codigo || item.referencia || item.producto?.nombre || ''
     const pl = (n, uno, varios) => (n === 1 ? uno : varios)
     const notas = [`${precios.size} ${pl(precios.size, 'precio actualizado', 'precios actualizados')}`]
-    if (cerosAviso.length) {
-      const filasCero = [...cerosAviso].sort((a, b) => a.fila - b.fila)
-      notas.unshift(`Precio en 0 (quedan en rojo): ${pl(filasCero.length, 'fila', 'filas')} ${unirFilas(filasCero.map((x) => `${x.fila} (${x.etiqueta})`))}`)
-    }
     if (ausentes.length) {
       const lista = `${ausentes.slice(0, 12).map(etiquetaDe).join(', ')}${ausentes.length > 12 ? '…' : ''}`
       notas.push(`${ausentes.length} ${pl(ausentes.length, 'producto no venía en el Excel y quedó tachado', 'productos no venían en el Excel y quedaron tachados')} (No se pidió): ${lista}`)
@@ -7724,10 +7760,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     if (ambiguas.length) notas.push(`coinciden con varios productos (sin precio): filas ${unirFilas(ambiguas.map((x) => `${x.fila} (${x.etiqueta})`))}`)
     const aviso = ausentes.length || agregados.length || ambiguas.length
     toastRef.current?.show({
-      severity: cerosAviso.length ? 'error' : aviso ? 'warn' : 'success',
-      summary: cerosAviso.length ? 'Precios cargados: hay precios en 0' : 'Precios cargados',
+      severity: aviso ? 'warn' : 'success',
+      summary: 'Precios cargados',
       detail: `${notas.join('; ')}. Recuerda guardar.`,
-      life: cerosAviso.length ? 15000 : aviso ? 12000 : 5000,
+      life: aviso ? 12000 : 5000,
     })
   }
 
@@ -8411,6 +8447,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // del catalogo, pedidas una vez por fila.
   const coincidenciaItems = useMemo(() => details.map((d) => ({
     key: d._key,
+    codigo: d.producto?.codigo || d.codigo || '',
     oem: getProductoOem(d.producto) || d.oem || '',
     referencia: getDetalleReferencia(d),
   })), [details])
@@ -8887,18 +8924,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const creadoAqui = !sinCatalogo && item.producto?.creado_desde_importacion === imp.id
                         const codigo = item.producto?.codigo || item.codigo || ''
                         const nombre = item.producto?.nombre || item.nombre || ''
-                        const oem = String(getProductoOem(item.producto) || item.oem || '').trim() || '-'
+                        const oem = String(getProductoOem(item.producto) || item.oem || getOemDeCoincidencias(coincidenciasByKey[item._key]) || '').trim() || '-'
                         const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                         const referencia = getDetalleReferencia(item) || '-'
                         const precioEstimadoValue = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
-                        const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
+                        const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? (item.coincidencia_precio != null && item.coincidencia_precio !== '' ? Number(item.coincidencia_precio) : null) ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
-                        // Precio en 0 (del Excel de la fabrica o guardado asi): rojo.
-                        const precioCero = isVerificar && !item.quitado && (
-                          Boolean(item._ceroFilaExcel) || String(item.precio_estimado ?? '').trim() === '0'
-                        )
                         return (
-                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${precioCero ? ' imp-verificar__row--cero' : ''}${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? (sinCatalogo ? ' imp-verificar__row--agregado-nuevo' : ' imp-verificar__row--agregado') : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
+                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? (sinCatalogo ? ' imp-verificar__row--agregado-nuevo' : ' imp-verificar__row--agregado') : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
                             <span
                               className="imp-table-cell-tip"
                               onMouseEnter={(e) => codigo && showCellHover(e, sinCatalogo ? `${codigo} (nuevo: se crea al importar)` : codigo, 'Código')}
@@ -8948,7 +8981,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                               >
                                 <span className="imp-table-cell-text">{oem}</span>
                               </span>
-                              <CoincidenciasInfo matches={coincidenciasByKey[item._key]} />
+                              <CoincidenciasInfo
+                                matches={coincidenciasByKey[item._key]}
+                                onPick={sinCatalogo && !item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
+                                  ? (p) => usarCoincidencia(item._key, p)
+                                  : undefined}
+                              />
                             </span>
                             <span
                               className="imp-table-cell-tip"
@@ -8994,7 +9032,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                         <span className="importaciones-verificar__currency-sign">$</span>
                                         <PrecioCentavosInput
                                           disabled={isImportRealizada}
-                                          invalid={(isVerificar && precioCero) || (faltanConfirmar.has(item._key) && !(parseInt(String(item[priceField] || '').replace(/\D/g, '') || '0', 10) > 0))}
+                                          invalid={(faltanConfirmar.has(item._key) && !(parseInt(String(item[priceField] || '').replace(/\D/g, '') || '0', 10) > 0))}
                                           value={item[priceField]}
                                           onChange={(cents) => handleConfirmedChange(item._key, priceField, cents)}
                                           title={isImportRealizada ? undefined : 'Doble click: usar precio original'}
@@ -9004,11 +9042,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                               handleConfirmedChange(item._key, priceField, Math.round(Number(item.producto.precio) * 100))
                                           }}
                                         />
-                                        {precioCero && (
-                                          <span className="imp-verificar__cero-nota">
-                                            {item._ceroFilaExcel ? `En 0 · fila ${item._ceroFilaExcel} del Excel` : 'Precio en 0'}
-                                          </span>
-                                        )}
                                       </span>
                                       )}
                                       {(() => {
