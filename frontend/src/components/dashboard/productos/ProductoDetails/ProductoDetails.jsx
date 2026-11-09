@@ -173,6 +173,10 @@ function ProductoDetails({
   const [grupoSugerido, setGrupoSugerido] = useState({ base: '', productos: [] })
   const [grupoLoading, setGrupoLoading] = useState(false)
   const [grupoSeleccion, setGrupoSeleccion] = useState(() => new Set())
+  // Alterno que se quiere sacar del grupo: preview del backend + OEM marcados.
+  const [pendingAlternoRemoval, setPendingAlternoRemoval] = useState(null)
+  // Salidas confirmadas que se aplican al guardar: { [codigo]: { id, oemIds } }
+  const [alternoRemovals, setAlternoRemovals] = useState({})
   const [localInventoryContext, setLocalInventoryContext] = useState(null)
   const [inventoryLoading, setInventoryLoading] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -417,6 +421,7 @@ function ProductoDetails({
       const alternos = Array.isArray(data?.alternativas) ? data.alternativas : []
       setAlternativas(alternos)
       setOriginalAlternativas(alternos)
+      setAlternoRemovals({})
       enrichAlternativas(alternos)
       const oemsRaw = Array.isArray(data?.oem_productos) ? data.oem_productos : []
       const normalizedOems = oemsRaw
@@ -562,6 +567,7 @@ function ProductoDetails({
     setOriginalCasas([])
     setAlternativas([])
     setOriginalAlternativas([])
+    setAlternoRemovals({})
     setOemItems([])
     setOriginalOemItems([])
     setOemDraft({ codigo: '' })
@@ -886,12 +892,72 @@ function ProductoDetails({
     setAlternoError('')
   }
 
-  const handleRemoveAlterno = (id) => {
+  const dropAlternoFromTable = (id) => {
+    const key = String(id)
+    setAlternativas((prev) => prev.filter((item) => String(item?.id) !== key))
+    setAlternoError('')
+  }
+
+  // Un alterno ya guardado no se quita en silencio: se confirma de quienes deja
+  // de ser alterno y que OEM compartidos se le quitan (marcados por defecto).
+  const handleRemoveAlterno = async (id) => {
     if (!isEditing) return
     const key = String(id)
     if (!key) return
-    setAlternativas((prev) => prev.filter((item) => String(item?.id) !== key))
-    setAlternoError('')
+    const yaGuardado = originalAlternativas.some((item) => String(item?.id) === key)
+    if (!yaGuardado || !resolvedProductoId) {
+      dropAlternoFromTable(id)
+      return
+    }
+    const alterno = alternativas.find((item) => String(item?.id) === key)
+    setPendingAlternoRemoval({ alterno, loading: true, grupo: [], oems: [], selected: new Set(), error: '' })
+    try {
+      const response = await authFetch(
+        `${API_URL}/productos/listado/${resolvedProductoId}/quitar-alterno-preview/?alterno_id=${encodeURIComponent(key)}`,
+        {},
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const detail = data?.alterno_id || data?.detail
+        throw new Error(Array.isArray(detail) ? detail[0] : detail || 'No se pudo revisar el grupo.')
+      }
+      const oems = Array.isArray(data?.oems) ? data.oems : []
+      setPendingAlternoRemoval({
+        alterno: { ...alterno, ...(data?.alterno || {}) },
+        loading: false,
+        grupo: Array.isArray(data?.grupo) ? data.grupo : [],
+        oems,
+        selected: new Set(oems.map((oem) => String(oem.id))),
+        error: '',
+      })
+    } catch (err) {
+      setPendingAlternoRemoval((prev) =>
+        prev ? { ...prev, loading: false, error: err?.message || 'No se pudo revisar el grupo.' } : prev
+      )
+    }
+  }
+
+  const togglePendingRemovalOem = (oemId) => {
+    setPendingAlternoRemoval((prev) => {
+      if (!prev) return prev
+      const selected = new Set(prev.selected)
+      const key = String(oemId)
+      if (selected.has(key)) selected.delete(key)
+      else selected.add(key)
+      return { ...prev, selected }
+    })
+  }
+
+  const handleConfirmAlternoRemoval = () => {
+    const pending = pendingAlternoRemoval
+    if (!pending?.alterno?.id || pending.loading || pending.error) return
+    const codigo = String(pending.alterno.codigo || '')
+    const oemIds = Array.from(pending.selected).map(Number)
+    setAlternoRemovals((prev) => ({ ...prev, [codigo]: { id: pending.alterno.id, oemIds } }))
+    // Los OEM que se le quitan al alterno no se tocan en este producto.
+    dropAlternoFromTable(pending.alterno.id)
+    setPendingAlternoRemoval(null)
   }
 
   const oemCodeSet = useMemo(
@@ -1094,9 +1160,18 @@ function ProductoDetails({
       if (!toRemove.length && !toAdd.length) return
 
       const requests = [
-        ...toRemove.map((relation) =>
-          authFetch(`${API_URL}/productos/alternos/${relation.id}/`, { method: 'DELETE' }, token)
-        ),
+        ...toRemove.map((relation) => {
+          const removal = alternoRemovals[relation.alternoCodigo]
+          if (removal?.id) {
+            // Sale de todo el grupo y pierde solo los OEM confirmados.
+            return authFetch(
+              `${API_URL}/productos/listado/${productoIdValue}/quitar-alterno/`,
+              { method: 'POST', body: JSON.stringify({ alterno_id: removal.id, oem_ids: removal.oemIds }) },
+              token
+            )
+          }
+          return authFetch(`${API_URL}/productos/alternos/${relation.id}/`, { method: 'DELETE' }, token)
+        }),
         ...toAdd.map((alterno) =>
           authFetch(
             `${API_URL}/productos/alternos/`,
@@ -1134,7 +1209,7 @@ function ProductoDetails({
         }
       }
     },
-    [alternativas, token]
+    [alternativas, alternoRemovals, token]
   )
 
   const syncOems = useCallback(
@@ -1360,6 +1435,7 @@ function ProductoDetails({
       }
       try {
         await syncAlternos(resolvedProductoId, data?.codigo || payload.codigo)
+        setAlternoRemovals({})
       } catch (alternosError) {
         notifyError(alternosError?.message || 'No se pudieron actualizar los alternos.')
       }
@@ -1425,6 +1501,8 @@ function ProductoDetails({
     setFormData(originalData)
     setSelectedCasas(originalCasas)
     setAlternativas(originalAlternativas)
+    setAlternoRemovals({})
+    setPendingAlternoRemoval(null)
     setOemItems(originalOemItems)
     setOemDraft({ codigo: '' })
     setOemError('')
@@ -2557,6 +2635,85 @@ function ProductoDetails({
                 disabled={saving}
               >
                 Agregar y sincronizar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingAlternoRemoval && (
+        <div className="user-details__confirm-overlay">
+          <div className="user-details__confirm-dialog" style={{ width: 'min(560px, 92vw)', alignItems: 'flex-start' }}>
+            <div className="user-details__confirm-icon">
+              <Info size={18} />
+            </div>
+            <div className="user-details__confirm-content" style={{ width: '100%' }}>
+              <h4>{`Quitar ${pendingAlternoRemoval.alterno?.codigo || 'alterno'} del grupo`}</h4>
+              {pendingAlternoRemoval.loading && <p>Cargando...</p>}
+              {!pendingAlternoRemoval.loading && pendingAlternoRemoval.error && (
+                <BlockerNotice
+                  title="No se pudo revisar el grupo"
+                  reason={pendingAlternoRemoval.error}
+                />
+              )}
+              {!pendingAlternoRemoval.loading && !pendingAlternoRemoval.error && (
+                <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px' }}>
+                    <strong style={{ display: 'block', fontSize: '0.84rem', marginBottom: 6 }}>
+                      Dejará de ser alterno de
+                    </strong>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {pendingAlternoRemoval.grupo.map((codigo) => (
+                        <span key={`grupo-${codigo}`} className="create-user__result-tag">
+                          {codigo}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px' }}>
+                    <strong style={{ display: 'block', fontSize: '0.84rem', marginBottom: 6 }}>
+                      {`Quitar estos OEM de ${pendingAlternoRemoval.alterno?.codigo || 'este alterno'}`}
+                    </strong>
+                    {pendingAlternoRemoval.oems.length ? (
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {pendingAlternoRemoval.oems.map((oem) => (
+                          <label key={`quitar-oem-${oem.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={pendingAlternoRemoval.selected.has(String(oem.id))}
+                              onChange={() => togglePendingRemovalOem(oem.id)}
+                            />
+                            <span>{oem.codigo}</span>
+                          </label>
+                        ))}
+                        <small className="muted">
+                          Desmarca los que sí le pertenecen a esta pieza. El resto del grupo conserva todos sus OEM.
+                        </small>
+                      </div>
+                    ) : (
+                      <small className="muted">No comparte OEM con el grupo.</small>
+                    )}
+                  </div>
+                  <small className="muted">Se aplica al pulsar Guardar cambios.</small>
+                </div>
+              )}
+            </div>
+            <div className="user-details__confirm-actions" style={{ width: '100%' }}>
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={() => setPendingAlternoRemoval(null)}
+                disabled={saving}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={handleConfirmAlternoRemoval}
+                disabled={saving || pendingAlternoRemoval.loading || Boolean(pendingAlternoRemoval.error)}
+              >
+                Quitar del grupo
               </button>
             </div>
           </div>

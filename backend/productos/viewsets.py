@@ -470,6 +470,69 @@ class ProductoViewSet(viewsets.ModelViewSet):
             sync_group_oems(get_alterno_group_ids(producto.id))
         return Response({"creados": len(nuevos)}, status=status.HTTP_200_OK)
 
+    def _alterno_a_quitar(self, request, producto):
+        raw = request.query_params.get("alterno_id") if request.method == "GET" else request.data.get("alterno_id")
+        try:
+            alterno_id = int(raw)
+        except (TypeError, ValueError):
+            raise ValidationError({"alterno_id": "Indica el alterno a quitar."})
+        if alterno_id == producto.id:
+            raise ValidationError({"alterno_id": "No puedes quitar el mismo producto."})
+        grupo = get_alterno_group_ids(producto.id)
+        if alterno_id not in grupo:
+            raise ValidationError({"alterno_id": "Ese producto no es alterno de este grupo."})
+        return alterno_id, grupo - {alterno_id}
+
+    @action(detail=True, methods=["get"], url_path="quitar-alterno-preview")
+    def quitar_alterno_preview(self, request, pk=None):
+        """Que pasa al sacar un alterno del grupo: de quienes deja de ser
+        alterno y que OEM comparte con ellos (candidatos a quitarle)."""
+        producto = self.get_object()
+        alterno_id, resto = self._alterno_a_quitar(request, producto)
+        alterno = Producto.objects.get(id=alterno_id)
+        oems_resto = set(
+            OEMProducto.objects.filter(producto_id__in=resto).values_list("oem_id", flat=True)
+        )
+        compartidos = (
+            OEMProducto.objects.filter(producto_id=alterno_id, oem_id__in=oems_resto)
+            .select_related("oem")
+            .order_by("oem__codigo")
+        )
+        return Response(
+            {
+                "alterno": {"id": alterno.id, "codigo": alterno.codigo, "nombre": alterno.nombre},
+                "grupo": list(
+                    Producto.objects.filter(id__in=resto).order_by("codigo").values_list("codigo", flat=True)
+                ),
+                "oems": [{"id": rel.oem_id, "codigo": rel.oem.codigo} for rel in compartidos],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"], url_path="quitar-alterno")
+    def quitar_alterno(self, request, pk=None):
+        """Saca el alterno de TODO el grupo (no solo del vinculo con este
+        producto: si no, seguiria unido por los demas y recuperaria los OEM) y
+        le quita solo a el los OEM confirmados. El resto del grupo los conserva.
+        Se borra directo (no por el endpoint de OEM, que lo propagaria al grupo)."""
+        producto = self.get_object()
+        alterno_id, resto = self._alterno_a_quitar(request, producto)
+        raw_oems = request.data.get("oem_ids") or []
+        if not isinstance(raw_oems, list):
+            raise ValidationError({"oem_ids": "Debe ser una lista."})
+        try:
+            oem_ids = {int(value) for value in raw_oems}
+        except (TypeError, ValueError):
+            raise ValidationError({"oem_ids": "OEM invalidos."})
+        with transaction.atomic():
+            vinculos = ProductoAlterno.objects.filter(
+                Q(producto_id=alterno_id, alterno_id__in=resto) | Q(alterno_id=alterno_id, producto_id__in=resto)
+            ).delete()[0]
+            oems = 0
+            if oem_ids:
+                oems = OEMProducto.objects.filter(producto_id=alterno_id, oem_id__in=oem_ids).delete()[0]
+        return Response({"vinculos_borrados": vinculos, "oems_quitados": oems}, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=["get"], url_path="stock-alternos")
     def stock_alternos(self, request, pk=None):
         """Stock por sucursal de este producto y todos sus alternos (útil para decidir
