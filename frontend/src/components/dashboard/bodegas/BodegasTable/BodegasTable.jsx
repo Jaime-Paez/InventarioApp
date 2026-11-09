@@ -11,6 +11,7 @@ import { Button } from 'primereact/button'
 import CreateBodega from '../CreateBodega/CreateBodega'
 import BodegaDetails from '../BodegaDetails/BodegaDetails'
 import '../../admin/UsersTable/UsersTable.css'
+import './BodegasTable.css'
 
 import useModalAnimation from '../../common/useModalAnimation'
 import { API_URL, authFetch } from '../../../../utils/api'
@@ -478,6 +479,36 @@ function BodegasTable({ token, onSelect, moduleActions }) {
     )
   }
 
+  // Bodegas agrupadas por sucursal: cada sucursal es una fila que se
+  // despliega. Al buscar se abren todas para ver las coincidencias.
+  const [expandedSucursales, setExpandedSucursales] = useState([])
+  const groupStats = useMemo(() => {
+    const map = new Map()
+    warehouses.forEach((row) => {
+      const key = row.sucursal_nombre
+      const prev = map.get(key) || { bodegas: 0, ubicaciones: 0 }
+      map.set(key, { bodegas: prev.bodegas + 1, ubicaciones: prev.ubicaciones + Number(row.ubicaciones_count || 0) })
+    })
+    return map
+  }, [warehouses])
+  const searchActive = Boolean(String(globalFilterValue || '').trim())
+  const expandedGroupRows = useMemo(
+    () =>
+      searchActive
+        ? Array.from(groupStats.keys()).map((sucursal_nombre) => ({ sucursal_nombre }))
+        : expandedSucursales.map((sucursal_nombre) => ({ sucursal_nombre })),
+    [searchActive, groupStats, expandedSucursales]
+  )
+  const sucursalGroupHeader = (rowData) => {
+    const stats = groupStats.get(rowData.sucursal_nombre) || { bodegas: 0, ubicaciones: 0 }
+    return (
+      <span className="bodegas-group-header">
+        <strong>{rowData.sucursal_nombre}</strong>
+        <span>{`${stats.bodegas} ${stats.bodegas === 1 ? 'bodega' : 'bodegas'} · ${stats.ubicaciones} ubicaciones`}</span>
+      </span>
+    )
+  }
+
   const nombreBodyTemplate = (rowData) => {
     const name = rowData?.nombre ?? '-'
     return (
@@ -826,9 +857,20 @@ function BodegasTable({ token, onSelect, moduleActions }) {
           scrollHeight="flex"
           frozenWidth="40px"
           paginator
-          rows={25}
-          rowsPerPageOptions={[5, 10, 25, 50]}
-          removableSort
+          rows={50}
+          rowsPerPageOptions={[25, 50, 100]}
+          rowGroupMode="subheader"
+          groupRowsBy="sucursal_nombre"
+          sortMode="single"
+          sortField="sucursal_nombre"
+          sortOrder={1}
+          expandableRowGroups
+          expandedRows={expandedGroupRows}
+          onRowToggle={(e) => {
+            if (searchActive) return
+            setExpandedSucursales((e.data || []).map((row) => row.sucursal_nombre))
+          }}
+          rowGroupHeaderTemplate={sucursalGroupHeader}
           filters={filters}
           onValueChange={(value) => setProcessedRows(value ?? [])}
           globalFilterFields={['nombre', 'sucursal_nombre', 'ancho_metros', 'alto_metros', 'ubicaciones_count']}
@@ -889,7 +931,6 @@ function BodegasTable({ token, onSelect, moduleActions }) {
                 field={column.nombrevar}
                 header={column.header}
                 body={bodyTemplate}
-                sortable
                 reorderable
                 className={className}
                 style={{ minWidth: '32px' }}

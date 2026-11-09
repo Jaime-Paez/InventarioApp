@@ -1,0 +1,22 @@
+/* Fila de sucursal que agrupa sus bodegas (se despliega con la flecha). */
+.users-datatable .p-rowgroup-header td {
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.users-datatable .p-rowgroup-header .p-row-toggler {
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.bodegas-group-header {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.bodegas-group-header > span {
+  font-size: 0.82rem;
+  opacity: 0.75;
+}
