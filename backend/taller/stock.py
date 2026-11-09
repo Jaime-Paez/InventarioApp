@@ -177,6 +177,10 @@ def descontar(sucursal_taller_id, producto_id, cantidad, subdivision_id=None):
             }
         )
         restante -= parte
+    # update() no dispara la senal: si POR UBICAR o TEMPORAL quedo en 0, se borra.
+    from inventario.por_ubicar import purge_empty_special_rows_on_commit
+
+    purge_empty_special_rows_on_commit([row.pk for row in rows])
     return sucursal_id, tomado
 
 

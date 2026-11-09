@@ -12,7 +12,8 @@ El avance de cada envio se guarda en su campo `recepcion_progreso`:
 - por_ubicar: de esas, cuantas se dejaron en POR UBICAR y faltan guardar.
 """
 
-from django.db.models import F
+from django.db import transaction
+from django.db.models import F, Q
 
 from core.search_utils import strip_accents
 
@@ -70,6 +71,31 @@ def _special_subdivision(sucursal_id, nombre, *, create):
     )
     subdivision, _ = SubDivision.objects.get_or_create(division=division, nombre=nombre)
     return subdivision
+
+
+def purge_empty_special_rows(pks=None):
+    """Borra las filas en 0 (o menos) de POR UBICAR y TEMPORAL: ahi el
+    producto solo esta de paso, asi que una ubicacion vacia no sirve de nada.
+    `pks` limita la limpieza a esas filas. Devuelve cuantas borro."""
+    qs = Inventario.objects.filter(cantidad__lte=0).filter(
+        Q(subdivision__division__nombre__iexact=POR_UBICAR_NOMBRE)
+        | Q(subdivision__division__nombre__iexact=TEMPORAL_NOMBRE)
+        | Q(subdivision__division__tipo_division__nombre__iexact=POR_UBICAR_TIPO)
+    )
+    if pks is not None:
+        pks = [int(pk) for pk in pks if pk]
+        if not pks:
+            return 0
+        qs = qs.filter(pk__in=pks)
+    return qs.delete()[0]
+
+
+def purge_empty_special_rows_on_commit(pks):
+    """Igual que purge_empty_special_rows, pero al confirmar la transaccion:
+    asi no se borra una fila que el mismo proceso todavia va a usar."""
+    pks = [int(pk) for pk in pks if pk]
+    if pks:
+        transaction.on_commit(lambda: purge_empty_special_rows(pks))
 
 
 def exclude_por_ubicar(inventario_qs):
