@@ -5643,7 +5643,7 @@ const useCoincidencias = (token, casaId, items) => {
 // Icono "i" junto al OEM en las tablas de importaciones: que productos del
 // catalogo tienen ese OEM o esa referencia (la misma tarjeta que en la
 // sugerencia). Sin coincidencias el icono se ve opaco.
-function CoincidenciasInfo({ matches, onPick }) {
+function CoincidenciasInfo({ matches, onPick, elegida = -1 }) {
   const [hover, setHover] = useState(null)
   const [pos, setPos] = useState(null)
   const cardRef = useRef(null)
@@ -5700,11 +5700,11 @@ function CoincidenciasInfo({ matches, onPick }) {
                 {lista.map((p, i) => (
                   <tr
                     key={i}
-                    data-title={onPick ? 'Clic para usar el PVP (sin IVA) de este producto' : undefined}
-                    className={onPick ? 'imp-alternos-hover-card__row--pickable' : undefined}
+                    data-title={i === elegida ? 'Escogido: su PVP es el PVP JP de este producto' : onPick ? 'Clic para usar el PVP (sin IVA) de este producto' : undefined}
+                    className={[onPick ? 'imp-alternos-hover-card__row--pickable' : '', i === elegida ? 'imp-alternos-hover-card__row--elegida' : ''].filter(Boolean).join(' ') || undefined}
                     onClick={onPick ? () => { onPick(p); cancelar(); setHover(null); setPos(null) } : undefined}
                   >
-                    <td>{p.codigo || '-'}</td>
+                    <td>{i === elegida && <Check size={13} className="imp-alternos-hover-card__check" aria-label="Escogido" />}{p.codigo || '-'}</td>
                     <td>{p.nombre || '-'}</td>
                     <td>{(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ') || '-'}</td>
                     <td>{(p.oems || []).join(', ') || '-'}</td>
@@ -6691,6 +6691,8 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
 // agregan al quitarlo/agregarlo (a mano o al subir el Excel) sin borrar lo
 // que ya tuviera escrito, y se sacan al restaurarlo.
 const NOTA_QUITADO_VERIFICACION = 'Borrado de la verificación'
+// Solo lo tachado al subir un Excel lleva nota; la "x" a mano no escribe nada.
+const NOTA_QUITADO_EXCEL = 'No venía en el Excel'
 const NOTA_AGREGADO_VERIFICACION = 'Agregado en la verificación'
 const withNotaVerificacion = (comentario, nota) => {
   const actual = String(comentario || '').trim()
@@ -6702,6 +6704,10 @@ const withoutNotaVerificacion = (comentario, nota) => {
   if (!actual.startsWith(nota)) return actual
   return actual.slice(nota.length).replace(/^\s*-\s*/, '').trim()
 }
+// Al restaurar se quita cualquier nota de quitado (la vieja y la del Excel).
+const sinNotasQuitado = (comentario) => withoutNotaVerificacion(
+  withoutNotaVerificacion(comentario, NOTA_QUITADO_EXCEL), NOTA_QUITADO_VERIFICACION
+)
 
 function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions }) {
   // Buscador de productos de esta importacion.
@@ -7195,14 +7201,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const next = prev.flatMap((d) => {
         if (d.quitado || !toRemove.some((item) => esDe(d, item))) return [d]
         if (esAgregadoVerificacion(d)) return []
-        return [{ ...d, quitado: true, comentario: withNotaVerificacion(d.comentario, NOTA_QUITADO_VERIFICACION) }]
+        return [{ ...d, quitado: true }]
       })
       for (const item of toAdd) {
         const idx = next.findIndex((d) => esDe(d, item))
         if (idx >= 0) {
           const d = next[idx]
           next[idx] = d.quitado
-            ? { ...d, quitado: false, comentario: withoutNotaVerificacion(d.comentario, NOTA_QUITADO_VERIFICACION) }
+            ? { ...d, quitado: false, comentario: sinNotasQuitado(d.comentario) }
             : { ...d, cantidad: String(Number(d.cantidad || 0) + Number(item.cantidad || 0)) }
           continue
         }
@@ -7231,14 +7237,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
   }
 
-  // Verificacion: quitar un producto no lo borra, lo deja en rojo con la nota
-  // en el comentario (se puede restaurar); al pedir confirmacion ya no va.
+  // Verificacion: quitar un producto no lo borra, lo deja en rojo (se puede
+  // restaurar); al pedir confirmacion ya no va. A mano no escribe nota en el
+  // comentario: solo queda lo que el usuario escriba.
   const handleToggleQuitado = (_key) => {
     setDetails((prev) => prev.map((item) => {
       if (item._key !== _key) return item
       return item.quitado
-        ? { ...item, quitado: false, comentario: withoutNotaVerificacion(item.comentario, NOTA_QUITADO_VERIFICACION) }
-        : { ...item, quitado: true, comentario: withNotaVerificacion(item.comentario, NOTA_QUITADO_VERIFICACION) }
+        ? { ...item, quitado: false, comentario: sinNotasQuitado(item.comentario) }
+        : { ...item, quitado: true }
     }))
   }
 
@@ -7282,6 +7289,16 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // El backend borra y vuelve a crear los detalles al guardar: la
   // coincidencia (amarillo/naranja) se reenvía para no perderla.
   const coincidenciaPorDefectoRef = useRef(() => null)
+  // PVP JP que muestra la tabla: el del catalogo o, sin catalogo, el de la
+  // coincidencia elegida (o la primera con precio). Lo usan la columna, la
+  // diferencia y el Excel.
+  const pvpJpDe = (item) => {
+    const porDefecto = coincidenciaPorDefectoRef.current(item)
+    const valor = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio
+      ?? (item.coincidencia_precio != null && item.coincidencia_precio !== '' ? item.coincidencia_precio : null)
+      ?? porDefecto?.precio
+    return valor != null && valor !== '' && Number.isFinite(Number(valor)) ? Number(valor) : null
+  }
   const coincidenciaPayload = (item) => {
     const porDefecto = coincidenciaPorDefectoRef.current(item)
     return {
@@ -7294,11 +7311,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async ({ cerrar = true } = {}) => {
     const itemsToSubmit = details
     if (!itemsToSubmit.length) {
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Agrega al menos un producto.', life: 4000 })
-      return
+      return false
     }
     // En la sugerencia (borrador) y en la verificacion la cantidad todavia no
     // es obligatoria (solo no puede ser negativa): se exige al pedir la
@@ -7323,7 +7340,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         detail: cantidadOpcional ? 'Las cantidades no pueden ser negativas.' : 'Todas las cantidades deben ser mayores a cero.',
         life: 4000,
       })
-      return
+      return false
     }
     const normalizedDetails = itemsToSubmit.map((item) => {
       const solId = { ...(item._solId ? { solicitud_id: Number(item._solId) } : {}), ...coincidenciaPayload(item) }
@@ -7374,9 +7391,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudo guardar la importación.'))
       const payload = await response.json()
       onSaved?.(payload)
-      onClose?.()
+      if (cerrar) onClose?.()
+      return true
     } catch (error) {
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 4000 })
+      return false
     } finally {
       setSubmitting(false)
     }
@@ -7421,6 +7440,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   }
 
   const handleDownloadVerificarExcel = async () => {
+    // Primero se guardan los cambios: el Excel sale con todo lo que se ve.
+    if (canEdit && imp?.estado === 'cotizacion' && !isImportRealizada) {
+      const guardado = await handleSubmit({ cerrar: false })
+      if (!guardado) return
+    }
     try {
       const XLSXStyle = (await import('xlsx-js-style')).default
       const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
@@ -7428,24 +7452,39 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const RO = 6; const ED = 3; const DIFF_CI = RO + ED
       const precioEditLabel = isVerificar ? 'PVP APROX.' : 'Precio conf.'
       const cantEditLabel = isVerificar ? 'Cant. aprox.' : 'Cant. conf.'
-      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'PVP JP', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', '_key']
+      const headers = ['Código', 'Descripción', 'OEM', 'Referencia', 'PVP JP', 'Cantidad', precioEditLabel, cantEditLabel, 'Comentario', 'Diferencia', 'Estado', '_key']
+      const ESTADO_CI = DIFF_CI + 1
       const mkH = (fill, bot) => ({ font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: fill }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: bot } }, left: bt, right: bt } })
-      const hdrS = headers.map((_, ci) => ci < RO ? mkH('1e3a5f', '2563EB') : ci < RO + ED ? mkH('15803d', '166534') : ci === DIFF_CI ? mkH('374151', '374151') : null)
+      const hdrS = headers.map((_, ci) => ci < RO ? mkH('1e3a5f', '2563EB') : ci < RO + ED ? mkH('15803d', '166534') : ci === DIFF_CI || ci === ESTADO_CI ? mkH('374151', '374151') : null)
 
       // Mismo orden que en la importacion (item.orden). Al subirlo, cada fila
       // se empareja por _key o código, así que se puede reordenar libremente.
-      // Los quitados en la verificacion no salen: si se agregan de nuevo al
-      // Excel (con su código) se restauran al subirlo.
-      const sortedDetails = details
-        .filter((item) => !(isVerificar && item.quitado))
+      // Tambien salen los quitados (rojo, tachados, Estado "No se pidió"): al
+      // subirlo siguen quitados mientras su Estado diga eso.
+      const sortedDetails = [...details]
         .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
-      const rows = sortedDetails.map((item) => {
+      // Colores de la tabla: blanco (catalogo), amarillo (no existe en el
+      // catalogo), verde/turquesa (agregado en la verificacion), rojo tachado
+      // (quitado).
+      const tipoFila = (item) => {
+        const sinCat = !item.producto?.id
+        if (isVerificar && item.quitado) return 'quitado'
+        if (esAgregadoVerificacion(item)) return sinCat ? 'agregadoNuevo' : 'agregado'
+        if (sinCat) return 'sinCatalogo'
+        if (item.producto?.creado_desde_importacion === imp?.id) return 'nuevo'
+        return 'catalogo'
+      }
+      const FONDO = { catalogo: 'FFFFFF', sinCatalogo: 'FDE3B5', nuevo: 'FEF3DB', agregado: 'D3F3DE', agregadoNuevo: 'D0F1EC', quitado: 'FDD9D9' }
+      const ESTADO = { catalogo: 'Del catálogo', sinCatalogo: 'No existe en el catálogo', nuevo: 'Creado en esta importación', agregado: 'Agregado en la verificación', agregadoNuevo: 'Agregado en la verificación', quitado: 'No se pidió' }
+      const tipos = sortedDetails.map(tipoFila)
+      const rows = sortedDetails.map((item, idx) => {
         const codigo = item.producto?.codigo || item.codigo || 'SIN CATÁLOGO'
         const nombre = item.producto?.nombre || item.nombre || ''
         const oem = getProductoOem(item.producto) || item.oem || ''
         const referencia = getDetalleReferencia(item)
-        // Keep null to detect SIN CATÁLOGO for coloring; cell will receive 0 as numeric value
-        const precioReal = item.producto?.precio != null ? +Number(item.producto.precio).toFixed(2) : null
+        // PVP JP: el mismo que muestra la tabla (sin catalogo, el de la coincidencia).
+        const pvpJp = pvpJpDe(item)
+        const precioReal = pvpJp != null ? +pvpJp.toFixed(2) : null
         const cantidad = +Number(item.cantidad || 0)
         const precioConf = (() => {
           const raw = isVerificar ? item.precio_estimado : item.precio_confirmado
@@ -7463,7 +7502,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         const diff = precioReal != null && precioConf != null ? +(precioReal - precioConf).toFixed(2) : null
         // precio in cell is always numeric: 0 for SIN CATÁLOGO so formula =E-G can always compute
         const precio = precioReal ?? 0
-        return [codigo, nombre, oem, referencia, precio, cantidad, precioConf, cantConf, item.comentario || '', diff, item._key]
+        return [codigo, nombre, oem, referencia, precio, cantidad, precioConf, cantConf, item.comentario || '', diff, ESTADO[tipos[idx]], item._key]
       })
 
       // Build worksheet manually for precise type control
@@ -7482,27 +7521,25 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const editCol = XLSXStyle.utils.encode_col(RO)
 
       rows.forEach((row, ri) => {
-        const isEven = (ri + 1) % 2 === 0
         const excelRow = ri + 2
+        const tipo = tipos[ri]
+        const quitado = tipo === 'quitado'
         row.forEach((val, ci) => {
-          const isEdit = ci >= RO && ci < RO + ED
           const isDiff = ci === DIFF_CI
           const isEmpty = val == null
-          // Static fills: CF overrides dynamically for E=0, G/H blank, and J colors
-          let bg
-          if (isEdit && !isEmpty) bg = isEven ? 'FFFFFF' : 'F9FAFB'
-          else if (isEdit) bg = 'fef9c3'
-          else if (isDiff && !isEmpty) bg = val >= 0 ? 'dcfce7' : val >= -1 ? 'fef9c3' : 'fee2e2'
-          else if (isDiff) bg = isEven ? 'f3f4f6' : 'f9fafb'
-          else bg = isEven ? 'EFF6FF' : 'FFFFFF'
+          // Toda la fila con el color de la tabla; la diferencia se pinta
+          // (verde/amarillo/rojo) salvo en los quitados.
+          let bg = FONDO[tipo] || 'FFFFFF'
+          if (isDiff && !isEmpty && !quitado) bg = val >= 0 ? 'dcfce7' : val >= -1 ? 'fef9c3' : 'fee2e2'
           const numFmt = ci === 4 || ci === RO ? '0.00' : ci === 5 || ci === RO + 1 ? '0' : isDiff ? '0.00' : null
-          const s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(numFmt ? { numFmt } : {}) }
+          const font = quitado ? { strike: true, color: { rgb: 'B91C1C' } } : undefined
+          const s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(font ? { font } : {}), ...(numFmt ? { numFmt } : {}) }
           const formula = isDiff ? `IF(${editCol}${excelRow}="","",${precioCol}${excelRow}-${editCol}${excelRow})` : undefined
           setCell(ri + 1, ci, val, s, formula)
         })
       })
 
-      worksheet['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 12 }, { wch: 0, hidden: true }]
+      worksheet['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 24 }, { wch: 12 }, { wch: 24 }, { wch: 0, hidden: true }]
       worksheet['!rows'] = [{ hpt: 22 }]
       const workbook = XLSXStyle.utils.book_new()
       XLSXStyle.utils.book_append_sheet(workbook, worksheet, isVerificar ? 'Verificar' : 'Confirmacion')
@@ -7528,21 +7565,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const hCol = XLSXStyle.utils.encode_col(RO + 1)    // H - Cant. conf.
       const jCol = XLSXStyle.utils.encode_col(DIFF_CI)   // J - Diferencia
       const last = NROWS + 1
+      // Solo la diferencia cambia de color al editarla en Excel (en las filas
+      // que no estan quitadas).
+      const filasActivas = tipos.map((t, i) => (t === 'quitado' ? null : i + 2)).filter(Boolean)
+      const sqrefDiff = filasActivas.map((r) => `${jCol}${r}`).join(' ') || `${jCol}2`
+      void eCol; void gCol; void hCol; void last
       const cfXml =
-        // E: amarillo cuando Precio = 0 (SIN CATÁLOGO), limpio cuando el usuario cambia el valor
-        `<conditionalFormatting sqref="${eCol}2:${eCol}${last}">` +
-        `<cfRule type="cellIs" dxfId="1" priority="1" operator="equal"><formula>0</formula></cfRule>` +
-        `</conditionalFormatting>` +
-        // G: amarillo cuando Precio conf. está vacío
-        `<conditionalFormatting sqref="${gCol}2:${gCol}${last}">` +
-        `<cfRule type="cellIs" dxfId="1" priority="1" operator="equal"><formula>""</formula></cfRule>` +
-        `</conditionalFormatting>` +
-        // H: amarillo cuando Cant. conf. está vacía
-        `<conditionalFormatting sqref="${hCol}2:${hCol}${last}">` +
-        `<cfRule type="cellIs" dxfId="1" priority="1" operator="equal"><formula>""</formula></cfRule>` +
-        `</conditionalFormatting>` +
         // J: verde ≥0, amarillo ≥-1, rojo <-1
-        `<conditionalFormatting sqref="${jCol}2:${jCol}${last}">` +
+        `<conditionalFormatting sqref="${sqrefDiff}">` +
         `<cfRule type="cellIs" dxfId="0" priority="1" stopIfTrue="1" operator="greaterThanOrEqual"><formula>0</formula></cfRule>` +
         `<cfRule type="cellIs" dxfId="1" priority="2" stopIfTrue="1" operator="greaterThanOrEqual"><formula>-1</formula></cfRule>` +
         `<cfRule type="cellIs" dxfId="2" priority="3" operator="lessThan"><formula>-1</formula></cfRule>` +
@@ -7839,9 +7869,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         let out = precios.has(item._key) ? { ...item, precio_estimado: precios.get(item._key) } : item
         if (cantidades.has(item._key)) out = { ...out, cantidad_aproximada: cantidades.get(item._key) }
         if (enExcel.has(item._key) && out.quitado) {
-          out = { ...out, quitado: false, comentario: withoutNotaVerificacion(out.comentario, NOTA_QUITADO_VERIFICACION) }
+          out = { ...out, quitado: false, comentario: sinNotasQuitado(out.comentario) }
         } else if (!enExcel.has(item._key) && !out.quitado) {
-          out = { ...out, quitado: true, comentario: withNotaVerificacion(out.comentario, NOTA_QUITADO_VERIFICACION) }
+          out = { ...out, quitado: true, comentario: withNotaVerificacion(out.comentario, NOTA_QUITADO_EXCEL) }
         }
         return out
       })
@@ -7909,6 +7939,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const cantIdx = isSugerencia ? cantSugIdx : headerIdx(isVerificar ? 'Cant. aprox.' : 'Cant. conf.')
       const casaPrecioIdx = isSugerencia ? headerIdx('Casa PVP APROX.', 'Casa PVP', 'Casa del precio') : -1
       const comentIdx = headerIdx('Comentario')
+      const estadoIdx = headerIdx('Estado')
       if (isVerificar && cantIdx === -1) {
         const precioFabIdx = headerIdx('Precio', 'PVP APROX.', 'PVP', 'Precio est.')
         if (precioFabIdx === -1 || (codigoIdx === -1 && refIdx === -1 && oemIdx === -1)) {
@@ -8093,10 +8124,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       // restaura; uno que ya no viene se marca como quitado (en rojo, con la
       // nota en el comentario) en vez de borrarlo, para poder restaurarlo.
       const restaurar = (item) => (isVerificar && item.quitado
-        ? { ...item, quitado: false, comentario: withoutNotaVerificacion(item.comentario, NOTA_QUITADO_VERIFICACION) }
+        ? { ...item, quitado: false, comentario: sinNotasQuitado(item.comentario) }
         : item)
       const quitar = (item) => (isVerificar && !item.quitado
-        ? { ...item, quitado: true, comentario: withNotaVerificacion(item.comentario, NOTA_QUITADO_VERIFICACION) }
+        ? { ...item, quitado: true, comentario: withNotaVerificacion(item.comentario, NOTA_QUITADO_EXCEL) }
         : item)
       const marcarAgregado = (item) => (isVerificar
         ? { ...item, comentario: withNotaVerificacion(item.comentario, NOTA_AGREGADO_VERIFICACION) }
@@ -8118,8 +8149,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       // del catálogo primero y los nuevos (sin producto todavía) al final.
       // Los que no vienen en el Excel quedan quitados al fondo. Se renumera
       // 1..N.
+      // Estado "No se pidió" (Excel descargado con los quitados): sigue quitado.
+      const sigueQuitado = (row) => isVerificar && estadoIdx !== -1
+        && normHeader(cellText(row, estadoIdx)).startsWith('no se pidio')
       const delExcel = [
-        ...matched.map(({ item, row }) => ({ row, item: restaurar(applyRow(item, row)) })),
+        ...matched.map(({ item, row }) => ({ row, item: sigueQuitado(row) ? quitar(applyRow(item, row)) : restaurar(applyRow(item, row)) })),
         ...nuevos.map(({ item, row, precioJp, precioJpCasa }) => ({ row, item: marcarAgregado(conPrecioJp(applyRow(item, row), precioJp, precioJpCasa)) })),
       ]
         .sort((a, b) => dataRows.indexOf(a.row) - dataRows.indexOf(b.row))
@@ -8477,6 +8511,18 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     if (item.producto?.id) return null
     if (item.coincidencia_precio != null && item.coincidencia_precio !== '') return null
     return (coincidenciasByKey[item._key] || []).find((m) => m?.precio != null) || null
+  }
+  // Posicion en la tarjeta de la coincidencia escogida: la que se eligio con
+  // clic (mismo PVP y casa) o, si no se eligio, la primera con precio.
+  const coincidenciaElegidaDe = (item) => {
+    if (item.producto?.id) return -1
+    const lista = coincidenciasByKey[item._key] || []
+    const elegido = item.coincidencia_precio != null && item.coincidencia_precio !== '' ? Number(item.coincidencia_precio) : null
+    if (elegido == null) return lista.findIndex((m) => m?.precio != null)
+    const casa = String(item._sugeridoCasa || '').trim()
+    const mismoPrecio = (m) => m?.precio != null && Math.round(Number(m.precio) * 100) === Math.round(elegido * 100)
+    const conCasa = lista.findIndex((m) => mismoPrecio(m) && (!casa || (m.casas_comerciales_nombres || []).join(', ') === casa))
+    return conCasa !== -1 ? conCasa : lista.findIndex(mismoPrecio)
   }
   // Que tan completo esta un producto: primero los que tienen OEM (propio o
   // de sus coincidencias), despues precio PVP JP, descripcion y referencia.
@@ -9059,10 +9105,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                         const referencia = getDetalleReferencia(item) || '-'
                         const precioEstimadoValue = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
-                        const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio
-                          ?? (item.coincidencia_precio != null && item.coincidencia_precio !== '' ? Number(item.coincidencia_precio) : null)
-                          ?? (coincidenciaPorDefectoRef.current(item)?.precio != null ? Number(coincidenciaPorDefectoRef.current(item).precio) : null)
-                          ?? precioEstimadoValue
+                        const pvpValue = pvpJpDe(item) ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
                           <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? (sinCatalogo ? ' imp-verificar__row--agregado-nuevo' : ' imp-verificar__row--agregado') : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
@@ -9117,6 +9160,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                               </span>
                               <CoincidenciasInfo
                                 matches={coincidenciasByKey[item._key]}
+                                elegida={coincidenciaElegidaDe(item)}
                                 onPick={sinCatalogo && !item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
                                   ? (p) => usarCoincidencia(item._key, p)
                                   : undefined}
@@ -9152,7 +9196,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                   const priceField = isVerificar ? 'precio_estimado' : 'precio_confirmado'
                                   const qtyField = isVerificar ? 'cantidad_aproximada' : 'cantidad_confirmada'
                                   const confirmedCentavos = item[priceField] ? parseInt(String(item[priceField]).replace(/\D/g, '') || '0', 10) : null
-                                  const pvpForDiff = item.precio_pvp_snapshot ?? item.producto?.precio
+                                  const pvpForDiff = pvpJpDe(item)
                                   const storedCentavos = pvpForDiff != null ? Math.round(Number(pvpForDiff) * 100) : null
                                   const diff = storedCentavos != null && confirmedCentavos != null ? confirmedCentavos - storedCentavos : null
                                   const diffColor = diff === null ? undefined : diff <= 0 ? '#22c55e' : diff <= 100 ? '#eab308' : '#ef4444'

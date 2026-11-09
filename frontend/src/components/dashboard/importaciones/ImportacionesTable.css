@@ -1545,6 +1545,27 @@
   background: rgba(37, 99, 235, 0.18);
 }
 
+/* La coincidencia escogida (la que da el PVP JP): verde, en negrita y con visto. */
+.imp-alternos-hover-card__row--elegida td,
+.imp-alternos-hover-card__row--elegida:hover td {
+  background: color-mix(in srgb, #22c55e 18%, transparent);
+  font-weight: 700;
+}
+
+.imp-alternos-hover-card__row--elegida td:first-child {
+  box-shadow: inset 3px 0 0 0 #16a34a;
+}
+
+.imp-alternos-hover-card__check {
+  color: #16a34a;
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+
+.dashboard-shell.dark .imp-alternos-hover-card__check {
+  color: #4ade80;
+}
+
 /* Resto de popups "imp-alternos-hover-card" (productos vinculados a un OEM,
    stock por sucursal, productos de un envío): la columna con el nombre del
    producto es la única de largo variable, así que se le pone un tope con
