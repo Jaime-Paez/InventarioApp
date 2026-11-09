@@ -1487,8 +1487,18 @@
   border-bottom-right-radius: 9px;
 }
 
+/* Código | Producto | Ver | Eliminar (en la ficha); en la creación no hay "Ver". */
 .create-user__locations-table--alternos .create-user__locations-row {
-  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1.15fr) minmax(0, 1.45fr) 76px;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 2.6fr) 72px 84px;
+}
+
+.create-user__locations-table--alternos-sin-ver .create-user__locations-row {
+  grid-template-columns: minmax(110px, 0.8fr) minmax(0, 2.6fr) 96px;
+}
+
+/* El botón Agregar de la fila de captura ocupa las columnas Ver + Eliminar. */
+.create-user__locations-table--alternos .alternos-add-cell {
+  grid-column: span 2;
 }
 
 .create-user__locations-table--alternos .create-user__locations-row:not(.create-user__locations-row--form):not(.create-user__locations-row--empty) > span {

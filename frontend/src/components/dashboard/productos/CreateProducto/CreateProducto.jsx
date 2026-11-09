@@ -2223,12 +2223,11 @@ function CreateProducto({
                   <h4>Alternos</h4>
                 </div>
 
-                <div className="create-user__locations-table create-user__locations-table--alternos">
+                <div className="create-user__locations-table create-user__locations-table--alternos create-user__locations-table--alternos-sin-ver">
                   <div className="create-user__locations-row create-user__locations-row--head">
                     <span>Código</span>
                     <span>Producto</span>
-                    <span>Nota</span>
-                    <span>Acciones</span>
+                    <span>Eliminar</span>
                   </div>
 
                   <div className="create-user__locations-row create-user__locations-row--form">
@@ -2299,7 +2298,6 @@ function CreateProducto({
                           )}
                         </div>
                       </span>
-                      <span>{alternoDraft?.descripcion || '—'}</span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button
                           type="button"
@@ -2322,7 +2320,6 @@ function CreateProducto({
                     <div key={`${alterno.id}-${index}`} className="create-user__locations-row">
                       <span>{alterno.codigo || '-'}</span>
                       <span>{alterno.nombre || 'Sin descripción'}</span>
-                      <span>{alterno.descripcion || '—'}</span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button
                           type="button"

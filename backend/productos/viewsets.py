@@ -60,6 +60,41 @@ def get_alterno_group_ids(producto_id):
     return visited
 
 
+def sync_group_oems(producto_ids):
+    """Reparte a todos los productos del grupo la union de sus OEM."""
+    product_ids = {int(product_id) for product_id in producto_ids if product_id}
+    if not product_ids:
+        return
+
+    oem_ids = set(
+        OEMProducto.objects.filter(producto_id__in=product_ids)
+        .values_list("oem_id", flat=True)
+    )
+    if not oem_ids:
+        return
+
+    existing_pairs = set(
+        OEMProducto.objects.filter(producto_id__in=product_ids, oem_id__in=oem_ids)
+        .values_list("producto_id", "oem_id")
+    )
+    missing = [
+        OEMProducto(producto_id=producto_id, oem_id=oem_id)
+        for producto_id in product_ids
+        for oem_id in oem_ids
+        if (producto_id, oem_id) not in existing_pairs
+    ]
+    if missing:
+        OEMProducto.objects.bulk_create(missing, ignore_conflicts=True)
+
+
+GRUPO_BASE_LEN = 5
+
+
+def codigo_base(codigo):
+    codigo = str(codigo or "").strip().upper()
+    return codigo[:GRUPO_BASE_LEN] if len(codigo) >= GRUPO_BASE_LEN else ""
+
+
 class ProductoViewSet(viewsets.ModelViewSet):
     queryset = (
         Producto.objects.prefetch_related(
@@ -365,6 +400,76 @@ class ProductoViewSet(viewsets.ModelViewSet):
         producto = self.get_object()
         return Response(build_producto_rating_summary(producto), status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["get"], url_path="grupo-sugerido")
+    def grupo_sugerido(self, request, pk=None):
+        """Productos con el mismo codigo base (primeros 5 caracteres) que este:
+        candidatos a vincular como alternos. Cada uno indica si ya es alterno
+        directo para que la ficha solo proponga los que faltan."""
+        producto = self.get_object()
+        base = codigo_base(producto.codigo)
+        if not base:
+            return Response({"base": "", "productos": []}, status=status.HTTP_200_OK)
+
+        directos = set(
+            ProductoAlterno.objects.filter(producto_id=producto.id).values_list("alterno_id", flat=True)
+        ) | set(
+            ProductoAlterno.objects.filter(alterno_id=producto.id).values_list("producto_id", flat=True)
+        )
+        candidatos = (
+            Producto.objects.filter(codigo__istartswith=base)
+            .exclude(id=producto.id)
+            .prefetch_related("oem_productos__oem")
+            .order_by("codigo")[:100]
+        )
+        payload = [
+            {
+                "id": p.id,
+                "codigo": p.codigo,
+                "nombre": p.nombre,
+                "descripcion": getattr(p, "descripcion", "") or "",
+                "oem_productos": [
+                    {"oem": {"id": rel.oem_id, "codigo": rel.oem.codigo}} for rel in p.oem_productos.all()
+                ],
+                "ya_alterno": p.id in directos,
+            }
+            for p in candidatos
+        ]
+        return Response({"base": base, "productos": payload}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="vincular-grupo")
+    def vincular_grupo(self, request, pk=None):
+        """Vincula como alternos entre si (todos con todos, en ambos sentidos)
+        este producto y los ids recibidos, y les reparte la union de sus OEM.
+        Asi cualquiera del grupo muestra a los demas como alternos directos."""
+        producto = self.get_object()
+        raw_ids = request.data.get("ids") or []
+        if not isinstance(raw_ids, list):
+            raise ValidationError({"ids": "Debe ser una lista de ids de producto."})
+        try:
+            ids = {int(value) for value in raw_ids if value not in (None, "")}
+        except (TypeError, ValueError):
+            raise ValidationError({"ids": "Ids de producto invalidos."})
+        ids.add(producto.id)
+        existentes = set(Producto.objects.filter(id__in=ids).values_list("id", flat=True))
+        if len(existentes) < 2:
+            return Response({"creados": 0}, status=status.HTTP_200_OK)
+
+        with transaction.atomic():
+            ya = set(
+                ProductoAlterno.objects.filter(producto_id__in=existentes, alterno_id__in=existentes)
+                .values_list("producto_id", "alterno_id")
+            )
+            nuevos = [
+                ProductoAlterno(producto_id=a, alterno_id=b)
+                for a in existentes
+                for b in existentes
+                if a != b and (a, b) not in ya
+            ]
+            if nuevos:
+                ProductoAlterno.objects.bulk_create(nuevos, ignore_conflicts=True)
+            sync_group_oems(get_alterno_group_ids(producto.id))
+        return Response({"creados": len(nuevos)}, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=["get"], url_path="stock-alternos")
     def stock_alternos(self, request, pk=None):
         """Stock por sucursal de este producto y todos sus alternos (útil para decidir
@@ -533,29 +638,7 @@ class ProductoAlternoViewSet(viewsets.ModelViewSet):
     ordering_fields = ["producto__nombre", "alterno__nombre"]
 
     def _sync_group_oems(self, producto_ids):
-        product_ids = {int(product_id) for product_id in producto_ids if product_id}
-        if not product_ids:
-            return
-
-        oem_ids = set(
-            OEMProducto.objects.filter(producto_id__in=product_ids)
-            .values_list("oem_id", flat=True)
-        )
-        if not oem_ids:
-            return
-
-        existing_pairs = set(
-            OEMProducto.objects.filter(producto_id__in=product_ids, oem_id__in=oem_ids)
-            .values_list("producto_id", "oem_id")
-        )
-        missing = [
-            OEMProducto(producto_id=producto_id, oem_id=oem_id)
-            for producto_id in product_ids
-            for oem_id in oem_ids
-            if (producto_id, oem_id) not in existing_pairs
-        ]
-        if missing:
-            OEMProducto.objects.bulk_create(missing, ignore_conflicts=True)
+        sync_group_oems(producto_ids)
 
     def perform_create(self, serializer):
         with transaction.atomic():

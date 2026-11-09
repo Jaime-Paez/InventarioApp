@@ -17,6 +17,7 @@ import ReposicionProductPanel from '../../reposicion/ReposicionProductPanel'
 import ProductoMovimientosTab from '../ProductoMovimientosTab/ProductoMovimientosTab'
 import { formatMoneyFromValue, formatMoneyInput, parseMoneyInput } from '../../../../utils/moneyInput'
 import MoneyInput from '../../common/MoneyInput'
+import BlockerNotice from '../../common/BlockerNotice'
 import { toUpperCode } from '../../../../utils/textInput'
 import { toggleCasaSelection } from '../../../../utils/casasComerciales'
 import useUnsavedChangesGuard from '../../common/unsavedChanges/useUnsavedChangesGuard'
@@ -169,6 +170,9 @@ function ProductoDetails({
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [pendingAlternoSync, setPendingAlternoSync] = useState(null)
+  const [grupoSugerido, setGrupoSugerido] = useState({ base: '', productos: [] })
+  const [grupoLoading, setGrupoLoading] = useState(false)
+  const [grupoSeleccion, setGrupoSeleccion] = useState(() => new Set())
   const [localInventoryContext, setLocalInventoryContext] = useState(null)
   const [inventoryLoading, setInventoryLoading] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
@@ -847,6 +851,41 @@ function ProductoDetails({
     setShowAlternoDropdown(false)
   }
 
+  // Productos con el mismo codigo base que todavia no estan en la tabla de alternos.
+  const grupoPendiente = useMemo(
+    () => grupoSugerido.productos.filter((item) => !alternoIdSet.has(String(item.id))),
+    [grupoSugerido, alternoIdSet]
+  )
+
+  const toggleGrupoSeleccion = (id) => {
+    setGrupoSeleccion((prev) => {
+      const next = new Set(prev)
+      const key = String(id)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const handleAgregarGrupo = () => {
+    if (!isEditing) return
+    const elegidos = grupoPendiente.filter((item) => grupoSeleccion.has(String(item.id)))
+    if (!elegidos.length) return
+    setAlternativas((prev) => [
+      ...prev,
+      ...elegidos.map((item) => ({
+        id: item.id,
+        codigo: item.codigo,
+        nombre: item.nombre,
+        descripcion: item.descripcion,
+        oem_productos: item.oem_productos,
+      })),
+    ])
+    mergeOemItems(elegidos.flatMap((item) => item.oem_productos || []))
+    setGrupoSeleccion(new Set())
+    setAlternoError('')
+  }
+
   const handleRemoveAlterno = (id) => {
     if (!isEditing) return
     const key = String(id)
@@ -986,6 +1025,33 @@ function ProductoDetails({
     [token]
   )
 
+  const fetchGrupoSugerido = useCallback(async () => {
+    if (!token || !resolvedProductoId) return
+    setGrupoLoading(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/productos/listado/${resolvedProductoId}/grupo-sugerido/`,
+        {},
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      setGrupoSugerido({
+        base: response.ok ? data?.base || '' : '',
+        productos: response.ok && Array.isArray(data?.productos) ? data.productos : [],
+      })
+    } catch {
+      setGrupoSugerido({ base: '', productos: [] })
+    } finally {
+      setGrupoLoading(false)
+    }
+  }, [token, resolvedProductoId])
+
+  useEffect(() => {
+    setGrupoSeleccion(new Set())
+    if (activeTab !== 'alternos') return
+    fetchGrupoSugerido()
+  }, [activeTab, fetchGrupoSugerido, isEditing])
+
   const syncAlternos = useCallback(
     async (productoIdValue, codigoProducto) => {
       if (!productoIdValue || !token) return
@@ -1051,6 +1117,21 @@ function ProductoDetails({
       if (failed) {
         const detail = await failed.json().catch(() => ({}))
         throw new Error(detail?.detail || 'No se pudieron actualizar los alternos.')
+      }
+
+      // Con alternos nuevos, todos los de la tabla quedan vinculados entre si
+      // (no solo con este producto), asi cada uno muestra a los demas.
+      const allIds = alternativas.map((item) => item?.id).filter(Boolean)
+      if (toAdd.length && allIds.length > 1) {
+        const meshResponse = await authFetch(
+          `${API_URL}/productos/listado/${productoIdValue}/vincular-grupo/`,
+          { method: 'POST', body: JSON.stringify({ ids: allIds }) },
+          token
+        )
+        if (!meshResponse.ok) {
+          const detail = await meshResponse.json().catch(() => ({}))
+          throw new Error(detail?.detail || 'No se pudieron vincular los alternos entre si.')
+        }
       }
     },
     [alternativas, token]
@@ -2137,8 +2218,8 @@ function ProductoDetails({
                   <div className="create-user__locations-row create-user__locations-row--head">
                     <span>Código</span>
                     <span>Producto</span>
-                    <span>Nota</span>
-                    <span>Acciones</span>
+                    <span>Ver</span>
+                    <span>Eliminar</span>
                   </div>
 
                   {isEditing && (
@@ -2162,8 +2243,7 @@ function ProductoDetails({
                           </button>
                         </div>
                       </span>
-                      <span>{alternoDraft?.descripcion || '-'}</span>
-                      <span className="create-user__locations-cell create-user__locations-cell--action">
+                      <span className="create-user__locations-cell create-user__locations-cell--action alternos-add-cell">
                         <button
                           type="button"
                           className="create-user__ghost"
@@ -2186,17 +2266,18 @@ function ProductoDetails({
                     <div key={`${alterno.id}-${index}`} className="create-user__locations-row">
                       <span>{alterno.codigo || '-'}</span>
                       <span>{alterno.nombre || 'Sin descripción'}</span>
-                      <span title={alterno.descripcion || ''}>{alterno.descripcion || '-'}</span>
                       <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button
                           type="button"
                           className="create-user__icon-button"
                           onClick={() => setNavHistory((prev) => [...prev, alterno.id])}
                           aria-label={`Ver ${alterno.codigo}`}
-                          title={`Ver ${alterno.codigo}`}
+                          data-title={`Ver ${alterno.codigo}`}
                         >
                           <i className="pi pi-arrow-right" aria-hidden="true" />
                         </button>
+                      </span>
+                      <span className="create-user__locations-cell create-user__locations-cell--action">
                         <button
                           type="button"
                           className="create-user__locations-remove"
@@ -2210,6 +2291,72 @@ function ProductoDetails({
                     </div>
                   ))}
                 </div>
+
+                {!isEditing && !grupoLoading && grupoPendiente.length > 0 && (
+                  <BlockerNotice
+                    className="alternos-grupo__notice"
+                    title={`${grupoPendiente.length} producto${grupoPendiente.length === 1 ? '' : 's'} con el código base ${grupoSugerido.base} sin vincular`}
+                    reason={`${grupoPendiente.map((item) => item.codigo).join(', ')}. Si son la misma pieza, vincúlalos para que se recomienden entre sí y compartan OEM.`}
+                    actionLabel={allowEdit ? 'Editar para vincularlos' : undefined}
+                    onAction={allowEdit ? handleToggleEdit : undefined}
+                  />
+                )}
+
+                {isEditing && grupoPendiente.length > 0 && (
+                  <div className="alternos-grupo">
+                    <div className="alternos-grupo__header">
+                      <div>
+                        <strong>{`Mismo código base (${grupoSugerido.base})`}</strong>
+                        <small>Marca los que son la misma pieza. Al guardar quedan vinculados todos entre sí y comparten OEM.</small>
+                      </div>
+                      <div className="alternos-grupo__actions">
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          disabled={editorDisabled}
+                          onClick={() =>
+                            setGrupoSeleccion((prev) =>
+                              prev.size === grupoPendiente.length
+                                ? new Set()
+                                : new Set(grupoPendiente.map((item) => String(item.id)))
+                            )
+                          }
+                        >
+                          {grupoSeleccion.size === grupoPendiente.length ? 'Quitar selección' : 'Seleccionar todos'}
+                        </button>
+                        <button
+                          type="button"
+                          className="create-user__ghost"
+                          disabled={editorDisabled || !grupoSeleccion.size}
+                          onClick={handleAgregarGrupo}
+                        >
+                          {`Agregar seleccionados${grupoSeleccion.size ? ` (${grupoSeleccion.size})` : ''}`}
+                        </button>
+                      </div>
+                    </div>
+                    <ul className="alternos-grupo__list">
+                      {grupoPendiente.map((item) => {
+                        const key = String(item.id)
+                        const oems = (item.oem_productos || []).map((rel) => rel?.oem?.codigo).filter(Boolean)
+                        return (
+                          <li key={key}>
+                            <label className="alternos-grupo__item">
+                              <input
+                                type="checkbox"
+                                checked={grupoSeleccion.has(key)}
+                                onChange={() => toggleGrupoSeleccion(key)}
+                                disabled={editorDisabled}
+                              />
+                              <span className="alternos-grupo__codigo">{item.codigo}</span>
+                              <span className="alternos-grupo__nombre">{item.nombre || 'Sin descripción'}</span>
+                              <span className="alternos-grupo__oem">{oems.length ? `OEM: ${oems.join(', ')}` : 'Sin OEM'}</span>
+                            </label>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
 
               </section>
             )}
