@@ -50,10 +50,8 @@ const isNewLocationAwaitingDecision = (row) => (
   String(row?.verificacion_estado || '').trim().toLowerCase() === 'pendiente'
 )
 const isMoveAwaitingDecision = (row) => (
-  (
-    (Boolean(row?.movido_por_revisor) && !row?.agregado_por_revisor) ||
-    Boolean(row?.ubicacion_por_decidir)
-  ) &&
+  Boolean(row?.movido_por_revisor) &&
+  !row?.agregado_por_revisor &&
   !String(row?.movimiento_decision || '').trim() &&
   String(row?.verificacion_estado || '').trim().toLowerCase() === 'pendiente'
 )
@@ -1752,6 +1750,7 @@ function RandomInspectionAdminTable({
       getItemStatus(row).key === 'pendiente' &&
       Number(row?.reconteos || 0) < Number(row?.max_reconteos || 2) &&
       !isMoveAwaitingDecision(row) &&
+      !isNewLocationAwaitingDecision(row) &&
       !isLocationChangeAwaitingDecision(row)
     )
     const recountableCount = revisionItems.filter(isRecountable).length
@@ -1820,11 +1819,12 @@ function RandomInspectionAdminTable({
                     const expected = toCount(row?.cantidad_esperada)
                     const reported = row?.cantidad_reportada == null ? null : toCount(row.cantidad_reportada)
                     const diff = reported == null ? null : reported - expected
-                    const awaitingMove = canUpdate && status.key === 'pendiente' && isMoveAwaitingDecision(row)
+                    const awaitingNewLocation = canUpdate && status.key === 'pendiente' && isNewLocationAwaitingDecision(row)
+                    const awaitingMove = (canUpdate && status.key === 'pendiente' && isMoveAwaitingDecision(row)) || awaitingNewLocation
                     const awaitingLocationChange = canUpdate && status.key === 'pendiente' && isLocationChangeAwaitingDecision(row)
                     // Hasta decidir el cambio de fila no se reenvia ni se verifica;
                     // si solo cambio el reparto (total correcto) basta con decidirlo.
-                    const canFix = canUpdate && status.key === 'pendiente' && !awaitingMove && !awaitingLocationChange
+                    const canFix = canUpdate && status.key === 'pendiente' && (!awaitingMove || awaitingNewLocation) && !awaitingLocationChange
                     const note = String(row?.nota_verificacion || row?.observacion || '').trim()
                     return (
                       <div
@@ -1854,7 +1854,7 @@ function RandomInspectionAdminTable({
                               {status.key === 'solucionado' ? ' · cambio aprobado' : status.key === 'mantenido' ? ' · se quedó como estaba' : ''}
                             </small>
                           ) : null}
-                          {awaitingMove && isNewLocationAwaitingDecision(row) ? (
+                          {awaitingNewLocation ? (
                             <small className="inspection-admin__moved-note">
                               {`Lo encontró en una ubicación nueva${row?.encontrado_en?.label ? ` (${String(row.encontrado_en.label).trim()})` : ''}. Acepta o rechaza la ubicación antes de reenviar el conteo: así el reconteo busca donde corresponde.`}
                             </small>
@@ -1909,7 +1909,7 @@ function RandomInspectionAdminTable({
                               </button>
                             </>
                           ) : null}
-                          {canFix && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 2) ? (
+                          {canFix && !awaitingNewLocation && Number(row?.reconteos || 0) < Number(row?.max_reconteos || 2) ? (
                             <button
                               type="button"
                               className="inspection-admin__action inspection-admin__recount-btn"
@@ -2382,7 +2382,7 @@ function RandomInspectionAdminTable({
         const resentCount = Object.values(verifyWizardDecisions).filter((value) => value === 'reenviada').length
         const recounts = Number(item?.reconteos || 0)
         const maxRecounts = Number(item?.max_reconteos || 2)
-        const canResend = recounts < maxRecounts && !isMoveAwaitingDecision(item)
+        const canResend = recounts < maxRecounts && !isMoveAwaitingDecision(item) && !isNewLocationAwaitingDecision(item)
         const relocateState = relocateOptionsByBranch[normalizeId(item?.sucursal_id)] || null
         const expected = Number.parseInt(String(item?.cantidad_esperada ?? 0), 10) || 0
         const reported = item?.cantidad_reportada == null ? null : Number.parseInt(String(item.cantidad_reportada), 10) || 0
@@ -2580,8 +2580,8 @@ function RandomInspectionAdminTable({
                           <strong>{`No estaba en la lista: el revisor lo encontró en ${String(item?.encontrado_en?.label || 'esta fila')} y ya estaba en otras ubicaciones`}</strong>
                           {isNewLocationAwaitingDecision(item) ? (
                             <p>
-                              {'Lo movió y lo volvió a contar en todas sus ubicaciones (ver la nota). Primero acepta o rechaza la ubicación: "Aprobar ubicación nueva" reparte el stock como lo contó el revisor (el total no cambia); "Mantener como estaba" no mueve nada.'}
-                              {` Después queda la diferencia de cantidad (contó ${reported ?? 0}, había ${expected}) para reenviar el conteo, que ya buscará en la ubicación decidida, o ajustar.`}
+                              {'Lo movió y lo volvió a contar en todas sus ubicaciones (ver la nota). Para reenviar el conteo primero acepta o rechaza la ubicación: "Aprobar ubicación nueva" reparte el stock como lo contó el revisor (el total no cambia); "Mantener como estaba" no mueve nada. Así el reconteo busca en la ubicación decidida.'}
+                              {` Si ya sabes la cantidad (contó ${reported ?? 0}, había ${expected}), "Aprobar ajuste" deja cada ubicación como la contó.`}
                             </p>
                           ) : item?.movimiento_decision ? (
                             <p>{item.movimiento_decision === 'aprobado'
@@ -2899,7 +2899,7 @@ function RandomInspectionAdminTable({
                       Siguiente
                       <ChevronRight size={15} />
                     </button>
-                    {!decision && isMoveAwaitingDecision(item) && (
+                    {!decision && (isMoveAwaitingDecision(item) || isNewLocationAwaitingDecision(item)) && (
                       <>
                         <button
                           type="button"

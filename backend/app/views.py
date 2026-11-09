@@ -5107,16 +5107,22 @@ class RandomInspectionVerifyItemAPIView(APIView):
                     {"detail": "Este producto no tiene un cambio de fila por decidir."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            if action != "decidir_movimiento" and awaiting_move_decision:
+            # Ubicacion nueva sin decidir: solo bloquea el reconteo (para que
+            # busque donde corresponde). Aprobar o ajustar ya decide la ubicacion.
+            new_location_pending = _new_location_awaiting_decision(item)
+            if new_location_pending and action == "recontar":
                 return Response(
                     {
                         "detail": (
                             "Primero acepta o rechaza la ubicacion nueva que encontro el revisor: "
                             "asi el reconteo busca en la ubicacion correcta."
-                            if _new_location_awaiting_decision(item)
-                            else "Primero decide si apruebas el cambio de fila que hizo el revisor."
                         )
                     },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if action != "decidir_movimiento" and awaiting_move_decision and not new_location_pending:
+                return Response(
+                    {"detail": "Primero decide si apruebas el cambio de fila que hizo el revisor."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
