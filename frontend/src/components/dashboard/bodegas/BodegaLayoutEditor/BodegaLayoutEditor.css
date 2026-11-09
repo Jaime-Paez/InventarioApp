@@ -865,3 +865,56 @@
   align-items: center;
   gap: 6px;
 }
+
+/* Ubicaciones de la bodega que no tienen cuadro en el plano. */
+.bodega-unplaced {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.bodega-unplaced__header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bodega-unplaced__header small {
+  opacity: 0.75;
+}
+
+.bodega-unplaced__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bodega-unplaced__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.bodega-unplaced__chip--action {
+  cursor: pointer;
+}
+
+.bodega-unplaced__chip--action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border-color: var(--color-primary);
+}
+
+.bodega-unplaced__chip--action:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

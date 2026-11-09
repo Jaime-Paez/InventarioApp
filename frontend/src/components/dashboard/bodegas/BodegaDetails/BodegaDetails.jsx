@@ -292,6 +292,63 @@ function BodegaDetails({
     return map
   }, [divisions, normalizeDivisionKey])
 
+  // Divisiones de esta bodega que no tienen cuadro en el plano (ubicaciones
+  // antiguas que no coinciden con el dibujo): se listan aparte para que no se
+  // pierdan de vista y se puedan ir colocando poco a poco.
+  const divisionesFueraDelPlano = useMemo(() => {
+    const enPlano = new Set(
+      (formData.ubicaciones || []).map((location) => normalizeDivisionKey(location?.nombre)).filter(Boolean)
+    )
+    return divisions
+      .filter((division) => {
+        const key = normalizeDivisionKey(division?.nombre)
+        if (!key || enPlano.has(key)) return false
+        if (key === 'sin ubicacion' || key === 'por ubicar') return false
+        return String(division?.tipo_division || '').trim().toLowerCase() !== 'temporal'
+      })
+      .sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es', { numeric: true }))
+  }, [divisions, formData.ubicaciones, normalizeDivisionKey])
+
+  const handlePlaceDivision = (division) => {
+    if (!isEditing || !division) return
+    const width = Number(formData.ancho_metros) || 0
+    const height = Number(formData.alto_metros) || 0
+    if (!width || !height) {
+      notifyError('Define el ancho y el alto de la bodega antes de colocar ubicaciones.')
+      return
+    }
+    const w = Number(Math.max(2, width * 0.08).toFixed(1))
+    const h = Number(Math.max(2, height * 0.06).toFixed(1))
+    const locations = formData.ubicaciones || []
+    const overlaps = (x, y) =>
+      locations.some((loc) =>
+        x < Number(loc.x) + Number(loc.ancho) && x + w > Number(loc.x) &&
+        y < Number(loc.y) + Number(loc.alto) && y + h > Number(loc.y)
+      )
+    // Primer hueco libre (de arriba a la izquierda); si no hay, arriba a la izquierda.
+    let spot = { x: 0, y: 0 }
+    search: for (let y = 0; y + h <= height; y += h / 2) {
+      for (let x = 0; x + w <= width; x += w / 2) {
+        if (!overlaps(x, y)) {
+          spot = { x, y }
+          break search
+        }
+      }
+    }
+    handleLayoutChange([
+      ...locations,
+      {
+        id: `div-${division.id}-${Date.now().toString(36)}`,
+        nombre: division.nombre,
+        tipo: division.tipo_division || 'Estantería',
+        x: Number(spot.x.toFixed(1)),
+        y: Number(spot.y.toFixed(1)),
+        ancho: w,
+        alto: h,
+      },
+    ])
+  }
+
   const handleSubdivisionInputChange = (divisionId, value) => {
     setSubdivisionInputs((prev) => ({
       ...prev,
@@ -1050,6 +1107,39 @@ function BodegaDetails({
                   renderLocationFooter={renderLocationSubdivisions}
                   onBeforeRemoveLocation={handleBeforeRemoveLocation}
                 />
+
+                {divisionesFueraDelPlano.length > 0 && (
+                  <div className="bodega-unplaced">
+                    <div className="bodega-unplaced__header">
+                      <strong>{`Ubicaciones que no están en el mapa (${divisionesFueraDelPlano.length})`}</strong>
+                      <small>
+                        {isEditing
+                          ? 'Toca una para colocarla en el plano; luego arrástrala a su lugar y guarda.'
+                          : 'Siguen activas con su stock. Pulsa Editar para colocarlas en el plano.'}
+                      </small>
+                    </div>
+                    <div className="bodega-unplaced__chips">
+                      {divisionesFueraDelPlano.map((division) => {
+                        const subs = subdivisionsByDivision.get(division.id) || []
+                        const label = `${division.nombre}${subs.length ? ` · ${subs.length} ${subs.length === 1 ? 'nivel' : 'niveles'}` : ''}`
+                        return isEditing ? (
+                          <button
+                            type="button"
+                            key={division.id}
+                            className="bodega-unplaced__chip bodega-unplaced__chip--action"
+                            onClick={() => handlePlaceDivision(division)}
+                            disabled={editorDisabled}
+                          >
+                            <span>{label}</span>
+                            <span aria-hidden="true">+</span>
+                          </button>
+                        ) : (
+                          <span key={division.id} className="bodega-unplaced__chip">{label}</span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
