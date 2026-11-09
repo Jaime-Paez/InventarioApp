@@ -6692,7 +6692,9 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
 // que ya tuviera escrito, y se sacan al restaurarlo.
 const NOTA_QUITADO_VERIFICACION = 'Borrado de la verificación'
 // Solo lo tachado al subir un Excel lleva nota; la "x" a mano no escribe nada.
-const NOTA_QUITADO_EXCEL = 'No venía en el Excel'
+const NOTA_QUITADO_EXCEL = 'Eliminado en el Excel'
+// Texto anterior de esa nota (comentarios ya guardados asi).
+const NOTA_QUITADO_EXCEL_ANTERIOR = 'No venía en el Excel'
 const NOTA_AGREGADO_VERIFICACION = 'Agregado en la verificación'
 const withNotaVerificacion = (comentario, nota) => {
   const actual = String(comentario || '').trim()
@@ -6705,9 +6707,8 @@ const withoutNotaVerificacion = (comentario, nota) => {
   return actual.slice(nota.length).replace(/^\s*-\s*/, '').trim()
 }
 // Al restaurar se quita cualquier nota de quitado (la vieja y la del Excel).
-const sinNotasQuitado = (comentario) => withoutNotaVerificacion(
-  withoutNotaVerificacion(comentario, NOTA_QUITADO_EXCEL), NOTA_QUITADO_VERIFICACION
-)
+const sinNotasQuitado = (comentario) => [NOTA_QUITADO_EXCEL, NOTA_QUITADO_EXCEL_ANTERIOR, NOTA_QUITADO_VERIFICACION]
+  .reduce((texto, nota) => withoutNotaVerificacion(texto, nota), comentario)
 
 function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions }) {
   // Buscador de productos de esta importacion.
