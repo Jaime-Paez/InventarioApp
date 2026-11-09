@@ -7658,7 +7658,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         const porRef = propia.length ? propia : candidatos.filter((d) => refsDe(d).includes(norm(ref)))
         if (porRef.length) candidatos = porRef
       }
-      if (!candidatos.length && norm(ref)) candidatos = current.filter((d) => refsDe(d).includes(norm(ref)))
+      if (!candidatos.length && norm(ref)) {
+        // Solo referencia: primero la fila que tiene esa misma referencia (un
+        // producto en varias filas, cada una con la suya); si no, cualquier
+        // fila de un producto con esa referencia.
+        const propia = current.filter((d) => norm(d.referencia) === norm(ref))
+        candidatos = propia.length ? propia : current.filter((d) => refsDe(d).includes(norm(ref)))
+      }
       if (!candidatos.length && lista(oem).length) candidatos = current.filter((d) => oemsDe(d).some((o) => lista(oem).includes(o)))
       if (!candidatos.length) { noEncontradas.push({ fila, etiqueta, row, codigo, ref, oem }); return }
       // Varias filas del mismo producto (cada una con su referencia) y la del
