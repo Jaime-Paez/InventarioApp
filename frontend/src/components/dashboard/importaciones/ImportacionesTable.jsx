@@ -7,7 +7,7 @@ import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import Toast from '../common/AppToast'
 import { Button } from 'primereact/button'
-import { Check, Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import { API_URL, authFetch } from '../../../utils/api'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
@@ -9199,9 +9199,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                   const confirmedRaw = item[priceField] ? parseInt(String(item[priceField]).replace(/\D/g, '') || '0', 10) : 0
                                   const confirmedCentavos = confirmedRaw > 0 ? confirmedRaw : null
                                   const pvpForDiff = pvpJpDe(item)
-                                  const storedCentavos = pvpForDiff != null ? Math.round(Number(pvpForDiff) * 100) : null
+                                  // Totalmente nuevo (sin catalogo ni coincidencia con precio): no hay
+                                  // PVP JP, se compara con su propio PVP Aprox. -> diferencia $0.00 con aviso.
+                                  const totalmenteNuevo = !item.producto?.id && pvpForDiff == null && confirmedCentavos != null
+                                  const storedCentavos = pvpForDiff != null ? Math.round(Number(pvpForDiff) * 100) : totalmenteNuevo ? confirmedCentavos : null
                                   const diff = storedCentavos != null && confirmedCentavos != null ? confirmedCentavos - storedCentavos : null
-                                  const diffColor = diff === null ? undefined : diff <= 0 ? '#22c55e' : diff <= 100 ? '#eab308' : '#ef4444'
+                                  const diffColor = totalmenteNuevo ? '#d97706' : diff === null ? undefined : diff <= 0 ? '#22c55e' : diff <= 100 ? '#eab308' : '#ef4444'
                                   // Eliminado en la verificacion: ya no se pide, asi que no lleva
                                   // PVP Aprox. ni Cant. aprox.
                                   const eliminado = isVerificar && item.quitado
@@ -9226,13 +9229,20 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                       )}
                                       {(() => {
                                         const diffText = !eliminado && diff !== null ? `${diff >= 0 ? '+' : '-'}$${(Math.abs(diff) / 100).toFixed(2)}` : ''
+                                        const avisoNuevo = !eliminado && totalmenteNuevo
+                                        const hoverText = avisoNuevo
+                                          ? `${diffText} · Mismo precio: es un producto totalmente nuevo, no hay PVP JP en el catálogo para comparar.`
+                                          : diffText
                                         return (
                                           <span
                                             className="imp-table-cell-tip"
-                                            onMouseEnter={(e) => diffText && showCellHover(e, diffText, 'Diferencia')}
+                                            onMouseEnter={(e) => hoverText && showCellHover(e, hoverText, avisoNuevo ? 'Diferencia · Aviso' : 'Diferencia')}
                                             onMouseLeave={hideCellHover}
                                           >
-                                            <span className="imp-table-cell-text" style={{ color: diffColor }}>{diffText}</span>
+                                            <span className="imp-table-cell-text" style={{ color: diffColor, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                              {avisoNuevo && <AlertTriangle size={13} aria-label="Producto totalmente nuevo" />}
+                                              {diffText}
+                                            </span>
                                           </span>
                                         )
                                       })()}
