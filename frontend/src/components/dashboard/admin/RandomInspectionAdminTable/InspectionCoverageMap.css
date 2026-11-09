@@ -144,13 +144,10 @@
 .coverage-map__legend-item--partial::before { color: var(--coverage-partial); background: color-mix(in srgb, var(--coverage-partial) 30%, transparent); }
 .coverage-map__legend-item--none::before { color: var(--coverage-none); background: color-mix(in srgb, var(--coverage-none) 30%, transparent); }
 
-/* Misma reticula que el cuerpo: pestanas y buscador solo sobre la columna
-   del mapa; la columna del panel derecho queda libre. */
+/* Pestanas y buscador van dentro de la columna del mapa: el panel derecho
+   sube hasta quedar pegado a la leyenda. */
 .coverage-map__tabs-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 12px;
-  padding: 0 16px 8px;
+  flex: 0 0 auto;
 }
 
 .coverage-map__tabs-left {
@@ -765,10 +762,6 @@
 }
 
 @media (max-width: 860px) {
-  .coverage-map__tabs-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .coverage-map__tabs-left {
     flex-wrap: wrap;
   }

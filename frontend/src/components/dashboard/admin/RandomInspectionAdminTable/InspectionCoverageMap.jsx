@@ -498,105 +498,6 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
         </div>
         )}
 
-        {data && (
-          <div className="coverage-map__tabs-row">
-            <div className="coverage-map__tabs-left">
-            {bodegas.length > 1 && (
-          <div className="coverage-map__tabs" role="tablist">
-            {bodegas.map((item) => {
-              const matchCount = searchActive ? matchCountByBodega.get(String(item.id)) || 0 : 0
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={String(item.id) === bodegaId}
-                  className={`coverage-map__tab${String(item.id) === bodegaId ? ' is-active' : ''}`}
-                  onClick={() => changeBodega(String(item.id))}
-                >
-                  {item.nombre}
-                  {matchCount > 0 && <span className="coverage-map__tab-count">{matchCount}</span>}
-                </button>
-              )
-            })}
-          </div>
-            )}
-          <div className="coverage-map__search" ref={searchRef}>
-            <div className="coverage-map__search-box">
-              <input
-                type="search"
-                value={query}
-                placeholder="Buscar producto"
-                aria-label="Buscar producto"
-                onChange={(event) => { setQuery(event.target.value); setShowResults(true); setFocusKey('') }}
-                onFocus={() => { if (query) setShowResults(true) }}
-                onKeyDown={handleSearchKeyDown}
-              />
-              {query && (
-                <button
-                  type="button"
-                  className="coverage-map__search-clear"
-                  aria-label="Limpiar busqueda"
-                  onClick={() => { setQuery(''); setFocusKey(''); setShowResults(false) }}
-                >
-                  <X size={13} />
-                </button>
-              )}
-              {!query && <Search size={14} className="coverage-map__search-icon" aria-hidden="true" />}
-            </div>
-            {showResults && searchActive && (
-              <div className="coverage-map__results" role="listbox">
-                {!searchMatches.length ? (
-                  <p className="coverage-map__results-empty">
-                    Ningun producto con stock en esta sucursal coincide con la busqueda.
-                  </p>
-                ) : (
-                  <>
-                    <p className="coverage-map__results-count">
-                      {searchMatches.length === 1 ? '1 ubicacion' : `${searchMatches.length} ubicaciones`}
-                      {searchMatches.length > MAX_SEARCH_RESULTS ? ` · se muestran ${MAX_SEARCH_RESULTS}, escribe mas para afinar` : ''}
-                    </p>
-                    <ul>
-                      {searchMatches.slice(0, MAX_SEARCH_RESULTS).map((match) => {
-                        const result = match.counted ? match.product.resultado : null
-                        return (
-                          <li key={`${match.subdivision.id}-${match.product.producto_id}`}>
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected="false"
-                              className={`coverage-map__result-row coverage-map__result-row--${match.counted ? 'done' : 'none'}`}
-                              onClick={() => goToMatch(match)}
-                            >
-                              <span className="coverage-map__result-product">
-                                <strong>{match.product.codigo}</strong>
-                                <span>{match.product.nombre}</span>
-                              </span>
-                              <span className="coverage-map__result-location">
-                                {[
-                                  bodegas.length > 1 ? bodegaNames.get(String(match.division.bodega_id)) : '',
-                                  match.division.nombre,
-                                  match.subdivision.nombre,
-                                ].filter(Boolean).join(' › ')}
-                                {` · Stock ${match.product.cantidad}`}
-                              </span>
-                              <span className={`coverage-map__result-status coverage-map__result-status--${match.counted ? (isResultOk(result) ? 'ok' : 'bad') : 'none'}`}>
-                                {match.counted ? `Contado · ${describeResult(result)}` : 'Falta contar'}
-                              </span>
-                            </button>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-            </div>
-          </div>
-        )}
-
         <div className="coverage-map__body">
           {loading && !data ? (
             <div className="coverage-map__loading" role="status" aria-label="Cargando mapa">
@@ -607,6 +508,102 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
           ) : (
             <>
               <div className="coverage-map__main">
+                <div className="coverage-map__tabs-row">
+                  <div className="coverage-map__tabs-left">
+                  {bodegas.length > 1 && (
+                <div className="coverage-map__tabs" role="tablist">
+                  {bodegas.map((item) => {
+                    const matchCount = searchActive ? matchCountByBodega.get(String(item.id)) || 0 : 0
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={String(item.id) === bodegaId}
+                        className={`coverage-map__tab${String(item.id) === bodegaId ? ' is-active' : ''}`}
+                        onClick={() => changeBodega(String(item.id))}
+                      >
+                        {item.nombre}
+                        {matchCount > 0 && <span className="coverage-map__tab-count">{matchCount}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+                  )}
+                <div className="coverage-map__search" ref={searchRef}>
+                  <div className="coverage-map__search-box">
+                    <input
+                      type="search"
+                      value={query}
+                      placeholder="Buscar producto"
+                      aria-label="Buscar producto"
+                      onChange={(event) => { setQuery(event.target.value); setShowResults(true); setFocusKey('') }}
+                      onFocus={() => { if (query) setShowResults(true) }}
+                      onKeyDown={handleSearchKeyDown}
+                    />
+                    {query && (
+                      <button
+                        type="button"
+                        className="coverage-map__search-clear"
+                        aria-label="Limpiar busqueda"
+                        onClick={() => { setQuery(''); setFocusKey(''); setShowResults(false) }}
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                    {!query && <Search size={14} className="coverage-map__search-icon" aria-hidden="true" />}
+                  </div>
+                  {showResults && searchActive && (
+                    <div className="coverage-map__results" role="listbox">
+                      {!searchMatches.length ? (
+                        <p className="coverage-map__results-empty">
+                          Ningun producto con stock en esta sucursal coincide con la busqueda.
+                        </p>
+                      ) : (
+                        <>
+                          <p className="coverage-map__results-count">
+                            {searchMatches.length === 1 ? '1 ubicacion' : `${searchMatches.length} ubicaciones`}
+                            {searchMatches.length > MAX_SEARCH_RESULTS ? ` · se muestran ${MAX_SEARCH_RESULTS}, escribe mas para afinar` : ''}
+                          </p>
+                          <ul>
+                            {searchMatches.slice(0, MAX_SEARCH_RESULTS).map((match) => {
+                              const result = match.counted ? match.product.resultado : null
+                              return (
+                                <li key={`${match.subdivision.id}-${match.product.producto_id}`}>
+                                  <button
+                                    type="button"
+                                    role="option"
+                                    aria-selected="false"
+                                    className={`coverage-map__result-row coverage-map__result-row--${match.counted ? 'done' : 'none'}`}
+                                    onClick={() => goToMatch(match)}
+                                  >
+                                    <span className="coverage-map__result-product">
+                                      <strong>{match.product.codigo}</strong>
+                                      <span>{match.product.nombre}</span>
+                                    </span>
+                                    <span className="coverage-map__result-location">
+                                      {[
+                                        bodegas.length > 1 ? bodegaNames.get(String(match.division.bodega_id)) : '',
+                                        match.division.nombre,
+                                        match.subdivision.nombre,
+                                      ].filter(Boolean).join(' › ')}
+                                      {` · Stock ${match.product.cantidad}`}
+                                    </span>
+                                    <span className={`coverage-map__result-status coverage-map__result-status--${match.counted ? (isResultOk(result) ? 'ok' : 'bad') : 'none'}`}>
+                                      {match.counted ? `Contado · ${describeResult(result)}` : 'Falta contar'}
+                                    </span>
+                                  </button>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+                  </div>
+                </div>
                 {hasPlan ? (
                   <div className="coverage-map__plan-scroll">
                     <div
