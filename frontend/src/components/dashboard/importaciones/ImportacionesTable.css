@@ -2665,6 +2665,28 @@ body.app-theme-dark .imp-receive-footer-hint {
    catalogo) o verde azulado (si es un producto nuevo); el amarillo queda
    solo para lo que no existe. Tambien los contadores para ir a los nuevos,
    los eliminados y el resto. */
+/* Precio en 0 (Excel de la fabrica): rojo fuerte, sin tachar (no es "quitado"). */
+.importaciones-modal__products-table .create-user__locations-row.imp-verificar__row--cero {
+  background: color-mix(in srgb, #ef4444 24%, transparent);
+  box-shadow: inset 4px 0 0 0 #dc2626;
+}
+
+.imp-verificar__row--cero .importaciones-verificar__precio-cell {
+  flex-wrap: wrap;
+}
+
+.imp-verificar__cero-nota {
+  flex-basis: 100%;
+  font-size: 11px;
+  font-weight: 700;
+  color: #b91c1c;
+  line-height: 1.2;
+}
+
+.dashboard-shell.dark .imp-verificar__cero-nota {
+  color: #fca5a5;
+}
+
 .importaciones-modal__products-table .create-user__locations-row.imp-verificar__row--agregado {
   background: color-mix(in srgb, #22c55e 20%, transparent);
   box-shadow: inset 3px 0 0 0 #16a34a;
