@@ -900,7 +900,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     }
   }
 
-  const { guardarAjuste, pedirMotivo, ajusteDialog } = useAjusteInventario(token)
+  const { guardarAjuste, pedirMotivo, preguntarCeros, ajusteDialog } = useAjusteInventario(token)
 
   // Al terminar de escribir una cantidad (salir del campo o Enter): si el
   // total de la sucursal queda distinto al guardado, se pide el motivo en ese
@@ -959,6 +959,10 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         throw new Error(`Elige la subdivisión de la ubicación${donde ? ` ${donde}` : ''} antes de guardar (o quita esa fila).`)
       }
       const cambios = []
+      // Ubicaciones que se escribieron en 0 (siguen en la lista): se pregunta
+      // si se eliminan o se quedan en 0. Las quitadas con la papelera si se
+      // eliminan sin preguntar.
+      const escritasEnCero = []
       locations.forEach((location) => {
         const quantity = parseNumber(location.cantidad)
         const subdivisionId = Number(location.subdivisionId)
@@ -966,7 +970,19 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         const existing = entryBySubdivision.get(String(location.subdivisionId))
         if (existing) {
           if (Number(existing.cantidad) === quantity) return
-          cambios.push({ id: existing.id, subdivision_id: subdivisionId, cantidad: quantity })
+          const cambio = { id: existing.id, subdivision_id: subdivisionId, cantidad: quantity }
+          if (quantity === 0) {
+            escritasEnCero.push({
+              cambio,
+              key: String(existing.id),
+              antes: Number(existing.cantidad) || 0,
+              label: [location.sucursalNombre, location.bodegaNombre, location.divisionNombre, location.subdivisionNombre]
+                .map((part) => String(part || '').trim())
+                .filter((part) => part && part !== '-')
+                .join(' / ') || 'Ubicación',
+            })
+          }
+          cambios.push(cambio)
           return
         }
         if (quantity > 0) {
@@ -976,9 +992,14 @@ const InventarioEditor = forwardRef(function InventarioEditor(
       const locationSubIds = new Set(locations.map((location) => String(location.subdivisionId)))
       entryBySubdivision.forEach((entry, subdivisionId) => {
         if (!locationSubIds.has(String(subdivisionId)) && entry?.id) {
-          cambios.push({ id: entry.id, subdivision_id: Number(subdivisionId), cantidad: 0 })
+          cambios.push({ id: entry.id, subdivision_id: Number(subdivisionId), cantidad: 0, eliminar: true })
         }
       })
+
+      if (escritasEnCero.length) {
+        const decision = await preguntarCeros(escritasEnCero)
+        escritasEnCero.forEach(({ cambio }) => { cambio.eliminar = decision === 'eliminar' })
+      }
 
       if (!cambios.length) {
         setSaving(false)
@@ -989,7 +1010,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
       if (!response.ok) {
         const detailText = String(payload?.detail || '').trim()
         if (response.status === 403) {
-          throw new Error(cambios.some((cambio) => cambio.cantidad === 0) ? SCOPE_DELETE_LOCATION_ERROR : SCOPE_EDIT_LOCATION_ERROR)
+          throw new Error(cambios.some((cambio) => cambio.cantidad === 0 && cambio.eliminar !== false) ? SCOPE_DELETE_LOCATION_ERROR : SCOPE_EDIT_LOCATION_ERROR)
         }
         throw new Error(detailText || 'No se pudieron guardar los cambios.')
       }

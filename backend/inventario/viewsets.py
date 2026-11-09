@@ -2257,8 +2257,9 @@ class InventarioViewSet(viewsets.ModelViewSet):
         inventario: exige motivo y queda registrado (sale en el Kardex).
         Repartir entre ubicaciones de la misma sucursal no es ajuste.
 
-        Body: {producto_id, motivo?, cambios: [{id?, subdivision_id, cantidad}]}
-        (cantidad 0 en una fila existente la elimina). Sin motivo y con
+        Body: {producto_id, motivo?, cambios: [{id?, subdivision_id, cantidad, eliminar?}]}
+        (cantidad 0 en una fila existente la elimina; con eliminar=false la
+        ubicacion se queda en 0: un ajuste que no quita la ubicacion). Sin motivo y con
         cambio de total responde 400 code=motivo_requerido con los ajustes
         para que el usuario elija el motivo y reenvie."""
         from .models import AjusteInventario
@@ -2289,7 +2290,9 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "La cantidad no puede ser negativa."}, status=status.HTTP_400_BAD_REQUEST)
             if inv_id is None and subdivision_id is None:
                 return Response({"detail": "Falta la ubicacion."}, status=status.HTTP_400_BAD_REQUEST)
-            parsed.append((inv_id, subdivision_id, cantidad))
+            # Sin "eliminar" se mantiene lo de antes: 0 borra la ubicacion.
+            eliminar = raw.get("eliminar", True) not in (False, "false", "0", 0)
+            parsed.append((inv_id, subdivision_id, cantidad, eliminar))
 
         def _totales(sucursal_ids):
             rows = (
@@ -2308,7 +2311,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
         sucursales_tocadas = set()
         with transaction.atomic():
             plan = []
-            for inv_id, subdivision_id, cantidad in parsed:
+            for inv_id, subdivision_id, cantidad, eliminar in parsed:
                 if inv_id is not None:
                     inv = (
                         Inventario.objects.select_for_update()
@@ -2320,27 +2323,27 @@ class InventarioViewSet(viewsets.ModelViewSet):
                         transaction.set_rollback(True)
                         return Response({"detail": "Una de las ubicaciones ya no existe; recarga el producto."}, status=status.HTTP_404_NOT_FOUND)
                     sucursal_id = inv.subdivision.division.bodega.sucursal_id
-                    plan.append(("existing", inv, None, cantidad, sucursal_id))
+                    plan.append(("existing", inv, None, cantidad, eliminar, sucursal_id))
                 else:
                     subdivision = SubDivision.objects.select_related("division__bodega").filter(id=subdivision_id).first()
                     if not subdivision:
                         transaction.set_rollback(True)
                         return Response({"detail": "Ubicacion no valida."}, status=status.HTTP_400_BAD_REQUEST)
                     sucursal_id = subdivision.division.bodega.sucursal_id
-                    plan.append(("new", None, subdivision, cantidad, sucursal_id))
+                    plan.append(("new", None, subdivision, cantidad, eliminar, sucursal_id))
                 sucursales_tocadas.add(sucursal_id)
 
             antes = _totales(sucursales_tocadas)
-            for kind, inv, subdivision, cantidad, sucursal_id in plan:
+            for kind, inv, subdivision, cantidad, eliminar, sucursal_id in plan:
                 if kind == "existing":
-                    action_key = "puede_eliminar" if cantidad == 0 else "puede_actualizar"
+                    action_key = "puede_eliminar" if cantidad == 0 and eliminar else "puede_actualizar"
                 else:
                     action_key = "puede_crear"
                 ensure_sucursal_allowed_for_modules(
                     request.user, INVENTARIO_WRITE_SCOPE_MODULE_KEYS, sucursal_id, action_key=action_key
                 )
                 if kind == "existing":
-                    if cantidad == 0:
+                    if cantidad == 0 and eliminar:
                         inv.delete()
                     elif inv.cantidad != cantidad:
                         inv.cantidad = cantidad
@@ -2350,7 +2353,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     producto_id=producto_id, subdivision=subdivision, referencia=""
                 ).first()
                 if existing:
-                    if cantidad == 0:
+                    if cantidad == 0 and eliminar:
                         existing.delete()
                     elif existing.cantidad != cantidad:
                         existing.cantidad = cantidad

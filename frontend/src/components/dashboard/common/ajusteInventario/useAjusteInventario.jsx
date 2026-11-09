@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ClipboardCheck, ClipboardEdit, PencilLine, SearchX } from 'lucide-react'
+import { Check, ClipboardCheck, ClipboardEdit, MapPinOff, PencilLine, SearchX } from 'lucide-react'
 import { API_URL, authFetch } from '../../../../utils/api'
 import { getAppPortalRoot } from '../../../../utils/portalRoot'
 import './AjusteMotivoDialog.css'
@@ -39,6 +39,22 @@ export default function useAjusteInventario(token) {
   const [otro, setOtro] = useState('')
   const resolverRef = useRef(null)
   const promiseRef = useRef(null)
+  // Ubicaciones que se pusieron en 0: se pregunta si se eliminan o se quedan
+  // en 0 (muchas veces solo es un ajuste y la ubicacion se sigue usando).
+  const [ceros, setCeros] = useState(null)
+  const cerosResolverRef = useRef(null)
+
+  const preguntarCeros = useCallback((ubicaciones) => new Promise((resolve) => {
+    cerosResolverRef.current = resolve
+    setCeros(Array.isArray(ubicaciones) ? ubicaciones : [])
+  }), [])
+
+  const cerrarCeros = (value) => {
+    const resolve = cerosResolverRef.current
+    cerosResolverRef.current = null
+    setCeros(null)
+    resolve?.(value)
+  }
 
   // Si ya hay un dialogo abierto (p. ej. se cambio la cantidad y enseguida se
   // pulso Guardar) se espera esa misma respuesta en vez de abrir otro.
@@ -163,5 +179,43 @@ export default function useAjusteInventario(token) {
     getAppPortalRoot()
   ) : null
 
-  return { guardarAjuste, pedirMotivo, ajusteDialog: dialog }
+  const cerosDialog = ceros && typeof document !== 'undefined' ? createPortal(
+    <div className="ajuste-motivo__backdrop" role="presentation">
+      <div className="ajuste-motivo" role="dialog" aria-modal="true" aria-labelledby="ajuste-ceros-title">
+        <div className="ajuste-motivo__head">
+          <MapPinOff size={18} aria-hidden="true" />
+          <h3 id="ajuste-ceros-title">{ceros.length === 1 ? 'Ubicación en 0' : 'Ubicaciones en 0'}</h3>
+        </div>
+        <p className="ajuste-motivo__lead">
+          {ceros.length === 1
+            ? 'Esta ubicación quedó en 0. ¿Quieres eliminarla del producto o dejarla en 0?'
+            : 'Estas ubicaciones quedaron en 0. ¿Quieres eliminarlas del producto o dejarlas en 0?'}
+        </p>
+        <ul className="ajuste-motivo__list">
+          {ceros.map((ubicacion) => (
+            <li key={ubicacion.key}>
+              <span>{ubicacion.label}</span>
+              <span className="ajuste-motivo__nums">{ubicacion.antes} → 0</span>
+            </li>
+          ))}
+        </ul>
+        <div className="ajuste-motivo__actions">
+          <button type="button" className="ajuste-motivo__btn" onClick={() => cerrarCeros('eliminar')}>
+            {ceros.length === 1 ? 'Eliminar ubicación' : 'Eliminar ubicaciones'}
+          </button>
+          <button type="button" className="ajuste-motivo__btn ajuste-motivo__btn--primary" autoFocus onClick={() => cerrarCeros('mantener')}>
+            Dejar en 0
+          </button>
+        </div>
+      </div>
+    </div>,
+    getAppPortalRoot()
+  ) : null
+
+  return {
+    guardarAjuste,
+    pedirMotivo,
+    preguntarCeros,
+    ajusteDialog: <>{dialog}{cerosDialog}</>,
+  }
 }
