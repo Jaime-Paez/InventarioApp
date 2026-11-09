@@ -5839,6 +5839,7 @@ class RandomInspectionCoverageMapAPIView(APIView):
             "cantidad_esperada",
             "no_encontrado",
             "conteo_ubicaciones",
+            "verificacion_estado",
             "inspeccion__usuario__first_name",
             "inspeccion__usuario__last_name",
             "inspeccion__usuario__email",
@@ -5894,7 +5895,13 @@ class RandomInspectionCoverageMapAPIView(APIView):
                     _normalize_text(row.get("inspeccion__usuario__last_name")),
                 ) if part
             ) or _normalize_text(row.get("inspeccion__usuario__email"))
+            verificacion = _normalize_text(row.get("verificacion_estado"))
+            estados = InspeccionAleatoriaItem.EstadosVerificacion
             return {
+                "verificacion": verificacion,
+                # La diferencia ya se resolvio (aprobada o rechazada): el
+                # conteo queda cerrado aunque no coincidiera.
+                "resuelto": verificacion in (estados.APROBADA, estados.RECHAZADA),
                 "coincide": row.get("estado_revision") == InspeccionAleatoriaItem.EstadosRevision.COINCIDE,
                 "no_encontrado": bool(row.get("no_encontrado")),
                 "cantidad_contada": _normalize_int(contada, 0) if contada is not None else None,

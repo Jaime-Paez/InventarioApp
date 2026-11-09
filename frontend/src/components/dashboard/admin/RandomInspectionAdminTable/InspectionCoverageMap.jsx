@@ -45,20 +45,41 @@ const STATUS_LABEL = {
 
 // Resultado del ultimo conteo de un producto en esa ubicacion.
 const isResultOk = (result) => {
-  if (!result || result.no_encontrado) return false
+  if (!result) return false
+  // Si la diferencia ya se resolvio (aprobada o rechazada), queda en verde.
+  if (result.resuelto) return true
+  if (result.no_encontrado) return false
   if (result.por_ubicacion && result.cantidad_contada != null && result.cantidad_sistema != null) {
     return result.cantidad_contada === result.cantidad_sistema
   }
   return Boolean(result.coincide)
 }
 
+const VERIFICATION_LABEL = {
+  aprobada: 'Ajustado',
+  rechazada: 'Verificado sin ajuste',
+  pendiente: 'Por verificar',
+  reconteo: 'En reconteo',
+}
+
 const describeResult = (result) => {
   if (!result) return ''
-  if (result.no_encontrado) return 'No encontrado'
-  if (result.cantidad_contada == null) return result.coincide ? 'Coincide' : 'Con diferencia'
-  return result.cantidad_sistema == null
-    ? `Conto ${result.cantidad_contada}`
-    : `Conto ${result.cantidad_contada} · Sistema ${result.cantidad_sistema}`
+  // Diferencia ya resuelta: queda bien, solo con el valor final (lo contado
+  // si se ajusto; lo del sistema si se rechazo el ajuste).
+  if (result.resuelto) {
+    const final = result.verificacion === 'aprobada' ? result.cantidad_contada : result.cantidad_sistema
+    return final == null ? 'Verificado' : `Queda ${final}`
+  }
+  let text
+  if (result.no_encontrado) text = 'No encontrado'
+  else if (result.cantidad_contada == null) text = result.coincide ? 'Coincide' : 'Con diferencia'
+  else if (result.cantidad_sistema == null) text = `Conto ${result.cantidad_contada}`
+  else text = `Conto ${result.cantidad_contada} · Sistema ${result.cantidad_sistema}`
+  // Solo se aclara el estado cuando hubo diferencia.
+  const differs = result.no_encontrado || !result.coincide
+    || (result.cantidad_contada != null && result.cantidad_sistema != null && result.cantidad_contada !== result.cantidad_sistema)
+  const label = differs ? VERIFICATION_LABEL[result.verificacion] : ''
+  return label ? `${text} · ${label}` : text
 }
 
 const describeResultMeta = (result) => [
