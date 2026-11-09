@@ -7637,6 +7637,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       .map((row, i) => ({ row, fila: i + 2 }))
       .filter(({ row }) => row.some((c) => String(c ?? '').trim() !== ''))
     const noEncontradas = []
+    const nuevasReferencias = []
     const ambiguas = []
     const porProducto = new Map()
     const porValor = new Map()
@@ -7660,6 +7661,18 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       if (!candidatos.length && norm(ref)) candidatos = current.filter((d) => refsDe(d).includes(norm(ref)))
       if (!candidatos.length && lista(oem).length) candidatos = current.filter((d) => oemsDe(d).some((o) => lista(oem).includes(o)))
       if (!candidatos.length) { noEncontradas.push({ fila, etiqueta, row, codigo, ref, oem }); return }
+      // Varias filas del mismo producto (cada una con su referencia) y la del
+      // Excel es otra referencia de ese producto que no es la de ninguna fila:
+      // se agrega una fila con esa referencia y las otras, si no vienen en el
+      // Excel, se tachan.
+      if (candidatos.length > 1 && norm(ref)) {
+        const productoId = candidatos[0].producto?.id
+        const mismoProducto = productoId != null && candidatos.every((d) => d.producto?.id === productoId)
+        if (mismoProducto && !candidatos.some((d) => norm(d.referencia) === norm(ref))) {
+          nuevasReferencias.push({ fila, etiqueta, row, ref, producto: candidatos[0].producto })
+          return
+        }
+      }
       // Ambigua: no se le pone precio, pero esos productos si vinieron en el
       // Excel (no se quitan).
       if (candidatos.length > 1) { ambiguas.push({ fila, etiqueta, keys: candidatos.map((d) => d._key) }); return }
@@ -7702,7 +7715,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     // Filas que no estan en la lista: se buscan en el catalogo (como al
     // agregar a mano o con el Excel de la verificacion).
     const enExcel = new Set([...porProducto.keys(), ...ambiguas.flatMap((a) => a.keys)])
-    const agregados = []
+    const agregados = nuevasReferencias.map((n) => ({
+      _key: `${n.producto.id}~ref${n.fila}_${Date.now().toString(36)}`,
+      producto: n.producto,
+      codigo: '', nombre: '', oem: '', referencia: n.ref,
+      cantidad: '', comentario: withNotaVerificacion('', NOTA_AGREGADO_VERIFICACION),
+      precio_estimado: precioDe(n.row) ?? '', cantidad_aproximada: '', precio_confirmado: '', cantidad_confirmada: '',
+    }))
     if (noEncontradas.length) {
       const nuevos = noEncontradas.map((n, i) => ({
         ...n,
