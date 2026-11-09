@@ -7652,6 +7652,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     const ambiguas = []
     const porProducto = new Map()
     const porValor = new Map()
+    // Referencias que trae el Excel: una fila de la lista cuya referencia viene
+    // en el Excel ya tiene su precio en otra linea.
+    const refsDelExcel = new Set(filas.map(({ row }) => norm(texto(row, refIdx))).filter(Boolean))
     filas.forEach(({ row, fila }) => {
       const codigo = texto(row, codigoIdx)
       const ref = texto(row, refIdx)
@@ -7679,15 +7682,22 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       if (!candidatos.length && lista(oem).length) candidatos = current.filter((d) => oemsDe(d).some((o) => lista(oem).includes(o)))
       if (!candidatos.length) { noEncontradas.push({ fila, etiqueta, row, codigo, ref, oem }); return }
       // Varias filas del mismo producto (cada una con su referencia) y la del
-      // Excel es otra referencia de ese producto que no es la de ninguna fila:
-      // se agrega una fila con esa referencia y las otras, si no vienen en el
-      // Excel, se tachan.
+      // Excel es otra referencia de ese producto que no es la de ninguna fila.
+      // Si de ese producto queda una sola fila cuya referencia no viene en el
+      // Excel, es su reemplazo/equivalente (p. ej. la fabrica responde QFA0677
+      // por QFA0756): el precio va a esa fila. Si quedan varias, se agrega una
+      // fila con esa referencia y las otras, si no vienen en el Excel, se tachan.
       if (candidatos.length > 1 && norm(ref)) {
         const productoId = candidatos[0].producto?.id
         const mismoProducto = productoId != null && candidatos.every((d) => d.producto?.id === productoId)
         if (mismoProducto && !candidatos.some((d) => norm(d.referencia) === norm(ref))) {
-          nuevasReferencias.push({ fila, etiqueta, row, ref, producto: candidatos[0].producto })
-          return
+          const sinPrecioEnExcel = candidatos.filter((d) => !refsDelExcel.has(norm(d.referencia)))
+          if (sinPrecioEnExcel.length === 1) {
+            candidatos = sinPrecioEnExcel
+          } else {
+            nuevasReferencias.push({ fila, etiqueta, row, ref, producto: candidatos[0].producto })
+            return
+          }
         }
       }
       // Ambigua: no se le pone precio, pero esos productos si vinieron en el
