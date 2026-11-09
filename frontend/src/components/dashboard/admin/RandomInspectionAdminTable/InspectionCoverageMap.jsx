@@ -500,6 +500,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
 
         {data && (
           <div className="coverage-map__tabs-row">
+            <div className="coverage-map__tabs-left">
             {bodegas.length > 1 && (
           <div className="coverage-map__tabs" role="tablist">
             {bodegas.map((item) => {
@@ -522,11 +523,10 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
             )}
           <div className="coverage-map__search" ref={searchRef}>
             <div className="coverage-map__search-box">
-              <Search size={16} aria-hidden="true" />
               <input
                 type="search"
                 value={query}
-                placeholder="Buscar producto por codigo o nombre"
+                placeholder="Buscar producto"
                 aria-label="Buscar producto"
                 onChange={(event) => { setQuery(event.target.value); setShowResults(true); setFocusKey('') }}
                 onFocus={() => { if (query) setShowResults(true) }}
@@ -539,9 +539,10 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                   aria-label="Limpiar busqueda"
                   onClick={() => { setQuery(''); setFocusKey(''); setShowResults(false) }}
                 >
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               )}
+              {!query && <Search size={14} className="coverage-map__search-icon" aria-hidden="true" />}
             </div>
             {showResults && searchActive && (
               <div className="coverage-map__results" role="listbox">
@@ -592,6 +593,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
               </div>
             )}
           </div>
+            </div>
           </div>
         )}
 
@@ -605,11 +607,6 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
           ) : (
             <>
               <div className="coverage-map__main">
-                <p className="coverage-map__summary">
-                    {`${totals.completas} de ${totals.perchas} perchas completas · ${totals.contados} de ${totals.total} productos contados`}
-                    {totals.total > 0 ? ` (${Math.floor((totals.contados / totals.total) * 100)}%)` : ''}
-                    {loading && <Loader2 size={14} className="coverage-map__spin" aria-label="Actualizando" />}
-                </p>
                 {hasPlan ? (
                   <div className="coverage-map__plan-scroll">
                     <div
@@ -651,6 +648,12 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                 ) : (
                   <p className="coverage-map__hint">Esta bodega no tiene mapa dibujado. Las perchas se listan abajo.</p>
                 )}
+
+                <p className="coverage-map__summary">
+                  {`${totals.completas} de ${totals.perchas} perchas completas · ${totals.contados} de ${totals.total} productos contados`}
+                  {totals.total > 0 ? ` (${Math.floor((totals.contados / totals.total) * 100)}%)` : ''}
+                  {loading && <Loader2 size={14} className="coverage-map__spin" aria-label="Actualizando" />}
+                </p>
 
                 {(unplacedDivisions.length > 0 || !hasPlan) && (
                   <div className="coverage-map__unplaced">

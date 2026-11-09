@@ -144,11 +144,20 @@
 .coverage-map__legend-item--partial::before { color: var(--coverage-partial); background: color-mix(in srgb, var(--coverage-partial) 30%, transparent); }
 .coverage-map__legend-item--none::before { color: var(--coverage-none); background: color-mix(in srgb, var(--coverage-none) 30%, transparent); }
 
+/* Misma reticula que el cuerpo: pestanas y buscador solo sobre la columna
+   del mapa; la columna del panel derecho queda libre. */
 .coverage-map__tabs-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  padding: 0 16px 8px;
+}
+
+.coverage-map__tabs-left {
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px 14px;
-  padding: 0 16px 10px;
+  gap: 10px;
 }
 
 .coverage-map__tabs {
@@ -161,9 +170,8 @@
   overflow-x: auto;
 }
 
-.coverage-map__tabs-row .coverage-map__search {
-  flex: 1 1 320px;
-  max-width: 560px;
+.coverage-map__tabs-left .coverage-map__search {
+  flex: 0 0 auto;
   margin-left: auto;
 }
 
@@ -577,24 +585,26 @@
   flex: 0 0 auto;
 }
 
+/* Pequeno, igual que la busqueda rapida de las tablas. */
 .coverage-map__search-box {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 38px;
-  padding: 0 10px;
+  gap: 4px;
+  width: 190px;
+  height: 28px;
+  padding: 0 10px 0 12px;
   border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface);
+  border-radius: 999px;
+  background: var(--table-color-search, var(--color-surface));
 }
 
 .coverage-map__search-box:focus-within {
   border-color: var(--color-primary);
 }
 
-.coverage-map__search-box svg {
+.coverage-map__search-icon {
   flex: 0 0 auto;
-  opacity: 0.65;
+  color: var(--color-border);
 }
 
 .coverage-map__search-box input {
@@ -609,6 +619,10 @@
   font-size: var(--font-size-sm);
 }
 
+.coverage-map__search-box input::placeholder {
+  color: var(--color-border);
+}
+
 .coverage-map__search-box input::-webkit-search-cancel-button {
   display: none;
 }
@@ -617,8 +631,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -630,8 +644,8 @@
 .coverage-map__results {
   position: absolute;
   top: calc(100% + 4px);
-  left: 0;
   right: 0;
+  width: min(480px, calc(100vw - 32px));
   z-index: 5;
   max-height: min(420px, 55vh);
   overflow: auto;
@@ -731,31 +745,6 @@
   text-align: center;
 }
 
-.coverage-map__summary-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-}
-
-.coverage-map__multi {
-  padding: 4px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.coverage-map__multi.is-active {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-  color: #fff;
-}
-
 /* Perchas donde esta lo buscado */
 .coverage-map__shape.is-match,
 .coverage-map__chip.is-match {
@@ -777,12 +766,11 @@
 
 @media (max-width: 860px) {
   .coverage-map__tabs-row {
-    flex-wrap: wrap;
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .coverage-map__tabs-row .coverage-map__search {
-    flex-basis: 100%;
-    max-width: none;
+  .coverage-map__tabs-left {
+    flex-wrap: wrap;
   }
 }
 
@@ -866,19 +854,6 @@
 .coverage-map--dark .coverage-map__results-empty,
 .coverage-map--dark .coverage-map__result-row,
 .coverage-map--dark .coverage-map__group-head,
-.coverage-map--dark .coverage-map__multi:not(.is-active) {
-  color: var(--color-text-dark);
-}
-
-.coverage-map--dark .coverage-map__multi:not(.is-active) {
-  border-color: var(--color-border-dark);
-}
-
-.coverage-map--dark .coverage-map__multi.is-active {
-  border-color: var(--color-primary-dark);
-  background: var(--color-primary-dark);
-}
-
 .coverage-map--dark .coverage-map__result-row {
   border-bottom-color: rgba(255, 255, 255, 0.08);
 }
