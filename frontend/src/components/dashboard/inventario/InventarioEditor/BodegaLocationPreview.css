@@ -123,8 +123,8 @@
 .inventario-map-preview__plan-wrapper--popup {
   flex: 1;
   min-height: 0;
-  /* El plano entra completo en la ventana (sin scroll) con la proporcion
-     real en metros: el JS lo dimensiona al tamano que cabe en el area. */
+  /* El JS dimensiona el plano con la proporcion real en metros; con zoom el
+     area hace scroll (y se puede arrastrar con el mouse). */
   overflow: hidden;
   padding: 12px;
   border-radius: 12px;
@@ -136,8 +136,77 @@
   min-width: 0;
   min-height: 0;
   display: flex;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  touch-action: pan-x pan-y;
+}
+
+/* margin:auto centra el plano cuando es mas chico y no lo corta cuando es
+   mas grande que el area (con justify-content:center se perdia el borde). */
+.inventario-map-preview__fit-area > .inventario-map-preview__plan--popup {
+  margin: auto;
+}
+
+.inventario-map-preview__fit-area--zoomed {
+  cursor: grab;
+}
+
+.inventario-map-preview__fit-area--zoomed:active {
+  cursor: grabbing;
+}
+
+.inventario-map-popup__zoom {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inventario-map-popup__zoom-btn {
+  height: 34px;
+  min-width: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text-primary);
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.inventario-map-popup__zoom-btn:hover:not(:disabled) {
+  border-color: var(--color-primary-dark);
+  background: color-mix(in srgb, var(--color-primary-dark) 12%, #fff);
+}
+
+.inventario-map-popup__zoom-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.inventario-map-popup__zoom-value {
+  min-width: 46px;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.inventario-map-popup--dark .inventario-map-popup__zoom-btn {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+}
+
+.inventario-map-popup--dark .inventario-map-popup__zoom-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary-dark) 24%, var(--color-surface-darker));
+}
+
+.inventario-map-popup--dark .inventario-map-popup__zoom-value {
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .inventario-map-preview__plan {

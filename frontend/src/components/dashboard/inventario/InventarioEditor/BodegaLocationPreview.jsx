@@ -9,6 +9,7 @@ const TYPE_COLORS = ['#4f8df8', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14
 // mismo color en los dos mapas.
 const DEFAULT_TYPES = ['Estantería', 'Cajonera', 'Muebles']
 const VERTICAL_LABEL_RATIO = 1.6
+const DEFAULT_ZOOM = 2
 
 const normalizeKey = (value) =>
   String(value ?? '')
@@ -137,7 +138,8 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
     const node = fitAreaRef.current
     if (!node) return undefined
     const measure = () => {
-      const rect = node.getBoundingClientRect()
+      // Sin el espacio de la barra de scroll vertical (scrollbar-gutter fijo).
+      const rect = { width: node.clientWidth, height: node.clientHeight }
       setFitArea((prev) => (
         Math.abs(prev.width - rect.width) < 0.5 && Math.abs(prev.height - rect.height) < 0.5
           ? prev
@@ -154,9 +156,9 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
     return () => observer.disconnect()
   }, [isOpen, portalRoot, hasPlan])
 
-  // Tamano del plano: el mas grande que entra completo en el area ("contain").
-  const fittedPlanStyle = useMemo(() => {
-    if (!hasPlan || !fitArea.width || !fitArea.height) return { visibility: 'hidden' }
+  // Tamano base: el mas grande que entra completo en el area ("contain").
+  const containSize = useMemo(() => {
+    if (!hasPlan || !fitArea.width || !fitArea.height) return null
     const ratio = planSize.width / planSize.height
     let width = fitArea.width
     let height = width / ratio
@@ -164,8 +166,71 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
       height = fitArea.height
       width = height * ratio
     }
-    return { width: `${Math.floor(width)}px`, height: `${Math.floor(height)}px` }
+    return { width, height }
   }, [fitArea, hasPlan, planSize])
+
+  // Zoom sobre el tamano base. Se abre ampliado (sin pasarse del ancho
+  // disponible) para que las perchas se lean; "Ver todo" vuelve a 1.
+  const maxZoom = containSize ? Math.max(1, Math.min(6, (fitArea.width / containSize.width) * 2)) : 1
+  const defaultZoom = containSize ? Math.max(1, Math.min(DEFAULT_ZOOM, fitArea.width / containSize.width)) : 1
+  const [zoom, setZoom] = useState(null)
+  const effectiveZoom = Math.min(maxZoom, zoom ?? defaultZoom)
+  useEffect(() => {
+    if (isOpen) setZoom(null)
+  }, [isOpen])
+
+  const fittedPlanStyle = useMemo(() => {
+    if (!containSize) return { visibility: 'hidden' }
+    return {
+      width: `${Math.floor(containSize.width * effectiveZoom)}px`,
+      height: `${Math.floor(containSize.height * effectiveZoom)}px`,
+    }
+  }, [containSize, effectiveZoom])
+
+  // Al abrir o cambiar el zoom, la ubicacion marcada queda en el centro.
+  const activeRef = useRef(null)
+  useLayoutEffect(() => {
+    const container = fitAreaRef.current
+    const active = activeRef.current
+    if (!isOpen || !container || !containSize) return
+    if (!active) {
+      container.scrollLeft = (container.scrollWidth - container.clientWidth) / 2
+      container.scrollTop = (container.scrollHeight - container.clientHeight) / 2
+      return
+    }
+    const cRect = container.getBoundingClientRect()
+    const aRect = active.getBoundingClientRect()
+    container.scrollLeft += aRect.left + aRect.width / 2 - (cRect.left + container.clientWidth / 2)
+    container.scrollTop += aRect.top + aRect.height / 2 - (cRect.top + container.clientHeight / 2)
+  }, [isOpen, containSize, effectiveZoom])
+
+  const changeZoom = (factor) => {
+    setZoom(Math.max(1, Math.min(maxZoom, Math.round(effectiveZoom * factor * 100) / 100)))
+  }
+
+  // Arrastrar con el mouse para moverse por el plano.
+  const dragRef = useRef(null)
+  const handlePointerDown = (event) => {
+    if (event.button !== 0) return
+    const container = fitAreaRef.current
+    if (!container) return
+    // Clic sobre la barra de scroll: que la maneje el navegador.
+    const box = container.getBoundingClientRect()
+    if (event.clientX - box.left > container.clientWidth || event.clientY - box.top > container.clientHeight) return
+    dragRef.current ={ x: event.clientX, y: event.clientY, left: container.scrollLeft, top: container.scrollTop }
+    container.setPointerCapture?.(event.pointerId)
+  }
+  const handlePointerMove = (event) => {
+    const drag = dragRef.current
+    const container = fitAreaRef.current
+    if (!drag || !container) return
+    container.scrollLeft = drag.left - (event.clientX - drag.x)
+    container.scrollTop = drag.top - (event.clientY - drag.y)
+  }
+  const handlePointerUp = (event) => {
+    dragRef.current = null
+    fitAreaRef.current?.releasePointerCapture?.(event.pointerId)
+  }
 
   const popup = isOpen && portalRoot
     ? createPortal(
@@ -190,6 +255,39 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
                 <strong>Subdivision:</strong> {subdivisionName || '-'}
               </p>
             </div>
+            {hasPlan ? (
+              <div className="inventario-map-popup__zoom">
+                <button
+                  type="button"
+                  className="inventario-map-popup__zoom-btn"
+                  onClick={() => changeZoom(1 / 1.25)}
+                  disabled={effectiveZoom <= 1}
+                  aria-label="Alejar"
+                  data-title="Alejar"
+                >
+                  <i className="pi pi-search-minus" aria-hidden="true" />
+                </button>
+                <span className="inventario-map-popup__zoom-value">{Math.round(effectiveZoom * 100)}%</span>
+                <button
+                  type="button"
+                  className="inventario-map-popup__zoom-btn"
+                  onClick={() => changeZoom(1.25)}
+                  disabled={effectiveZoom >= maxZoom}
+                  aria-label="Acercar"
+                  data-title="Acercar"
+                >
+                  <i className="pi pi-search-plus" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="inventario-map-popup__zoom-btn inventario-map-popup__zoom-btn--text"
+                  onClick={() => setZoom(1)}
+                  disabled={effectiveZoom <= 1}
+                >
+                  Ver todo
+                </button>
+              </div>
+            ) : null}
             <button
               type="button"
               className="inventario-map-popup__close"
@@ -203,7 +301,14 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
           <div className="inventario-map-popup__body">
             {hasPlan ? (
               <div className="inventario-map-preview__plan-wrapper inventario-map-preview__plan-wrapper--popup">
-                <div className="inventario-map-preview__fit-area" ref={fitAreaRef}>
+                <div
+                  className={`inventario-map-preview__fit-area${effectiveZoom > 1 ? ' inventario-map-preview__fit-area--zoomed' : ''}`}
+                  ref={fitAreaRef}
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                >
                 <div
                   className="inventario-map-preview__plan inventario-map-preview__plan--popup"
                   style={fittedPlanStyle}
@@ -223,6 +328,7 @@ function BodegaLocationPreview({ bodega, divisionName, subdivisionName, darkMode
                     return (
                       <div
                         key={location.id}
+                        ref={isActive ? activeRef : undefined}
                         className={`inventario-map-preview__location${isActive ? ' inventario-map-preview__location--active' : ''}${isVertical ? ' inventario-map-preview__location--vertical' : ''}`}
                         style={{
                           left: `${left}%`,
