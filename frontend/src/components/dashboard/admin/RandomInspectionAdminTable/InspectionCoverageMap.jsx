@@ -80,7 +80,6 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
   const [error, setError] = useState('')
   const [bodegaId, setBodegaId] = useState('')
   const [selectedDivisionIds, setSelectedDivisionIds] = useState([])
-  const [multiSelect, setMultiSelect] = useState(false)
   const [missingReviewerId, setMissingReviewerId] = useState('')
   const [sendingMissing, setSendingMissing] = useState(false)
   const [sentMissingMessage, setSentMissingMessage] = useState('')
@@ -320,34 +319,28 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
     }
   }
 
-  // Clic en una percha: en seleccion multiple (o con Ctrl/Cmd) se suma o se
-  // quita; si no, reemplaza la seleccion.
-  const toggleDivision = (division, additive) => {
-    if (!division) {
-      if (!additive) setSelectedDivisionIds([])
-      return
-    }
+  // Clic en una percha: se suma a la seleccion; otro clic la quita.
+  const toggleDivision = (division) => {
+    if (!division) return
     const id = String(division.id)
     setFocusKey('')
-    if (additive) {
-      setSelectedDivisionIds((current) => (
-        current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
-      ))
-      return
-    }
-    setSelectedDivisionIds((current) => (current.length === 1 && current[0] === id ? current : [id]))
+    setSelectedDivisionIds((current) => (
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
+    ))
   }
 
-  const handleDivisionClick = (division, event) => {
-    toggleDivision(division, multiSelect || event?.ctrlKey || event?.metaKey)
+  const handleDivisionClick = (division) => {
+    toggleDivision(division)
   }
 
+  // Desde la busqueda: la percha se suma a la seleccion (sin quitarla si ya
+  // estaba); si es de otra bodega, queda sola.
   const goToMatch = (match) => {
     const id = String(match.division.id)
     const sameBodega = String(match.division.bodega_id) === bodegaId
     setBodegaId(String(match.division.bodega_id))
     setSelectedDivisionIds((current) => {
-      if (multiSelect && sameBodega) return current.includes(id) ? current : [...current, id]
+      if (sameBodega) return current.includes(id) ? current : [...current, id]
       return [id]
     })
     setFocusKey(productKey(match.subdivision.id, match.product.producto_id))
@@ -505,7 +498,9 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
         </div>
         )}
 
-        {bodegas.length > 1 && (
+        {data && (
+          <div className="coverage-map__tabs-row">
+            {bodegas.length > 1 && (
           <div className="coverage-map__tabs" role="tablist">
             {bodegas.map((item) => {
               const matchCount = searchActive ? matchCountByBodega.get(String(item.id)) || 0 : 0
@@ -524,6 +519,80 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
               )
             })}
           </div>
+            )}
+          <div className="coverage-map__search" ref={searchRef}>
+            <div className="coverage-map__search-box">
+              <Search size={16} aria-hidden="true" />
+              <input
+                type="search"
+                value={query}
+                placeholder="Buscar producto por codigo o nombre"
+                aria-label="Buscar producto"
+                onChange={(event) => { setQuery(event.target.value); setShowResults(true); setFocusKey('') }}
+                onFocus={() => { if (query) setShowResults(true) }}
+                onKeyDown={handleSearchKeyDown}
+              />
+              {query && (
+                <button
+                  type="button"
+                  className="coverage-map__search-clear"
+                  aria-label="Limpiar busqueda"
+                  onClick={() => { setQuery(''); setFocusKey(''); setShowResults(false) }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            {showResults && searchActive && (
+              <div className="coverage-map__results" role="listbox">
+                {!searchMatches.length ? (
+                  <p className="coverage-map__results-empty">
+                    Ningun producto con stock en esta sucursal coincide con la busqueda.
+                  </p>
+                ) : (
+                  <>
+                    <p className="coverage-map__results-count">
+                      {searchMatches.length === 1 ? '1 ubicacion' : `${searchMatches.length} ubicaciones`}
+                      {searchMatches.length > MAX_SEARCH_RESULTS ? ` · se muestran ${MAX_SEARCH_RESULTS}, escribe mas para afinar` : ''}
+                    </p>
+                    <ul>
+                      {searchMatches.slice(0, MAX_SEARCH_RESULTS).map((match) => {
+                        const result = match.counted ? match.product.resultado : null
+                        return (
+                          <li key={`${match.subdivision.id}-${match.product.producto_id}`}>
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected="false"
+                              className={`coverage-map__result-row coverage-map__result-row--${match.counted ? 'done' : 'none'}`}
+                              onClick={() => goToMatch(match)}
+                            >
+                              <span className="coverage-map__result-product">
+                                <strong>{match.product.codigo}</strong>
+                                <span>{match.product.nombre}</span>
+                              </span>
+                              <span className="coverage-map__result-location">
+                                {[
+                                  bodegas.length > 1 ? bodegaNames.get(String(match.division.bodega_id)) : '',
+                                  match.division.nombre,
+                                  match.subdivision.nombre,
+                                ].filter(Boolean).join(' › ')}
+                                {` · Stock ${match.product.cantidad}`}
+                              </span>
+                              <span className={`coverage-map__result-status coverage-map__result-status--${match.counted ? (isResultOk(result) ? 'ok' : 'bad') : 'none'}`}>
+                                {match.counted ? `Contado · ${describeResult(result)}` : 'Falta contar'}
+                              </span>
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          </div>
         )}
 
         <div className="coverage-map__body">
@@ -536,98 +605,11 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
           ) : (
             <>
               <div className="coverage-map__main">
-                <div className="coverage-map__search" ref={searchRef}>
-                  <div className="coverage-map__search-box">
-                    <Search size={16} aria-hidden="true" />
-                    <input
-                      type="search"
-                      value={query}
-                      placeholder="Buscar producto por codigo o nombre"
-                      aria-label="Buscar producto"
-                      onChange={(event) => { setQuery(event.target.value); setShowResults(true); setFocusKey('') }}
-                      onFocus={() => { if (query) setShowResults(true) }}
-                      onKeyDown={handleSearchKeyDown}
-                    />
-                    {query && (
-                      <button
-                        type="button"
-                        className="coverage-map__search-clear"
-                        aria-label="Limpiar busqueda"
-                        onClick={() => { setQuery(''); setFocusKey(''); setShowResults(false) }}
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-                  {showResults && searchActive && (
-                    <div className="coverage-map__results" role="listbox">
-                      {!searchMatches.length ? (
-                        <p className="coverage-map__results-empty">
-                          Ningun producto con stock en esta sucursal coincide con la busqueda.
-                        </p>
-                      ) : (
-                        <>
-                          <p className="coverage-map__results-count">
-                            {searchMatches.length === 1 ? '1 ubicacion' : `${searchMatches.length} ubicaciones`}
-                            {searchMatches.length > MAX_SEARCH_RESULTS ? ` · se muestran ${MAX_SEARCH_RESULTS}, escribe mas para afinar` : ''}
-                          </p>
-                          <ul>
-                            {searchMatches.slice(0, MAX_SEARCH_RESULTS).map((match) => {
-                              const result = match.counted ? match.product.resultado : null
-                              return (
-                                <li key={`${match.subdivision.id}-${match.product.producto_id}`}>
-                                  <button
-                                    type="button"
-                                    role="option"
-                                    aria-selected="false"
-                                    className={`coverage-map__result-row coverage-map__result-row--${match.counted ? 'done' : 'none'}`}
-                                    onClick={() => goToMatch(match)}
-                                  >
-                                    <span className="coverage-map__result-product">
-                                      <strong>{match.product.codigo}</strong>
-                                      <span>{match.product.nombre}</span>
-                                    </span>
-                                    <span className="coverage-map__result-location">
-                                      {[
-                                        bodegas.length > 1 ? bodegaNames.get(String(match.division.bodega_id)) : '',
-                                        match.division.nombre,
-                                        match.subdivision.nombre,
-                                      ].filter(Boolean).join(' › ')}
-                                      {` · Stock ${match.product.cantidad}`}
-                                    </span>
-                                    <span className={`coverage-map__result-status coverage-map__result-status--${match.counted ? (isResultOk(result) ? 'ok' : 'bad') : 'none'}`}>
-                                      {match.counted ? `Contado · ${describeResult(result)}` : 'Falta contar'}
-                                    </span>
-                                  </button>
-                                </li>
-                              )
-                            })}
-                          </ul>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div className="coverage-map__summary-row">
-                  <p className="coverage-map__summary">
+                <p className="coverage-map__summary">
                     {`${totals.completas} de ${totals.perchas} perchas completas · ${totals.contados} de ${totals.total} productos contados`}
                     {totals.total > 0 ? ` (${Math.floor((totals.contados / totals.total) * 100)}%)` : ''}
                     {loading && <Loader2 size={14} className="coverage-map__spin" aria-label="Actualizando" />}
-                  </p>
-                  <button
-                    type="button"
-                    className={`coverage-map__multi${multiSelect ? ' is-active' : ''}`}
-                    aria-pressed={multiSelect}
-                    onClick={() => {
-                      // Al apagarla queda solo la ultima percha elegida.
-                      if (multiSelect) setSelectedDivisionIds((ids) => ids.slice(-1))
-                      setMultiSelect(!multiSelect)
-                    }}
-                  >
-                    {multiSelect ? `Seleccion multiple (${selectedDivisionIds.length})` : 'Seleccionar varias'}
-                  </button>
-                </div>
+                </p>
                 {hasPlan ? (
                   <div className="coverage-map__plan-scroll">
                     <div
@@ -655,7 +637,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                               height: `${(shape.alto / planSize.height) * 100}%`,
                             }}
                             title={title}
-                            onClick={(event) => handleDivisionClick(division, event)}
+                            onClick={() => handleDivisionClick(division)}
                           >
                             <span className="coverage-map__shape-name">{shape.nombre || 'Ubicacion'}</span>
                             {division && status !== 'empty' && (
@@ -681,7 +663,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                           type="button"
                           key={division.id}
                           className={`coverage-map__chip coverage-map__chip--${getStatus(division)}${isSelected ? ' is-selected' : ''}${isMatch ? ' is-match' : ''}`}
-                          onClick={(event) => handleDivisionClick(division, event)}
+                          onClick={() => handleDivisionClick(division)}
                         >
                           {`${division.nombre} · ${getPercent(division)}%`}
                         </button>
@@ -694,9 +676,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
               <aside className="coverage-map__side" ref={sideRef}>
                 {!selectedDivisions.length ? (
                   <p className="coverage-map__hint">
-                    {multiSelect
-                      ? 'Toca las perchas que quieras juntar para ver lo que falta y mandarlo a contar.'
-                      : 'Toca una percha para ver sus niveles, lo contado y lo que falta por contar.'}
+                    Toca una o varias perchas para ver sus niveles, lo contado y lo que falta por contar. Otro clic la quita.
                   </p>
                 ) : (
                   <>
@@ -713,7 +693,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                             type="button"
                             key={division.id}
                             className={`coverage-map__chip coverage-map__chip--${getStatus(division)}`}
-                            onClick={() => toggleDivision(division, true)}
+                            onClick={() => toggleDivision(division)}
                             aria-label={`Quitar ${division.nombre}`}
                           >
                             {division.nombre}
