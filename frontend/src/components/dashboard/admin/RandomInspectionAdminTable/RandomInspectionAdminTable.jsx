@@ -865,15 +865,16 @@ function RandomInspectionAdminTable({
   }, [token, listSucursalId, listUsuarioId, listProducts, notifyError, notifySuccess, askIfRecentlyCounted, resolveSendNowHour])
 
   // Desde el mapa: mandar a revisar los productos que faltan de una percha.
-  const sendProductListToReviewer = useCallback(async ({ sucursalId, usuarioId, productIds: requestedIds, divisionId }) => {
+  const sendProductListToReviewer = useCallback(async ({ sucursalId, usuarioId, productIds: requestedIds, divisionId, divisionIds }) => {
     if (!token || !sucursalId || !usuarioId || !requestedIds?.length) return false
-    // Desde el mapa se manda la percha: el aviso usa el mismo criterio que el
-    // mapa (lo contado en otra percha no cuenta para esta).
+    // Desde el mapa se mandan una o varias perchas: el aviso usa el mismo
+    // criterio que el mapa (lo contado en otra percha no cuenta para estas).
     const { proceed, productIds } = await askIfRecentlyCounted(
       {
         sucursal_id: sucursalId,
         producto_ids: requestedIds,
         ...(divisionId ? { division_id: divisionId } : {}),
+        ...(divisionIds?.length ? { division_ids: divisionIds } : {}),
       },
       { allowOnlyNew: true }
     )

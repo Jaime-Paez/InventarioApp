@@ -5821,34 +5821,46 @@ class RandomInspectionCoverageMapAPIView(APIView):
         by_division = {}
         by_subdivision = {}
 
-        def remember(target, product_id, revisado_en):
+        def remember(target, product_id, row):
+            # Se guarda el conteo mas reciente de cada producto (su resultado
+            # se muestra en el mapa).
             previous = target.get(product_id)
-            if previous is None or (revisado_en and revisado_en > previous):
-                target[product_id] = revisado_en
+            revisado_en = row.get("revisado_en")
+            if previous is None or (
+                revisado_en and (previous.get("revisado_en") is None or revisado_en > previous["revisado_en"])
+            ):
+                target[product_id] = row
 
         for row in counted_qs.values(
             "producto_id",
             "revisado_en",
+            "estado_revision",
+            "cantidad_reportada",
+            "cantidad_esperada",
+            "no_encontrado",
+            "conteo_ubicaciones",
+            "inspeccion__usuario__first_name",
+            "inspeccion__usuario__last_name",
+            "inspeccion__usuario__email",
             "inspeccion__es_por_division",
             "inspeccion__division_id",
             "inspeccion__es_por_subdivision",
             "inspeccion__subdivision_id",
         ):
             product_id = _normalize_int(row.get("producto_id"), 0)
-            revisado_en = row.get("revisado_en")
             # Por subdivision: el producto se conto en todas sus ubicaciones.
             if row.get("inspeccion__es_por_division") and not row.get("inspeccion__es_por_subdivision"):
                 if row.get("inspeccion__division_id"):
                     remember(
                         by_division.setdefault(int(row["inspeccion__division_id"]), {}),
                         product_id,
-                        revisado_en,
+                        row,
                     )
                 continue
-            remember(branch_wide, product_id, revisado_en)
+            remember(branch_wide, product_id, row)
 
         def counted_at(product_id, division_id, subdivision_id):
-            dates = [
+            found = [
                 source.get(product_id)
                 for source in (
                     branch_wide,
@@ -5857,10 +5869,40 @@ class RandomInspectionCoverageMapAPIView(APIView):
                 )
                 if product_id in source
             ]
-            if not dates:
-                return False, None
-            stamped = [value for value in dates if value]
-            return True, (max(stamped) if stamped else None)
+            if not found:
+                return False, None, None
+            stamped = [row for row in found if row.get("revisado_en")]
+            latest = max(stamped, key=lambda row: row["revisado_en"]) if stamped else found[0]
+            return True, latest.get("revisado_en"), latest
+
+        def count_result(row, subdivision_id):
+            """Resultado del conteo en esta ubicacion: lo contado vs el sistema."""
+            contada = None
+            sistema = None
+            for entry in row.get("conteo_ubicaciones") or []:
+                if isinstance(entry, dict) and _normalize_int(entry.get("subdivision_id"), 0) == subdivision_id:
+                    contada = entry.get("cantidad_contada")
+                    sistema = entry.get("cantidad_sistema")
+                    break
+            por_ubicacion = contada is not None
+            if not por_ubicacion:
+                contada = row.get("cantidad_reportada")
+                sistema = row.get("cantidad_esperada")
+            name = " ".join(
+                part for part in (
+                    _normalize_text(row.get("inspeccion__usuario__first_name")),
+                    _normalize_text(row.get("inspeccion__usuario__last_name")),
+                ) if part
+            ) or _normalize_text(row.get("inspeccion__usuario__email"))
+            return {
+                "coincide": row.get("estado_revision") == InspeccionAleatoriaItem.EstadosRevision.COINCIDE,
+                "no_encontrado": bool(row.get("no_encontrado")),
+                "cantidad_contada": _normalize_int(contada, 0) if contada is not None else None,
+                "cantidad_sistema": _normalize_int(sistema, 0) if sistema is not None else None,
+                "por_ubicacion": por_ubicacion,
+                "revisor": name,
+                "revisado_en": _parse_iso_timestamp(row["revisado_en"]) if row.get("revisado_en") else "",
+            }
 
         bodegas = list(
             Bodega.objects.filter(sucursal_id=sucursal_id).order_by("nombre", "id")
@@ -5905,25 +5947,28 @@ class RandomInspectionCoverageMapAPIView(APIView):
                     "total": 0,
                     "contados": 0,
                     "pendientes": [],
+                    "contados_lista": [],
                 },
             )
-            is_counted, when = counted_at(product_id, division["id"], subdivision_id)
+            is_counted, when, count_row = counted_at(product_id, division["id"], subdivision_id)
             division["total"] += 1
             subdivision["total"] += 1
+            product_payload = {
+                "producto_id": product_id,
+                "codigo": _normalize_text(row.get("producto__codigo")),
+                "nombre": _normalize_text(row.get("producto__nombre")),
+                "cantidad": _normalize_int(row.get("total"), 0),
+            }
             if is_counted:
                 division["contados"] += 1
                 subdivision["contados"] += 1
                 if when and (division["ultimo_conteo"] is None or when > division["ultimo_conteo"]):
                     division["ultimo_conteo"] = when
-            else:
-                subdivision["pendientes"].append(
-                    {
-                        "producto_id": product_id,
-                        "codigo": _normalize_text(row.get("producto__codigo")),
-                        "nombre": _normalize_text(row.get("producto__nombre")),
-                        "cantidad": _normalize_int(row.get("total"), 0),
-                    }
+                subdivision["contados_lista"].append(
+                    {**product_payload, "resultado": count_result(count_row, subdivision_id)}
                 )
+            else:
+                subdivision["pendientes"].append(product_payload)
 
         divisions_payload = []
         for division in divisions.values():
@@ -5933,6 +5978,7 @@ class RandomInspectionCoverageMapAPIView(APIView):
             )
             for subdivision in subdivisions:
                 subdivision["pendientes"].sort(key=lambda item: _natural_sort_key(item["codigo"]))
+                subdivision["contados_lista"].sort(key=lambda item: _natural_sort_key(item["codigo"]))
             divisions_payload.append(
                 {
                     **division,
@@ -5991,6 +6037,19 @@ class RandomInspectionRecentlyCountedAPIView(APIView):
         division_id = _normalize_int(request.data.get("division_id"), 0)
         subdivision_id = _normalize_int(request.data.get("subdivision_id"), 0) or None
         sucursal_id = _normalize_int(request.data.get("sucursal_id"), 0)
+        # Varias perchas a la vez (desde el mapa): cuenta lo contado en
+        # cualquiera de ellas; lo contado en otra percha no.
+        raw_division_ids = request.data.get("division_ids")
+        scope_division_ids = {
+            value
+            for value in (
+                _normalize_int(raw, 0)
+                for raw in (raw_division_ids if isinstance(raw_division_ids, list) else [])
+            )
+            if value > 0
+        }
+        if division_id > 0:
+            scope_division_ids.add(division_id)
         raw_ids = request.data.get("producto_ids")
         if raw_ids is not None and not isinstance(raw_ids, list):
             return Response({"detail": "producto_ids debe ser una lista."}, status=status.HTTP_400_BAD_REQUEST)
@@ -6035,7 +6094,7 @@ class RandomInspectionRecentlyCountedAPIView(APIView):
             )
             for row in rows:
                 division_scoped = bool(row["inspeccion__es_por_division"]) and not row["inspeccion__es_por_subdivision"]
-                if division_id > 0 and division_scoped and int(row["inspeccion__division_id"] or 0) != division_id:
+                if scope_division_ids and division_scoped and int(row["inspeccion__division_id"] or 0) not in scope_division_ids:
                     continue
                 pid = int(row["producto_id"])
                 current = latest_by_product.get(pid)

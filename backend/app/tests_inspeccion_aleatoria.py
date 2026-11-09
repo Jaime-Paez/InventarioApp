@@ -965,6 +965,11 @@ class CroquisConteoTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(divisiones["Percha B"]["contados"], 1)
         nivel = divisiones["Percha A"]["subdivisiones"][0]
         self.assertEqual([p["codigo"] for p in nivel["pendientes"]], ["P-2"])
+        # Los contados tambien se listan, con el resultado del conteo.
+        self.assertEqual([p["codigo"] for p in nivel["contados_lista"]], ["P-1"])
+        resultado = nivel["contados_lista"][0]["resultado"]
+        self.assertTrue(resultado["coincide"])
+        self.assertEqual(resultado["cantidad_contada"], 12)
 
     def test_conteo_por_division_solo_cubre_esa_percha(self):
         Inventario.objects.create(producto=self.producto, subdivision=self.sub_b, cantidad=2)
