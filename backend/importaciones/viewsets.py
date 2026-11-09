@@ -1108,8 +1108,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # Los códigos nuevos se revisan aquí porque es el último paso donde
         # todavía se pueden cambiar (al importar se vuelven a revisar).
         vigentes = instance.detalles.filter(quitado=False)
-        # Un código que quedó en dos filas (p. ej. con referencias distintas)
-        # se puede tener en la verificación, pero no pasa a confirmación.
+        # Un código en dos filas con la misma referencia se puede tener en la
+        # verificación, pero no pasa a confirmación (con referencias distintas
+        # si: se suman al importar).
         repetidos = ImportacionSerializer.productos_repetidos(vigentes.select_related("producto"))
         invalidos = ImportacionSerializer.validar_codigos_nuevos(
             vigentes.filter(producto__isnull=True).values_list("codigo", "nombre"),
@@ -1206,8 +1207,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             fecha_importacion = timezone.localdate()
 
         # Keys of reviewed items: String(producto_id) or "sc_{detalle_id}"
-        selected_keys = set(str(k) for k in (request.data.get("detalles_seleccionados") or []))
-        x_keys = set(str(k) for k in (request.data.get("detalles_x") or []))
+        # Un producto en varias filas (otra referencia) llega como "<id>~2":
+        # es el mismo producto.
+        selected_keys = set(str(k).split("~")[0] for k in (request.data.get("detalles_seleccionados") or []))
+        x_keys = set(str(k).split("~")[0] for k in (request.data.get("detalles_x") or []))
         if not selected_keys:
             return Response(
                 {"detail": "Selecciona al menos un producto para importar."},
@@ -1308,6 +1311,30 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # shipment; their review data already lives in historial_confirmacion.
         if detalles_to_delete:
             ImportacionDetalle.objects.filter(id__in=detalles_to_delete).delete()
+
+        # Mismo producto en varias filas (cada una con otra referencia de la
+        # fabrica): desde aqui es un solo producto, con las cantidades sumadas
+        # y las referencias juntas en el comentario.
+        por_producto = {}
+        for detalle in detalles:
+            if detalle.id in detalles_to_delete or not detalle.producto_id:
+                continue
+            por_producto.setdefault(detalle.producto_id, []).append(detalle)
+        for filas in por_producto.values():
+            if len(filas) < 2:
+                continue
+            principal, otras = filas[0], filas[1:]
+            principal.cantidad = sum(int(fila.cantidad or 0) for fila in filas)
+            if any(fila.cantidad_confirmada is not None for fila in filas):
+                principal.cantidad_confirmada = sum(int(fila.cantidad_confirmada or 0) for fila in filas)
+            if any(fila.cantidad_aproximada is not None for fila in filas):
+                principal.cantidad_aproximada = sum(int(fila.cantidad_aproximada or 0) for fila in filas)
+            referencias = [str(fila.referencia or "").strip() for fila in filas if str(fila.referencia or "").strip()]
+            nota = f"Referencias: {', '.join(referencias)}" if len(referencias) > 1 else ""
+            comentarios = [c for c in [principal.comentario or ""] + [fila.comentario or "" for fila in otras] if c.strip()]
+            principal.comentario = " | ".join(dict.fromkeys(comentarios + ([nota] if nota else [])))
+            principal.save(update_fields=["cantidad", "cantidad_confirmada", "cantidad_aproximada", "comentario"])
+            ImportacionDetalle.objects.filter(id__in=[fila.id for fila in otras]).delete()
 
         # Fin del proceso: recien ahora los productos nuevos que si se importan
         # entran al catalogo (los negados ya se borraron arriba).
