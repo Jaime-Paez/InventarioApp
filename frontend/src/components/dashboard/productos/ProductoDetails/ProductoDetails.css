@@ -90,7 +90,7 @@
 }
 
 .alternos-grupo__item:hover {
-  background: var(--color-surface-darker);
+  background: color-mix(in srgb, var(--color-primary) 7%, transparent);
 }
 
 .alternos-grupo__codigo {
