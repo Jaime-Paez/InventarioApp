@@ -7290,6 +7290,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // El backend borra y vuelve a crear los detalles al guardar: la
   // coincidencia (amarillo/naranja) se reenvía para no perderla.
   const coincidenciaPorDefectoRef = useRef(() => null)
+  // Filas en el orden en que se ven en la tabla (para el Excel).
+  const shownDetailsRef = useRef([])
   // PVP JP que muestra la tabla: el del catalogo o, sin catalogo, el de la
   // coincidencia elegida (o la primera con precio). Lo usan la columna, la
   // diferencia y el Excel.
@@ -7462,8 +7464,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       // se empareja por _key o código, así que se puede reordenar libremente.
       // Tambien salen los quitados (rojo, tachados, Estado "No se pidió"): al
       // subirlo siguen quitados mientras su Estado diga eso.
-      const sortedDetails = [...details]
-        .sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
+      // Mismo orden que la tabla (grupos y completitud), no el orden guardado.
+      const sortedDetails = shownDetailsRef.current?.length === details.length
+        ? [...shownDetailsRef.current]
+        : [...details].sort((a, b) => (Number(a.orden) || 0) - (Number(b.orden) || 0))
       // Colores de la tabla: blanco (catalogo), amarillo (no existe en el
       // catalogo), verde/turquesa (agregado en la verificacion), rojo tachado
       // (quitado).
@@ -7500,7 +7504,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           return !isNaN(n) && n > 0 ? n : null
         })()
         // diff uses real price so static color is meaningful; null for SIN CATÁLOGO
-        const diff = precioReal != null && precioConf != null ? +(precioReal - precioConf).toFixed(2) : null
+        // Mismo signo que la tabla: PVP Aprox. - PVP JP (negativo = mas barato).
+        const diff = !(isVerificar && item.quitado) && precioReal != null && precioConf != null ? +(precioConf - precioReal).toFixed(2) : null
         // precio in cell is always numeric: 0 for SIN CATÁLOGO so formula =E-G can always compute
         const precio = precioReal ?? 0
         return [codigo, nombre, oem, referencia, precio, cantidad, precioConf, cantConf, item.comentario || '', diff, ESTADO[tipos[idx]], item._key]
@@ -7511,7 +7516,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const worksheet = { '!ref': XLSXStyle.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: NROWS, c: NCOLS - 1 } }) }
       const setCell = (r, c, val, s, formula) => {
         const ref = XLSXStyle.utils.encode_cell({ r, c })
-        if (formula) { worksheet[ref] = { t: 'n', v: val ?? 0, f: formula, s }; return }
+        if (formula) { worksheet[ref] = val == null ? { t: 's', v: '', f: formula, s } : { t: 'n', v: val, f: formula, s }; return }
         if (val == null) { worksheet[ref] = { t: 's', v: '', s }; return }
         if (typeof val === 'number') { worksheet[ref] = { t: 'n', v: val, s }; return }
         worksheet[ref] = { t: 's', v: String(val), s }
@@ -7531,11 +7536,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           // Toda la fila con el color de la tabla; la diferencia se pinta
           // (verde/amarillo/rojo) salvo en los quitados.
           let bg = FONDO[tipo] || 'FFFFFF'
-          if (isDiff && !isEmpty && !quitado) bg = val >= 0 ? 'dcfce7' : val >= -1 ? 'fef9c3' : 'fee2e2'
+          if (isDiff && !isEmpty && !quitado) bg = val <= 0 ? 'dcfce7' : val <= 1 ? 'fef9c3' : 'fee2e2'
           const numFmt = ci === 4 || ci === RO ? '0.00' : ci === 5 || ci === RO + 1 ? '0' : isDiff ? '0.00' : null
-          const font = quitado ? { strike: true, color: { rgb: 'B91C1C' } } : undefined
+          // Tachado en rojo, salvo el comentario y el estado (se leen normal).
+          const font = quitado ? (ci === 8 || ci === ESTADO_CI ? { color: { rgb: 'B91C1C' } } : { strike: true, color: { rgb: 'B91C1C' } }) : undefined
           const s = { fill: { fgColor: { rgb: bg }, patternType: 'solid' }, alignment: { vertical: 'center' }, border, ...(font ? { font } : {}), ...(numFmt ? { numFmt } : {}) }
-          const formula = isDiff ? `IF(${editCol}${excelRow}="","",${precioCol}${excelRow}-${editCol}${excelRow})` : undefined
+          const formula = isDiff && !quitado ? `IF(${editCol}${excelRow}="","",${editCol}${excelRow}-${precioCol}${excelRow})` : undefined
           setCell(ri + 1, ci, val, s, formula)
         })
       })
@@ -7572,11 +7578,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const sqrefDiff = filasActivas.map((r) => `${jCol}${r}`).join(' ') || `${jCol}2`
       void eCol; void gCol; void hCol; void last
       const cfXml =
-        // J: verde ≥0, amarillo ≥-1, rojo <-1
+        // J (como en la tabla): verde ≤0, amarillo ≤1, rojo >1
         `<conditionalFormatting sqref="${sqrefDiff}">` +
-        `<cfRule type="cellIs" dxfId="0" priority="1" stopIfTrue="1" operator="greaterThanOrEqual"><formula>0</formula></cfRule>` +
-        `<cfRule type="cellIs" dxfId="1" priority="2" stopIfTrue="1" operator="greaterThanOrEqual"><formula>-1</formula></cfRule>` +
-        `<cfRule type="cellIs" dxfId="2" priority="3" operator="lessThan"><formula>-1</formula></cfRule>` +
+        `<cfRule type="cellIs" dxfId="0" priority="1" stopIfTrue="1" operator="lessThanOrEqual"><formula>0</formula></cfRule>` +
+        `<cfRule type="cellIs" dxfId="1" priority="2" stopIfTrue="1" operator="lessThanOrEqual"><formula>1</formula></cfRule>` +
+        `<cfRule type="cellIs" dxfId="2" priority="3" operator="greaterThan"><formula>1</formula></cfRule>` +
         `</conditionalFormatting>`
 
       let sheetXml = dec.decode(unzipped['xl/worksheets/sheet1.xml'])
@@ -8563,6 +8569,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       return item.producto?.id ? `p:${item.producto.id}` : `c:${codigo.toUpperCase()}`
     }
   )
+  // El Excel sale en este mismo orden.
+  shownDetailsRef.current = shownDetails
   // Lleva a la primera fila de un codigo repetido y marca todas sus filas.
   // Cada clic en "N repetidos" va al siguiente codigo repetido.
   const repetidoSiguienteVerificacionRef = useRef(0)
