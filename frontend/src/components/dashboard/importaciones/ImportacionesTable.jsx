@@ -7581,16 +7581,17 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const bt = { style: 'thin', color: { rgb: 'D1D5DB' } }
       const hdr = { font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 10 }, fill: { fgColor: { rgb: '1e3a5f' }, patternType: 'solid' }, alignment: { horizontal: 'center', vertical: 'center' }, border: { top: bt, bottom: { style: 'medium', color: { rgb: '2563EB' } }, left: bt, right: bt } }
       const precioHdr = { ...hdr, fill: { fgColor: { rgb: '15803d' }, patternType: 'solid' }, border: { ...hdr.border, bottom: { style: 'medium', color: { rgb: '166534' } } } }
-      const worksheet = XLSXStyle.utils.aoa_to_sheet([['Código', 'Referencia', 'OEM', 'Precio']])
-      ;['A1', 'B1', 'C1'].forEach((ref) => { worksheet[ref].s = hdr })
+      const worksheet = XLSXStyle.utils.aoa_to_sheet([['Código', 'Referencia', 'OEM', 'Precio', 'Cantidad']])
+      ;['A1', 'B1', 'C1', 'E1'].forEach((ref) => { worksheet[ref].s = hdr })
       worksheet.D1.s = precioHdr
-      worksheet['!cols'] = [{ wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 12 }]
+      worksheet['!cols'] = [{ wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 12 }]
       worksheet['!rows'] = [{ hpt: 22 }]
       const instrucciones = XLSXStyle.utils.aoa_to_sheet([
         ['Cómo llenar la plantilla'],
         ['1. Una fila por producto, en la hoja "Precios".'],
         ['2. Llena al menos uno: Código, Referencia u OEM (se busca en ese orden).'],
         ['3. Precio: el PVP aproximado, con punto o coma decimal (ej. 12.50).'],
+        ['   Cantidad (opcional): la cantidad aproximada. Si la dejas vacía, el producto queda sin cantidad (no en 0).'],
         ['4. No repitas productos. Los de la importación que no pongas quedan tachados (No se pidió); los que no estén en la importación se agregan.'],
         ['5. Súbelo con Excel → Subir Excel en la verificación y luego guarda.'],
       ])
@@ -7629,7 +7630,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // quitado, igual que con la "x" (se puede restaurar). Las filas que no estan
   // en la lista se agregan como si se agregaran a mano: si el producto existe
   // en el catalogo se vincula; si no, entra como nuevo con el codigo sugerido.
-  const aplicarExcelFabrica = async ({ rawRows, codigoIdx, refIdx, oemIdx, precioIdx, xlsx }) => {
+  const aplicarExcelFabrica = async ({ rawRows, codigoIdx, refIdx, oemIdx, precioIdx, cantidadIdx = -1, xlsx }) => {
     const texto = (row, idx) => (idx === -1 ? '' : String(row[idx] ?? '').trim())
     const norm = (v) => String(v || '').trim().toLowerCase().replace(/^0+(?=.)/, '')
     const lista = (v) => String(v || '').split(',').map(norm).filter(Boolean)
@@ -7709,6 +7710,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       if (!yaAvisado) repetidos.push(grupo)
     })
     if (repetidos.length) { avisarRepetidos(repetidos); return }
+    // Cantidad (opcional): vacia = sin cantidad (no se toca, no queda en 0).
+    const cantidadDe = (row) => {
+      const raw = texto(row, cantidadIdx).replace(',', '.')
+      if (!raw) return null
+      const n = Number(raw)
+      return Number.isFinite(n) && n >= 0 ? String(Math.round(n)) : null
+    }
     const precioDe = (row) => {
       const precio = parseFloat(texto(row, precioIdx).replace(',', '.'))
       return !isNaN(precio) && precio >= 0 ? String(Math.round(precio * 100)) : null
@@ -7728,9 +7736,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       return
     }
     const precios = new Map()
+    const cantidades = new Map()
     porProducto.forEach(([{ row }], key) => {
       const precio = precioDe(row)
       if (precio != null) precios.set(key, precio)
+      const cantidad = cantidadDe(row)
+      if (cantidad != null) cantidades.set(key, cantidad)
     })
 
     // Filas que no estan en la lista: se buscan en el catalogo (como al
@@ -7741,7 +7752,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       producto: n.producto,
       codigo: '', nombre: '', oem: '', referencia: n.ref,
       cantidad: '', comentario: withNotaVerificacion('', NOTA_AGREGADO_VERIFICACION),
-      precio_estimado: precioDe(n.row) ?? '', cantidad_aproximada: '', precio_confirmado: '', cantidad_confirmada: '',
+      precio_estimado: precioDe(n.row) ?? '', cantidad_aproximada: cantidadDe(n.row) ?? '', precio_confirmado: '', cantidad_confirmada: '',
     }))
     if (noEncontradas.length) {
       const nuevos = noEncontradas.map((n, i) => ({
@@ -7750,7 +7761,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           _key: 'manual_' + Date.now() + '_' + i + '_' + Math.floor(Math.random() * 10000),
           producto: null, codigo: n.codigo || '', nombre: '', oem: n.oem || '', referencia: n.ref || '',
           cantidad: '', comentario: '',
-          precio_estimado: precioDe(n.row) ?? '', cantidad_aproximada: '', precio_confirmado: '', cantidad_confirmada: '',
+          precio_estimado: precioDe(n.row) ?? '', cantidad_aproximada: cantidadDe(n.row) ?? '', precio_confirmado: '', cantidad_confirmada: '',
         },
       }))
       let byFila = new Map()
@@ -7779,6 +7790,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
             if (!enExcel.has(enLista._key)) {
               enExcel.add(enLista._key)
               if (n.item.precio_estimado) precios.set(enLista._key, n.item.precio_estimado)
+              if (n.item.cantidad_aproximada) cantidades.set(enLista._key, n.item.cantidad_aproximada)
             }
             return
           }
@@ -7825,6 +7837,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     setDetails((prev) => {
       const next = prev.map((item) => {
         let out = precios.has(item._key) ? { ...item, precio_estimado: precios.get(item._key) } : item
+        if (cantidades.has(item._key)) out = { ...out, cantidad_aproximada: cantidades.get(item._key) }
         if (enExcel.has(item._key) && out.quitado) {
           out = { ...out, quitado: false, comentario: withoutNotaVerificacion(out.comentario, NOTA_QUITADO_VERIFICACION) }
         } else if (!enExcel.has(item._key) && !out.quitado) {
@@ -7837,6 +7850,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     const etiquetaDe = (item) => item.producto?.codigo || item.codigo || item.referencia || item.producto?.nombre || ''
     const pl = (n, uno, varios) => (n === 1 ? uno : varios)
     const notas = [`${precios.size} ${pl(precios.size, 'precio actualizado', 'precios actualizados')}`]
+    if (cantidades.size) notas.push(`${cantidades.size} ${pl(cantidades.size, 'cantidad', 'cantidades')}`)
     if (ausentes.length) {
       const lista = `${ausentes.slice(0, 12).map(etiquetaDe).join(', ')}${ausentes.length > 12 ? '…' : ''}`
       notas.push(`${ausentes.length} ${pl(ausentes.length, 'producto no venía en el Excel y quedó tachado', 'productos no venían en el Excel y quedaron tachados')} (No se pidió): ${lista}`)
@@ -7901,7 +7915,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El Excel debe ser el descargado de esta verificación o traer las columnas Código, Referencia u OEM, y Precio.', life: 6000 })
           return
         }
-        await aplicarExcelFabrica({ rawRows, codigoIdx, refIdx, oemIdx, precioIdx: precioFabIdx, xlsx })
+        await aplicarExcelFabrica({ rawRows, codigoIdx, refIdx, oemIdx, precioIdx: precioFabIdx, cantidadIdx: cantSugIdx, xlsx })
         return
       }
       if (codigoIdx === -1 || precioIdx === -1 || cantIdx === -1) {
