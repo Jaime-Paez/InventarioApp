@@ -34,6 +34,9 @@ import {
 import { TIPO_ENVIO_OPTIONS } from './tipoEnvio'
 import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
 import { UnsavedChangesDialog } from '../common/unsavedChanges/unsavedChanges'
+import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
+import useBorradorFormulario from '../common/useBorradorFormulario'
+import { formatDateTime } from '../../../utils/dateFormat'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -3608,6 +3611,7 @@ function CreateSalida({
         }
       }
 
+      void borrador.clear()
       onCreated?.(data)
       return true
     } catch (err) {
@@ -3631,6 +3635,88 @@ function CreateSalida({
     selectedReminderUserIds.length > 0
   )
 
+  // Borrador (todas las salidas menos los traslados, que ya tienen el suyo):
+  // se guarda solo en la base de datos y con "Guardar"; NO registra la salida
+  // ni mueve inventario. Al volver a abrir "Nueva salida" se recupera.
+  const isPrefilledSalida = Boolean(prefillTransferRequest || prefillGuardadoTraslado)
+  const borradorActivo = Boolean(open) && !isTraslado
+  const salidaHasContent = Boolean(formData.subTipoId) && (
+    details.length > 0 ||
+    Boolean(String(formData.no_documento || '').trim()) ||
+    Boolean(String(formData.factura_referencia || '').trim()) ||
+    Boolean(String(formData.descripcion || '').trim()) ||
+    Boolean(String(formData.cliente || '').trim()) ||
+    Boolean(selectedCliente) ||
+    selectedReminderUserIds.length > 0
+  )
+  const borradorSnapshot = useMemo(
+    () => ({
+      formData,
+      details,
+      selectedCliente,
+      clienteMode,
+      clienteForm,
+      selectedClienteAutos,
+      selectedReminderUserIds,
+    }),
+    [formData, details, selectedCliente, clienteMode, clienteForm, selectedClienteAutos, selectedReminderUserIds]
+  )
+  const borrador = useBorradorFormulario({
+    formulario: 'nueva-salida',
+    open: Boolean(open),
+    token,
+    enabled: borradorActivo,
+    restoreEnabled: !isPrefilledSalida,
+    snapshot: borradorSnapshot,
+    hasContent: salidaHasContent,
+    onRestore: (datos) => {
+      if (datos.formData && typeof datos.formData === 'object') {
+        setFormData((prev) => ({ ...prev, ...datos.formData, fecha: datos.formData.fecha || prev.fecha }))
+      }
+      if (Array.isArray(datos.details)) setDetails(datos.details)
+      if (datos.selectedCliente) setSelectedCliente(datos.selectedCliente)
+      if (datos.clienteMode) setClienteMode(datos.clienteMode)
+      if (datos.clienteForm && typeof datos.clienteForm === 'object') setClienteForm((prev) => ({ ...prev, ...datos.clienteForm }))
+      if (Array.isArray(datos.selectedClienteAutos)) setSelectedClienteAutos(datos.selectedClienteAutos)
+      if (Array.isArray(datos.selectedReminderUserIds)) setSelectedReminderUserIds(datos.selectedReminderUserIds)
+    },
+  })
+
+  const handleGuardarBorrador = async () => {
+    const ok = await borrador.save()
+    if (ok) notifySuccess('Progreso guardado. Aún no se registra la salida ni se mueve inventario.')
+    else notifyError(borrador.error || 'No se pudo guardar el progreso.')
+  }
+
+  // Atras: vuelve a elegir el tipo de salida y borra todo lo ingresado.
+  const [showBackConfirm, setShowBackConfirm] = useState(false)
+  const canGoBack = Boolean(formData.subTipoId) && !isPrefilledSalida && !isEditingGuardadoDraft
+  const backHasProgress = salidaHasContent || hasUnsavedProgress
+  const resetToTypeSelector = () => {
+    setShowBackConfirm(false)
+    void borrador.clear()
+    setFormData((prev) => ({ ...initialForm, fecha: todayISO(), sucursalId: prev.sucursalId }))
+    setDetails([])
+    setDetailDraft(initialDetail)
+    setDetailError('')
+    setProductSearch('')
+    setClienteMode(CLIENT_MODE_EXISTING)
+    setSelectedCliente(null)
+    setClienteForm(initialClienteForm)
+    setSelectedClienteAutos([])
+    setSelectedReminderUserIds([])
+    setActiveTab('general')
+    setFormSubmitted(false)
+  }
+  const handleBack = () => {
+    if (loading) return
+    if (backHasProgress) {
+      setShowBackConfirm(true)
+      return
+    }
+    resetToTypeSelector()
+  }
+
   const closeAllDropdowns = () => {
     setShowProductDropdown(false)
     setShowClienteDropdown(false)
@@ -3650,7 +3736,8 @@ function CreateSalida({
   // registrar la venta, asi que solo se pregunta antes de perder lo ingresado.
   const unsavedGuard = useUnsavedChangesGuard({
     watch: { formData, details },
-    enabled: Boolean(open) && !isManualTransferMode,
+    // Con borrador el progreso ya queda guardado: cerrar no pregunta.
+    enabled: Boolean(open) && !isManualTransferMode && !borradorActivo,
     onClose,
     label: 'Nueva salida',
   })
@@ -5014,10 +5101,31 @@ function CreateSalida({
           )}
 
           <div className="create-user__footer">
-            <button type="button" className="create-user__action create-user__action--cancel" onClick={attemptClose} disabled={loading}>
-              Cancelar
-            </button>
+            {canGoBack ? (
+              <button type="button" className="create-user__action create-user__action--cancel" onClick={handleBack} disabled={loading}>
+                Atrás
+              </button>
+            ) : (
+              <button type="button" className="create-user__action create-user__action--cancel" onClick={attemptClose} disabled={loading}>
+                Cancelar
+              </button>
+            )}
             <div className="create-salida__footer-actions">
+              {borradorActivo && formData.subTipoId && (borrador.savedAt || borrador.error) && (
+                <small className="create-salida__draft-status" data-title={borrador.error ? borrador.error : 'Se guarda solo mientras trabajas. No registra la salida ni mueve inventario.'}>
+                  {borrador.error ? 'No se pudo guardar' : `Guardado ${formatDateTime(borrador.savedAt)}`}
+                </small>
+              )}
+              {formData.subTipoId && borradorActivo && (
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--info"
+                  disabled={loading || borrador.saving || !salidaHasContent}
+                  onClick={handleGuardarBorrador}
+                >
+                  {borrador.saving ? 'Guardando...' : 'Guardar'}
+                </button>
+              )}
               {formData.subTipoId && isTraslado && formData.solicitudTrasladoId && !isEditingGuardadoDraft && (
                 <button
                   type="button"
@@ -5050,6 +5158,16 @@ function CreateSalida({
             </div>
           </div>
         </form>
+
+        <ConfirmDialog
+          open={showBackConfirm}
+          title="¿Volver atrás?"
+          message="Se borrará todo lo que ingresaste en esta salida (productos, cliente y datos) y volverás a elegir el tipo de salida."
+          confirmLabel="Sí, borrar todo"
+          cancelLabel="Seguir aquí"
+          onCancel={() => setShowBackConfirm(false)}
+          onConfirm={resetToTypeSelector}
+        />
 
         <UnsavedChangesDialog
           open={showCloseConfirm}

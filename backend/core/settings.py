@@ -124,6 +124,7 @@ INSTALLED_APPS = [
     "rendimiento",
     "taller",
     "caja_chica",
+    "borradores",
 ]
 
 

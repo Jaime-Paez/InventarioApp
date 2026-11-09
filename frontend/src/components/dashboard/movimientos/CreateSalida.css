@@ -2356,3 +2356,11 @@
   border-color: #388e3c;
   color: #fff;
 }
+
+/* Estado del borrador (guardado automatico) junto a los botones del pie. */
+.create-salida__draft-status {
+  align-self: center;
+  font-size: 0.78rem;
+  color: var(--text-muted, #64748b);
+  white-space: nowrap;
+}

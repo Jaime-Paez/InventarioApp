@@ -27,6 +27,9 @@ import {
 } from '../common/reminders/remindersStorage'
 import useUnsavedChangesGuard, { useUnsavedChangesRegistration } from '../common/unsavedChanges/useUnsavedChangesGuard'
 import { UnsavedChangesDialog } from '../common/unsavedChanges/unsavedChanges'
+import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
+import useBorradorFormulario from '../common/useBorradorFormulario'
+import { formatDateTime } from '../../../utils/dateFormat'
 
 const DEFAULT_IVA_RATE = 0.15
 const MIN_WIDTH = 720
@@ -420,6 +423,8 @@ function CreateEntrada({
   currentUser = null,
 }) {
   const [formData, setFormData] = useState(initialForm)
+  // Borrador del formulario (se asigna mas abajo, ver useBorradorFormulario).
+  const borradorRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [, setError] = useState('')
 
@@ -3296,6 +3301,7 @@ function CreateEntrada({
         emitRemindersSync()
       }
 
+      void borradorRef.current?.clear()
       onCreated?.(data, { isCompraLocal: isCompraEntrada })
       return true
       } catch (err) {
@@ -3731,9 +3737,94 @@ function CreateEntrada({
     },
     label: 'Nuevo pedido a sucursal',
   })
+  // Borrador (todas las entradas menos los pedidos a sucursal, que ya tienen
+  // el suyo): se guarda solo en la base de datos y con "Guardar"; NO registra
+  // la entrada ni mueve inventario. Al volver a abrir "Nueva entrada" se recupera.
+  const isPrefilledEntrada = Boolean(prefilledTransferRequest || prefilledCompraLocal)
+  const borradorActivo = Boolean(open) && !isTraslado
+  const entradaHasContent = Boolean(formData.subTipoId) && (
+    details.length > 0 ||
+    Boolean(String(formData.no_documento || '').trim()) ||
+    Boolean(String(formData.factura_referencia || '').trim()) ||
+    Boolean(String(formData.descripcion || '').trim()) ||
+    Boolean(String(formData.cliente || '').trim()) ||
+    Boolean(selectedCliente) ||
+    selectedReminderUserIds.length > 0
+  )
+  const borradorSnapshot = useMemo(
+    () => ({
+      formData,
+      details,
+      selectedCasaComercial,
+      selectedCliente,
+      clienteMode,
+      clienteForm,
+      selectedReminderUserIds,
+      locationAssignmentsByProduct,
+    }),
+    [formData, details, selectedCasaComercial, selectedCliente, clienteMode, clienteForm, selectedReminderUserIds, locationAssignmentsByProduct]
+  )
+  const borrador = useBorradorFormulario({
+    formulario: 'nueva-entrada',
+    open: Boolean(open),
+    token,
+    enabled: borradorActivo,
+    restoreEnabled: !isPrefilledEntrada,
+    snapshot: borradorSnapshot,
+    hasContent: entradaHasContent,
+    onRestore: (datos) => {
+      if (datos.selectedCasaComercial) {
+        setSelectedCasaComercial(datos.selectedCasaComercial)
+        setCasaComercialDraft(datos.selectedCasaComercial)
+      }
+      if (datos.formData && typeof datos.formData === 'object') {
+        setFormData((prev) => ({ ...prev, ...datos.formData, fecha: datos.formData.fecha || prev.fecha }))
+      }
+      if (Array.isArray(datos.details)) setDetails(datos.details)
+      if (datos.selectedCliente) setSelectedCliente(datos.selectedCliente)
+      if (datos.clienteMode) setClienteMode(datos.clienteMode)
+      if (datos.clienteForm && typeof datos.clienteForm === 'object') setClienteForm((prev) => ({ ...prev, ...datos.clienteForm }))
+      if (Array.isArray(datos.selectedReminderUserIds)) setSelectedReminderUserIds(datos.selectedReminderUserIds)
+      if (datos.locationAssignmentsByProduct && typeof datos.locationAssignmentsByProduct === 'object') {
+        setLocationAssignmentsByProduct(datos.locationAssignmentsByProduct)
+      }
+    },
+  })
+
+  borradorRef.current = borrador
+
+  const handleGuardarBorrador = async () => {
+    const ok = await borrador.save()
+    if (ok) notifySuccess('Progreso guardado. Aún no se registra la entrada ni se mueve inventario.')
+    else notifyError(borrador.error || 'No se pudo guardar el progreso.')
+  }
+
+  // Atras: vuelve a elegir el tipo de entrada y borra todo lo ingresado.
+  const [showBackConfirm, setShowBackConfirm] = useState(false)
+  const resetToTypeSelector = () => {
+    setShowBackConfirm(false)
+    void borrador.clear()
+    setFormData((prev) => ({ ...initialForm, fecha: todayISO(), sucursalId: prev.sucursalId }))
+    setDetails([])
+    setDetailDraft(initialDetail)
+    setDetailError('')
+    setProductSearch('')
+    setClienteMode(CLIENT_MODE_EXISTING)
+    setSelectedCliente(null)
+    setClienteForm(initialClienteForm)
+    setSelectedReminderUserIds([])
+    setLocationAssignmentsByProduct({})
+    setSelectedCasaComercial(null)
+    setCasaComercialDraft(null)
+    setCasaComercialQuery('')
+    setCasaComercialOptions([])
+    setActiveTab('general')
+  }
+
   const unsavedGuard = useUnsavedChangesGuard({
     watch: { formData, details },
-    enabled: Boolean(open) && !isTraslado,
+    // Con borrador el progreso ya queda guardado: cerrar no pregunta.
+    enabled: Boolean(open) && !isTraslado && !borradorActivo,
     onClose,
     label: 'Nueva entrada',
   })
@@ -3841,6 +3932,17 @@ function CreateEntrada({
     setShowCasaComercialDropdown(false)
     setLocationDropdownProductId('')
     setLocationDropdownField('')
+  }
+
+  const canGoBack = Boolean(formData.subTipoId) && !isPrefilledEntrada
+  const handleBack = () => {
+    if (loading) return
+    if (entradaHasContent || hasUnsavedProgress) {
+      closeAllDropdowns()
+      setShowBackConfirm(true)
+      return
+    }
+    resetToTypeSelector()
   }
 
   const attemptClose = () => {
@@ -5259,10 +5361,10 @@ function CreateEntrada({
                     setCasaComercialLastSearch(null)
                     setShowCasaComercialDropdown(false)
                   }
-                : attemptClose}
+                : canGoBack ? handleBack : attemptClose}
               disabled={loading || checkingLocationCoverage}
             >
-              {isCasaComercialStep ? 'Atrás' : 'Cancelar'}
+              {isCasaComercialStep || canGoBack ? 'Atrás' : 'Cancelar'}
             </button>
             {isCasaComercialStep ? (
               <button
@@ -5279,6 +5381,21 @@ function CreateEntrada({
               </button>
             ) : formData.subTipoId && (
               <div className="create-user__footer-group">
+                {borradorActivo && (borrador.savedAt || borrador.error) && (
+                  <small className="create-salida__draft-status" data-title={borrador.error ? borrador.error : 'Se guarda solo mientras trabajas. No registra la entrada ni mueve inventario.'}>
+                    {borrador.error ? 'No se pudo guardar' : `Guardado ${formatDateTime(borrador.savedAt)}`}
+                  </small>
+                )}
+                {borradorActivo && (
+                  <button
+                    type="button"
+                    className="create-user__action create-user__action--info"
+                    disabled={loading || borrador.saving || !entradaHasContent}
+                    onClick={handleGuardarBorrador}
+                  >
+                    {borrador.saving ? 'Guardando...' : 'Guardar'}
+                  </button>
+                )}
                 {isTraslado && (
                   <button
                     type="button"
@@ -5304,6 +5421,16 @@ function CreateEntrada({
             )}
           </div>
         </form>
+
+        <ConfirmDialog
+          open={showBackConfirm}
+          title="¿Volver atrás?"
+          message="Se borrará todo lo que ingresaste en esta entrada (productos y datos) y volverás a elegir el tipo de entrada."
+          confirmLabel="Sí, borrar todo"
+          cancelLabel="Seguir aquí"
+          onCancel={() => setShowBackConfirm(false)}
+          onConfirm={resetToTypeSelector}
+        />
 
         {showUrgenteConfirm && (
           <div

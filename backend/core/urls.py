@@ -16,6 +16,7 @@ from casa_comercial.viewsets import CasaComercialViewSet
 from configuracion.viewsets import ConfiguracionSistemaViewSet
 from importaciones.viewsets import ImportacionViewSet
 from taller.viewsets import InsumoViewSet, ManoObraViewSet, OrdenTallerViewSet, TallerViewSet, TecnicoViewSet
+from borradores.views import BorradorFormularioView
 from caja_chica.viewsets import CajaViewSet, CategoriaGastoViewSet, MovimientoCajaViewSet
 from productos.viewsets import (
     OEMProductoViewSet,
@@ -141,5 +142,6 @@ urlpatterns = [
         PermisosDisponiblesAPIView.as_view(),
         name="usuarios-permisos-opciones",
     ),
+    path("borradores/<str:formulario>/", BorradorFormularioView.as_view(), name="borrador-formulario"),
     path("", include(router.urls)),
 ]
