@@ -4632,12 +4632,21 @@ const hasReferenciaConflict = (row) => {
 
 // PVP JP: el precio registrado en el sistema (el del producto vinculado o, si
 // el codigo/referencia es de otra casa, el de ese producto).
-const sugerenciaSistemaPrecio = (row) => row.matched_producto_precio ?? row.conflicto_precio ?? row.sugerido_precio ?? null
+// Sin catalogo: el PVP elegido en una coincidencia o, por defecto, el de la
+// primera coincidencia con precio (COMPRA LOCAL primero).
+const primeraCoincidenciaConPrecio = (row) => (
+  row.matched_producto_id ? null : (row.oem_matches || []).find((m) => m?.precio != null) || null
+)
+const sugerenciaSistemaPrecio = (row) => row.matched_producto_precio ?? (row.matched_producto_id ? null : (
+  row.pvp_jp_elegido ?? row.conflicto_precio ?? row.sugerido_precio ?? primeraCoincidenciaConPrecio(row)?.precio ?? null
+))
 // Casa del PVP JP (misma prioridad que sugerenciaSistemaPrecio).
 const sugerenciaSistemaCasa = (row, casaNombre) => (
-  row.matched_producto_precio != null ? (casaNombre || '')
-    : row.conflicto_precio != null ? (row.conflicto_casa_nombre || '')
-      : (row.sugerido_casa || '')
+  row.matched_producto_id ? (casaNombre || '')
+    : row.pvp_jp_elegido != null ? (row.pvp_jp_casa || '')
+      : row.conflicto_precio != null ? (row.conflicto_casa_nombre || '')
+        : row.sugerido_precio != null ? (row.sugerido_casa || '')
+          : (primeraCoincidenciaConPrecio(row)?.casas_comerciales_nombres || []).join(', ')
 )
 // PVP Aprox.: el precio que se guarda. Elegir una coincidencia por OEM
 // (precio_nuevo, en centavos) tiene prioridad sobre el que trae el Excel.
@@ -4694,6 +4703,9 @@ const detalleToSugerenciaRow = (item, oemMatches) => {
     conflicto_casa: otraCasa,
     conflicto_casa_nombre: otraCasa ? (item._sugeridoCasa || '') : '',
     conflicto_precio: otraCasa ? precioCoincidencia : null,
+    // PVP JP elegido en una coincidencia (fila con su propio codigo).
+    pvp_jp_elegido: !producto && !porOem && !otraCasa ? precioCoincidencia : null,
+    pvp_jp_casa: !producto && !porOem && !otraCasa ? (item._sugeridoCasa || '') : '',
     precio_nuevo: String(item.precio_estimado || '').replace(/\D/g, ''),
     precio_casa: item.precio_casa || '',
     oem_matches: oemMatches ?? item._oemMatches ?? [],
@@ -4723,9 +4735,11 @@ const sugerenciaRowToDetalle = (row) => {
     comentario: row.comentario || '',
     _solId: row.solicitud_id || null,
     coincidencia: producto ? '' : row.conflicto_casa ? 'otra_casa' : row.codigo_sugerido ? 'oem' : '',
-    coincidencia_precio: row.conflicto_casa ? row.conflicto_precio : row.codigo_sugerido ? row.sugerido_precio : null,
+    // PVP JP de un producto sin catalogo: el elegido, el de la coincidencia o
+    // el de la primera coincidencia (ver sugerenciaSistemaPrecio).
+    coincidencia_precio: producto ? null : (sugerenciaSistemaPrecio(row) ?? null),
     _sugeridoDesde: row.sugerido_desde || '',
-    _sugeridoCasa: row.conflicto_casa ? (row.conflicto_casa_nombre || '') : (row.sugerido_casa || ''),
+    _sugeridoCasa: producto ? '' : sugerenciaSistemaCasa(row, ''),
     precio_estimado: centavos > 0 ? String(centavos) : Number(row.pvp) > 0 ? String(Math.round(Number(row.pvp) * 100)) : '',
     precio_casa: row.precio_casa || '',
     _oemMatches: row.oem_matches,
@@ -5000,8 +5014,13 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
   const updateRowDescripcion = (filaExcel, value) => updateRowCampo(filaExcel, 'descripcion', value)
   // Precio tomado de una coincidencia por OEM (centavos) y la casa de la que
   // salio; va al lado del precio en el Excel de la sugerencia.
+  // Producto sin catalogo: el precio va al PVP JP (no al PVP Aprox.).
   const updateRowPrecioCentavos = (filaExcel, centavosDigits, casaPrecio = '') => {
-    setRows((prev) => prev.map((r) => (r.fila_excel === filaExcel ? { ...r, precio_nuevo: centavosDigits, precio_casa: casaPrecio } : r)))
+    setRows((prev) => prev.map((r) => {
+      if (r.fila_excel !== filaExcel) return r
+      if (!r.matched_producto_id) return { ...r, pvp_jp_elegido: Number(centavosDigits) / 100, pvp_jp_casa: casaPrecio }
+      return { ...r, precio_nuevo: centavosDigits, precio_casa: casaPrecio }
+    }))
   }
 
   // Fila del Excel a partir de un producto del catalogo (vinculada).
@@ -5377,10 +5396,10 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                   {row.oem || (row.oem_matches || []).length ? (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                                       <span
-                                        title={row.oem || undefined}
+                                        data-title={row.oem || getOemDeCoincidencias(row.oem_matches) || undefined}
                                         style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                       >
-                                        {row.oem || '—'}
+                                        {row.oem || getOemDeCoincidencias(row.oem_matches) || '—'}
                                       </span>
                                       <Info
                                         size={13}
@@ -6213,7 +6232,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
               // guardada se vea igual. Solo referencia: no crea el producto.
               coincidencia: row.conflicto_casa ? 'otra_casa' : row.codigo_sugerido ? 'oem' : '',
               coincidencia_codigo: row.conflicto_casa ? '' : (row.sugerido_desde || ''),
-              coincidencia_casa: row.conflicto_casa ? (row.conflicto_casa_nombre || '') : (row.sugerido_casa || ''),
+              coincidencia_casa: row.matched_producto_id ? '' : getSistemaCasa(row),
               coincidencia_precio: getSistemaPrecio(row) != null ? Number(getSistemaPrecio(row)).toFixed(2) : null,
             }
       })
