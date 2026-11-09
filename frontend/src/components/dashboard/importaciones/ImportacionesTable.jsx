@@ -7487,7 +7487,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         ['1. Una fila por producto, en la hoja "Precios".'],
         ['2. Llena al menos uno: Código, Referencia u OEM (se busca en ese orden).'],
         ['3. Precio: el PVP aproximado, con punto o coma decimal (ej. 12.50).'],
-        ['4. No repitas productos. Los que no estén en la importación se ignoran.'],
+        ['4. No repitas productos. Los de la importación que no pongas quedan tachados (No se pidió); los que no estén en la importación se agregan.'],
         ['5. Súbelo con Excel → Subir Excel en la verificación y luego guarda.'],
       ])
       instrucciones.A1.s = { font: { bold: true, sz: 12 } }
@@ -7521,9 +7521,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
   // Verificacion: Excel de la fabrica, de 4 columnas (Codigo, Referencia, OEM
   // y Precio). Cada fila se busca en la lista por codigo, referencia u OEM (lo
-  // primero que traiga) y solo llena el PVP Aprox.; no agrega ni quita
-  // productos.
-  const aplicarExcelFabrica = ({ rawRows, codigoIdx, refIdx, oemIdx, precioIdx }) => {
+  // primero que traiga) y llena el PVP Aprox. Lo que no viene en el Excel queda
+  // quitado, igual que con la "x" (se puede restaurar). Las filas que no estan
+  // en la lista se agregan como si se agregaran a mano: si el producto existe
+  // en el catalogo se vincula; si no, entra como nuevo con el codigo sugerido.
+  const aplicarExcelFabrica = async ({ rawRows, codigoIdx, refIdx, oemIdx, precioIdx, xlsx }) => {
     const texto = (row, idx) => (idx === -1 ? '' : String(row[idx] ?? '').trim())
     const norm = (v) => String(v || '').trim().toLowerCase().replace(/^0+(?=.)/, '')
     const lista = (v) => String(v || '').split(',').map(norm).filter(Boolean)
@@ -7557,8 +7559,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       }
       if (!candidatos.length && norm(ref)) candidatos = current.filter((d) => refsDe(d).includes(norm(ref)))
       if (!candidatos.length && lista(oem).length) candidatos = current.filter((d) => oemsDe(d).some((o) => lista(oem).includes(o)))
-      if (!candidatos.length) { noEncontradas.push({ fila, etiqueta }); return }
-      if (candidatos.length > 1) { ambiguas.push({ fila, etiqueta }); return }
+      if (!candidatos.length) { noEncontradas.push({ fila, etiqueta, row, codigo, ref, oem }); return }
+      // Ambigua: no se le pone precio, pero esos productos si vinieron en el
+      // Excel (no se quitan).
+      if (candidatos.length > 1) { ambiguas.push({ fila, etiqueta, keys: candidatos.map((d) => d._key) }); return }
       const key = candidatos[0]._key
       porProducto.set(key, [...(porProducto.get(key) || []), { fila, row, etiqueta }])
     })
@@ -7571,20 +7575,128 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       if (!yaAvisado) repetidos.push(grupo)
     })
     if (repetidos.length) { avisarRepetidos(repetidos); return }
+    const precioDe = (row) => {
+      const precio = parseFloat(texto(row, precioIdx).replace(',', '.'))
+      return !isNaN(precio) && precio >= 0 ? String(Math.round(precio * 100)) : null
+    }
     const precios = new Map()
     porProducto.forEach(([{ row }], key) => {
-      const precio = parseFloat(texto(row, precioIdx).replace(',', '.'))
-      if (!isNaN(precio) && precio >= 0) precios.set(key, String(Math.round(precio * 100)))
+      const precio = precioDe(row)
+      if (precio != null) precios.set(key, precio)
     })
-    setDetails((prev) => prev.map((item) => (precios.has(item._key) ? { ...item, precio_estimado: precios.get(item._key) } : item)))
-    const notas = [`${precios.size} precio${precios.size !== 1 ? 's' : ''} actualizado${precios.size !== 1 ? 's' : ''}`]
-    if (noEncontradas.length) notas.push(`no están en la lista: filas ${unirFilas(noEncontradas.map((x) => `${x.fila} (${x.etiqueta})`))}`)
-    if (ambiguas.length) notas.push(`coinciden con varios productos: filas ${unirFilas(ambiguas.map((x) => `${x.fila} (${x.etiqueta})`))}`)
+
+    // Filas que no estan en la lista: se buscan en el catalogo (como al
+    // agregar a mano o con el Excel de la verificacion).
+    const enExcel = new Set([...porProducto.keys(), ...ambiguas.flatMap((a) => a.keys)])
+    const agregados = []
+    if (noEncontradas.length) {
+      const nuevos = noEncontradas.map((n, i) => ({
+        ...n,
+        item: {
+          _key: 'manual_' + Date.now() + '_' + i + '_' + Math.floor(Math.random() * 10000),
+          producto: null, codigo: n.codigo || '', nombre: '', oem: n.oem || '', referencia: n.ref || '',
+          cantidad: '', comentario: '',
+          precio_estimado: precioDe(n.row) ?? '', cantidad_aproximada: '', precio_confirmado: '', cantidad_confirmada: '',
+        },
+      }))
+      let byFila = new Map()
+      if (selectedCasa?.id && xlsx) {
+        try {
+          const aoa = [
+            ['CODIGO JP', 'REFERENCIA', 'OEM', 'DESCRIPCION', 'CANTIDAD'],
+            ...nuevos.map(({ item }) => [item.codigo, item.referencia, item.oem, '', '']),
+          ]
+          const lookupBook = xlsx.utils.book_new()
+          xlsx.utils.book_append_sheet(lookupBook, xlsx.utils.aoa_to_sheet(aoa), 'Nuevos')
+          const lookupOut = xlsx.write(lookupBook, { bookType: 'xlsx', type: 'array' })
+          const lookup = await runParseExcelJob({ file: new Blob([lookupOut]), fileName: 'nuevos.xlsx', casaId: selectedCasa.id, token })
+          byFila = new Map((lookup?.rows || []).map((r) => [r.fila_excel, enrichParsedRow(r, selectedCasa.codigo)]))
+        } catch (e) {
+          console.error(e)
+        }
+      }
+      nuevos.forEach((n, idx) => {
+        const found = byFila.get(idx + 2)
+        if (found?.matched_producto_id) {
+          const id = String(found.matched_producto_id)
+          // Ya estaba en la lista con otro dato (p. ej. otra referencia): es ese producto.
+          const enLista = current.find((d) => String(d.producto?.id ?? '') === id)
+          if (enLista) {
+            if (!enExcel.has(enLista._key)) {
+              enExcel.add(enLista._key)
+              if (n.item.precio_estimado) precios.set(enLista._key, n.item.precio_estimado)
+            }
+            return
+          }
+          if (agregados.some((a) => String(a.producto?.id ?? '') === id)) return
+          agregados.push({
+            ...n.item,
+            _key: id,
+            producto: {
+              id: found.matched_producto_id,
+              codigo: found.matched_producto_codigo,
+              nombre: found.matched_producto_nombre,
+              referencia: found.matched_producto_referencia,
+              precio: found.matched_producto_precio,
+            },
+            codigo: '', nombre: '', oem: '',
+            comentario: withNotaVerificacion('', NOTA_AGREGADO_VERIFICACION),
+          })
+          return
+        }
+        const precioJp = found ? (found.conflicto_precio ?? found.sugerido_precio ?? null) : null
+        agregados.push({
+          ...n.item,
+          codigo: n.item.codigo || found?.codigo || '',
+          nombre: found?.descripcion || '',
+          oem: n.item.oem || found?.oem || '',
+          referencia: n.item.referencia || found?.referencia || '',
+          ...(precioJp != null ? { precio: precioJp } : {}),
+          ...(found?.codigo_sugerido && !n.item.codigo ? {
+            _sugeridoDesde: found.sugerido_desde || '',
+            _sugeridoCasa: found.sugerido_casa || found.conflicto_casa_nombre || '',
+            coincidencia: found.conflicto_casa ? 'otra_casa' : 'oem',
+            coincidencia_precio: precioJp,
+          } : {}),
+          comentario: withNotaVerificacion('', NOTA_AGREGADO_VERIFICACION),
+        })
+      })
+    }
+
+    // Lo que no vino en el Excel queda quitado (como con la "x"); lo que vino
+    // y estaba quitado se restaura.
+    const ausentes = current.filter((item) => !item.quitado && !enExcel.has(item._key))
+    const restaurados = current.filter((item) => item.quitado && enExcel.has(item._key)).length
+    setDetails((prev) => {
+      const next = prev.map((item) => {
+        let out = precios.has(item._key) ? { ...item, precio_estimado: precios.get(item._key) } : item
+        if (enExcel.has(item._key) && out.quitado) {
+          out = { ...out, quitado: false, comentario: withoutNotaVerificacion(out.comentario, NOTA_QUITADO_VERIFICACION) }
+        } else if (!enExcel.has(item._key) && !out.quitado) {
+          out = { ...out, quitado: true, comentario: withNotaVerificacion(out.comentario, NOTA_QUITADO_VERIFICACION) }
+        }
+        return out
+      })
+      return [...next, ...agregados].map((item, i) => ({ ...item, orden: i + 1 }))
+    })
+    const etiquetaDe = (item) => item.producto?.codigo || item.codigo || item.referencia || item.producto?.nombre || ''
+    const pl = (n, uno, varios) => (n === 1 ? uno : varios)
+    const notas = [`${precios.size} ${pl(precios.size, 'precio actualizado', 'precios actualizados')}`]
+    if (ausentes.length) {
+      const lista = `${ausentes.slice(0, 12).map(etiquetaDe).join(', ')}${ausentes.length > 12 ? '…' : ''}`
+      notas.push(`${ausentes.length} ${pl(ausentes.length, 'producto no venía en el Excel y quedó tachado', 'productos no venían en el Excel y quedaron tachados')} (No se pidió): ${lista}`)
+    }
+    if (restaurados) notas.push(`${restaurados} ${pl(restaurados, 'restaurado', 'restaurados')}`)
+    if (agregados.length) {
+      notas.push(`${agregados.length} ${pl(agregados.length, 'producto del Excel no estaba en la lista y se agregó', 'productos del Excel no estaban en la lista y se agregaron')}: ${agregados.map(etiquetaDe).join(', ')}`)
+    }
+    if (ambiguas.length) notas.push(`coinciden con varios productos (sin precio): filas ${unirFilas(ambiguas.map((x) => `${x.fila} (${x.etiqueta})`))}`)
+    const aviso = ausentes.length || agregados.length || ambiguas.length
     toastRef.current?.show({
-      severity: noEncontradas.length || ambiguas.length ? 'warn' : 'success',
+      severity: aviso ? 'warn' : 'success',
       summary: 'Precios cargados',
       detail: `${notas.join('; ')}. Recuerda guardar.`,
-      life: noEncontradas.length || ambiguas.length ? 9000 : 5000,
+      life: aviso ? 12000 : 5000,
     })
   }
 
@@ -7634,7 +7746,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'El Excel debe ser el descargado de esta verificación o traer las columnas Código, Referencia u OEM, y Precio.', life: 6000 })
           return
         }
-        aplicarExcelFabrica({ rawRows, codigoIdx, refIdx, oemIdx, precioIdx: precioFabIdx })
+        await aplicarExcelFabrica({ rawRows, codigoIdx, refIdx, oemIdx, precioIdx: precioFabIdx, xlsx })
         return
       }
       if (codigoIdx === -1 || precioIdx === -1 || cantIdx === -1) {
