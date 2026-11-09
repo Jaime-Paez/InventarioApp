@@ -7236,12 +7236,18 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
   // El backend borra y vuelve a crear los detalles al guardar: la
   // coincidencia (amarillo/naranja) se reenvía para no perderla.
-  const coincidenciaPayload = (item) => ({
-    coincidencia: item.coincidencia || '',
-    coincidencia_codigo: item._sugeridoDesde || '',
-    coincidencia_casa: item._sugeridoCasa || '',
-    coincidencia_precio: item.coincidencia_precio != null && item.coincidencia_precio !== '' ? Number(item.coincidencia_precio).toFixed(2) : null,
-  })
+  const coincidenciaPorDefectoRef = useRef(() => null)
+  const coincidenciaPayload = (item) => {
+    const porDefecto = coincidenciaPorDefectoRef.current(item)
+    return {
+      coincidencia: item.coincidencia || '',
+      coincidencia_codigo: item._sugeridoDesde || '',
+      coincidencia_casa: item._sugeridoCasa || (porDefecto ? (porDefecto.casas_comerciales_nombres || []).join(', ') : ''),
+      coincidencia_precio: item.coincidencia_precio != null && item.coincidencia_precio !== ''
+        ? Number(item.coincidencia_precio).toFixed(2)
+        : porDefecto ? Number(porDefecto.precio).toFixed(2) : null,
+    }
+  }
 
   const handleSubmit = async () => {
     const itemsToSubmit = details
@@ -8452,6 +8458,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     referencia: getDetalleReferencia(d),
   })), [details])
   const coincidenciasByKey = useCoincidencias(token, open ? selectedCasa?.id : null, coincidenciaItems)
+  // Producto nuevo sin precio elegido: por defecto el de la primera
+  // coincidencia (COMPRA LOCAL primero), igual que el PVP JP de la sugerencia.
+  coincidenciaPorDefectoRef.current = (item) => {
+    if (item.producto?.id) return null
+    if (item.coincidencia_precio != null && item.coincidencia_precio !== '') return null
+    return (coincidenciasByKey[item._key] || []).find((m) => m?.precio != null) || null
+  }
   const sugerenciaRows = useMemo(
     () => (isSugerencia ? details.map((d) => detalleToSugerenciaRow(d, coincidenciasByKey[d._key])) : []),
     [isSugerencia, details, coincidenciasByKey]
@@ -8928,7 +8941,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                         const referencia = getDetalleReferencia(item) || '-'
                         const precioEstimadoValue = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
-                        const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? (item.coincidencia_precio != null && item.coincidencia_precio !== '' ? Number(item.coincidencia_precio) : null) ?? precioEstimadoValue
+                        const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio
+                          ?? (item.coincidencia_precio != null && item.coincidencia_precio !== '' ? Number(item.coincidencia_precio) : null)
+                          ?? (coincidenciaPorDefectoRef.current(item)?.precio != null ? Number(coincidenciaPorDefectoRef.current(item).precio) : null)
+                          ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
                           <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? (sinCatalogo ? ' imp-verificar__row--agregado-nuevo' : ' imp-verificar__row--agregado') : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>

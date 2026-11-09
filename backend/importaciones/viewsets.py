@@ -278,17 +278,21 @@ def _split_codes(value):
     return [code.strip() for code in str(value or "").split(",") if code.strip()]
 
 
-# Codigo base de un producto: los primeros 5 caracteres (P2484QH -> P2484).
-# Los productos con el mismo codigo base son la misma pieza en otras casas
-# (ver sync_grupo_producto); los que llevan "-" despues de la base (P2484CL-M,
-# P0254S-L) son variantes especiales y no entran al grupo.
+# Grupo de un producto: los primeros 5 caracteres del codigo mas la variante
+# que va despues del guion, si la tiene (P2484QH -> P2484, P2265QH-A ->
+# P2265-A). Los productos del mismo grupo son la misma pieza en otras casas
+# (P2265QH-A <-> P2265CL-A); otra variante (P2265S-D) es otra pieza.
 CODIGO_BASE_LENGTH = 5
 
 
 def _codigo_base(codigo):
     codigo = str(codigo or "").strip().upper()
-    if len(codigo) <= CODIGO_BASE_LENGTH or "-" in codigo[CODIGO_BASE_LENGTH:]:
+    if len(codigo) <= CODIGO_BASE_LENGTH:
         return ""
+    resto = codigo[CODIGO_BASE_LENGTH:]
+    if "-" in resto:
+        variante = resto[resto.index("-"):]
+        return f"{codigo[:CODIGO_BASE_LENGTH]}{variante}" if len(variante) > 1 else ""
     return codigo[:CODIGO_BASE_LENGTH]
 
 
@@ -396,7 +400,7 @@ def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=Fa
     if bases:
         for producto_id, codigo_producto in (
             Producto.objects.annotate(base=Upper(Substr("codigo", 1, CODIGO_BASE_LENGTH)))
-            .filter(base__in=bases)
+            .filter(base__in={base[:CODIGO_BASE_LENGTH] for base in bases})
             .values_list("id", "codigo")
         ):
             base = _codigo_base(codigo_producto)
