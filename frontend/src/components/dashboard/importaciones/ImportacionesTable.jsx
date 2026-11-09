@@ -4613,8 +4613,16 @@ const sugerenciaDuplicateKey = (row) => (
     ? `p:${row.matched_producto_id}`
     : String(row.codigo || '').trim() ? `c:${String(row.codigo).trim().toUpperCase()}` : ''
 )
+// Que tan completa esta una fila: OEM (propio o de sus coincidencias), PVP JP,
+// descripcion y referencia. Dentro de cada grupo van primero las mas completas.
+const sugerenciaCompletitud = (row) => {
+  const oem = row.oem || getOemDeCoincidencias(row.oem_matches)
+  const pvp = sugerenciaSistemaPrecio(row)
+  return (String(oem || '').trim() ? 8 : 0) + (pvp != null && Number(pvp) > 0 ? 4 : 0)
+    + (String(row.descripcion || '').trim() ? 2 : 0) + (String(row.referencia || '').trim() ? 1 : 0)
+}
 const sortSugerenciaRows = (rows) => juntarRepetidos(
-  [...rows].sort((a, b) => sugerenciaRowRank(a) - sugerenciaRowRank(b)),
+  [...rows].sort((a, b) => (sugerenciaRowRank(a) - sugerenciaRowRank(b)) || (sugerenciaCompletitud(b) - sugerenciaCompletitud(a))),
   sugerenciaDuplicateKey
 )
 
@@ -8384,6 +8392,34 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     })
   }, [])
   // Mismos grupos (y colores) que las filas de la verificacion.
+  // La "i" del OEM (sugerencia, verificacion y confirmacion): coincidencias
+  // del catalogo, pedidas una vez por fila.
+  const coincidenciaItems = useMemo(() => details.map((d) => ({
+    key: d._key,
+    codigo: d.producto?.codigo || d.codigo || '',
+    oem: getProductoOem(d.producto) || d.oem || '',
+    referencia: getDetalleReferencia(d),
+  })), [details])
+  const coincidenciasByKey = useCoincidencias(token, open ? selectedCasa?.id : null, coincidenciaItems)
+  // Producto nuevo sin precio elegido: por defecto el de la primera
+  // coincidencia (COMPRA LOCAL primero), igual que el PVP JP de la sugerencia.
+  coincidenciaPorDefectoRef.current = (item) => {
+    if (item.producto?.id) return null
+    if (item.coincidencia_precio != null && item.coincidencia_precio !== '') return null
+    return (coincidenciasByKey[item._key] || []).find((m) => m?.precio != null) || null
+  }
+  // Que tan completo esta un producto: primero los que tienen OEM (propio o
+  // de sus coincidencias), despues precio PVP JP, descripcion y referencia.
+  const completitudDe = (item) => {
+    const oem = getProductoOem(item.producto) || item.oem || getOemDeCoincidencias(coincidenciasByKey[item._key])
+    const pvp = item.producto?.precio ?? item.precio_pvp_snapshot ?? item.precio
+      ?? (item.coincidencia_precio != null && item.coincidencia_precio !== '' ? item.coincidencia_precio : null)
+      ?? coincidenciaPorDefectoRef.current(item)?.precio
+    const nombre = item.producto?.nombre || item.nombre
+    return (String(oem || '').trim() ? 8 : 0) + (pvp != null && Number(pvp) > 0 ? 4 : 0)
+      + (String(nombre || '').trim() ? 2 : 0) + (getDetalleReferencia(item) ? 1 : 0)
+  }
+  const porCompletitud = (items) => [...items].sort((a, b) => completitudDe(b) - completitudDe(a))
   const verificarColorDe = (item) => (
     item.quitado ? 'quitado'
       : esAgregadoVerificacion(item) ? (item.producto?.id ? 'agregadoExiste' : 'agregadoNuevo')
@@ -8400,7 +8436,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     isVerificar
       ? VERIFICAR_ORDEN_GRUPOS.flatMap((grupo) => {
         const enGrupo = details.filter((item) => verificarColorDe(item) === grupo)
-        return grupo.startsWith('agregado') ? enGrupo.reverse() : enGrupo
+        return porCompletitud(grupo.startsWith('agregado') ? enGrupo.reverse() : enGrupo)
       })
       : details,
     (item) => {
@@ -8468,22 +8504,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     const codigo = String(item.codigo || '').trim()
     return [codigo.toUpperCase(), { codigo, motivo: codigoInvalidoDe(item) }]
   })).values()]
-  // La "i" del OEM (sugerencia, verificacion y confirmacion): coincidencias
-  // del catalogo, pedidas una vez por fila.
-  const coincidenciaItems = useMemo(() => details.map((d) => ({
-    key: d._key,
-    codigo: d.producto?.codigo || d.codigo || '',
-    oem: getProductoOem(d.producto) || d.oem || '',
-    referencia: getDetalleReferencia(d),
-  })), [details])
-  const coincidenciasByKey = useCoincidencias(token, open ? selectedCasa?.id : null, coincidenciaItems)
-  // Producto nuevo sin precio elegido: por defecto el de la primera
-  // coincidencia (COMPRA LOCAL primero), igual que el PVP JP de la sugerencia.
-  coincidenciaPorDefectoRef.current = (item) => {
-    if (item.producto?.id) return null
-    if (item.coincidencia_precio != null && item.coincidencia_precio !== '') return null
-    return (coincidenciasByKey[item._key] || []).find((m) => m?.precio != null) || null
-  }
   const sugerenciaRows = useMemo(
     () => (isSugerencia ? details.map((d) => detalleToSugerenciaRow(d, coincidenciasByKey[d._key])) : []),
     [isSugerencia, details, coincidenciasByKey]
