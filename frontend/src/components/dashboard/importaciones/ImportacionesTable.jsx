@@ -9195,7 +9195,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                 {(() => {
                                   const priceField = isVerificar ? 'precio_estimado' : 'precio_confirmado'
                                   const qtyField = isVerificar ? 'cantidad_aproximada' : 'cantidad_confirmada'
-                                  const confirmedCentavos = item[priceField] ? parseInt(String(item[priceField]).replace(/\D/g, '') || '0', 10) : null
+                                  // Un PVP Aprox. en 0 no es un precio: sin diferencia hasta que tenga valor.
+                                  const confirmedRaw = item[priceField] ? parseInt(String(item[priceField]).replace(/\D/g, '') || '0', 10) : 0
+                                  const confirmedCentavos = confirmedRaw > 0 ? confirmedRaw : null
                                   const pvpForDiff = pvpJpDe(item)
                                   const storedCentavos = pvpForDiff != null ? Math.round(Number(pvpForDiff) * 100) : null
                                   const diff = storedCentavos != null && confirmedCentavos != null ? confirmedCentavos - storedCentavos : null
