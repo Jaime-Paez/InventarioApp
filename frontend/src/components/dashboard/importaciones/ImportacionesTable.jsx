@@ -62,6 +62,22 @@ const getReferenciasTexto = (producto, detalle = null) => [
   detalle?.referencia,
 ].filter(Boolean).join(' ')
 
+// Referencia a mostrar de un detalle: la de la propia fila cuando es una de
+// las del producto (un mismo codigo puede venir dos veces con referencias
+// distintas, p. ej. QFA0332 y QFA0756 del mismo filtro); si no, la principal
+// del catalogo (la fila quedo con la "Actual" al resolver el conflicto).
+const getDetalleReferencia = (detalle) => {
+  const producto = detalle?.producto?.id ? detalle.producto : null
+  const propia = String(detalle?.referencia || '').trim()
+  if (!producto) return propia
+  const principal = String(producto.referencia || '').trim()
+  if (!propia) return principal
+  const delProducto = [principal, ...(producto.referencias || []).map((r) => r?.valor)]
+    .map((v) => String(v || '').trim().toLowerCase())
+    .filter(Boolean)
+  return delProducto.includes(propia.toLowerCase()) ? propia : (principal || propia)
+}
+
 const normalizeImportSearch = (value) =>
   String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
@@ -1024,7 +1040,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       codigo: d.producto?.codigo || d.codigo || '',
       nombre: d.producto?.nombre || d.nombre || '',
       oem: getProductoOem(d.producto) || d.oem || '',
-      referencia: d.producto?.referencia || d.referencia || '',
+      referencia: getDetalleReferencia(d),
       precio: d.precio_confirmado ?? d.precio_estimado ?? d.producto?.precio ?? null,
       cantidad: d.cantidad,
       cantidadRecibida: cantidadesRecibidas[d.id] ?? '',
@@ -1074,7 +1090,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           codigo: d.producto?.codigo || d.codigo || '',
           nombre: d.producto?.nombre || d.nombre || '',
           oem: getProductoOem(d.producto) || d.oem || '',
-          referencia: d.producto?.referencia || d.referencia || '',
+          referencia: getDetalleReferencia(d),
           precio: d.precio_confirmado ?? d.precio_estimado ?? d.producto?.precio ?? null,
           cantidad: d.cantidad,
           cantidadRecibida: cantidadesRecibidas[d.id] ?? '',
@@ -2792,7 +2808,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const coincidenciaItems = useMemo(() => (imp?.detalles || []).map((d) => ({
     key: d.id,
     oem: getProductoOem(d.producto) || d.oem || '',
-    referencia: d.producto?.referencia || d.referencia || '',
+    referencia: getDetalleReferencia(d),
   })), [imp?.detalles])
   const coincidenciasByKey = useCoincidencias(token, imp?.casa_comercial?.id, coincidenciaItems)
   const [loadingImp, setLoadingImp] = useState(true)
@@ -2919,7 +2935,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
         codigo: d.producto?.codigo || d.codigo || '-',
         nombre: d.producto?.nombre || d.nombre || '-',
         oem: getProductoOem(d.producto) || d.oem || '-',
-        referencia: d.producto?.referencia || d.referencia || '-',
+        referencia: getDetalleReferencia(d) || '-',
         precio: d.precio_confirmado != null ? Number(d.precio_confirmado).toFixed(2) : '-',
         cantidad: d.cantidad_confirmada ?? d.cantidad ?? '-',
         comentario: d.comentario || '',
@@ -3263,7 +3279,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const nombre = d.producto?.nombre || d.nombre || '-'
                       const oem = String(getProductoOem(d.producto) || d.oem || '').trim() || '-'
                       const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
-                      const referencia = String(d.producto?.referencia || d.referencia || '').trim() || '-'
+                      const referencia = getDetalleReferencia(d) || '-'
                       const precio = d.precio_confirmado != null ? `$${Number(d.precio_confirmado).toFixed(2)}` : '-'
                       const cantidad = d.cantidad_confirmada ?? d.cantidad ?? '-'
                       const comentario = d.comentario || '-'
@@ -4654,7 +4670,7 @@ const detalleToSugerenciaRow = (item, oemMatches) => {
     codigo: producto?.codigo || item.codigo || '',
     descripcion: producto?.nombre || item.nombre || '',
     oem: getProductoOem(producto) || item.oem || '',
-    referencia: producto?.referencia || item.referencia || '',
+    referencia: getDetalleReferencia({ ...item, producto }),
     cantidad: item.cantidad ?? '',
     comentario: item.comentario || '',
     solicitud_id: item._solId || null,
@@ -7293,7 +7309,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           const centavos = parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
           return {
             codigo: item.producto?.codigo || item.codigo || '',
-            referencia: item.producto?.referencia || item.referencia || '',
+            referencia: getDetalleReferencia(item),
             oem: getProductoOem(item.producto) || item.oem || '',
             descripcion: item.producto?.nombre || item.nombre || '',
             cantidad: Number(item.cantidad) > 0 ? Number(item.cantidad) : '',
@@ -7339,7 +7355,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         const codigo = item.producto?.codigo || item.codigo || 'SIN CATÁLOGO'
         const nombre = item.producto?.nombre || item.nombre || ''
         const oem = getProductoOem(item.producto) || item.oem || ''
-        const referencia = item.producto?.referencia || item.referencia || ''
+        const referencia = getDetalleReferencia(item)
         // Keep null to detect SIN CATÁLOGO for coloring; cell will receive 0 as numeric value
         const precioReal = item.producto?.precio != null ? +Number(item.producto.precio).toFixed(2) : null
         const cantidad = +Number(item.cantidad || 0)
@@ -8345,7 +8361,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const grupo = grupos.get(clave)
       grupo.filas += 1
       grupo.keys.push(item._key)
-      const referencia = String(item.referencia || item.producto?.referencia || '').trim()
+      const referencia = getDetalleReferencia(item)
       if (referencia) grupo.referencias.push(referencia)
     })
     return [...grupos.values()].filter((grupo) => grupo.filas > 1)
@@ -8381,7 +8397,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const coincidenciaItems = useMemo(() => details.map((d) => ({
     key: d._key,
     oem: getProductoOem(d.producto) || d.oem || '',
-    referencia: d.producto?.referencia || d.referencia || '',
+    referencia: getDetalleReferencia(d),
   })), [details])
   const coincidenciasByKey = useCoincidencias(token, open ? selectedCasa?.id : null, coincidenciaItems)
   const sugerenciaRows = useMemo(
@@ -8858,7 +8874,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const nombre = item.producto?.nombre || item.nombre || ''
                         const oem = String(getProductoOem(item.producto) || item.oem || '').trim() || '-'
                         const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
-                        const referencia = String(item.producto?.referencia || item.referencia || '').trim() || '-'
+                        const referencia = getDetalleReferencia(item) || '-'
                         const precioEstimadoValue = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
                         const pvpValue = item.precio_pvp_snapshot ?? item.producto?.precio ?? item.precio ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
