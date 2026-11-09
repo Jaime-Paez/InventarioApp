@@ -449,6 +449,13 @@ def _sanitize_context(raw):
     sucursal_proveedora_id = _normalize_id(source.get("sucursal_proveedora_id"))
     if sucursal_proveedora_id:
         result["sucursal_proveedora_id"] = sucursal_proveedora_id
+    # Nombres de las sucursales: el caminito animado de la tarjeta de traslado
+    # los muestra (un usuario sin permiso sobre la otra sucursal no podria
+    # pedirlos al catalogo).
+    for _name_key in ("sucursal_solicitante_nombre", "sucursal_proveedora_nombre"):
+        _name_value = _normalize_text(source.get(_name_key))
+        if _name_value:
+            result[_name_key] = _name_value
     if "urgente" in source:
         result["urgente"] = bool(source.get("urgente"))
     detalle_usuarios = source.get("detalle_usuarios")
@@ -754,11 +761,38 @@ def _hydrate_urgente_from_solicitudes(reminders):
     from movimientos.models import SolicitudTraslado
 
     urgente_by_id = {}
-    for solicitud_id, urgente in (
+    # Junto con "urgente" se completan las sucursales (ids y nombres) que
+    # dibuja el caminito de la tarjeta; los recordatorios viejos no los traian.
+    branches_by_id = {}
+    for (
+        solicitud_id,
+        urgente,
+        solicitante_id,
+        solicitante_nombre,
+        proveedora_id,
+        proveedora_nombre,
+    ) in (
         SolicitudTraslado.objects.filter(id__in=sorted(solicitud_ids))
-        .values_list("id", "urgente")
+        .values_list(
+            "id",
+            "urgente",
+            "sucursal_solicitante_id",
+            "sucursal_solicitante__nombre",
+            "sucursal_proveedora_id",
+            "sucursal_proveedora__nombre",
+        )
     ):
         urgente_by_id[str(int(solicitud_id))] = bool(urgente)
+        branch_fields = {}
+        if solicitante_id:
+            branch_fields["sucursal_solicitante_id"] = str(int(solicitante_id))
+        if proveedora_id:
+            branch_fields["sucursal_proveedora_id"] = str(int(proveedora_id))
+        if _normalize_text(solicitante_nombre):
+            branch_fields["sucursal_solicitante_nombre"] = _normalize_text(solicitante_nombre)
+        if _normalize_text(proveedora_nombre):
+            branch_fields["sucursal_proveedora_nombre"] = _normalize_text(proveedora_nombre)
+        branches_by_id[str(int(solicitud_id))] = branch_fields
 
     hydrated = []
     changed = False
@@ -776,12 +810,15 @@ def _hydrate_urgente_from_solicitudes(reminders):
 
         current_urgente = context.get("urgente")
         db_urgente = urgente_by_id[context_id]
-        if current_urgente == db_urgente:
+        branch_fields = branches_by_id.get(context_id) or {}
+        branches_match = all(context.get(key) == value for key, value in branch_fields.items())
+        if current_urgente == db_urgente and branches_match:
             hydrated.append(reminder)
             continue
 
         updated_context = dict(context)
         updated_context["urgente"] = db_urgente
+        updated_context.update(branch_fields)
         updated_reminder = dict(reminder)
         updated_reminder["context"] = updated_context
         hydrated.append(updated_reminder)
@@ -845,7 +882,12 @@ def _merge_reminder(existing_reminder, incoming_reminder):
     _existing_ctx = existing.get("context") or {}
     if _incoming_ctx:
         _merged_ctx = dict(_incoming_ctx)
-        for _ctx_key in ("sucursal_solicitante_id", "sucursal_proveedora_id"):
+        for _ctx_key in (
+            "sucursal_solicitante_id",
+            "sucursal_proveedora_id",
+            "sucursal_solicitante_nombre",
+            "sucursal_proveedora_nombre",
+        ):
             if not _merged_ctx.get(_ctx_key) and _existing_ctx.get(_ctx_key):
                 _merged_ctx[_ctx_key] = _existing_ctx[_ctx_key]
         merged["context"] = _merged_ctx

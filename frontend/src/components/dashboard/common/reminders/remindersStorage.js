@@ -134,6 +134,11 @@ const sanitizeReminderContext = (rawContext) => {
   if (solicitanteId) result.sucursal_solicitante_id = solicitanteId
   const proveedoraId = normalizeId(rawContext?.sucursal_proveedora_id)
   if (proveedoraId) result.sucursal_proveedora_id = proveedoraId
+  // Nombres de las sucursales (los completa el backend): caminito del traslado.
+  const solicitanteNombre = String(rawContext?.sucursal_solicitante_nombre || '').trim()
+  if (solicitanteNombre) result.sucursal_solicitante_nombre = solicitanteNombre
+  const proveedoraNombre = String(rawContext?.sucursal_proveedora_nombre || '').trim()
+  if (proveedoraNombre) result.sucursal_proveedora_nombre = proveedoraNombre
   if (Array.isArray(rawContext?.detalle_usuarios)) {
     const sanitized = rawContext.detalle_usuarios
       .filter((entry) => entry && typeof entry === 'object' && normalizeId(entry?.id))

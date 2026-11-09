@@ -35,6 +35,7 @@ import {
   upsertTransferReminder,
 } from '../common/reminders/remindersStorage'
 import './RecordatoriosPopup.css'
+import TransferRoute from './TransferRoute'
 
 const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
 
@@ -3553,6 +3554,19 @@ function RecordatoriosPopup({
                           visualDecisionStatus !== 'completo' &&
                           visualDecisionStatus !== 'incompleto'
                         )
+                        // Caminito animado: sale de la proveedora y llega a la solicitante.
+                        const transferRouteOrigen = String(reminder?.context?.sucursal_proveedora_nombre || '').trim()
+                        const transferRouteDestino = String(reminder?.context?.sucursal_solicitante_nombre || '').trim()
+                        const transferRouteStage = (() => {
+                          if (!isTransferContextReminder || isTransferIssue) return ''
+                          if (!transferRouteOrigen && !transferRouteDestino) return ''
+                          if (visualDecisionStatus === 'recibido') {
+                            return displayStatus.className === 'issue' ? 'novedades' : 'recibido'
+                          }
+                          return ['pendiente', 'aceptada', 'enviado', 'rechazada', 'cancelado'].includes(visualDecisionStatus)
+                            ? visualDecisionStatus
+                            : ''
+                        })()
                         const timelineContextTitle = getTimelineReminderContextTitle(reminder)
                         const timelineContextReference = getTimelineReminderContextReference(reminder)
                         const timelineDescription = getTimelineReminderSummary({
@@ -3643,6 +3657,13 @@ function RecordatoriosPopup({
                               <p className="recordatorios-popup__timeline-item-description" title={timelineDescription}>
                                 {timelineDescription}
                               </p>
+                              {!!transferRouteStage && (
+                                <TransferRoute
+                                  stage={transferRouteStage}
+                                  origen={transferRouteOrigen}
+                                  destino={transferRouteDestino}
+                                />
+                              )}
                               {isAdminSummaryReminder && Array.isArray(reminder?.context?.detalle_usuarios) && reminder.context.detalle_usuarios.length > 0 && (
                                 <ul className="recordatorios-popup__inspection-summary-list">
                                   {reminder.context.detalle_usuarios.map((u) => {

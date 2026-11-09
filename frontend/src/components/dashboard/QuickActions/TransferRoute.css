@@ -1,0 +1,331 @@
+/* Caminito animado del traslado (tarjeta del recordatorio).
+   Colores = los del chip de estado de la misma tarjeta. */
+.transfer-route {
+  --tr-tone: #6b7280;
+  --tr-tone-soft: color-mix(in srgb, var(--tr-tone) 18%, transparent);
+  --tr-line: color-mix(in srgb, var(--color-border, #cfd5dd) 90%, transparent);
+  --tr-surface: #ffffff;
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  max-width: 560px;
+}
+.recordatorios-popup__dialog.is-dark .transfer-route {
+  --tr-surface: #1f252d;
+  --tr-line: #3b4652;
+}
+
+.transfer-route--pend { --tr-tone: #b45309; }
+.transfer-route--acc { --tr-tone: var(--color-success-text, #2e7d4a); }
+.transfer-route--sent { --tr-tone: var(--color-primary, #004570); }
+.transfer-route--ok { --tr-tone: var(--color-success-text, #2e7d4a); }
+.transfer-route--warn { --tr-tone: #c2410c; }
+.transfer-route--bad { --tr-tone: var(--color-error-text, #b42a2a); }
+.transfer-route--off { --tr-tone: #6b7280; }
+.recordatorios-popup__dialog.is-dark .transfer-route--pend { --tr-tone: #fbbf24; }
+.recordatorios-popup__dialog.is-dark .transfer-route--acc,
+.recordatorios-popup__dialog.is-dark .transfer-route--ok { --tr-tone: var(--color-success-text-dark, #5fcf86); }
+.recordatorios-popup__dialog.is-dark .transfer-route--sent { --tr-tone: var(--color-primary-dark-soft, #3fb8df); }
+.recordatorios-popup__dialog.is-dark .transfer-route--warn { --tr-tone: #fb923c; }
+.recordatorios-popup__dialog.is-dark .transfer-route--bad { --tr-tone: var(--color-error-text-dark, #f07272); }
+.recordatorios-popup__dialog.is-dark .transfer-route--off { --tr-tone: #9ca3af; }
+
+.transfer-route__path {
+  display: grid;
+  grid-template-columns: auto minmax(60px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.transfer-route__node {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 0;
+}
+.transfer-route__node--destino { flex-direction: row-reverse; }
+.transfer-route__label { display: grid; line-height: 1.15; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.transfer-route__label em {
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 600;
+  opacity: 0.65;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.transfer-route__node--destino .transfer-route__label { text-align: right; }
+
+.transfer-route__pin {
+  position: relative;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--tr-tone);
+  background: var(--tr-surface);
+}
+
+.transfer-route__track { position: relative; height: 26px; }
+.transfer-route__rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 0;
+  border-top: 2px dashed var(--tr-line);
+  transform: translateY(-50%);
+}
+.transfer-route__fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 0;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--tr-tone);
+  transform: translateY(-50%);
+}
+.transfer-route__marching {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: repeating-linear-gradient(90deg, var(--tr-tone) 0 8px, transparent 8px 16px);
+  background-size: 16px 2px;
+  opacity: 0;
+}
+.transfer-route__mover {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translate(-50%, -50%);
+  color: var(--tr-tone);
+  display: grid;
+  place-items: center;
+}
+.transfer-route__mover svg { display: block; }
+
+.transfer-route__note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--tr-tone);
+}
+.transfer-route__dots i {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: tr-dot 1.2s infinite ease-in-out;
+}
+.transfer-route__dots i:nth-child(2) { animation-delay: 0.15s; }
+.transfer-route__dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes tr-dot {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+
+/* 1. Por decidir: el sobre va del destino al origen y el origen late */
+.transfer-route--pend .transfer-route__mover { animation: tr-request 2.6s cubic-bezier(0.45, 0, 0.25, 1) infinite; }
+@keyframes tr-request {
+  0% { left: 100%; opacity: 0; }
+  12% { opacity: 1; }
+  75% { left: 0%; opacity: 1; }
+  88%, 100% { left: 0%; opacity: 0; }
+}
+.transfer-route--pend .transfer-route__node--origen .transfer-route__pin::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--tr-tone);
+  opacity: 0;
+  animation: tr-ring 2.6s ease-out 1.9s infinite;
+}
+@keyframes tr-ring {
+  0% { transform: scale(0.4); opacity: 0.9; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* 2. Aceptada: la caja se empaca en el origen y el camino se traza */
+.transfer-route--acc .transfer-route__mover svg { animation: tr-pack 1.4s ease-in-out infinite; transform-origin: 50% 100%; }
+@keyframes tr-pack {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  30% { transform: translateY(-4px) scale(0.96, 1.04); }
+  55% { transform: translateY(0) scale(1.05, 0.94); }
+  70% { transform: translateY(0) scale(1, 1); }
+}
+.transfer-route--acc .transfer-route__fill { height: 2px; opacity: 0.55; animation: tr-trace 2.4s ease-in-out infinite; }
+@keyframes tr-trace {
+  0% { width: 0; left: 0; }
+  55% { width: 100%; left: 0; }
+  100% { width: 0; left: 100%; }
+}
+
+/* 3. Enviado: el camion recorre, la via se mueve y el destino espera */
+.transfer-route--sent .transfer-route__marching { opacity: 0.35; animation: tr-march 0.6s linear infinite; }
+@keyframes tr-march { to { background-position: -16px 0; } }
+.transfer-route--sent .transfer-route__mover { animation: tr-drive 3.4s cubic-bezier(0.4, 0, 0.3, 1) infinite; }
+.transfer-route--sent .transfer-route__mover svg { animation: tr-bump 0.32s ease-in-out infinite alternate; }
+@keyframes tr-drive {
+  0% { left: 0%; opacity: 0; }
+  8% { opacity: 1; }
+  82% { left: 100%; opacity: 1; }
+  92%, 100% { left: 100%; opacity: 0; }
+}
+@keyframes tr-bump { to { transform: translateY(-1.5px); } }
+.transfer-route--sent .transfer-route__fill { animation: tr-drive-fill 3.4s cubic-bezier(0.4, 0, 0.3, 1) infinite; }
+@keyframes tr-drive-fill {
+  0% { width: 0; opacity: 0; }
+  8% { opacity: 0.9; }
+  82% { width: 100%; opacity: 0.9; }
+  100% { width: 100%; opacity: 0; }
+}
+.transfer-route--sent .transfer-route__node--destino .transfer-route__pin { animation: tr-wait 1.7s ease-in-out infinite; }
+@keyframes tr-wait { 50% { box-shadow: 0 0 0 5px var(--tr-tone-soft); } }
+
+/* 4. Cumplido y 5. Con novedades: llega una vez y queda quieto */
+.transfer-route--ok .transfer-route__mover,
+.transfer-route--warn .transfer-route__mover { animation: tr-arrive 1.5s cubic-bezier(0.3, 0, 0.2, 1) forwards; }
+@keyframes tr-arrive {
+  0% { left: 0%; opacity: 1; }
+  85% { left: 100%; opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+.transfer-route--ok .transfer-route__fill,
+.transfer-route--warn .transfer-route__fill { animation: tr-fill-in 1.5s cubic-bezier(0.3, 0, 0.2, 1) forwards; }
+@keyframes tr-fill-in {
+  0% { width: 0; }
+  85%, 100% { width: 100%; }
+}
+.transfer-route--warn .transfer-route__fill {
+  background: linear-gradient(90deg, var(--color-success-text, #2e7d4a), var(--tr-tone) 80%);
+}
+.transfer-route--ok .transfer-route__node--destino .transfer-route__pin,
+.transfer-route--warn .transfer-route__node--destino .transfer-route__pin {
+  animation: tr-land 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) 1.3s forwards;
+}
+@keyframes tr-land {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.6); background: var(--tr-tone); }
+  100% { transform: scale(1.25); background: var(--tr-tone); }
+}
+.transfer-route__stamp {
+  position: absolute;
+  right: -3px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--tr-tone);
+  color: var(--tr-surface);
+  font-size: 12px;
+  font-weight: 800;
+  transform: translate(0, -50%) scale(0);
+  animation: tr-pop 0.45s cubic-bezier(0.3, 1.7, 0.5, 1) 1.4s forwards;
+}
+.transfer-route--warn .transfer-route__stamp {
+  animation:
+    tr-pop 0.45s cubic-bezier(0.3, 1.7, 0.5, 1) 1.4s forwards,
+    tr-nudge 0.5s ease-in-out 2.1s 2;
+}
+@keyframes tr-pop { to { transform: translate(0, -50%) scale(1); } }
+@keyframes tr-nudge {
+  25% { transform: translate(0, -50%) rotate(-14deg); }
+  75% { transform: translate(0, -50%) rotate(14deg); }
+}
+
+/* Notas de los estados finales: aparecen al terminar la animacion */
+.transfer-route--ok .transfer-route__note,
+.transfer-route--warn .transfer-route__note,
+.transfer-route--bad .transfer-route__note,
+.transfer-route--off .transfer-route__note {
+  opacity: 0;
+  transform: translateY(3px);
+  animation: tr-note 0.4s ease-out 1.6s forwards;
+}
+.transfer-route--bad .transfer-route__note,
+.transfer-route--off .transfer-route__note { animation-delay: 0.7s; }
+@keyframes tr-note { to { opacity: 1; transform: none; } }
+
+/* 6. Rechazada: la caja intenta salir, el camino se rompe y la X tiembla */
+.transfer-route--bad .transfer-route__rail { border-top-style: solid; border-color: var(--tr-tone-soft); }
+.transfer-route--bad .transfer-route__rail--left { right: 50%; transform-origin: left center; animation: tr-snap 0.25s ease-out 0.45s forwards; }
+.transfer-route--bad .transfer-route__rail--right { left: 50%; transform-origin: right center; animation: tr-snap 0.25s ease-out 0.45s forwards; }
+@keyframes tr-snap { to { transform: translateY(-50%) scaleX(0.78); } }
+.transfer-route--bad .transfer-route__mover { animation: tr-try-leave 0.9s ease-in-out forwards; }
+@keyframes tr-try-leave {
+  0% { left: 0%; }
+  45% { left: 30%; }
+  60% { left: 27%; }
+  100% { left: 0%; }
+}
+.transfer-route__badge {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--tr-tone);
+  color: var(--tr-surface);
+  font-size: 12px;
+  font-weight: 800;
+  transform: translate(-50%, -50%) scale(0);
+  animation:
+    tr-pop-x 0.35s cubic-bezier(0.3, 1.7, 0.5, 1) 0.5s forwards,
+    tr-shake 0.4s ease-in-out 0.9s;
+}
+@keyframes tr-pop-x { to { transform: translate(-50%, -50%) scale(1); } }
+@keyframes tr-shake {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  25% { transform: translate(-62%, -50%) scale(1); }
+  75% { transform: translate(-38%, -50%) scale(1); }
+}
+
+/* 7. Cancelado: el camino se apaga y se tacha */
+.transfer-route--off .transfer-route__rail { border-top-style: dotted; animation: tr-fade 0.8s ease-out forwards; }
+@keyframes tr-fade { to { opacity: 0.45; } }
+.transfer-route__strike {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--tr-tone);
+  transform: translateY(-50%);
+  animation: tr-strike 0.6s ease-in-out 0.2s forwards;
+}
+@keyframes tr-strike { to { width: 100%; } }
+.transfer-route--off .transfer-route__node { opacity: 0.7; }
+.transfer-route--off .transfer-route__mover { opacity: 0.6; }
+
+@media (max-width: 520px) {
+  .transfer-route__path { grid-template-columns: 1fr; gap: 4px; }
+  .transfer-route__node--destino { flex-direction: row; }
+  .transfer-route__node--destino .transfer-route__label { text-align: left; }
+  .transfer-route__track { height: 30px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transfer-route *,
+  .transfer-route *::before,
+  .transfer-route *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+  }
+}
