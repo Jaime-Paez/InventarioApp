@@ -3908,7 +3908,7 @@ function VerificacionGroupsSummary({ conteo, chipProps, repetidos = [], onIrRepe
                   onIrRepetidos?.()
                 }
               }}
-              data-title={`Clic: ir a los repetidos (${repetidos.map((grupo) => (grupo.referencias.length ? `${grupo.codigo}: ${grupo.referencias.join(', ')}` : grupo.codigo)).join(' · ')}). Con referencias distintas pasan juntos, con el mismo precio, y se suman al importar; con la misma referencia deja solo una fila.`}
+              data-title={`Clic: ir a los repetidos (${repetidos.map((grupo) => (grupo.referencias.length ? `${grupo.codigo}: ${grupo.referencias.join(', ')}` : grupo.codigo)).join(' · ')}). Con referencias distintas pasan juntos, cada una con su precio, y se suman al importar; con la misma referencia deja solo una fila.`}
               style={{ ...chip, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
             >
               {plural(repetidos.length, 'repetido', 'repetidos')}
@@ -3972,7 +3972,7 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuev
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <span
               {...chipProps('repetidos', 'los productos repetidos')}
-              data-title={`Clic: ir a los repetidos (${repetidos.map((grupo) => (grupo.referencias.length ? `${grupo.codigo}: ${grupo.referencias.join(', ')}` : grupo.codigo)).join(' · ')}). Puedes pedir la cotización así. Con referencias distintas pasan juntos, con el mismo precio, y se suman al importar; con la misma referencia deja solo una fila.`}
+              data-title={`Clic: ir a los repetidos (${repetidos.map((grupo) => (grupo.referencias.length ? `${grupo.codigo}: ${grupo.referencias.join(', ')}` : grupo.codigo)).join(' · ')}). Puedes pedir la cotización así. Con referencias distintas pasan juntos, cada una con su precio, y se suman al importar; con la misma referencia deja solo una fila.`}
               style={{ ...chip, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
             >
               {repetidos.length} repetido{repetidos.length !== 1 ? 's' : ''}
@@ -7271,19 +7271,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, comentario: value } : item))
   }
 
-  // Un producto en varias filas (otra referencia) tiene un solo precio: al
-  // cambiar el de una fila cambia el de las demas.
+  // Un producto en varias filas (otra referencia): cada fila tiene su propio
+  // precio; cambiar uno no toca los demas.
   const handleConfirmedChange = (_key, field, value) => {
-    setDetails((prev) => {
-      const origen = prev.find((item) => item._key === _key)
-      const productoId = origen?.producto?.id
-      const esPrecio = field === 'precio_estimado' || field === 'precio_confirmado'
-      return prev.map((item) => (
-        item._key === _key || (esPrecio && productoId != null && item.producto?.id === productoId)
-          ? { ...item, [field]: String(value || '') }
-          : item
-      ))
-    })
+    setDetails((prev) => prev.map((item) => (
+      item._key === _key ? { ...item, [field]: String(value || '') } : item
+    )))
   }
 
   // El backend borra y vuelve a crear los detalles al guardar: la
@@ -7661,7 +7654,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const oem = texto(row, oemIdx)
       const etiqueta = codigo || ref || oem
       if (!etiqueta) return
-      const clave = norm(codigo) ? `c:${norm(codigo)}` : norm(ref) ? `r:${norm(ref)}` : `o:${lista(oem).join(',')}`
+      // El mismo codigo con otra referencia es otra linea (no un repetido).
+      const clave = norm(codigo) ? `c:${norm(codigo)}|${norm(ref)}` : norm(ref) ? `r:${norm(ref)}` : `o:${lista(oem).join(',')}`
       porValor.set(clave, [...(porValor.get(clave) || []), { fila, etiqueta }])
       let candidatos = []
       if (norm(codigo)) candidatos = current.filter((d) => codigoDe(d) === norm(codigo))
@@ -7824,21 +7818,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
 
     // Lo que no vino en el Excel queda quitado (como con la "x"); lo que vino
-    // y estaba quitado se restaura.
-    // Mismo producto en varias filas: todas con el mismo precio (el de su
-    // primera fila del Excel); si el Excel trae precios distintos se avisa.
-    const precioPorProducto = new Map()
-    const preciosDistintos = new Set()
-    current.forEach((item) => {
-      const productoId = item.producto?.id
-      if (productoId == null || !precios.has(item._key)) return
-      if (!precioPorProducto.has(productoId)) precioPorProducto.set(productoId, precios.get(item._key))
-      else if (precioPorProducto.get(productoId) !== precios.get(item._key)) preciosDistintos.add(item.producto?.codigo || String(productoId))
-    })
-    current.forEach((item) => {
-      const productoId = item.producto?.id
-      if (productoId != null && precioPorProducto.has(productoId) && enExcel.has(item._key)) precios.set(item._key, precioPorProducto.get(productoId))
-    })
+    // y estaba quitado se restaura. Un producto en varias filas (otra
+    // referencia): cada fila se queda con el precio de su propia linea del Excel.
     const ausentes = current.filter((item) => !item.quitado && !enExcel.has(item._key))
     const restaurados = current.filter((item) => item.quitado && enExcel.has(item._key)).length
     setDetails((prev) => {
@@ -7865,8 +7846,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       notas.push(`${agregados.length} ${pl(agregados.length, 'producto del Excel no estaba en la lista y se agregó', 'productos del Excel no estaban en la lista y se agregaron')}: ${agregados.map(etiquetaDe).join(', ')}`)
     }
     if (ambiguas.length) notas.push(`coinciden con varios productos (sin precio): filas ${unirFilas(ambiguas.map((x) => `${x.fila} (${x.etiqueta})`))}`)
-    if (preciosDistintos.size) notas.push(`${[...preciosDistintos].join(', ')} ${preciosDistintos.size === 1 ? 'trae' : 'traen'} precios distintos según la referencia: se usó el de su primera fila del Excel (es un solo producto, un solo precio)`)
-    const aviso = ausentes.length || agregados.length || ambiguas.length || preciosDistintos.size
+    const aviso = ausentes.length || agregados.length || ambiguas.length
     toastRef.current?.show({
       severity: aviso ? 'warn' : 'success',
       summary: 'Precios cargados',
