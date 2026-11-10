@@ -268,6 +268,19 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   const barraTabla = (
     <div className="caja-barra">
       <div className="caja-barra__izq">
+        {/* La caja se elige aqui (como la sucursal en Entradas / Salidas). */}
+        <select
+          className="caja-select"
+          value={cajaId}
+          onChange={(event) => setCajaId(event.target.value)}
+          aria-label="Caja chica"
+        >
+          {cajas.map((c) => (
+            <option key={c.id} value={String(c.id)}>
+              {`Caja chica ${nombreCaja(c)}${c.pendientes > 0 && isAdmin ? ` (${c.pendientes} por aprobar)` : ''}`}
+            </option>
+          ))}
+        </select>
         <button className="rounded-icon-btn" type="button" onClick={loadMovimientos} disabled={loadingMovs} title="Recargar">
           <i className="pi pi-refresh" />
         </button>
@@ -320,7 +333,6 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
 
       {cargandoInicial && (
         <>
-          <div className="users-page__actions caja-top caja-top--cargando" aria-hidden="true" />
           <div className="users-table users-table--card users-table--compact caja-datatable">
             {tablaSpinner}
             <DataTable
@@ -361,33 +373,6 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
 
       {cajas.length > 0 && (
         <>
-          {/* Misma barra que las paginas principales (Importaciones,
-              Movimientos...): recuadro, pestanas separadas y acciones a la derecha. */}
-          <div className="users-page__actions caja-top">
-            <div className="transfer-issues-page__type-filter caja-selector" role="group" aria-label="Cajas">
-              {Object.values(cajas.reduce((grupos, c) => {
-                const clave = String(c.sucursal_nombre || c.id)
-                ;(grupos[clave] ||= []).push(c)
-                return grupos
-              }, {})).map((grupo) => (
-                <div key={grupo.map((c) => c.id).join('-')} className={`caja-selector__grupo${grupo.length > 1 ? ' caja-selector__grupo--junto' : ''}`}>
-                  {grupo.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  aria-pressed={String(c.id) === String(cajaId)}
-                  className={`p-button users-topbtn transfer-issues-page__type-btn${String(c.id) === String(cajaId) ? ' transfer-issues-page__type-btn--active' : ''}${c.activa ? '' : ' caja-selector__tab--inactiva'}`}
-                  onClick={() => setCajaId(String(c.id))}
-                >
-                  {nombreCaja(c)}
-                  {c.pendientes > 0 && isAdmin && <span className="taller-toggle__count">{c.pendientes}</span>}
-                </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-
           {caja && !configurada && (
             isAdmin ? (
               <BlockerNotice
