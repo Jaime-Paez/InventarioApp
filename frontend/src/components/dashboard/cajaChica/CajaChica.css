@@ -264,7 +264,9 @@
   background: var(--table-color);
   border: 1px solid var(--color-border);
   border-radius: 14px;
-  overflow: hidden;
+  /* Sin overflow:hidden: recortaba el menu de Registrar al abrirse. */
+  position: relative;
+  z-index: 5;
 }
 .dashboard-shell.dark .caja-stats {
   background: var(--color-surface-dark);
@@ -414,6 +416,16 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  margin-left: auto;
+}
+/* En pantallas anchas la franja va en una sola fila: los botones quedan
+   siempre a la derecha, junto al custodio, en vez de bajar a otra linea. */
+@media (min-width: 1100px) {
+  .caja-stats { flex-wrap: nowrap; }
+  .caja-stat { flex: 1 1 0; }
+  .caja-stat--saldo { flex: 1.3 1 0; }
+  .caja-stats .caja-stat--acciones { flex: 0 0 auto; }
+  .caja-stats .caja-stat--acciones .caja-acciones { flex-wrap: nowrap; }
 }
 .caja-acciones {
   display: flex;
