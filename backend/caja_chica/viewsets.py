@@ -341,15 +341,34 @@ class CategoriaGastoViewSet(viewsets.ModelViewSet):
         if not is_app_admin(self.request.user):
             raise PermissionDenied("Solo un administrador puede cambiar las categorías.")
 
+    def create(self, request, *args, **kwargs):
+        # Una categoria eliminada que tenia gastos queda oculta (inactiva):
+        # crear otra con el mismo nombre la vuelve a mostrar.
+        self._solo_admin()
+        nombre = str(request.data.get("nombre") or "").strip()
+        existente = CategoriaGasto.objects.filter(nombre__iexact=nombre).first() if nombre else None
+        if existente is not None:
+            if existente.activa:
+                return Response(
+                    {"nombre": ["Ya existe una categoría con ese nombre."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            existente.activa = True
+            existente.save(update_fields=["activa"])
+            return Response(CategoriaGastoSerializer(existente).data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         self._solo_admin()
-        serializer.save()
+        serializer.save(activa=True)
 
     def perform_update(self, serializer):
         self._solo_admin()
         serializer.save()
 
     def destroy(self, request, *args, **kwargs):
+        # Con gastos: se oculta (los gastos conservan su categoria); sin
+        # gastos: se borra.
         self._solo_admin()
         categoria = self.get_object()
         if categoria.movimientos.exists():

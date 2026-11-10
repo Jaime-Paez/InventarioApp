@@ -149,3 +149,14 @@
   .caja-bar { grid-template-columns: 1fr; gap: 2px; }
   .caja-bar__value { text-align: left; }
 }
+
+/* Categorias de gasto: fila para agregar + tabla estandar (create-user__locations). */
+.caja-categorias__nueva {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.caja-categorias__nueva .create-user__field { flex: 1; min-width: 0; }
+.caja-categorias__table .caja-categorias__row { grid-template-columns: minmax(0, 1fr) 90px; }
+.caja-categorias__acciones { display: flex; justify-content: center; }

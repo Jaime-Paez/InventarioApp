@@ -544,34 +544,47 @@ export function CategoriasDialog({ open, categorias, token, onClose, onChanged }
   }
 
   return (
-    <TallerDialog open={open} busy={busy} title="Categorías de gasto" onClose={onClose}>
+    <TallerDialog open={open} busy={busy} title="Categorías de gasto" tab={null} subtitle={null} onClose={onClose}>
       <form
-        className="taller-add__row"
+        className="caja-categorias__nueva"
         onSubmit={(event) => {
           event.preventDefault()
           if (!nombre.trim()) return
           run(async () => { await post(token, '/caja-chica/categorias/', { nombre: nombre.trim(), activa: true }); setNombre('') })
         }}
       >
-        <label className="taller-add__field taller-add__field--grow">
+        <label className="create-user__field">
           <span>Nueva categoría</span>
-          <input className="taller-input" value={nombre} onChange={(event) => setNombre(event.target.value)} disabled={busy} />
+          <input value={nombre} placeholder="Ej. Papelería" onChange={(event) => setNombre(event.target.value)} disabled={busy} />
         </label>
         <button type="submit" className="create-user__action create-user__action--primary" disabled={busy || !nombre.trim()}>Agregar</button>
       </form>
-      <div className="taller-ubicaciones">
-        {categorias.map((c) => (
-          <div key={c.id} className={`taller-ubicacion${c.activa ? '' : ' is-inactive'}`}>
-            <span className="taller-ubicacion__name">{c.nombre}</span>
-            <label className="taller-switch">
-              <input
-                type="checkbox"
-                checked={c.activa}
+      {/* Misma tabla que las de Importaciones / Entradas y Salidas. Eliminar
+          una categoria con gastos solo la oculta: esos gastos la conservan. */}
+      <div className="create-user__locations-table caja-categorias__table">
+        <div className="create-user__locations-row create-user__locations-row--head caja-categorias__row">
+          <span>Categoría</span>
+          <span>Eliminar</span>
+        </div>
+        {categorias.filter((c) => c.activa).length === 0 ? (
+          <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}>
+            <span>Sin categorías. Agrega la primera arriba.</span>
+          </div>
+        ) : categorias.filter((c) => c.activa).map((c) => (
+          <div key={c.id} className="create-user__locations-row caja-categorias__row">
+            <span>{c.nombre}</span>
+            <span className="caja-categorias__acciones">
+              <button
+                type="button"
+                className="create-user__locations-remove"
                 disabled={busy}
-                onChange={(event) => run(() => post(token, `/caja-chica/categorias/${c.id}/`, { activa: event.target.checked }, 'PATCH'))}
-              />
-              <span>{c.activa ? 'Activa' : 'Inactiva'}</span>
-            </label>
+                aria-label={`Eliminar ${c.nombre}`}
+                data-title="Eliminar categoría (los gastos que ya la usan la conservan)"
+                onClick={() => run(() => post(token, `/caja-chica/categorias/${c.id}/`, undefined, 'DELETE'))}
+              >
+                x
+              </button>
+            </span>
           </div>
         ))}
       </div>
