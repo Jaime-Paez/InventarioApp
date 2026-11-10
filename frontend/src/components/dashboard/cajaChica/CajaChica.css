@@ -9,20 +9,17 @@
 }
 .dashboard-shell.dark .caja-page { color: var(--color-text-dark); }
 
-/* Selector de cajas = la barra segmentada del sistema (create-user__tabs),
-   centrada; Configurar y Categorias a la derecha. */
-.caja-top {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 860px) minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
+/* Barra superior = la de las paginas principales (users-page__actions con
+   las pestanas transfer-issues-page__type-btn); Configurar y Categorias a
+   la derecha. */
+.caja-page .users-page__actions.caja-top { flex-wrap: wrap; }
+.caja-page .users-page__actions .transfer-issues-page__type-filter {
+  border-left: none;
+  padding-left: 0;
+  margin-left: 0;
 }
-.caja-top .caja-selector {
-  grid-column: 2;
-  width: 100%;
-  margin: 0;
-}
-.caja-selector .create-user__tab {
+.caja-selector .transfer-issues-page__type-btn,
+.caja-top__admin .transfer-issues-page__type-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -30,14 +27,23 @@
   white-space: nowrap;
 }
 .caja-selector .caja-selector__tab--inactiva { opacity: 0.5; }
+/* Sucursal + su taller: pegados, como un solo bloque. */
+.caja-selector__grupo { display: inline-flex; }
+.caja-selector__grupo--junto .transfer-issues-page__type-btn.p-button:not(:first-child) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: -1px;
+}
+.caja-selector__grupo--junto .transfer-issues-page__type-btn.p-button:not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
 .caja-top__admin {
-  grid-column: 3;
-  justify-self: end;
+  margin-left: auto;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
-.caja-top__admin .create-user__ghost,
 .caja-table .create-user__ghost,
 .caja-foto-btn {
   display: inline-flex;
@@ -49,13 +55,7 @@
 .caja-btn--liquidar { color: #b45309; border-color: color-mix(in srgb, #f59e0b 45%, var(--color-border)); }
 .dashboard-shell.dark .caja-btn--rechazar { color: #fca5a5; }
 .dashboard-shell.dark .caja-btn--liquidar { color: #fbbf24; }
-@media (max-width: 900px) {
-  .caja-top { grid-template-columns: 1fr; }
-  .caja-top .caja-selector,
-  .caja-top__admin { grid-column: 1; }
-  .caja-top .caja-selector { overflow-x: auto; }
-  .caja-top__admin { justify-self: start; }
-}
+
 
 .caja-cards {
   display: grid;

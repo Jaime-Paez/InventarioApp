@@ -5,6 +5,7 @@ import CascadeDropdown from '../common/CascadeDropdown'
 import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
 import '../admin/UsersTable/UsersTable.css'
 import '../admin/CreateUsuario/CreateUsuario.css'
+import '../movimientos/TrasladosInconvenientesTable.css'
 import '../taller/Taller.css'
 import './CajaChica.css'
 import { API_URL, authFetch } from '../../../utils/api'
@@ -67,7 +68,13 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
       ])
       if (!cajasResp.ok) throw new Error(await parseApiError(cajasResp, 'No se pudieron cargar las cajas.'))
       const data = await cajasResp.json()
-      const list = Array.isArray(data) ? data : data?.results || []
+      // La caja de un taller va junto a la de su sucursal (son casi lo mismo):
+      // por sucursal, primero la de la sucursal y despues la de sus talleres.
+      const list = (Array.isArray(data) ? data : data?.results || []).slice().sort((a, b) => (
+        String(a.sucursal_nombre || '').localeCompare(String(b.sucursal_nombre || ''), 'es', { sensitivity: 'base' })
+        || (a.taller ? 1 : 0) - (b.taller ? 1 : 0)
+        || String(a.taller_nombre || '').localeCompare(String(b.taller_nombre || ''), 'es', { sensitivity: 'base' })
+      ))
       setCajas(list)
       if (catResp.ok) {
         const cats = await catResp.json()
@@ -274,26 +281,35 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
 
       {cajas.length > 0 && (
         <>
-          <div className="caja-top">
-            <div className="create-user__tabs caja-selector" role="tablist" aria-label="Cajas">
-              {cajas.map((c) => (
+          {/* Misma barra que las paginas principales (Importaciones,
+              Movimientos...): recuadro, pestanas separadas y acciones a la derecha. */}
+          <div className="users-page__actions caja-top">
+            <div className="transfer-issues-page__type-filter caja-selector" role="group" aria-label="Cajas">
+              {Object.values(cajas.reduce((grupos, c) => {
+                const clave = String(c.sucursal_nombre || c.id)
+                ;(grupos[clave] ||= []).push(c)
+                return grupos
+              }, {})).map((grupo) => (
+                <div key={grupo.map((c) => c.id).join('-')} className={`caja-selector__grupo${grupo.length > 1 ? ' caja-selector__grupo--junto' : ''}`}>
+                  {grupo.map((c) => (
                 <button
                   key={c.id}
                   type="button"
-                  role="tab"
-                  aria-selected={String(c.id) === String(cajaId)}
-                  className={`create-user__tab${String(c.id) === String(cajaId) ? ' create-user__tab--active' : ''}${c.activa ? '' : ' caja-selector__tab--inactiva'}`}
+                  aria-pressed={String(c.id) === String(cajaId)}
+                  className={`p-button users-topbtn transfer-issues-page__type-btn${String(c.id) === String(cajaId) ? ' transfer-issues-page__type-btn--active' : ''}${c.activa ? '' : ' caja-selector__tab--inactiva'}`}
                   onClick={() => setCajaId(String(c.id))}
                 >
                   {nombreCaja(c)}
                   {c.pendientes > 0 && isAdmin && <span className="taller-toggle__count">{c.pendientes}</span>}
                 </button>
+                  ))}
+                </div>
               ))}
             </div>
             {isAdmin && (
               <div className="caja-top__admin">
-                {caja && <button type="button" className="create-user__ghost" onClick={() => setDialog({ kind: 'caja', caja })}><i className="pi pi-cog" /> Configurar</button>}
-                <button type="button" className="create-user__ghost" onClick={() => setDialog({ kind: 'categorias' })}><i className="pi pi-tags" /> Categorías</button>
+                {caja && <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'caja', caja })}><i className="pi pi-cog" /> Configurar</button>}
+                <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'categorias' })}><i className="pi pi-tags" /> Categorías</button>
               </div>
             )}
           </div>
