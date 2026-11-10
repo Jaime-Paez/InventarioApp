@@ -160,3 +160,30 @@
 .caja-categorias__nueva .create-user__field { flex: 1; min-width: 0; }
 .caja-categorias__table .caja-categorias__row { grid-template-columns: minmax(0, 1fr) 90px; }
 .caja-categorias__acciones { display: flex; justify-content: center; }
+
+/* Tablas de movimientos y arqueos = las de Importaciones (users-table +
+   DataTable); los filtros van en el encabezado, junto al buscador. */
+.caja-header__filtros {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.caja-header__fecha {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+.caja-filtro-fecha {
+  width: 150px;
+  padding-right: 10px;
+}
+.caja-header__filtros .caja-filtro-dropdown { min-width: 180px; }
+.caja-datatable .caja-table__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.caja-datatable .caja-row--pendiente > td { background: color-mix(in srgb, #f59e0b 14%, transparent); }
+.caja-datatable .caja-row--rechazado > td { opacity: 0.6; }

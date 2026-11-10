@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DataTable } from 'primereact/datatable'
+import { Column } from 'primereact/column'
 import Toast from '../common/AppToast'
 import BlockerNotice from '../common/BlockerNotice'
 import CascadeDropdown from '../common/CascadeDropdown'
@@ -267,7 +269,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   const puedeRegistrar = Boolean(caja?.activa && configurada && canCreate && (isAdmin || esCustodio))
 
   return (
-    <div className="caja-page">
+    <div className="users-page caja-page">
       <Toast ref={toast} />
 
       {error && <BlockerNotice title="No se pudo cargar la caja chica" reason={error} actionLabel="Reintentar" onAction={loadCajas} />}
@@ -306,10 +308,29 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                 </div>
               ))}
             </div>
-            {isAdmin && (
+            {(isAdmin || puedeRegistrar) && (
               <div className="caja-top__admin">
-                {caja && <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'caja', caja })}><i className="pi pi-cog" /> Configurar</button>}
-                <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'categorias' })}><i className="pi pi-tags" /> Categorías</button>
+                {puedeRegistrar && (
+                  <>
+                    <button type="button" className="p-button users-topbtn users-topbtn--create" onClick={() => setDialog({ kind: 'mov', tipo: 'gasto' })}>
+                      <i className="pi pi-plus" /> Registrar gasto
+                    </button>
+                    <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'mov', tipo: 'anticipo' })}>
+                      <i className="pi pi-send" /> Anticipo / vale
+                    </button>
+                    <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'mov', tipo: 'ingreso' })}>
+                      <i className="pi pi-plus-circle" /> Ingreso
+                    </button>
+                    <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'arqueo' })}>
+                      <i className="pi pi-calculator" /> Arqueo
+                    </button>
+                    <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setConfirm({ kind: 'reposicion' })} disabled={busy || saldo >= fondo}>
+                      <i className="pi pi-refresh" /> Pedir reposición
+                    </button>
+                  </>
+                )}
+                {isAdmin && caja && <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'caja', caja })}><i className="pi pi-cog" /> Configurar</button>}
+                {isAdmin && <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'categorias' })}><i className="pi pi-tags" /> Categorías</button>}
               </div>
             )}
           </div>
@@ -378,26 +399,6 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                 <BlockerNotice title="Solo lectura" reason="Solo el custodio de esta caja o un administrador registran movimientos." />
               )}
 
-              {puedeRegistrar && (
-                <div className="caja-actions">
-                  <button type="button" className="create-user__action create-user__action--primary" onClick={() => setDialog({ kind: 'mov', tipo: 'gasto' })}>
-                    <i className="pi pi-minus-circle" /> Registrar gasto
-                  </button>
-                  <button type="button" className="create-user__action create-user__action--secondary" onClick={() => setDialog({ kind: 'mov', tipo: 'anticipo' })}>
-                    <i className="pi pi-send" /> Anticipo / vale
-                  </button>
-                  <button type="button" className="create-user__action create-user__action--secondary" onClick={() => setDialog({ kind: 'mov', tipo: 'ingreso' })}>
-                    <i className="pi pi-plus-circle" /> Ingreso
-                  </button>
-                  <button type="button" className="create-user__action create-user__action--secondary" onClick={() => setDialog({ kind: 'arqueo' })}>
-                    <i className="pi pi-calculator" /> Arqueo
-                  </button>
-                  <button type="button" className="create-user__action create-user__action--secondary" onClick={() => setConfirm({ kind: 'reposicion' })} disabled={busy || saldo >= fondo}>
-                    <i className="pi pi-refresh" /> Pedir reposición
-                  </button>
-                </div>
-              )}
-
               <div className="create-user__tabs" role="tablist">
                 {[
                   ['movimientos', 'Movimientos'],
@@ -410,130 +411,158 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                 ))}
               </div>
 
-              {tab !== 'arqueos' && (
+              {tab === 'resumen' && (
                 <div className="caja-filtros">
-                  <label>Desde <input className="taller-input" type="date" value={filtros.desde} onChange={(event) => setFiltros((prev) => ({ ...prev, desde: event.target.value }))} /></label>
-                  <label>Hasta <input className="taller-input" type="date" value={filtros.hasta} onChange={(event) => setFiltros((prev) => ({ ...prev, hasta: event.target.value }))} /></label>
-                  {tab === 'movimientos' && (
-                    <>
-                      <div className="caja-filtro-dropdown">
-                        <CascadeDropdown
-                          placeholder="Todos los tipos"
-                          searchPlaceholder="Buscar"
-                          options={[
-                            { id: '', nombre: 'Todos los tipos' },
-                            { id: 'gasto', nombre: 'Gastos' },
-                            { id: 'anticipo', nombre: 'Anticipos' },
-                            { id: 'ingreso,reposicion,apertura,vuelto', nombre: 'Ingresos y reposiciones' },
-                          ]}
-                          valueId={filtros.tipo}
-                          getOptionLabel={(o) => o.nombre}
-                          onSelect={(o) => setFiltros((prev) => ({ ...prev, tipo: o.id }))}
-                        />
-                      </div>
-                      <div className="caja-filtro-dropdown">
-                        <CascadeDropdown
-                          placeholder="Todos los estados"
-                          searchPlaceholder="Buscar"
-                          options={[
-                            { id: '', nombre: 'Todos los estados' },
-                            { id: 'pendiente', nombre: 'Por aprobar' },
-                            { id: 'aprobado', nombre: 'Aprobados' },
-                            { id: 'rechazado', nombre: 'Rechazados' },
-                          ]}
-                          valueId={filtros.estado}
-                          getOptionLabel={(o) => o.nombre}
-                          onSelect={(o) => setFiltros((prev) => ({ ...prev, estado: o.id }))}
-                        />
-                      </div>
-                      <div className="search-input-container">
-                        <input className="search-input" placeholder="Buscar descripción, beneficiario, comprobante" value={filtros.search} onChange={(event) => setFiltros((prev) => ({ ...prev, search: event.target.value }))} />
-                        <i className={`pi ${loadingMovs ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
-                      </div>
-                      <button className="users-circle users-circle--excel" type="button" title="Exportar a Excel" disabled={!movimientos.length} onClick={exportar}>
-                        <i className="pi pi-file-excel" />
-                      </button>
-                    </>
-                  )}
+                  <label className="caja-header__fecha">Desde <input className="search-input caja-filtro-fecha" type="date" value={filtros.desde} onChange={(event) => setFiltros((prev) => ({ ...prev, desde: event.target.value }))} /></label>
+                          <label className="caja-header__fecha">Hasta <input className="search-input caja-filtro-fecha" type="date" value={filtros.hasta} onChange={(event) => setFiltros((prev) => ({ ...prev, hasta: event.target.value }))} /></label>
                 </div>
               )}
 
               {tab === 'movimientos' && (
-                <div className="taller-lineas__wrap caja-table">
-                  <table className="taller-lineas">
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Tipo</th>
-                        <th>Detalle</th>
-                        <th>Comprobante</th>
-                        <th>Entrada</th>
-                        <th>Salida</th>
-                        <th>Estado</th>
-                        <th aria-label="Acciones" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {!movimientos.length && (
-                        <tr><td colSpan={8} className="taller-lineas__empty">{loadingMovs ? 'Cargando...' : 'No hay movimientos en este período.'}</td></tr>
+                <div className="users-table users-table--card users-table--compact caja-datatable">
+                  <DataTable
+                    value={movimientos}
+                    dataKey="id"
+                    header={(
+                      <div className="users-header">
+                        <div className="users-header__left caja-header__filtros">
+                          <div className="search-input-container">
+                            <input className="search-input" placeholder="Buscar en tabla" value={filtros.search} onChange={(event) => setFiltros((prev) => ({ ...prev, search: event.target.value }))} />
+                            <i className={`pi ${loadingMovs ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
+                          </div>
+                          <button className="rounded-icon-btn" type="button" onClick={loadMovimientos} disabled={loadingMovs} title="Recargar">
+                            <i className="pi pi-refresh" />
+                          </button>
+                          <label className="caja-header__fecha">Desde <input className="search-input caja-filtro-fecha" type="date" value={filtros.desde} onChange={(event) => setFiltros((prev) => ({ ...prev, desde: event.target.value }))} /></label>
+                          <label className="caja-header__fecha">Hasta <input className="search-input caja-filtro-fecha" type="date" value={filtros.hasta} onChange={(event) => setFiltros((prev) => ({ ...prev, hasta: event.target.value }))} /></label>
+                          <div className="caja-filtro-dropdown">
+                            <CascadeDropdown
+                              placeholder="Todos los tipos"
+                              searchPlaceholder="Buscar"
+                              options={[
+                                { id: '', nombre: 'Todos los tipos' },
+                                { id: 'gasto', nombre: 'Gastos' },
+                                { id: 'anticipo', nombre: 'Anticipos' },
+                                { id: 'ingreso,reposicion,apertura,vuelto', nombre: 'Ingresos y reposiciones' },
+                              ]}
+                              valueId={filtros.tipo}
+                              getOptionLabel={(o) => o.nombre}
+                              onSelect={(o) => setFiltros((prev) => ({ ...prev, tipo: o.id }))}
+                            />
+                          </div>
+                          <div className="caja-filtro-dropdown">
+                            <CascadeDropdown
+                              placeholder="Todos los estados"
+                              searchPlaceholder="Buscar"
+                              options={[
+                                { id: '', nombre: 'Todos los estados' },
+                                { id: 'pendiente', nombre: 'Por aprobar' },
+                                { id: 'aprobado', nombre: 'Aprobados' },
+                                { id: 'rechazado', nombre: 'Rechazados' },
+                              ]}
+                              valueId={filtros.estado}
+                              getOptionLabel={(o) => o.nombre}
+                              onSelect={(o) => setFiltros((prev) => ({ ...prev, estado: o.id }))}
+                            />
+                          </div>
+                        </div>
+                        <div className="users-header__right">
+                          <span className="users-header__count">Reg. {movimientos.length}</span>
+                          <button className="users-circle users-circle--excel" type="button" title={movimientos.length ? 'Exportar Excel' : 'No hay movimientos para exportar'} disabled={!movimientos.length} onClick={exportar}>
+                            <i className="pi pi-file-excel" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    className="users-datatable users-datatable--compact"
+                    tableStyle={{ width: '100%' }}
+                    emptyMessage={loadingMovs ? 'Cargando...' : 'No hay movimientos en este período.'}
+                    showGridlines
+                    size="small"
+                    paginator
+                    rows={25}
+                    rowsPerPageOptions={[10, 25, 50]}
+                    removableSort
+                    rowClassName={(m) => (m.estado === 'pendiente' ? 'caja-row--pendiente' : m.estado === 'rechazado' ? 'caja-row--rechazado' : '')}
+                  >
+                    <Column field="fecha" header="Fecha" sortable style={{ minWidth: '100px' }} body={(m) => formatDate(m.fecha)} />
+                    <Column
+                      field="tipo"
+                      header="Tipo"
+                      sortable
+                      style={{ minWidth: '110px' }}
+                      body={(m) => (
+                        <>
+                          {TIPO_LABELS[m.tipo] || m.tipo_label}
+                          {m.de_anticipo && <small className="taller-muted"> (liquidación)</small>}
+                        </>
                       )}
-                      {movimientos.map((m) => {
+                    />
+                    <Column
+                      field="descripcion"
+                      header="Detalle"
+                      style={{ minWidth: '240px' }}
+                      body={(m) => (
+                        <div className="caja-table__detalle">
+                          <div>{m.descripcion}</div>
+                          <small className="taller-muted">
+                            {[m.categoria_nombre, m.beneficiario, `Registró ${m.registrado_por_nombre || '-'}`].filter(Boolean).join(' · ')}
+                          </small>
+                          {m.estado === 'rechazado' && m.motivo_rechazo && <small className="taller-lineas__error">{`Rechazado: ${m.motivo_rechazo}`}</small>}
+                          {m.liquidacion && <small className="taller-muted">{`Liquidado: gastó ${formatMoney(m.liquidacion.gastado)}`}</small>}
+                        </div>
+                      )}
+                    />
+                    <Column
+                      field="comprobante_numero"
+                      header="Comprobante"
+                      style={{ minWidth: '140px' }}
+                      body={(m) => (
+                        <>
+                          {m.comprobante_label || '-'} {m.comprobante_numero}
+                          {m.tiene_imagen && (
+                            <button type="button" className="taller-link" onClick={() => setDialog({ kind: 'imagen', mov: m })}>Ver foto</button>
+                          )}
+                          {m.tipo === 'gasto' && m.comprobante_tipo && m.comprobante_tipo !== 'sin' && !m.tiene_imagen && (
+                            <small className="taller-lineas__error">Sin foto</small>
+                          )}
+                        </>
+                      )}
+                    />
+                    <Column header="Entrada" style={{ minWidth: '90px', textAlign: 'right' }} body={(m) => <span className="caja-in">{m.es_entrada ? formatMoney(m.monto) : ''}</span>} />
+                    <Column header="Salida" style={{ minWidth: '90px', textAlign: 'right' }} body={(m) => <span className="caja-out">{m.es_entrada ? '' : formatMoney(m.monto)}</span>} />
+                    <Column field="estado" header="Estado" sortable style={{ minWidth: '110px' }} body={(m) => <span className={`taller-chip taller-chip--${ESTADO_CHIP[m.estado] || 'cerrada'}`}>{m.estado_label}</span>} />
+                    <Column
+                      header="Acciones"
+                      style={{ minWidth: '170px' }}
+                      body={(m) => {
                         const propio = String(m.registrado_por) === String(user?.id)
                         const editable = m.estado !== 'aprobado' && (isAdmin || propio) && !['apertura', 'vuelto'].includes(m.tipo) && !m.de_anticipo
                         const anticipoAbierto = m.tipo === 'anticipo' && m.estado === 'aprobado' && !m.liquidado_en
                         return (
-                          <tr key={m.id} className={m.estado === 'pendiente' ? 'is-pending' : m.estado === 'rechazado' ? 'is-inactive' : ''}>
-                            <td>{formatDate(m.fecha)}</td>
-                            <td>
-                              {TIPO_LABELS[m.tipo] || m.tipo_label}
-                              {m.de_anticipo && <small className="taller-muted"> (liquidación)</small>}
-                            </td>
-                            <td className="caja-table__detalle">
-                              <div>{m.descripcion}</div>
-                              <small className="taller-muted">
-                                {[m.categoria_nombre, m.beneficiario, `Registró ${m.registrado_por_nombre || '-'}`].filter(Boolean).join(' · ')}
-                              </small>
-                              {m.estado === 'rechazado' && m.motivo_rechazo && <small className="taller-lineas__error">{`Rechazado: ${m.motivo_rechazo}`}</small>}
-                              {m.liquidacion && (
-                                <small className="taller-muted">{`Liquidado: gastó ${formatMoney(m.liquidacion.gastado)}`}</small>
-                              )}
-                            </td>
-                            <td>
-                              {m.comprobante_label || '-'} {m.comprobante_numero}
-                              {m.tiene_imagen && (
-                                <button type="button" className="taller-link" onClick={() => setDialog({ kind: 'imagen', mov: m })}>Ver foto</button>
-                              )}
-                              {m.tipo === 'gasto' && m.comprobante_tipo && m.comprobante_tipo !== 'sin' && !m.tiene_imagen && (
-                                <small className="taller-lineas__error">Sin foto</small>
-                              )}
-                            </td>
-                            <td className="taller-lineas__money caja-in">{m.es_entrada ? formatMoney(m.monto) : ''}</td>
-                            <td className="taller-lineas__money caja-out">{m.es_entrada ? '' : formatMoney(m.monto)}</td>
-                            <td><span className={`taller-chip taller-chip--${ESTADO_CHIP[m.estado] || 'cerrada'}`}>{m.estado_label}</span></td>
-                            <td className="caja-table__actions">
-                              {isAdmin && m.estado === 'pendiente' && (
-                                <>
-                                  <button type="button" className="create-user__ghost create-user__ghost--primary" onClick={() => revisar(m, true)} disabled={busy}>Aprobar</button>
-                                  <button type="button" className="create-user__ghost caja-btn--rechazar" onClick={() => { setMotivo(''); setConfirm({ kind: 'rechazar', mov: m }) }} disabled={busy}>Rechazar</button>
-                                </>
-                              )}
-                              {anticipoAbierto && puedeRegistrar && (
-                                <button type="button" className="create-user__ghost caja-btn--liquidar" onClick={() => setDialog({ kind: 'liquidar', mov: m })}>Liquidar</button>
-                              )}
-                              {editable && (
-                                <button type="button" className="create-user__ghost" onClick={() => setDialog({ kind: 'mov', mov: m })}>Corregir</button>
-                              )}
-                              {(editable || (isAdmin && !['apertura', 'vuelto'].includes(m.tipo) && !m.de_anticipo && !m.liquidado_en)) && (
-                                <button type="button" className="taller-icon-btn taller-icon-btn--no" title="Eliminar" onClick={() => setConfirm({ kind: 'eliminar', mov: m })} disabled={busy}>
-                                  <i className="pi pi-trash" />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
+                          <div className="caja-table__actions">
+                            {isAdmin && m.estado === 'pendiente' && (
+                              <>
+                                <button type="button" className="create-user__ghost create-user__ghost--primary" onClick={() => revisar(m, true)} disabled={busy}>Aprobar</button>
+                                <button type="button" className="create-user__ghost caja-btn--rechazar" onClick={() => { setMotivo(''); setConfirm({ kind: 'rechazar', mov: m }) }} disabled={busy}>Rechazar</button>
+                              </>
+                            )}
+                            {anticipoAbierto && puedeRegistrar && (
+                              <button type="button" className="create-user__ghost caja-btn--liquidar" onClick={() => setDialog({ kind: 'liquidar', mov: m })}>Liquidar</button>
+                            )}
+                            {editable && (
+                              <button type="button" className="create-user__ghost" onClick={() => setDialog({ kind: 'mov', mov: m })}>Corregir</button>
+                            )}
+                            {(editable || (isAdmin && !['apertura', 'vuelto'].includes(m.tipo) && !m.de_anticipo && !m.liquidado_en)) && (
+                              <button type="button" className="create-user__locations-remove" aria-label="Eliminar" data-title="Eliminar movimiento" onClick={() => setConfirm({ kind: 'eliminar', mov: m })} disabled={busy}>
+                                x
+                              </button>
+                            )}
+                          </div>
                         )
-                      })}
-                    </tbody>
-                  </table>
+                      }}
+                    />
+                  </DataTable>
                 </div>
               )}
 
@@ -571,27 +600,41 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
               )}
 
               {tab === 'arqueos' && (
-                <div className="taller-lineas__wrap caja-table">
-                  <table className="taller-lineas">
-                    <thead>
-                      <tr><th>Fecha</th><th>Contado</th><th>Sistema</th><th>Diferencia</th><th>Observación</th><th>Realizado por</th></tr>
-                    </thead>
-                    <tbody>
-                      {!arqueos.length && <tr><td colSpan={6} className="taller-lineas__empty">Todavía no hay arqueos.</td></tr>}
-                      {arqueos.map((a) => (
-                        <tr key={a.id}>
-                          <td>{formatDateTime(a.creado_en)}</td>
-                          <td className="taller-lineas__money">{formatMoney(a.total_contado)}</td>
-                          <td className="taller-lineas__money">{formatMoney(a.saldo_sistema)}</td>
-                          <td className={`taller-lineas__money ${Number(a.diferencia) === 0 ? 'caja-in' : 'caja-out'}`}>
-                            {Number(a.diferencia) === 0 ? 'Cuadra' : formatMoney(a.diferencia)}
-                          </td>
-                          <td>{a.observacion || '-'}</td>
-                          <td>{a.realizado_por_nombre}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="users-table users-table--card users-table--compact caja-datatable">
+                  <DataTable
+                    value={arqueos}
+                    dataKey="id"
+                    header={(
+                      <div className="users-header">
+                        <div className="users-header__left" />
+                        <div className="users-header__right">
+                          <span className="users-header__count">Reg. {arqueos.length}</span>
+                        </div>
+                      </div>
+                    )}
+                    className="users-datatable users-datatable--compact"
+                    tableStyle={{ width: '100%' }}
+                    emptyMessage="Todavía no hay arqueos."
+                    showGridlines
+                    size="small"
+                    paginator
+                    rows={25}
+                    rowsPerPageOptions={[10, 25, 50]}
+                    removableSort
+                  >
+                    <Column field="creado_en" header="Fecha" sortable body={(a) => formatDateTime(a.creado_en)} />
+                    <Column field="total_contado" header="Contado" sortable style={{ textAlign: 'right' }} body={(a) => formatMoney(a.total_contado)} />
+                    <Column field="saldo_sistema" header="Sistema" sortable style={{ textAlign: 'right' }} body={(a) => formatMoney(a.saldo_sistema)} />
+                    <Column
+                      field="diferencia"
+                      header="Diferencia"
+                      sortable
+                      style={{ textAlign: 'right' }}
+                      body={(a) => <span className={Number(a.diferencia) === 0 ? 'caja-in' : 'caja-out'}>{Number(a.diferencia) === 0 ? 'Cuadra' : formatMoney(a.diferencia)}</span>}
+                    />
+                    <Column field="observacion" header="Observación" body={(a) => a.observacion || '-'} />
+                    <Column field="realizado_por_nombre" header="Realizado por" sortable />
+                  </DataTable>
                 </div>
               )}
             </>
