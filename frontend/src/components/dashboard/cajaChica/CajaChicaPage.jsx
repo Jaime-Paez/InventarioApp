@@ -100,7 +100,8 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
       }
       setCajaId((prev) => {
         if (list.some((c) => String(c.id) === String(prev))) return String(prev)
-        const first = list.find((c) => c.activa) || list[0]
+        // Primero una caja ya configurada (las demas se eligen en el desplegable).
+        const first = list.find((c) => c.activa && c.configurada) || list.find((c) => c.activa) || list[0]
         return first ? String(first.id) : ''
       })
       setError('')
@@ -381,6 +382,11 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
 
       {cajas.length > 0 && (
         <>
+          {/* Sin configurar no hay tabla: el desplegable va suelto para poder
+              cambiar a otra caja (configurada o no) y configurarla. */}
+          {caja && !configurada && (
+            <div className="caja-barra-suelta">{barraTabla}</div>
+          )}
           {caja && !configurada && (
             isAdmin ? (
               <BlockerNotice
