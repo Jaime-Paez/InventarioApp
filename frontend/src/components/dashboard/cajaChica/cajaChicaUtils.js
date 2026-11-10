@@ -61,9 +61,28 @@ export const todayIso = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
-export const monthStartIso = () => {
+// Mes del filtro de movimientos: { anio, mes } con mes 0-11.
+export const currentMonth = () => {
   const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  return { anio: now.getFullYear(), mes: now.getMonth() }
+}
+
+export const shiftMonth = ({ anio, mes }, delta) => {
+  const d = new Date(anio, mes + delta, 1)
+  return { anio: d.getFullYear(), mes: d.getMonth() }
+}
+
+// Primer y ultimo dia del mes, en formato ISO (desde / hasta del API).
+export const monthRange = ({ anio, mes }) => {
+  const mm = String(mes + 1).padStart(2, '0')
+  const ultimo = new Date(anio, mes + 1, 0).getDate()
+  return { desde: `${anio}-${mm}-01`, hasta: `${anio}-${mm}-${String(ultimo).padStart(2, '0')}` }
+}
+
+// "Noviembre 2026"
+export const monthLabel = ({ anio, mes }) => {
+  const nombre = new Date(anio, mes, 1).toLocaleDateString('es-EC', { month: 'long' })
+  return `${nombre.charAt(0).toUpperCase()}${nombre.slice(1)} ${anio}`
 }
 
 // Foto del comprobante: se reduce en el navegador (JPEG, max 1400px) para no
