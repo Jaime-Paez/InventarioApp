@@ -3654,9 +3654,14 @@ function RecordatoriosPopup({
                               onClick={() => setActiveDetailReminderId(String(reminder?.id || ''))}
                             >
                               <p className="recordatorios-popup__timeline-item-time">{formatReminderTimeLabel(reminder)}</p>
-                              <p className="recordatorios-popup__timeline-item-description" title={timelineDescription}>
-                                {timelineDescription}
-                              </p>
+                              {/* Con el recorrido a la vista ("Recibido en Valle") el
+                                  estado suelto ("Recibido.") sobra; solo se deja si
+                                  avisa un envio parcial. */}
+                              {(!transferRouteStage || timelineDescription.includes('parcial')) && (
+                                <p className="recordatorios-popup__timeline-item-description" title={timelineDescription}>
+                                  {timelineDescription}
+                                </p>
+                              )}
                               {!!transferRouteStage && (
                                 <TransferRoute
                                   stage={transferRouteStage}

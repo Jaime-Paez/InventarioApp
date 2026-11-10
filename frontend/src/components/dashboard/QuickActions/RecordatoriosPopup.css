@@ -1464,10 +1464,10 @@
   color: color-mix(in srgb, currentColor 75%, transparent);
 }
 
+/* Recibida / Cumplido: terminado y cuadrado -> mismo verde que lo contado. */
 .recordatorios-popup__status--arrived {
-  background: #ffffff;
-  color: color-mix(in srgb, currentColor 78%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
+  background: color-mix(in srgb, var(--color-success-text) 20%, transparent);
+  color: var(--color-success-text);
 }
 
 .recordatorios-popup__status--issue {
@@ -1511,9 +1511,8 @@
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__status--arrived {
-  background: #20252b;
-  color: #d1d5db;
-  border-color: #3b4652;
+  background: color-mix(in srgb, var(--color-success-text-dark) 18%, transparent);
+  color: var(--color-success-text-dark);
 }
 
 .recordatorios-popup__dialog.is-dark .recordatorios-popup__status--issue {
