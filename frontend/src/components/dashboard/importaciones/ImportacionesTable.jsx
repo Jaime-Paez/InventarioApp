@@ -9686,6 +9686,79 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   )
 }
 
+// Al importar: los productos nuevos cuyo codigo salio de un producto de otra
+// casa (misma pieza) se proponen como alternos de ese producto. Marcados por
+// defecto; "Ahora no" no vincula nada.
+function AlternosSugeridosDialog({ token, data, onClose, notify }) {
+  const items = Array.isArray(data?.items) ? data.items : []
+  const keyOf = (it) => `${it.producto_id}-${it.alterno_id}`
+  const [marcados, setMarcados] = useState(() => new Set(items.map(keyOf)))
+  const [guardando, setGuardando] = useState(false)
+  const toggle = (key) => setMarcados((prev) => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
+  const agregar = async () => {
+    const pares = items.filter((it) => marcados.has(keyOf(it))).map((it) => ({ producto_id: it.producto_id, alterno_id: it.alterno_id }))
+    if (!pares.length) { onClose(); return }
+    setGuardando(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/importaciones/importaciones/${data.importacionId}/vincular-alternos/`,
+        { method: 'POST', body: JSON.stringify({ pares }) },
+        token
+      )
+      if (!response.ok) throw new Error(await readErrorMessage(response, 'No se pudieron agregar los alternos.'))
+      notify?.({ severity: 'success', summary: 'Alternos agregados', detail: `${pares.length} ${pares.length === 1 ? 'producto quedó' : 'productos quedaron'} como alterno de su producto de origen.`, life: 4000 })
+      onClose()
+    } catch (error) {
+      notify?.({ severity: 'error', summary: 'Error', detail: error.message, life: 4500 })
+    } finally {
+      setGuardando(false)
+    }
+  }
+  if (!items.length) return null
+  return createPortal(
+    <div className="imp-alternos-sug__backdrop" role="presentation">
+      <div className="imp-alternos-sug" role="dialog" aria-modal="true" aria-labelledby="imp-alternos-sug-title">
+        <h3 id="imp-alternos-sug-title">¿Agregar como alternos?</h3>
+        <p className="imp-alternos-sug__lead">
+          Estos productos nuevos de <strong>{data.casa || 'esta casa'}</strong> tomaron su código de un producto de otra casa
+          (la misma pieza). ¿Los agrego a su lista de alternos? También comparten OEM.
+        </p>
+        <div className="imp-alternos-sug__list">
+          {items.map((it) => {
+            const key = keyOf(it)
+            return (
+              <label key={key} className={`imp-alternos-sug__row${marcados.has(key) ? ' is-on' : ''}`}>
+                <input type="checkbox" checked={marcados.has(key)} onChange={() => toggle(key)} />
+                <span className="imp-alternos-sug__nuevo">
+                  <strong>{it.codigo}</strong>
+                  <small>{it.nombre}</small>
+                </span>
+                <span className="imp-alternos-sug__flecha" aria-hidden="true">↔</span>
+                <span className="imp-alternos-sug__origen">
+                  <strong>{it.alterno_codigo}</strong>
+                  <small>{[it.alterno_nombre, it.alterno_casa].filter(Boolean).join(' · ')}</small>
+                </span>
+              </label>
+            )
+          })}
+        </div>
+        <div className="imp-alternos-sug__actions">
+          <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={guardando}>Ahora no</button>
+          <button type="button" className="create-user__action create-user__action--primary" onClick={agregar} disabled={guardando || !marcados.size}>
+            {guardando ? 'Agregando...' : `Agregar como alternos (${marcados.size})`}
+          </button>
+        </div>
+      </div>
+    </div>,
+    getPortalRoot()
+  )
+}
+
 function ImportacionesTable({ token, moduleActions, status: statusProp, isTabActive, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled, pendingCreatePrefill, onPendingCreatePrefillHandled }) {
   const toast = useRef(null)
   const tableWrapperRef = useRef(null)
@@ -9753,6 +9826,8 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
   const [showImpDetails, setShowImpDetails] = useState(false)
   const [editImp, setEditImp] = useState(null)
   const [showEditImp, setShowEditImp] = useState(false)
+  // Pregunta de alternos al terminar de importar.
+  const [alternosSugeridos, setAlternosSugeridos] = useState(null)
   const [selectedRows, setSelectedRows] = useState([])
   const [processedRows, setProcessedRows] = useState(null)
   const clickTimerRef = useRef(null)
@@ -10714,6 +10789,15 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         getPortalRoot()
       )}
 
+      {alternosSugeridos && (
+        <AlternosSugeridosDialog
+          token={token}
+          data={alternosSugeridos}
+          onClose={() => setAlternosSugeridos(null)}
+          notify={(msg) => toast.current?.show(msg)}
+        />
+      )}
+
       <EditImportacionModal
         open={showEditImp}
         imp={editImp}
@@ -10724,6 +10808,13 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
           if (cerrar) setShowEditImp(false)
           invalidateImportacionesItemsCache()
           fetchItems(true)
+          if (Array.isArray(payload?.alternos_sugeridos) && payload.alternos_sugeridos.length) {
+            setAlternosSugeridos({
+              importacionId: payload.id,
+              casa: payload.casa_comercial?.nombre || '',
+              items: payload.alternos_sugeridos,
+            })
+          }
           if (payload?.estado === 'en_camino' && !statusProp) setActiveStatus('en_camino')
         }}
         onOpenBorrador={handleOpenBorrador}

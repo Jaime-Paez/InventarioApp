@@ -2820,3 +2820,102 @@ body.app-theme-dark .imp-receive-footer-hint {
   font-weight: 600;
   color: #15803d;
 }
+
+/* Al importar: pregunta si los productos nuevos van como alternos del
+   producto del que salio su codigo. */
+.imp-alternos-sug__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.imp-alternos-sug {
+  width: min(640px, 100%);
+  max-height: min(85vh, 760px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.3);
+}
+
+.imp-alternos-sug h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.imp-alternos-sug__lead {
+  margin: 0;
+  font-size: var(--font-size-sm, 13px);
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+.imp-alternos-sug__list {
+  display: grid;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.imp-alternos-sug__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.imp-alternos-sug__row.is-on {
+  border-color: #16a34a;
+  background: color-mix(in srgb, #22c55e 10%, transparent);
+}
+
+.imp-alternos-sug__row input {
+  width: 18px;
+  height: 18px;
+  accent-color: #16a34a;
+}
+
+.imp-alternos-sug__nuevo,
+.imp-alternos-sug__origen {
+  display: grid;
+  min-width: 0;
+}
+
+.imp-alternos-sug__nuevo small,
+.imp-alternos-sug__origen small {
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.imp-alternos-sug__flecha {
+  font-size: 1.1rem;
+  opacity: 0.6;
+}
+
+.imp-alternos-sug__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dashboard-shell.dark .imp-alternos-sug {
+  background: var(--color-surface-darker);
+  color: var(--color-text-dark);
+}

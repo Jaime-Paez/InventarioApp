@@ -1167,6 +1167,96 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @transaction.atomic
+    @staticmethod
+    def _alternos_sugeridos(instance):
+        """Productos que se crearon en esta importacion con un codigo sugerido
+        de otro producto (misma pieza en otra casa, por OEM/codigo base):
+        candidatos a quedar como alternos de ese producto. No incluye los que
+        ya estan en su grupo de alternos."""
+        from productos.viewsets import get_alterno_group_ids
+
+        sugeridos = []
+        vistos = set()
+        detalles = (
+            instance.detalles.filter(producto__creado_desde_importacion=instance)
+            .exclude(coincidencia_codigo="")
+            .select_related("producto")
+        )
+        for detalle in detalles:
+            producto = detalle.producto
+            origen = Producto.objects.filter(codigo__iexact=str(detalle.coincidencia_codigo).strip()).first()
+            if origen is None or origen.id == producto.id or (producto.id, origen.id) in vistos:
+                continue
+            vistos.add((producto.id, origen.id))
+            if producto.id in get_alterno_group_ids(origen.id):
+                continue
+            sugeridos.append({
+                "producto_id": producto.id,
+                "codigo": producto.codigo,
+                "nombre": producto.nombre,
+                "alterno_id": origen.id,
+                "alterno_codigo": origen.codigo,
+                "alterno_nombre": origen.nombre,
+                "alterno_casa": str(detalle.coincidencia_casa or "").strip()
+                or ", ".join(origen.casas_comerciales.values_list("nombre", flat=True)),
+            })
+        return sugeridos
+
+    @action(detail=True, methods=["get"], url_path="alternos-sugeridos")
+    def alternos_sugeridos(self, request, pk=None):
+        instance = self.get_object()
+        return Response({"alternos_sugeridos": self._alternos_sugeridos(instance)})
+
+    @action(detail=True, methods=["post"], url_path="vincular-alternos")
+    def vincular_alternos(self, request, pk=None):
+        """Vincula cada producto nuevo con el grupo de alternos del producto
+        del que salio su codigo (todos con todos) y les reparte los OEM, igual
+        que "Mismo codigo base" en la ficha del producto.
+        Body: {pares: [{producto_id, alterno_id}]}"""
+        from productos.viewsets import get_alterno_group_ids, sync_group_oems
+
+        if not (
+            self._check_specific_importacion_permission(request, "puede_importar")
+            or self._check_specific_importacion_permission(request, "puede_actualizar")
+        ):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta acción."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        self.get_object()
+        pares = request.data.get("pares") or []
+        if not isinstance(pares, list):
+            return Response({"detail": "pares debe ser una lista."}, status=status.HTTP_400_BAD_REQUEST)
+        creados = 0
+        with transaction.atomic():
+            for par in pares:
+                try:
+                    producto_id = int(par.get("producto_id"))
+                    alterno_id = int(par.get("alterno_id"))
+                except (AttributeError, TypeError, ValueError):
+                    continue
+                if producto_id == alterno_id:
+                    continue
+                ids = set(get_alterno_group_ids(alterno_id)) | {producto_id}
+                ids = set(Producto.objects.filter(id__in=ids).values_list("id", flat=True))
+                if len(ids) < 2 or producto_id not in ids:
+                    continue
+                ya = set(
+                    ProductoAlterno.objects.filter(producto_id__in=ids, alterno_id__in=ids)
+                    .values_list("producto_id", "alterno_id")
+                )
+                nuevos = [
+                    ProductoAlterno(producto_id=a, alterno_id=b)
+                    for a in ids
+                    for b in ids
+                    if a != b and (a, b) not in ya
+                ]
+                if nuevos:
+                    ProductoAlterno.objects.bulk_create(nuevos, ignore_conflicts=True)
+                    creados += len(nuevos)
+                sync_group_oems(get_alterno_group_ids(producto_id))
+        return Response({"creados": creados}, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=["post"], url_path="importar")
     def importar(self, request, pk=None):
         if not self._check_specific_importacion_permission(request, "puede_importar"):
@@ -1353,7 +1443,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         instance.save(update_fields=["estado", "numero_factura", "fecha_importacion", "fecha", "historial_confirmacion"])
 
         serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        data = dict(serializer.data)
+        # Productos nuevos con codigo sugerido de otra casa: el frontend
+        # pregunta si se agregan como alternos de ese producto.
+        data["alternos_sugeridos"] = self._alternos_sugeridos(instance)
+        return Response(data)
 
     @staticmethod
     def _smart_average(tiempos):
