@@ -416,3 +416,26 @@
   border-color: var(--color-border-dark);
 }
 .caja-barra-suelta .caja-barra { border-bottom: 0; }
+
+/* Franja aun mas baja: cada indicador en UNA linea (etiqueta, valor y
+   detalle seguidos); la barrita del saldo es una linea fina abajo. */
+.caja-stats { border-radius: 10px; }
+.caja-stats .caja-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1 1 auto;
+  padding: 5px 12px 6px;
+  position: relative;
+  white-space: nowrap;
+}
+.caja-stats .caja-stat > span { flex: none; }
+.caja-stats .caja-stat > small { min-width: 0; }
+.caja-stats .caja-stat--saldo .caja-meter {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 2px;
+  height: 2px;
+  margin: 0;
+}
