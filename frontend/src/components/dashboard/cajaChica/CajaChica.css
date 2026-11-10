@@ -345,3 +345,7 @@
 .caja-resumen-card { overflow: auto; }
 .caja-resumen-card__head { padding: 10px 12px 0; }
 .caja-resumen-card .caja-resumen { padding: 12px; }
+
+/* La tabla ocupa el alto que sobra: la barra de cajas, la franja de valores
+   y los avisos no se encogen (antes se aplastaban y no se leian). */
+.caja-page > :not(.caja-datatable) { flex-shrink: 0; }
