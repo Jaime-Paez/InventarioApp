@@ -49,10 +49,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   const [loadingCajas, setLoadingCajas] = useState(true)
   const [loadingMovs, setLoadingMovs] = useState(false)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState('movimientos')
   const [filtros, setFiltros] = useState({ desde: monthStartIso(), hasta: todayIso(), tipo: '', estado: '', search: '' })
-  const [arqueos, setArqueos] = useState([])
-  const [resumen, setResumen] = useState(null)
   const [dialog, setDialog] = useState(null)
   const [confirm, setConfirm] = useState(null)
   const [motivo, setMotivo] = useState('')
@@ -131,35 +128,16 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
     }
   }, [cajaId, filtros, notify, token])
 
-  const loadExtras = useCallback(async () => {
-    if (!cajaId) return
-    try {
-      if (tab === 'arqueos') {
-        const response = await authFetch(`${API_URL}/caja-chica/cajas/${cajaId}/arqueos/`, {}, token)
-        if (response.ok) setArqueos(await response.json())
-      }
-      if (tab === 'resumen') {
-        const params = new URLSearchParams({ desde: filtros.desde || monthStartIso(), hasta: filtros.hasta || todayIso() })
-        const response = await authFetch(`${API_URL}/caja-chica/cajas/${cajaId}/resumen/?${params}`, {}, token)
-        if (response.ok) setResumen(await response.json())
-      }
-    } catch {
-      // se reintenta al cambiar de pestana
-    }
-  }, [cajaId, filtros.desde, filtros.hasta, tab, token])
-
   useEffect(() => { loadCajas() }, [loadCajas])
   useEffect(() => { if (isTabActive) loadCajas() }, [isTabActive, loadCajas])
   useEffect(() => {
     const timer = setTimeout(loadMovimientos, 250)
     return () => clearTimeout(timer)
   }, [loadMovimientos])
-  useEffect(() => { loadExtras() }, [loadExtras])
 
   const refreshAll = () => {
     loadCajas()
     loadMovimientos()
-    loadExtras()
   }
 
   const closeDialog = (message) => {
@@ -289,21 +267,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   const barraTabla = (
     <div className="caja-barra">
       <div className="caja-barra__izq">
-        {[
-          ['movimientos', 'Movimientos'],
-          ['resumen', 'Resumen por categoría'],
-          ['arqueos', 'Arqueos'],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            className={`p-button users-topbtn transfer-issues-page__type-btn${tab === key ? ' transfer-issues-page__type-btn--active' : ''}`}
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-        <button className="rounded-icon-btn" type="button" onClick={() => { loadMovimientos(); loadExtras?.() }} disabled={loadingMovs} title="Recargar">
+        <button className="rounded-icon-btn" type="button" onClick={loadMovimientos} disabled={loadingMovs} title="Recargar">
           <i className="pi pi-refresh" />
         </button>
       </div>
@@ -489,7 +453,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                 <BlockerNotice title="Solo lectura" reason="Solo el custodio de esta caja o un administrador registran movimientos." />
               )}
 
-              {tab === 'movimientos' && (
+              {(
                 <div className="users-table users-table--card users-table--compact caja-datatable">
                   {loadingMovs && tablaSpinner}
                   <DataTable
@@ -640,93 +604,6 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                 </div>
               )}
 
-              {tab === 'resumen' && (
-                <div className="users-table users-table--card users-table--compact caja-datatable caja-resumen-card">
-                  <div className="caja-resumen-card__head">
-                    {barraTabla}
-                    <div className="users-header">
-                      <div className="users-header__left caja-header__filtros">
-                        <label className="caja-header__fecha">Desde <input className="search-input caja-filtro-fecha" type="date" value={filtros.desde} onChange={(event) => setFiltros((prev) => ({ ...prev, desde: event.target.value }))} /></label>
-                        <label className="caja-header__fecha">Hasta <input className="search-input caja-filtro-fecha" type="date" value={filtros.hasta} onChange={(event) => setFiltros((prev) => ({ ...prev, hasta: event.target.value }))} /></label>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="caja-resumen">
-                  {!resumen ? (
-                    <span className="taller-muted"><i className="pi pi-spin pi-spinner" /> Cargando...</span>
-                  ) : (
-                    <>
-                      <div className="caja-cards">
-                        <div className="caja-card"><span>Gastos aprobados</span><strong>{formatMoney(resumen.total_gastos)}</strong></div>
-                        <div className="caja-card"><span>Ingresos</span><strong>{formatMoney(resumen.ingresos)}</strong></div>
-                        <div className="caja-card"><span>Sin comprobante</span><strong className={resumen.sin_comprobante ? 'is-warn' : ''}>{resumen.sin_comprobante}</strong></div>
-                        <div className="caja-card"><span>Con comprobante sin foto</span><strong className={resumen.sin_foto ? 'is-warn' : ''}>{resumen.sin_foto}</strong></div>
-                      </div>
-                      {!resumen.por_categoria.length ? (
-                        <p className="taller-muted">No hay gastos aprobados en este período.</p>
-                      ) : (
-                        <div className="caja-bars">
-                          {resumen.por_categoria.map((row) => {
-                            const pct = Number(resumen.total_gastos) > 0 ? (Number(row.total) / Number(resumen.total_gastos)) * 100 : 0
-                            return (
-                              <div key={row.categoria} className="caja-bar">
-                                <span className="caja-bar__label">{row.categoria}</span>
-                                <div className="caja-bar__track"><div className="caja-bar__fill" style={{ width: `${pct}%` }} /></div>
-                                <span className="caja-bar__value">{`${formatMoney(row.total)} · ${row.cantidad}`}</span>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </>
-                  )}
-                  </div>
-                </div>
-              )}
-
-              {tab === 'arqueos' && (
-                <div className="users-table users-table--card users-table--compact caja-datatable">
-                  <DataTable
-                    value={arqueos}
-                    dataKey="id"
-                    scrollable
-                    scrollHeight="flex"
-                    header={(
-                      <>
-                        {barraTabla}
-                        <div className="users-header">
-                          <div className="users-header__left" />
-                          <div className="users-header__right">
-                            <span className="users-header__count">Reg. {arqueos.length}</span>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                    className="users-datatable users-datatable--compact"
-                    tableStyle={{ width: '100%' }}
-                    emptyMessage="Todavía no hay arqueos."
-                    showGridlines
-                    size="small"
-                    paginator
-                    rows={25}
-                    rowsPerPageOptions={[10, 25, 50]}
-                    removableSort
-                  >
-                    <Column field="creado_en" header="Fecha" sortable body={(a) => formatDateTime(a.creado_en)} />
-                    <Column field="total_contado" header="Contado" sortable style={{ textAlign: 'right' }} body={(a) => formatMoney(a.total_contado)} />
-                    <Column field="saldo_sistema" header="Sistema" sortable style={{ textAlign: 'right' }} body={(a) => formatMoney(a.saldo_sistema)} />
-                    <Column
-                      field="diferencia"
-                      header="Diferencia"
-                      sortable
-                      style={{ textAlign: 'right' }}
-                      body={(a) => <span className={Number(a.diferencia) === 0 ? 'caja-in' : 'caja-out'}>{Number(a.diferencia) === 0 ? 'Cuadra' : formatMoney(a.diferencia)}</span>}
-                    />
-                    <Column field="observacion" header="Observación" body={(a) => a.observacion || '-'} />
-                    <Column field="realizado_por_nombre" header="Realizado por" sortable />
-                  </DataTable>
-                </div>
-              )}
             </>
           )}
         </>
