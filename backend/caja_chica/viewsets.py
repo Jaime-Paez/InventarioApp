@@ -671,10 +671,8 @@ class MovimientoCajaViewSet(viewsets.ModelViewSet):
             raise ValidationError({"detail": "La apertura del fondo no se elimina."})
         if movimiento.liquidado_en or movimiento.de_anticipo_id or movimiento.tipo == M.Tipos.VUELTO:
             raise ValidationError({"detail": "Es parte de un anticipo liquidado: no se elimina."})
-        if not is_app_admin(request.user) and (
-            movimiento.registrado_por_id != request.user.id or movimiento.estado == M.Estados.APROBADO
-        ):
-            raise PermissionDenied("Solo puedes eliminar tus movimientos por aprobar o rechazados.")
+        if not is_app_admin(request.user):
+            raise PermissionDenied("Solo un administrador puede eliminar movimientos de la caja.")
         movimiento.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 

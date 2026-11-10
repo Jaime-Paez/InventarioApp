@@ -23,7 +23,7 @@ import {
   LiquidarDialog,
   MovimientoDialog,
 } from './CajaChicaDialogs'
-import { ESTADO_CHIP, TIPO_LABELS, formatMoney, monthStartIso, parseApiError, todayIso } from './cajaChicaUtils'
+import { ESTADO_CHIP, TIPO_LABELS, currentMonth, formatMoney, monthLabel, monthRange, parseApiError, shiftMonth } from './cajaChicaUtils'
 
 // Nombre a mostrar de una caja: su sucursal o su taller (sin repetir
 // "Taller" si el nombre del taller ya lo trae).
@@ -50,7 +50,15 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   const [loadingCajas, setLoadingCajas] = useState(true)
   const [loadingMovs, setLoadingMovs] = useState(false)
   const [error, setError] = useState('')
-  const [filtros, setFiltros] = useState({ desde: monthStartIso(), hasta: todayIso(), tipo: '', estado: '', search: '' })
+  // Los movimientos se ven por mes; las flechas pasan al mes anterior / siguiente.
+  const [mesFiltro, setMesFiltro] = useState(currentMonth)
+  const [filtros, setFiltros] = useState(() => ({ ...monthRange(currentMonth()), tipo: '', estado: '', search: '' }))
+  const esMesActual = mesFiltro.anio === currentMonth().anio && mesFiltro.mes === currentMonth().mes
+  const cambiarMes = (delta) => {
+    const nuevo = shiftMonth(mesFiltro, delta)
+    setMesFiltro(nuevo)
+    setFiltros((prev) => ({ ...prev, ...monthRange(nuevo) }))
+  }
   const [dialog, setDialog] = useState(null)
   const [confirm, setConfirm] = useState(null)
   const [motivo, setMotivo] = useState('')
@@ -457,8 +465,15 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                             <input className="search-input" placeholder="Buscar en tabla" value={filtros.search} onChange={(event) => setFiltros((prev) => ({ ...prev, search: event.target.value }))} />
                             <i className={`pi ${loadingMovs ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
                           </div>
-                          <label className="caja-header__fecha">Desde <input className="search-input caja-filtro-fecha" type="date" value={filtros.desde} onChange={(event) => setFiltros((prev) => ({ ...prev, desde: event.target.value }))} /></label>
-                          <label className="caja-header__fecha">Hasta <input className="search-input caja-filtro-fecha" type="date" value={filtros.hasta} onChange={(event) => setFiltros((prev) => ({ ...prev, hasta: event.target.value }))} /></label>
+                          <div className="caja-mes" role="group" aria-label="Mes">
+                            <button type="button" className="caja-mes__btn" onClick={() => cambiarMes(-1)} aria-label="Mes anterior" title="Mes anterior">
+                              <i className="pi pi-chevron-left" />
+                            </button>
+                            <span className="caja-mes__label" aria-live="polite">{monthLabel(mesFiltro)}</span>
+                            <button type="button" className="caja-mes__btn" onClick={() => cambiarMes(1)} disabled={esMesActual} aria-label="Mes siguiente" title="Mes siguiente">
+                              <i className="pi pi-chevron-right" />
+                            </button>
+                          </div>
                           <div className="caja-filtro-dropdown">
                             <CascadeDropdown
                               placeholder="Todos los tipos"
@@ -559,7 +574,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                     <Column field="estado" header="Estado" sortable style={{ minWidth: '110px' }} body={(m) => <span className={`taller-chip taller-chip--${ESTADO_CHIP[m.estado] || 'cerrada'}`}>{m.estado_label}</span>} />
                     <Column
                       header="Acciones"
-                      style={{ minWidth: '170px' }}
+                      style={{ width: '1%', whiteSpace: 'nowrap' }}
                       body={(m) => {
                         const propio = String(m.registrado_por) === String(user?.id)
                         const editable = m.estado !== 'aprobado' && (isAdmin || propio) && !['apertura', 'vuelto'].includes(m.tipo) && !m.de_anticipo
@@ -578,7 +593,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                             {editable && (
                               <button type="button" className="create-user__ghost" onClick={() => setDialog({ kind: 'mov', mov: m })}>Corregir</button>
                             )}
-                            {(editable || (isAdmin && !['apertura', 'vuelto'].includes(m.tipo) && !m.de_anticipo && !m.liquidado_en)) && (
+                            {isAdmin && !['apertura', 'vuelto'].includes(m.tipo) && !m.de_anticipo && !m.liquidado_en && (
                               <button type="button" className="create-user__locations-remove" aria-label="Eliminar" data-title="Eliminar movimiento" onClick={() => setConfirm({ kind: 'eliminar', mov: m })} disabled={busy}>
                                 x
                               </button>
