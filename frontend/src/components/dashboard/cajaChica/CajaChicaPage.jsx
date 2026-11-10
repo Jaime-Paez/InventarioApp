@@ -14,7 +14,7 @@ import '../taller/Taller.css'
 import './CajaChica.css'
 import { API_URL, authFetch } from '../../../utils/api'
 import { formatDate, formatDateTime } from '../../../utils/dateFormat'
-import { buildFileName, exportToExcel } from '../../../utils/exportUtils'
+import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
 import {
   ArqueoDialog,
   CajaConfigDialog,
@@ -209,7 +209,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
     }
   }
 
-  const exportar = () => {
+  const exportar = (formato = 'excel') => {
     const columns = [
       { key: 'fecha', header: 'Fecha' },
       { key: 'tipo', header: 'Tipo' },
@@ -222,10 +222,13 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
       { key: 'salida', header: 'Salida' },
       { key: 'registrado', header: 'Registrado por' },
     ]
-    exportToExcel({
+    const exportFn = formato === 'pdf' ? exportToPdf : exportToExcel
+    exportFn({
       rows: movimientos,
       columns,
       fileName: buildFileName(`caja-chica-${(caja?.nombre || 'caja').replace(/\s+/g, '-')}`),
+      title: caja?.nombre || 'Caja chica',
+      subtitle: monthLabel(mesFiltro),
       valueGetter: (row, key) => ({
         fecha: formatDate(row.fecha),
         tipo: row.tipo_label,
@@ -291,14 +294,10 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
   // Primera fila del encabezado de la tabla (como en Revision de inventario >
   // Diferencias): vistas y recargar a la izquierda; registrar y configurar a
   // la derecha.
-  const barraTabla = (
-    <div className="caja-barra">
-      <div className="caja-barra__izq">
-        <button className="rounded-icon-btn" type="button" onClick={loadMovimientos} disabled={loadingMovs} title="Recargar">
-          <i className="pi pi-refresh" />
-        </button>
-      </div>
-      <div className="caja-barra__der">
+  // Registrar (el mas grande), Configurar y Categorias: a la derecha de la
+  // franja de valores, al lado del custodio.
+  const accionesCaja = (
+    <div className="caja-acciones">
         {puedeRegistrar && (
           <div className="caja-registrar" ref={registrarRef}>
             <button type="button" className="p-button users-topbtn users-topbtn--create" onClick={() => setShowRegistrar((v) => !v)}>
@@ -333,7 +332,6 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
             Categorías
           </button>
         )}
-      </div>
     </div>
   )
 
@@ -389,7 +387,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
           {/* Sin configurar no hay tabla: el desplegable va suelto para poder
               cambiar a otra caja (configurada o no) y configurarla. */}
           {caja && !configurada && (
-            <div className="caja-barra-suelta">{barraTabla}</div>
+            <div className="caja-barra-suelta">{accionesCaja}</div>
           )}
           {caja && !configurada && (
             isAdmin ? (
@@ -443,6 +441,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
                   <span>Custodio</span>
                   <strong className="caja-stat__texto">{caja.custodio_nombre || 'Sin custodio'}</strong>
                 </div>
+                <div className="caja-stat caja-stat--acciones">{accionesCaja}</div>
               </div>
 
               {bajo && (
@@ -467,62 +466,35 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
                     scrollable
                     scrollHeight="flex"
                     header={(
-                      <>
-                      {barraTabla}
-                      <div className="users-header">
-                        <div className="users-header__left caja-header__filtros">
+                      <div className="users-header caja-header">
+                        <div className="users-header__left caja-header__izq">
                           <div className="search-input-container">
                             <input className="search-input" placeholder="Buscar en tabla" value={filtros.search} onChange={(event) => setFiltros((prev) => ({ ...prev, search: event.target.value }))} />
                             <i className={`pi ${loadingMovs ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
                           </div>
-                          <div className="caja-mes" role="group" aria-label="Mes">
-                            <button type="button" className="caja-mes__btn" onClick={() => cambiarMes(-1)} aria-label="Mes anterior" title="Mes anterior">
-                              <i className="pi pi-chevron-left" />
-                            </button>
-                            <span className="caja-mes__label" aria-live="polite">{monthLabel(mesFiltro)}</span>
-                            <button type="button" className="caja-mes__btn" onClick={() => cambiarMes(1)} disabled={esMesActual} aria-label="Mes siguiente" title="Mes siguiente">
-                              <i className="pi pi-chevron-right" />
-                            </button>
-                          </div>
-                          <div className="caja-filtro-dropdown">
-                            <CascadeDropdown
-                              placeholder="Todos los tipos"
-                              searchPlaceholder="Buscar"
-                              options={[
-                                { id: '', nombre: 'Todos los tipos' },
-                                { id: 'gasto', nombre: 'Gastos' },
-                                { id: 'anticipo', nombre: 'Anticipos' },
-                                { id: 'ingreso,reposicion,apertura,vuelto', nombre: 'Ingresos y reposiciones' },
-                              ]}
-                              valueId={filtros.tipo}
-                              getOptionLabel={(o) => o.nombre}
-                              onSelect={(o) => setFiltros((prev) => ({ ...prev, tipo: o.id }))}
-                            />
-                          </div>
-                          <div className="caja-filtro-dropdown">
-                            <CascadeDropdown
-                              placeholder="Todos los estados"
-                              searchPlaceholder="Buscar"
-                              options={[
-                                { id: '', nombre: 'Todos los estados' },
-                                { id: 'pendiente', nombre: 'Por aprobar' },
-                                { id: 'aprobado', nombre: 'Aprobados' },
-                                { id: 'rechazado', nombre: 'Rechazados' },
-                              ]}
-                              valueId={filtros.estado}
-                              getOptionLabel={(o) => o.nombre}
-                              onSelect={(o) => setFiltros((prev) => ({ ...prev, estado: o.id }))}
-                            />
-                          </div>
+                          <button className="rounded-icon-btn" type="button" onClick={loadMovimientos} disabled={loadingMovs} title="Recargar">
+                            <i className="pi pi-refresh" />
+                          </button>
+                        </div>
+                        <div className="caja-mes caja-header__centro" role="group" aria-label="Mes">
+                          <button type="button" className="caja-mes__btn" onClick={() => cambiarMes(-1)} aria-label="Mes anterior" title="Mes anterior">
+                            <i className="pi pi-chevron-left" />
+                          </button>
+                          <span className="caja-mes__label" aria-live="polite">{monthLabel(mesFiltro)}</span>
+                          <button type="button" className="caja-mes__btn" onClick={() => cambiarMes(1)} disabled={esMesActual} aria-label="Mes siguiente" title="Mes siguiente">
+                            <i className="pi pi-chevron-right" />
+                          </button>
                         </div>
                         <div className="users-header__right">
                           <span className="users-header__count">Reg. {movimientos.length}</span>
-                          <button className="users-circle users-circle--excel" type="button" title={movimientos.length ? 'Exportar Excel' : 'No hay movimientos para exportar'} disabled={!movimientos.length} onClick={exportar}>
+                          <button className="users-circle users-circle--excel" type="button" title={movimientos.length ? 'Exportar Excel' : 'No hay movimientos para exportar'} disabled={!movimientos.length} onClick={() => exportar('excel')}>
                             <i className="pi pi-file-excel" />
+                          </button>
+                          <button className="users-circle users-circle--pdf" type="button" title={movimientos.length ? 'Exportar PDF' : 'No hay movimientos para exportar'} disabled={!movimientos.length} onClick={() => exportar('pdf')}>
+                            <i className="pi pi-file-pdf" />
                           </button>
                         </div>
                       </div>
-                      </>
                     )}
                     className="users-datatable users-datatable--compact"
                     tableStyle={{ width: '100%' }}

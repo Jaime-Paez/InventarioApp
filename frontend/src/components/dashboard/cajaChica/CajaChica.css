@@ -406,3 +406,43 @@
 .caja-datatable th.caja-col--centro { text-align: center; }
 .caja-datatable th.caja-col--centro .p-column-header-content { justify-content: center; }
 .caja-datatable td.caja-col--centro .caja-table__actions { justify-content: center; text-align: center; }
+
+/* Acciones (Registrar, Configurar, Categorias) a la derecha de la franja de
+   valores, junto al custodio; Registrar es el mas grande. */
+.caja-stats .caja-stat--acciones {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.caja-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.caja-acciones .caja-registrar .users-topbtn--create.p-button {
+  padding: 9px 18px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.caja-barra-suelta { display: flex; justify-content: flex-end; }
+
+/* Encabezado de la tabla: busqueda + recargar | mes (centro) | Reg + Excel + PDF */
+.caja-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.caja-header .caja-header__izq { justify-self: start; display: flex; align-items: center; gap: 8px; }
+.caja-header .caja-header__centro { justify-self: center; }
+.caja-header .users-header__right { justify-self: end; }
+
+/* Sin scroll horizontal: el texto de las celdas se acomoda en varias lineas. */
+.caja-datatable .p-datatable-wrapper { overflow-x: hidden; }
+.caja-datatable .p-datatable-table { width: 100% !important; min-width: 0 !important; }
+.caja-datatable .p-datatable-tbody > tr > td,
+.caja-datatable .p-datatable-thead > tr > th { white-space: normal; overflow-wrap: anywhere; }
+.caja-datatable .p-datatable-tbody > tr > td.caja-col--centro { white-space: nowrap; overflow-wrap: normal; }
