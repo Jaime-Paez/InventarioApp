@@ -448,3 +448,10 @@
 .caja-stats .caja-stat > small { font-size: 13px; }
 .caja-stats .caja-stat__texto { font-size: 1rem !important; }
 .caja-stats .caja-stat--saldo .caja-meter { left: 16px; right: 16px; bottom: 4px; height: 3px; }
+
+/* Estado y Acciones centrados (encabezado y contenido); Entrada y Salida
+   alineadas a la izquierda como el resto. */
+.caja-datatable td.caja-col--centro,
+.caja-datatable th.caja-col--centro { text-align: center; }
+.caja-datatable th.caja-col--centro .p-column-header-content { justify-content: center; }
+.caja-datatable td.caja-col--centro .caja-table__actions { justify-content: center; text-align: center; }
