@@ -82,7 +82,7 @@ function ComprobanteFields({ form, setForm, disabled }) {
                 </button>
               </>
             ) : (
-              <label className="taller-mini-btn">
+              <label className="create-user__ghost caja-foto-btn">
                 <i className="pi pi-camera" /> Tomar o subir foto
                 <input type="file" accept="image/*" capture="environment" hidden onChange={onFile} disabled={disabled} />
               </label>
@@ -446,7 +446,11 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
   }, [open, caja, token])
 
   const esTaller = Boolean(caja?.taller)
-  const sucursalNombre = esTaller ? `Taller ${caja?.taller_nombre || ''}`.trim() : caja?.sucursal_nombre || ''
+  const tallerNombre = String(caja?.taller_nombre || '').trim()
+  // Sin repetir "Taller" si el nombre del taller ya lo trae.
+  const sucursalNombre = esTaller
+    ? (/^taller(\s|$)/i.test(tallerNombre) ? tallerNombre : `Taller ${tallerNombre}`.trim())
+    : caja?.sucursal_nombre || ''
   const motivo = !(Number(form.monto_fondo) > 0) ? 'Indica el monto del fondo.' : !form.custodio ? 'Elige el custodio (responsable).' : ''
 
   const submit = async () => {

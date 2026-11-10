@@ -9,31 +9,53 @@
 }
 .dashboard-shell.dark .caja-page { color: var(--color-text-dark); }
 
+/* Selector de cajas = la barra segmentada del sistema (create-user__tabs),
+   centrada; Configurar y Categorias a la derecha. */
 .caja-top {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 860px) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
 }
-.caja-selector { display: flex; flex-wrap: wrap; gap: 6px; }
-.caja-selector__btn {
+.caja-top .caja-selector {
+  grid-column: 2;
+  width: 100%;
+  margin: 0;
+}
+.caja-selector .create-user__tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.caja-selector .caja-selector__tab--inactiva { opacity: 0.5; }
+.caja-top__admin {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.caja-top__admin .create-user__ghost,
+.caja-table .create-user__ghost,
+.caja-foto-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: transparent;
-  color: inherit;
-  font-size: var(--font-size-md);
-  font-weight: 700;
-  cursor: pointer;
+  font-size: var(--font-size-sm);
 }
-.caja-selector__btn.is-active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
-.dashboard-shell.dark .caja-selector__btn.is-active { background: var(--color-primary-dark); border-color: var(--color-primary-dark); }
-.caja-selector__btn.is-inactive { opacity: 0.55; }
-.caja-top__admin { display: flex; flex-wrap: wrap; gap: 6px; }
+.caja-btn--rechazar { color: #b91c1c; border-color: color-mix(in srgb, #ef4444 45%, var(--color-border)); }
+.caja-btn--liquidar { color: #b45309; border-color: color-mix(in srgb, #f59e0b 45%, var(--color-border)); }
+.dashboard-shell.dark .caja-btn--rechazar { color: #fca5a5; }
+.dashboard-shell.dark .caja-btn--liquidar { color: #fbbf24; }
+@media (max-width: 900px) {
+  .caja-top { grid-template-columns: 1fr; }
+  .caja-top .caja-selector,
+  .caja-top__admin { grid-column: 1; }
+  .caja-top .caja-selector { overflow-x: auto; }
+  .caja-top__admin { justify-self: start; }
+}
 
 .caja-cards {
   display: grid;

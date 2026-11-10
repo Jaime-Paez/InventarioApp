@@ -20,6 +20,17 @@ import {
 } from './CajaChicaDialogs'
 import { ESTADO_CHIP, TIPO_LABELS, formatMoney, monthStartIso, parseApiError, todayIso } from './cajaChicaUtils'
 
+// Nombre a mostrar de una caja: su sucursal o su taller (sin repetir
+// "Taller" si el nombre del taller ya lo trae).
+const nombreCaja = (c) => {
+  if (!c) return ''
+  if (c.taller) {
+    const t = String(c.taller_nombre || '').trim()
+    return /^taller(\s|$)/i.test(t) ? t : `Taller ${t}`
+  }
+  return c.sucursal_nombre || c.nombre
+}
+
 function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   const toast = useRef(null)
   const isAdmin = Boolean(
@@ -264,23 +275,25 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
       {cajas.length > 0 && (
         <>
           <div className="caja-top">
-            <div className="caja-selector" role="tablist" aria-label="Cajas">
+            <div className="create-user__tabs caja-selector" role="tablist" aria-label="Cajas">
               {cajas.map((c) => (
                 <button
                   key={c.id}
                   type="button"
-                  className={`caja-selector__btn${String(c.id) === String(cajaId) ? ' is-active' : ''}${c.activa ? '' : ' is-inactive'}`}
+                  role="tab"
+                  aria-selected={String(c.id) === String(cajaId)}
+                  className={`create-user__tab${String(c.id) === String(cajaId) ? ' create-user__tab--active' : ''}${c.activa ? '' : ' caja-selector__tab--inactiva'}`}
                   onClick={() => setCajaId(String(c.id))}
                 >
-                  {c.taller ? `Taller ${c.taller_nombre}` : c.sucursal_nombre || c.nombre}
+                  {nombreCaja(c)}
                   {c.pendientes > 0 && isAdmin && <span className="taller-toggle__count">{c.pendientes}</span>}
                 </button>
               ))}
             </div>
             {isAdmin && (
               <div className="caja-top__admin">
-                {caja && <button type="button" className="taller-mini-btn" onClick={() => setDialog({ kind: 'caja', caja })}><i className="pi pi-cog" /> Configurar</button>}
-                <button type="button" className="taller-mini-btn" onClick={() => setDialog({ kind: 'categorias' })}><i className="pi pi-tags" /> Categorías</button>
+                {caja && <button type="button" className="create-user__ghost" onClick={() => setDialog({ kind: 'caja', caja })}><i className="pi pi-cog" /> Configurar</button>}
+                <button type="button" className="create-user__ghost" onClick={() => setDialog({ kind: 'categorias' })}><i className="pi pi-tags" /> Categorías</button>
               </div>
             )}
           </div>
@@ -288,7 +301,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
           {caja && !configurada && (
             isAdmin ? (
               <BlockerNotice
-                title={`Configura la caja chica de ${caja.taller ? `Taller ${caja.taller_nombre}` : caja.sucursal_nombre}`}
+                title={`Configura la caja chica de ${nombreCaja(caja)}`}
                 reason="Todavía no tiene fondo ni custodio. Indica el monto del fondo, quién la maneja y el tope de gasto sin aprobación: con eso queda abierta."
                 actionLabel="Configurar caja"
                 onAction={() => setDialog({ kind: 'caja', caja })}
@@ -484,15 +497,15 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                             <td className="caja-table__actions">
                               {isAdmin && m.estado === 'pendiente' && (
                                 <>
-                                  <button type="button" className="taller-mini-btn taller-mini-btn--ok" onClick={() => revisar(m, true)} disabled={busy}>Aprobar</button>
-                                  <button type="button" className="taller-mini-btn taller-mini-btn--no" onClick={() => { setMotivo(''); setConfirm({ kind: 'rechazar', mov: m }) }} disabled={busy}>Rechazar</button>
+                                  <button type="button" className="create-user__ghost create-user__ghost--primary" onClick={() => revisar(m, true)} disabled={busy}>Aprobar</button>
+                                  <button type="button" className="create-user__ghost caja-btn--rechazar" onClick={() => { setMotivo(''); setConfirm({ kind: 'rechazar', mov: m }) }} disabled={busy}>Rechazar</button>
                                 </>
                               )}
                               {anticipoAbierto && puedeRegistrar && (
-                                <button type="button" className="taller-mini-btn taller-mini-btn--warn" onClick={() => setDialog({ kind: 'liquidar', mov: m })}>Liquidar</button>
+                                <button type="button" className="create-user__ghost caja-btn--liquidar" onClick={() => setDialog({ kind: 'liquidar', mov: m })}>Liquidar</button>
                               )}
                               {editable && (
-                                <button type="button" className="taller-mini-btn" onClick={() => setDialog({ kind: 'mov', mov: m })}>Corregir</button>
+                                <button type="button" className="create-user__ghost" onClick={() => setDialog({ kind: 'mov', mov: m })}>Corregir</button>
                               )}
                               {(editable || (isAdmin && !['apertura', 'vuelto'].includes(m.tipo) && !m.de_anticipo && !m.liquidado_en)) && (
                                 <button type="button" className="taller-icon-btn taller-icon-btn--no" title="Eliminar" onClick={() => setConfirm({ kind: 'eliminar', mov: m })} disabled={busy}>
