@@ -36,7 +36,7 @@ const nombreCaja = (c) => {
   return c.sucursal_nombre || c.nombre
 }
 
-function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
+function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitcherChange }) {
   const toast = useRef(null)
   const isAdmin = Boolean(
     user?.is_superuser || user?.is_staff || user?.es_administrador || String(user?.rol || '').trim().toLowerCase() === 'administrador'
@@ -252,6 +252,23 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
     return { entradas, salidas }
   }, [movimientos])
 
+  // La caja se elige en el titulo de la pagina ("Caja chica Tumbaco v"),
+  // como la sucursal en Entradas / Salidas.
+  useEffect(() => {
+    if (!onTitleSwitcherChange) return undefined
+    const elegida = cajas.find((c) => String(c.id) === String(cajaId))
+    onTitleSwitcherChange(cajas.length ? {
+      label: elegida ? nombreCaja(elegida) : 'Elige la caja',
+      selectedId: String(cajaId || ''),
+      options: cajas.map((c) => ({
+        id: String(c.id),
+        nombre: `${nombreCaja(c)}${c.pendientes > 0 && isAdmin ? ` (${c.pendientes} por aprobar)` : ''}`,
+      })),
+      onSelect: (id) => setCajaId(String(id)),
+    } : null)
+    return undefined
+  }, [cajas, cajaId, isAdmin, onTitleSwitcherChange])
+
   // ---------------------------------------------------------------- render
 
   // Primera carga: se dibuja la pagina (barra y tabla) y el loader va dentro
@@ -277,19 +294,6 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   const barraTabla = (
     <div className="caja-barra">
       <div className="caja-barra__izq">
-        {/* La caja se elige aqui (como la sucursal en Entradas / Salidas). */}
-        <select
-          className="caja-select"
-          value={cajaId}
-          onChange={(event) => setCajaId(event.target.value)}
-          aria-label="Caja chica"
-        >
-          {cajas.map((c) => (
-            <option key={c.id} value={String(c.id)}>
-              {`Caja chica ${nombreCaja(c)}${c.pendientes > 0 && isAdmin ? ` (${c.pendientes} por aprobar)` : ''}`}
-            </option>
-          ))}
-        </select>
         <button className="rounded-icon-btn" type="button" onClick={loadMovimientos} disabled={loadingMovs} title="Recargar">
           <i className="pi pi-refresh" />
         </button>

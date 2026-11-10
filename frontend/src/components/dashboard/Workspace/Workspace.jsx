@@ -122,6 +122,19 @@ function Workspace({
     Solicitudes: ALL_BRANCH_OPTION_ID,
   })
   const [isMovementBranchMenuOpen, setIsMovementBranchMenuOpen] = useState(false)
+  // Paginas que eligen "que ver" desde el titulo con el mismo menu que la
+  // sucursal de Entradas/Salidas (p. ej. Caja chica: que caja). La pagina
+  // manda { label, options: [{ id, nombre }], selectedId, onSelect }.
+  const [pageTitleSwitchers, setPageTitleSwitchers] = useState({})
+  const titleSwitcherSetters = useRef({})
+  const getTitleSwitcherSetter = (tab) => {
+    if (!titleSwitcherSetters.current[tab]) {
+      titleSwitcherSetters.current[tab] = (config) => {
+        setPageTitleSwitchers((prev) => (prev[tab] === config ? prev : { ...prev, [tab]: config }))
+      }
+    }
+    return titleSwitcherSetters.current[tab]
+  }
   const movementBranchMenuRef = useRef(null)
   const [pendingTransferSalidaRequest, setPendingTransferSalidaRequest] = useState(null)
   const [pendingTransferEntradaRequest, setPendingTransferEntradaRequest] = useState(null)
@@ -479,10 +492,14 @@ function Workspace({
     activeMovementBranchMenuOptions.length > 0
   )
 
+  const pageTitleSwitcher = !showMovementBranchSwitcher && pageTitleSwitchers[activeItem]?.options?.length
+    ? pageTitleSwitchers[activeItem]
+    : null
+
   useEffect(() => {
-    if (showMovementBranchSwitcher) return
+    if (showMovementBranchSwitcher || pageTitleSwitcher) return
     setIsMovementBranchMenuOpen(false)
-  }, [showMovementBranchSwitcher])
+  }, [showMovementBranchSwitcher, pageTitleSwitcher])
 
   useEffect(() => {
     setIsMovementBranchMenuOpen(false)
@@ -594,6 +611,7 @@ function Workspace({
               ? 'importada'
               : undefined
         }
+        onTitleSwitcherChange={tab === 'Caja chica' ? getTitleSwitcherSetter(tab) : undefined}
         isTabActive={
           tab === 'Entradas' || tab === 'Salidas' || tab === 'Solicitudes' ||
           tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY ||
@@ -796,6 +814,45 @@ function Workspace({
                           }}
                         >
                           {branch.nombre || `Sucursal ${branch.id}`}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            {pageTitleSwitcher && (
+              <div className="workspace__view-branch" ref={movementBranchMenuRef}>
+                <button
+                  type="button"
+                  className="workspace__view-branch-trigger"
+                  onClick={() => setIsMovementBranchMenuOpen((prev) => !prev)}
+                  aria-haspopup="listbox"
+                  aria-expanded={isMovementBranchMenuOpen}
+                  aria-label={`Elegir en ${String(activeItem || '').toLowerCase()}`}
+                >
+                  <span>{pageTitleSwitcher.label}</span>
+                  <i className={`pi pi-chevron-${isMovementBranchMenuOpen ? 'up' : 'down'}`} aria-hidden="true" />
+                </button>
+
+                {isMovementBranchMenuOpen && (
+                  <div className="workspace__view-branch-panel" role="listbox">
+                    {pageTitleSwitcher.options.map((option) => {
+                      const optionId = String(option?.id || '').trim()
+                      const selected = optionId && optionId === String(pageTitleSwitcher.selectedId || '')
+                      return (
+                        <button
+                          key={optionId}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          className={`workspace__view-branch-option${selected ? ' is-active' : ''}`}
+                          onClick={() => {
+                            pageTitleSwitcher.onSelect?.(optionId)
+                            setIsMovementBranchMenuOpen(false)
+                          }}
+                        >
+                          {option.nombre}
                         </button>
                       )
                     })}
