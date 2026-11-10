@@ -65,12 +65,21 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
   const [busy, setBusy] = useState(false)
   // Menu "Registrar" (gasto, anticipo, ingreso, arqueo, reposicion).
   const [showRegistrar, setShowRegistrar] = useState(false)
+  // El menu de Registrar se posiciona fijo en la pantalla (debajo del boton)
+  // para que la tabla ni la franja lo tapen.
+  const [menuPos, setMenuPos] = useState(null)
   const registrarRef = useRef(null)
   useEffect(() => {
     if (!showRegistrar) return undefined
     const onDown = (event) => { if (!registrarRef.current?.contains(event.target)) setShowRegistrar(false) }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
+  }, [showRegistrar])
+  useEffect(() => {
+    if (!showRegistrar) return undefined
+    const cerrar = () => setShowRegistrar(false)
+    window.addEventListener('resize', cerrar)
+    return () => window.removeEventListener('resize', cerrar)
   }, [showRegistrar])
 
   const notify = useCallback((detail, severity = 'success') => {
@@ -291,20 +300,37 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
   const configurada = Boolean(caja?.configurada)
   const puedeRegistrar = Boolean(caja?.activa && configurada && canCreate && (isAdmin || esCustodio))
 
-  // Primera fila del encabezado de la tabla (como en Revision de inventario >
-  // Diferencias): vistas y recargar a la izquierda; registrar y configurar a
-  // la derecha.
-  // Registrar (el mas grande), Configurar y Categorias: a la derecha de la
-  // franja de valores, al lado del custodio.
+  // Al lado del custodio. Izquierda: Configurar (arriba) y Categorias (abajo). Derecha: Registrar,
+  // verde y alto.
   const accionesCaja = (
     <div className="caja-acciones">
+      {isAdmin && (
+        <div className="caja-acciones__config">
+        {isAdmin && caja && (
+          <button type="button" className="caja-config-btn" onClick={() => setDialog({ kind: 'caja', caja })}>
+            <Settings size={14} />
+            Configurar
+          </button>
+        )}
+        {isAdmin && (
+          <button type="button" className="caja-config-btn" onClick={() => setDialog({ kind: 'categorias' })}>
+            <Tags size={14} />
+            Categorías
+          </button>
+        )}
+        </div>
+      )}
         {puedeRegistrar && (
           <div className="caja-registrar" ref={registrarRef}>
-            <button type="button" className="p-button users-topbtn users-topbtn--create" onClick={() => setShowRegistrar((v) => !v)}>
+            <button type="button" className="p-button users-topbtn users-topbtn--create" onClick={(event) => {
+              const r = event.currentTarget.getBoundingClientRect()
+              setMenuPos({ top: r.bottom + 4, right: Math.max(8, window.innerWidth - r.right) })
+              setShowRegistrar((v) => !v)
+            }}>
               <i className="pi pi-plus" /> Registrar <i className="pi pi-angle-down" />
             </button>
             {showRegistrar && (
-              <div className="caja-registrar__menu" role="menu">
+              <div className="caja-registrar__menu" role="menu" style={menuPos ? { position: 'fixed', top: menuPos.top, right: menuPos.right } : undefined}>
                 {[
                   ['Gasto', 'pi-minus-circle', () => setDialog({ kind: 'mov', tipo: 'gasto' })],
                   ['Anticipo / vale', 'pi-send', () => setDialog({ kind: 'mov', tipo: 'anticipo' })],
@@ -319,18 +345,6 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
               </div>
             )}
           </div>
-        )}
-        {isAdmin && caja && (
-          <button type="button" className="caja-config-btn" onClick={() => setDialog({ kind: 'caja', caja })}>
-            <Settings size={14} />
-            Configurar
-          </button>
-        )}
-        {isAdmin && (
-          <button type="button" className="caja-config-btn" onClick={() => setDialog({ kind: 'categorias' })}>
-            <Tags size={14} />
-            Categorías
-          </button>
         )}
     </div>
   )

@@ -458,3 +458,29 @@
 .caja-datatable .p-datatable-tbody > tr > td,
 .caja-datatable .p-datatable-thead > tr > th { white-space: normal; overflow-wrap: anywhere; }
 .caja-datatable .p-datatable-tbody > tr > td.caja-col--centro { white-space: nowrap; overflow-wrap: normal; }
+
+/* Acciones: Configurar arriba y Categorias abajo; Registrar a la derecha,
+   del alto de las dos. La franja no se parte en dos lineas. */
+.caja-stats { flex-wrap: nowrap; }
+.caja-stat { flex: 1 1 0; }
+.caja-stat--saldo { flex: 1.3 1 0; }
+.caja-stats .caja-stat--acciones { flex: 0 0 auto; padding: 8px 12px; }
+.caja-stats .caja-acciones,
+.caja-acciones {
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+.caja-acciones__config {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.caja-acciones__config .caja-config-btn { justify-content: flex-start; }
+.caja-acciones .caja-registrar { display: flex; }
+.caja-acciones .caja-registrar .users-topbtn--create.p-button {
+  height: auto;
+  min-height: 100%;
+  align-self: stretch;
+  padding: 10px 22px;
+}
+.caja-registrar__menu { z-index: 1200; }
