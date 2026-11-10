@@ -68,20 +68,25 @@ function TallerDialog({
         </header>
 
         <div className="create-user__form">
-          <div className="create-user__tabs" role="tablist">
-            <button type="button" className="create-user__tab create-user__tab--active" disabled>
-              {tab}
-            </button>
-          </div>
+          {/* tab={null}: sin la pestana; subtitle={null}: sin el titulo de la seccion. */}
+          {tab !== null && (
+            <div className="create-user__tabs" role="tablist">
+              <button type="button" className="create-user__tab create-user__tab--active" disabled>
+                {tab}
+              </button>
+            </div>
+          )}
 
           <div className="create-user__body">
             <section className="create-user__section taller-dialog-section">
-              <div className="create-user__section-header">
-                <div>
-                  <p className="create-user__eyebrow">{eyebrow}</p>
-                  <h4>{subtitle || title}</h4>
+              {subtitle !== null && (
+                <div className="create-user__section-header">
+                  <div>
+                    <p className="create-user__eyebrow">{eyebrow}</p>
+                    <h4>{subtitle || title}</h4>
+                  </div>
                 </div>
-              </div>
+              )}
               {children}
             </section>
           </div>

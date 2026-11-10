@@ -458,13 +458,13 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
     setBusy(true)
     setError('')
     try {
+      // Una caja por sucursal/taller: el nombre es automatico y queda activa
+      // desde que se crea (no se editan aqui).
       const body = {
-        nombre: form.nombre.trim(),
         custodio: form.custodio ? Number(form.custodio) : null,
         monto_fondo: Number(form.monto_fondo).toFixed(2),
         tope_gasto: Number(form.tope_gasto || 0).toFixed(2),
         alerta_reposicion: Number(form.alerta_reposicion || 0),
-        activa: form.activa,
       }
       const data = await post(token, `/caja-chica/cajas/${caja.id}/`, body, 'PATCH')
       onDone?.(data)
@@ -480,8 +480,8 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
       open={open}
       busy={busy}
       title="Configurar caja chica"
-      eyebrow="Caja chica"
-      subtitle={caja?.configurada ? `Caja de ${sucursalNombre}` : `Caja de ${sucursalNombre}: se abre con el fondo como primer ingreso`}
+      tab={null}
+      subtitle={null}
       onClose={onClose}
       footer={<DialogFooter motivo={motivo} busy={busy} onClose={onClose} onSubmit={submit} label={caja?.configurada ? 'Guardar' : 'Abrir caja'} />}
     >
@@ -492,10 +492,6 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
             {esTaller ? `${caja?.taller_nombre || '-'}${caja?.sucursal_nombre ? ` (${caja.sucursal_nombre})` : ''}` : sucursalNombre || '-'}
           </div>
         </div>
-        <label className="create-user__field">
-          <span>Nombre (opcional)</span>
-          <input value={form.nombre} placeholder={esTaller ? `Caja chica ${caja?.taller_nombre || ''}` : sucursalNombre ? `Caja chica ${sucursalNombre}` : 'Caja chica de la sucursal'} onChange={(event) => setForm((prev) => ({ ...prev, nombre: event.target.value }))} />
-        </label>
         <div className="create-user__field">
           <span>Custodio (responsable)</span>
           <CascadeDropdown
@@ -519,12 +515,6 @@ export function CajaConfigDialog({ open, caja, token, onClose, onDone }) {
           <span>Avisar reposición bajo (% del fondo)</span>
           <input className="taller-input" type="number" min={0} max={100} value={form.alerta_reposicion} onChange={(event) => setForm((prev) => ({ ...prev, alerta_reposicion: event.target.value }))} />
         </label>
-        {caja && (
-          <label className="taller-switch">
-            <input type="checkbox" checked={form.activa} onChange={(event) => setForm((prev) => ({ ...prev, activa: event.target.checked }))} />
-            <span>{form.activa ? 'Activa' : 'Inactiva'}</span>
-          </label>
-        )}
       </div>
       {caja && <small className="taller-muted">Si aumentas el fondo, registra el dinero extra como ingreso para que el saldo cuadre.</small>}
       {error && <BlockerNotice title="No se guardó" reason={error} />}
