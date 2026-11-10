@@ -439,3 +439,12 @@
   height: 2px;
   margin: 0;
 }
+
+/* Tamano intermedio (la version de una linea quedo demasiado chica):
+   misma fila, pero mas alto y con letra mas grande. */
+.caja-stats .caja-stat { padding: 10px 16px 12px; gap: 8px; }
+.caja-stats .caja-stat > span { font-size: 12px; }
+.caja-stats .caja-stat > strong { font-size: 1.15rem; }
+.caja-stats .caja-stat > small { font-size: 13px; }
+.caja-stats .caja-stat__texto { font-size: 1rem !important; }
+.caja-stats .caja-stat--saldo .caja-meter { left: 16px; right: 16px; bottom: 4px; height: 3px; }
