@@ -256,9 +256,14 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
 
   // ---------------------------------------------------------------- render
 
-  if (loadingCajas && !cajas.length) {
-    return <div className="caja-page"><span className="taller-muted"><i className="pi pi-spin pi-spinner" /> Cargando caja chica...</span></div>
-  }
+  // Primera carga: se dibuja la pagina (barra y tabla) y el loader va dentro
+  // de la tabla, como en el resto de la app.
+  const cargandoInicial = loadingCajas && !cajas.length
+  const tablaSpinner = (
+    <div className="spinner-container spinner-container--table">
+      <div className="spinner" />
+    </div>
+  )
 
   const saldo = Number(caja?.saldo || 0)
   const fondo = Number(caja?.monto_fondo || 0)
@@ -274,7 +279,41 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
 
       {error && <BlockerNotice title="No se pudo cargar la caja chica" reason={error} actionLabel="Reintentar" onAction={loadCajas} />}
 
-      {!cajas.length && !error && !isAdmin && (
+      {cargandoInicial && (
+        <>
+          <div className="users-page__actions caja-top caja-top--cargando" aria-hidden="true" />
+          <div className="users-table users-table--card users-table--compact caja-datatable">
+            {tablaSpinner}
+            <DataTable
+              value={[]}
+              header={(
+                <div className="users-header">
+                  <div className="users-header__left">
+                    <div className="search-input-container">
+                      <input className="search-input" placeholder="Buscar en tabla" disabled />
+                      <i className="pi pi-search search-input-icon" />
+                    </div>
+                  </div>
+                  <div className="users-header__right">
+                    <span className="users-header__count">Reg. 0</span>
+                  </div>
+                </div>
+              )}
+              className="users-datatable users-datatable--compact"
+              tableStyle={{ width: '100%' }}
+              emptyMessage=" "
+              showGridlines
+              size="small"
+            >
+              {['Fecha', 'Tipo', 'Detalle', 'Comprobante', 'Entrada', 'Salida', 'Estado', 'Acciones'].map((titulo) => (
+                <Column key={titulo} header={titulo} />
+              ))}
+            </DataTable>
+          </div>
+        </>
+      )}
+
+      {!cajas.length && !error && !isAdmin && !cargandoInicial && (
         <BlockerNotice
           title="No tienes una caja chica asignada"
           reason="Cada sucursal tiene su caja: pide al administrador que te ponga como custodio de la caja de tu sucursal."
@@ -420,6 +459,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
 
               {tab === 'movimientos' && (
                 <div className="users-table users-table--card users-table--compact caja-datatable">
+                  {loadingMovs && tablaSpinner}
                   <DataTable
                     value={movimientos}
                     dataKey="id"
@@ -476,7 +516,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                     )}
                     className="users-datatable users-datatable--compact"
                     tableStyle={{ width: '100%' }}
-                    emptyMessage={loadingMovs ? 'Cargando...' : 'No hay movimientos en este período.'}
+                    emptyMessage={loadingMovs ? ' ' : 'No hay movimientos en este período.'}
                     showGridlines
                     size="small"
                     paginator

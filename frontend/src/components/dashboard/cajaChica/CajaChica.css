@@ -187,3 +187,6 @@
 }
 .caja-datatable .caja-row--pendiente > td { background: color-mix(in srgb, #f59e0b 14%, transparent); }
 .caja-datatable .caja-row--rechazado > td { opacity: 0.6; }
+/* Primera carga: la barra ya ocupa su lugar mientras llegan las cajas. */
+.caja-top--cargando { min-height: 52px; }
+.caja-datatable { position: relative; }
