@@ -31,15 +31,17 @@
 .recordatorios-popup__dialog.is-dark .transfer-route--bad { --tr-tone: var(--color-error-text-dark, #f07272); }
 .recordatorios-popup__dialog.is-dark .transfer-route--off { --tr-tone: #9ca3af; }
 
-/* Origen y destino con el mismo ancho fijo (cabe "9 de Octubre (Matriz)"):
-   asi la linea mide igual en todas las tarjetas, sin importar el nombre. */
+/* La linea mide siempre lo mismo (hasta 200px) y va centrada; origen y
+   destino ocupan lo que necesite su nombre completo (nunca se corta) y se
+   pegan a la linea, asi no queda espacio vacio junto a nombres cortos. */
 .transfer-route__path {
-  --tr-node-width: 11.5rem;
   display: grid;
-  grid-template-columns: var(--tr-node-width) minmax(60px, 1fr) var(--tr-node-width);
+  grid-template-columns: minmax(max-content, 1fr) minmax(60px, 200px) minmax(max-content, 1fr);
   align-items: center;
   gap: 10px;
 }
+.transfer-route__node--origen { justify-self: end; }
+.transfer-route__node--destino { justify-self: start; }
 
 .transfer-route__node {
   display: flex;
@@ -51,7 +53,7 @@
   min-width: 0;
 }
 .transfer-route__node--destino { flex-direction: row-reverse; }
-.transfer-route__label { display: grid; line-height: 1.15; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.transfer-route__label { display: grid; line-height: 1.15; }
 .transfer-route__label em {
   font-style: normal;
   font-size: 10.5px;
@@ -60,7 +62,7 @@
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
-.transfer-route__node--destino .transfer-route__label { text-align: right; }
+.transfer-route__node--destino .transfer-route__label { text-align: left; }
 
 .transfer-route__pin {
   position: relative;
@@ -319,6 +321,8 @@
 
 @media (max-width: 520px) {
   .transfer-route__path { grid-template-columns: 1fr; gap: 4px; }
+  .transfer-route__node--origen,
+  .transfer-route__node--destino { justify-self: start; }
   .transfer-route__node--destino { flex-direction: row; }
   .transfer-route__node--destino .transfer-route__label { text-align: left; }
   .transfer-route__track { height: 30px; }
@@ -334,6 +338,8 @@
   }
 }
 
-@media (max-width: 640px) {
-  .transfer-route__path { --tr-node-width: 8rem; }
+@media (min-width: 521px) and (max-width: 640px) {
+  /* En pantallas angostas el nombre baja de linea en vez de cortarse. */
+  .transfer-route__path { grid-template-columns: minmax(0, 1fr) minmax(40px, 120px) minmax(0, 1fr); }
+  .transfer-route__node { white-space: normal; }
 }

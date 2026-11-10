@@ -75,7 +75,6 @@ export default function TransferRoute({ stage, origen, destino }) {
     <div className={`transfer-route transfer-route--${tone}`}>
       <div className="transfer-route__path">
         <div className="transfer-route__node transfer-route__node--origen">
-          <span className="transfer-route__pin" />
           <span className="transfer-route__label" data-title={origenLabel}>
             <em>Sale de</em>
             {origenLabel}
@@ -102,7 +101,6 @@ export default function TransferRoute({ stage, origen, destino }) {
         </div>
 
         <div className="transfer-route__node transfer-route__node--destino">
-          <span className="transfer-route__pin" />
           <span className="transfer-route__label" data-title={destinoLabel}>
             <em>Llega a</em>
             {destinoLabel}
