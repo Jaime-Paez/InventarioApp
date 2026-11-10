@@ -57,6 +57,15 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   const [confirm, setConfirm] = useState(null)
   const [motivo, setMotivo] = useState('')
   const [busy, setBusy] = useState(false)
+  // Menu "Registrar" (gasto, anticipo, ingreso, arqueo, reposicion).
+  const [showRegistrar, setShowRegistrar] = useState(false)
+  const registrarRef = useRef(null)
+  useEffect(() => {
+    if (!showRegistrar) return undefined
+    const onDown = (event) => { if (!registrarRef.current?.contains(event.target)) setShowRegistrar(false) }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [showRegistrar])
 
   const notify = useCallback((detail, severity = 'success') => {
     toast.current?.show({ severity, summary: 'Caja chica', detail, life: severity === 'error' ? 5000 : 2500 })
@@ -274,6 +283,69 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   const configurada = Boolean(caja?.configurada)
   const puedeRegistrar = Boolean(caja?.activa && configurada && canCreate && (isAdmin || esCustodio))
 
+  // Primera fila del encabezado de la tabla (como en Revision de inventario >
+  // Diferencias): vistas y recargar a la izquierda; registrar y configurar a
+  // la derecha.
+  const barraTabla = (
+    <div className="caja-barra">
+      <div className="caja-barra__izq">
+        {[
+          ['movimientos', 'Movimientos'],
+          ['resumen', 'Resumen por categoría'],
+          ['arqueos', 'Arqueos'],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            className={`p-button users-topbtn transfer-issues-page__type-btn${tab === key ? ' transfer-issues-page__type-btn--active' : ''}`}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+        <button className="rounded-icon-btn" type="button" onClick={() => { loadMovimientos(); loadExtras?.() }} disabled={loadingMovs} title="Recargar">
+          <i className="pi pi-refresh" />
+        </button>
+      </div>
+      <div className="caja-barra__der">
+        {puedeRegistrar && (
+          <div className="caja-registrar" ref={registrarRef}>
+            <button type="button" className="p-button users-topbtn users-topbtn--create" onClick={() => setShowRegistrar((v) => !v)}>
+              <i className="pi pi-plus" /> Registrar <i className="pi pi-angle-down" />
+            </button>
+            {showRegistrar && (
+              <div className="caja-registrar__menu" role="menu">
+                {[
+                  ['Gasto', 'pi-minus-circle', () => setDialog({ kind: 'mov', tipo: 'gasto' })],
+                  ['Anticipo / vale', 'pi-send', () => setDialog({ kind: 'mov', tipo: 'anticipo' })],
+                  ['Ingreso', 'pi-plus-circle', () => setDialog({ kind: 'mov', tipo: 'ingreso' })],
+                  ['Arqueo', 'pi-calculator', () => setDialog({ kind: 'arqueo' })],
+                  ['Pedir reposición', 'pi-refresh', () => setConfirm({ kind: 'reposicion' }), busy || saldo >= fondo],
+                ].map(([label, icon, accion, deshabilitado]) => (
+                  <button key={label} type="button" role="menuitem" disabled={Boolean(deshabilitado)} onClick={() => { setShowRegistrar(false); accion() }}>
+                    <i className={`pi ${icon}`} /> {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {isAdmin && caja && (
+          <button type="button" className="caja-config-btn" onClick={() => setDialog({ kind: 'caja', caja })}>
+            <Settings size={14} />
+            Configurar
+          </button>
+        )}
+        {isAdmin && (
+          <button type="button" className="caja-config-btn" onClick={() => setDialog({ kind: 'categorias' })}>
+            <Tags size={14} />
+            Categorías
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <div className="users-page caja-page">
       <Toast ref={toast} />
@@ -348,42 +420,6 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                 </div>
               ))}
             </div>
-            {(isAdmin || puedeRegistrar) && (
-              <div className="caja-top__admin">
-                {puedeRegistrar && (
-                  <>
-                    <button type="button" className="p-button users-topbtn users-topbtn--create" onClick={() => setDialog({ kind: 'mov', tipo: 'gasto' })}>
-                      <i className="pi pi-plus" /> Registrar gasto
-                    </button>
-                    <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'mov', tipo: 'anticipo' })}>
-                      <i className="pi pi-send" /> Anticipo / vale
-                    </button>
-                    <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'mov', tipo: 'ingreso' })}>
-                      <i className="pi pi-plus-circle" /> Ingreso
-                    </button>
-                    <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'arqueo' })}>
-                      <i className="pi pi-calculator" /> Arqueo
-                    </button>
-                    <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setConfirm({ kind: 'reposicion' })} disabled={busy || saldo >= fondo}>
-                      <i className="pi pi-refresh" /> Pedir reposición
-                    </button>
-                  </>
-                )}
-                {/* Como "Configuracion" en Revision de inventario. */}
-                {isAdmin && caja && (
-                  <button type="button" className="caja-config-btn" onClick={() => setDialog({ kind: 'caja', caja })}>
-                    <Settings size={14} />
-                    Configurar
-                  </button>
-                )}
-                {isAdmin && (
-                  <button type="button" className="caja-config-btn" onClick={() => setDialog({ kind: 'categorias' })}>
-                    <Tags size={14} />
-                    Categorías
-                  </button>
-                )}
-              </div>
-            )}
           </div>
 
           {caja && !configurada && (
@@ -404,36 +440,39 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
 
           {caja && configurada && (
             <>
-              <div className="caja-cards">
-                <div className="caja-card caja-card--saldo">
-                  <span>En caja (según el sistema)</span>
+              <div className="caja-stats">
+                <div className="caja-stat caja-stat--saldo">
+                  <span>En caja</span>
                   <strong>{formatMoney(saldo)}</strong>
                   <div className="caja-meter" aria-label={`${Math.round(porcentaje)}% del fondo`}>
                     <div className={`caja-meter__fill${bajo ? ' is-low' : ''}`} style={{ width: `${porcentaje}%` }} />
                   </div>
-                  <small>{`${Math.round(porcentaje)}% de un fondo de ${formatMoney(fondo)}`}</small>
+                  <small>{`${Math.round(porcentaje)}% de ${formatMoney(fondo)}`}</small>
                 </div>
-                <div className="caja-card">
+                <div className="caja-stat">
                   <span>Gastado en el período</span>
                   <strong>{formatMoney(totalesPeriodo.salidas)}</strong>
                   <small>{`Entró ${formatMoney(totalesPeriodo.entradas)}`}</small>
                 </div>
-                <div className="caja-card">
+                <div className="caja-stat">
                   <span>Por aprobar</span>
                   <strong>{caja.pendientes}</strong>
-                  <small>{`Tope sin aprobación: ${formatMoney(caja.tope_gasto)}`}</small>
+                  <small>{`Tope ${formatMoney(caja.tope_gasto)}`}</small>
                 </div>
-                <div className="caja-card">
+                <div className="caja-stat">
                   <span>Anticipos sin liquidar</span>
                   <strong>{caja.anticipos_abiertos}</strong>
-                  <small>{caja.custodio_nombre ? `Custodio: ${caja.custodio_nombre}` : 'Sin custodio'}</small>
                 </div>
-                <div className="caja-card">
+                <div className="caja-stat">
                   <span>Último arqueo</span>
                   <strong className={caja.ultimo_arqueo && Number(caja.ultimo_arqueo.diferencia) !== 0 ? 'is-warn' : ''}>
-                    {caja.ultimo_arqueo ? (Number(caja.ultimo_arqueo.diferencia) === 0 ? 'Cuadró' : formatMoney(caja.ultimo_arqueo.diferencia)) : '-'}
+                    {caja.ultimo_arqueo ? (Number(caja.ultimo_arqueo.diferencia) === 0 ? 'Cuadró' : formatMoney(caja.ultimo_arqueo.diferencia)) : 'Nunca'}
                   </strong>
-                  <small>{caja.ultimo_arqueo ? formatDateTime(caja.ultimo_arqueo.fecha) : 'Nunca'}</small>
+                  {caja.ultimo_arqueo && <small>{formatDateTime(caja.ultimo_arqueo.fecha)}</small>}
+                </div>
+                <div className="caja-stat">
+                  <span>Custodio</span>
+                  <strong className="caja-stat__texto">{caja.custodio_nombre || 'Sin custodio'}</strong>
                 </div>
               </div>
 
@@ -450,41 +489,23 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                 <BlockerNotice title="Solo lectura" reason="Solo el custodio de esta caja o un administrador registran movimientos." />
               )}
 
-              <div className="create-user__tabs" role="tablist">
-                {[
-                  ['movimientos', 'Movimientos'],
-                  ['resumen', 'Resumen por categoría'],
-                  ['arqueos', 'Arqueos'],
-                ].map(([key, label]) => (
-                  <button key={key} type="button" className={`create-user__tab${tab === key ? ' create-user__tab--active' : ''}`} onClick={() => setTab(key)}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {tab === 'resumen' && (
-                <div className="caja-filtros">
-                  <label className="caja-header__fecha">Desde <input className="search-input caja-filtro-fecha" type="date" value={filtros.desde} onChange={(event) => setFiltros((prev) => ({ ...prev, desde: event.target.value }))} /></label>
-                          <label className="caja-header__fecha">Hasta <input className="search-input caja-filtro-fecha" type="date" value={filtros.hasta} onChange={(event) => setFiltros((prev) => ({ ...prev, hasta: event.target.value }))} /></label>
-                </div>
-              )}
-
               {tab === 'movimientos' && (
                 <div className="users-table users-table--card users-table--compact caja-datatable">
                   {loadingMovs && tablaSpinner}
                   <DataTable
                     value={movimientos}
                     dataKey="id"
+                    scrollable
+                    scrollHeight="flex"
                     header={(
+                      <>
+                      {barraTabla}
                       <div className="users-header">
                         <div className="users-header__left caja-header__filtros">
                           <div className="search-input-container">
                             <input className="search-input" placeholder="Buscar en tabla" value={filtros.search} onChange={(event) => setFiltros((prev) => ({ ...prev, search: event.target.value }))} />
                             <i className={`pi ${loadingMovs ? 'pi-spinner pi-spin' : 'pi-search'} search-input-icon`} />
                           </div>
-                          <button className="rounded-icon-btn" type="button" onClick={loadMovimientos} disabled={loadingMovs} title="Recargar">
-                            <i className="pi pi-refresh" />
-                          </button>
                           <label className="caja-header__fecha">Desde <input className="search-input caja-filtro-fecha" type="date" value={filtros.desde} onChange={(event) => setFiltros((prev) => ({ ...prev, desde: event.target.value }))} /></label>
                           <label className="caja-header__fecha">Hasta <input className="search-input caja-filtro-fecha" type="date" value={filtros.hasta} onChange={(event) => setFiltros((prev) => ({ ...prev, hasta: event.target.value }))} /></label>
                           <div className="caja-filtro-dropdown">
@@ -525,6 +546,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                           </button>
                         </div>
                       </div>
+                      </>
                     )}
                     className="users-datatable users-datatable--compact"
                     tableStyle={{ width: '100%' }}
@@ -619,7 +641,17 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
               )}
 
               {tab === 'resumen' && (
-                <div className="caja-resumen">
+                <div className="users-table users-table--card users-table--compact caja-datatable caja-resumen-card">
+                  <div className="caja-resumen-card__head">
+                    {barraTabla}
+                    <div className="users-header">
+                      <div className="users-header__left caja-header__filtros">
+                        <label className="caja-header__fecha">Desde <input className="search-input caja-filtro-fecha" type="date" value={filtros.desde} onChange={(event) => setFiltros((prev) => ({ ...prev, desde: event.target.value }))} /></label>
+                        <label className="caja-header__fecha">Hasta <input className="search-input caja-filtro-fecha" type="date" value={filtros.hasta} onChange={(event) => setFiltros((prev) => ({ ...prev, hasta: event.target.value }))} /></label>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="caja-resumen">
                   {!resumen ? (
                     <span className="taller-muted"><i className="pi pi-spin pi-spinner" /> Cargando...</span>
                   ) : (
@@ -648,6 +680,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                       )}
                     </>
                   )}
+                  </div>
                 </div>
               )}
 
@@ -656,13 +689,18 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                   <DataTable
                     value={arqueos}
                     dataKey="id"
+                    scrollable
+                    scrollHeight="flex"
                     header={(
-                      <div className="users-header">
-                        <div className="users-header__left" />
-                        <div className="users-header__right">
-                          <span className="users-header__count">Reg. {arqueos.length}</span>
+                      <>
+                        {barraTabla}
+                        <div className="users-header">
+                          <div className="users-header__left" />
+                          <div className="users-header__right">
+                            <span className="users-header__count">Reg. {arqueos.length}</span>
+                          </div>
                         </div>
-                      </div>
+                      </>
                     )}
                     className="users-datatable users-datatable--compact"
                     tableStyle={{ width: '100%' }}
