@@ -8,6 +8,7 @@
   display: grid;
   gap: 4px;
   margin-top: 8px;
+  width: 100%;
   max-width: 560px;
 }
 .recordatorios-popup__dialog.is-dark .transfer-route {
@@ -30,9 +31,12 @@
 .recordatorios-popup__dialog.is-dark .transfer-route--bad { --tr-tone: var(--color-error-text-dark, #f07272); }
 .recordatorios-popup__dialog.is-dark .transfer-route--off { --tr-tone: #9ca3af; }
 
+/* Origen y destino con el mismo ancho fijo (cabe "9 de Octubre (Matriz)"):
+   asi la linea mide igual en todas las tarjetas, sin importar el nombre. */
 .transfer-route__path {
+  --tr-node-width: 11.5rem;
   display: grid;
-  grid-template-columns: auto minmax(60px, 1fr) auto;
+  grid-template-columns: var(--tr-node-width) minmax(60px, 1fr) var(--tr-node-width);
   align-items: center;
   gap: 10px;
 }
@@ -328,4 +332,8 @@
     animation-iteration-count: 1 !important;
     animation-delay: 0s !important;
   }
+}
+
+@media (max-width: 640px) {
+  .transfer-route__path { --tr-node-width: 8rem; }
 }
