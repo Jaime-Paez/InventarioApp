@@ -190,3 +190,31 @@
 /* Primera carga: la barra ya ocupa su lugar mientras llegan las cajas. */
 .caja-top--cargando { min-height: 52px; }
 .caja-datatable { position: relative; }
+
+/* Configurar / Categorias: copia de .inspection-admin__manage (Revision de
+   inventario). */
+.caja-config-btn {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #b8bec6;
+  background: #fff;
+  color: #243447;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.caja-config-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.dashboard-shell.dark .caja-config-btn {
+  background: color-mix(in srgb, var(--color-surface-dark) 88%, #0f172a 12%);
+  border-color: color-mix(in srgb, var(--color-border-dark) 78%, transparent);
+  color: var(--color-text-dark);
+}
+.dashboard-shell.dark .caja-config-btn:hover {
+  background: color-mix(in srgb, var(--color-surface-dark) 76%, var(--color-primary-dark) 24%);
+}

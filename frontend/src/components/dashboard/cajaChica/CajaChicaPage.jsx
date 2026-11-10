@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DataTable } from 'primereact/datatable'
+import { Settings, Tags } from 'lucide-react'
 import { Column } from 'primereact/column'
 import Toast from '../common/AppToast'
 import BlockerNotice from '../common/BlockerNotice'
@@ -368,8 +369,19 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
                     </button>
                   </>
                 )}
-                {isAdmin && caja && <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'caja', caja })}><i className="pi pi-cog" /> Configurar</button>}
-                {isAdmin && <button type="button" className="p-button users-topbtn transfer-issues-page__type-btn" onClick={() => setDialog({ kind: 'categorias' })}><i className="pi pi-tags" /> Categorías</button>}
+                {/* Como "Configuracion" en Revision de inventario. */}
+                {isAdmin && caja && (
+                  <button type="button" className="caja-config-btn" onClick={() => setDialog({ kind: 'caja', caja })}>
+                    <Settings size={14} />
+                    Configurar
+                  </button>
+                )}
+                {isAdmin && (
+                  <button type="button" className="caja-config-btn" onClick={() => setDialog({ kind: 'categorias' })}>
+                    <Tags size={14} />
+                    Categorías
+                  </button>
+                )}
               </div>
             )}
           </div>
