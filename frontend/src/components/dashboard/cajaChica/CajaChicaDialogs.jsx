@@ -181,7 +181,7 @@ export function MovimientoDialog({ open, tipo, caja, categorias, movimiento, tok
 
   const titulos = { gasto: 'Registrar gasto', anticipo: 'Entregar anticipo / vale', ingreso: 'Registrar ingreso' }
   return (
-    <TallerDialog
+    <TallerDialog tab={null}
       open={open}
       busy={busy}
       title={movimiento ? `Corregir ${String(movimiento.tipo_label || '').toLowerCase()}` : titulos[realTipo]}
@@ -281,7 +281,7 @@ export function LiquidarDialog({ open, anticipo, categorias, token, onClose, onD
   }
 
   return (
-    <TallerDialog
+    <TallerDialog tab={null}
       open={open}
       busy={busy}
       title="Liquidar anticipo"
@@ -367,7 +367,7 @@ export function ArqueoDialog({ open, caja, token, onClose, onDone }) {
   }
 
   return (
-    <TallerDialog
+    <TallerDialog tab={null}
       open={open}
       wide
       busy={busy}
@@ -611,7 +611,7 @@ export function ImagenDialog({ open, movimiento, token, onClose }) {
     return () => { cancelled = true }
   }, [open, movimiento, token])
   return (
-    <TallerDialog open={open} wide title="Comprobante" subtitle={movimiento ? `${movimiento.comprobante_label || ''} ${movimiento.comprobante_numero || ''} · ${formatMoney(movimiento.monto)}` : ''} onClose={onClose}>
+    <TallerDialog tab={null} open={open} wide title="Comprobante" subtitle={movimiento ? `${movimiento.comprobante_label || ''} ${movimiento.comprobante_numero || ''} · ${formatMoney(movimiento.monto)}` : ''} onClose={onClose}>
       {imagen ? <img className="caja-foto__full" src={imagen} alt="Comprobante" /> : !error && <span className="taller-muted"><i className="pi pi-spin pi-spinner" /> Cargando...</span>}
       {error && <BlockerNotice title="No se pudo ver la foto" reason={error} />}
     </TallerDialog>

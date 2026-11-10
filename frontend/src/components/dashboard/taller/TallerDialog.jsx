@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
@@ -31,11 +31,40 @@ function TallerDialog({
   // El alto se ajusta al contenido (como las demas ventanas cortas del
   // sistema) hasta que el usuario la agranda o la maximiza.
   const [resized, setResized] = useState(false)
-  useEffect(() => { if (open) setResized(false) }, [open])
+  // Centrada con su alto REAL (la posicion del hook se calcula con el alto
+  // inicial y, con contenido mas alto, la ventana quedaba abajo y se salia de
+  // la pantalla). Si el usuario la mueve, se respeta pero sin salirse.
+  const boxRef = useRef(null)
+  const [alto, setAlto] = useState(0)
+  const [movida, setMovida] = useState(false)
+  // Diferencia entre la posicion mostrada y la del hook al empezar a arrastrar
+  // (para que no salte).
+  const [desfase, setDesfase] = useState(0)
+  const [, setVentana] = useState(0)
+  useEffect(() => { if (open) { setResized(false); setMovida(false); setDesfase(0) } }, [open])
+  useLayoutEffect(() => {
+    const node = boxRef.current
+    if (!open || !node) return undefined
+    const medir = () => setAlto(node.offsetHeight)
+    medir()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(medir) : null
+    observer?.observe(node)
+    const onResize = () => setVentana((n) => n + 1)
+    window.addEventListener('resize', onResize)
+    return () => { observer?.disconnect(); window.removeEventListener('resize', onResize) }
+  }, [open, shouldRender])
   if (!shouldRender || typeof document === 'undefined') return null
+  const MARGEN = 12
+  const altoVentana = typeof window !== 'undefined' ? window.innerHeight : 0
+  const topVisible = (() => {
+    if (!alto || !altoVentana) return modal.style.top
+    const maxTop = Math.max(MARGEN, altoVentana - alto - MARGEN)
+    if (!movida) return Math.max(MARGEN, (altoVentana - alto) / 2)
+    return Math.min(Math.max((Number(modal.style.top) || 0) + desfase, MARGEN), maxTop)
+  })()
   const style = resized || modal.maximized
     ? modal.style
-    : { ...modal.style, height: 'auto', maxHeight: 'calc(100dvh - 24px)' }
+    : { ...modal.style, height: 'auto', maxHeight: `calc(100dvh - ${MARGEN * 2}px)`, top: topVisible }
   const resizeHandleProps = {
     onMouseDown: (event) => {
       setResized(true)
@@ -55,8 +84,18 @@ function TallerDialog({
       style={oculto ? { display: 'none' } : undefined}
       aria-hidden={oculto || undefined}
     >
-      <div className={`create-user__modal taller-dialog-modal${isClosing ? ' create-user__modal--closing' : ''}`} style={style}>
-        <header className="create-user__header" {...modal.headerProps}>
+      <div ref={boxRef} className={`create-user__modal taller-dialog-modal${isClosing ? ' create-user__modal--closing' : ''}`} style={style}>
+        <header
+          className="create-user__header"
+          {...modal.headerProps}
+          onMouseDown={(event) => {
+            if (!event.target?.closest?.('button') && !movida && typeof topVisible === 'number') {
+              setDesfase(topVisible - (Number(modal.style.top) || 0))
+              setMovida(true)
+            }
+            modal.headerProps?.onMouseDown?.(event)
+          }}
+        >
           <div className="create-user__header-text">
             <h3>{title}</h3>
           </div>
