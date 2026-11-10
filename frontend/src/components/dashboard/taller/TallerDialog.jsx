@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import { getAppPortalRoot } from '../../../utils/portalRoot'
 import useModalAnimation from '../common/useModalAnimation'
 import useResizableModal from '../common/useResizableModal'
+import { TallerDialogsOcultos } from './tallerDialogContext'
 
 // Ventana del taller y de caja chica con el mismo formato que el resto de la
 // app (crear cliente, crear usuario...): barra con titulo, maximizar y cerrar,
@@ -21,6 +22,7 @@ function TallerDialog({
   busy = false,
   wide = false,
 }) {
+  const oculto = useContext(TallerDialogsOcultos)
   const { shouldRender, isClosing } = useModalAnimation(open)
   const modal = useResizableModal(open, {
     initialSize: wide ? { width: 1000, height: 640 } : { width: 680, height: 420 },
@@ -46,7 +48,13 @@ function TallerDialog({
   }
 
   return createPortal(
-    <div className={`create-user__overlay taller-dialog-overlay${isClosing ? ' create-user__overlay--closing' : ''}`} role="dialog" aria-modal="true">
+    <div
+      className={`create-user__overlay taller-dialog-overlay${isClosing ? ' create-user__overlay--closing' : ''}`}
+      role="dialog"
+      aria-modal="true"
+      style={oculto ? { display: 'none' } : undefined}
+      aria-hidden={oculto || undefined}
+    >
       <div className={`create-user__modal taller-dialog-modal${isClosing ? ' create-user__modal--closing' : ''}`} style={style}>
         <header className="create-user__header" {...modal.headerProps}>
           <div className="create-user__header-text">

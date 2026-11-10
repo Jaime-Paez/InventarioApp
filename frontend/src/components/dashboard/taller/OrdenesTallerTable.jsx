@@ -11,6 +11,7 @@ import { formatDateTime } from '../../../utils/dateFormat'
 import OrdenTallerModal from './OrdenTallerModal'
 import GarantiaDialog from './GarantiaDialog'
 import { ESTADO_FILTROS, estadoInfo, formatMoney, formatOrdenNumero, parseApiError } from './tallerConstants'
+import { TallerDialogsOcultos } from './tallerDialogContext'
 
 const SEARCH_DELAY_MS = 350
 
@@ -199,6 +200,7 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
   )
 
   return (
+    <TallerDialogsOcultos.Provider value={isTabActive === false}>
     <div className="users-page taller-page">
       <Toast ref={toast} />
       <div className="users-page__top">
@@ -311,6 +313,7 @@ function OrdenesTallerTable({ token, user, moduleActions, isTabActive }) {
         }}
       />
     </div>
+    </TallerDialogsOcultos.Provider>
   )
 }
 

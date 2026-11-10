@@ -4,6 +4,7 @@ import { Settings, Tags } from 'lucide-react'
 import { Column } from 'primereact/column'
 import Toast from '../common/AppToast'
 import BlockerNotice from '../common/BlockerNotice'
+import { TallerDialogsOcultos } from '../taller/tallerDialogContext'
 import CascadeDropdown from '../common/CascadeDropdown'
 import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
 import '../admin/UsersTable/UsersTable.css'
@@ -311,6 +312,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
   )
 
   return (
+    <TallerDialogsOcultos.Provider value={isTabActive === false}>
     <div className="users-page caja-page">
       <Toast ref={toast} />
 
@@ -646,7 +648,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
       <ImagenDialog open={dialog?.kind === 'imagen'} movimiento={dialog?.mov} token={token} onClose={() => setDialog(null)} />
 
       <ConfirmDialog
-        open={Boolean(confirm)}
+        open={Boolean(confirm) && isTabActive !== false}
         busy={busy}
         title={
           confirm?.kind === 'reposicion' ? '¿Pedir reposición?'
@@ -677,6 +679,7 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive }) {
         }}
       />
     </div>
+    </TallerDialogsOcultos.Provider>
   )
 }
 
