@@ -3657,11 +3657,21 @@ function RecordatoriosPopup({
                               {/* Con el recorrido a la vista ("Recibido en Valle") el
                                   estado suelto ("Recibido.") sobra; solo se deja si
                                   avisa un envio parcial. */}
-                              {(!transferRouteStage || timelineDescription.includes('parcial')) && (
-                                <p className="recordatorios-popup__timeline-item-description" title={timelineDescription}>
-                                  {timelineDescription}
-                                </p>
-                              )}
+                              {(() => {
+                                // Con el recorrido debajo ("En camino a Valle"), el
+                                // estado no se repite: solo queda el aviso de parcial.
+                                const parcialMatch = transferRouteStage
+                                  ? timelineDescription.match(/parcial \(([^)]*)\)/)
+                                  : null
+                                const texto = !transferRouteStage
+                                  ? timelineDescription
+                                  : (parcialMatch ? `Envío parcial (${parcialMatch[1]})` : '')
+                                return texto ? (
+                                  <p className="recordatorios-popup__timeline-item-description" data-title={texto}>
+                                    {texto}
+                                  </p>
+                                ) : null
+                              })()}
                               {!!transferRouteStage && (
                                 <TransferRoute
                                   stage={transferRouteStage}
