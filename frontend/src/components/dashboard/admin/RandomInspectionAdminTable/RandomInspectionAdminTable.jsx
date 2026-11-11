@@ -161,7 +161,6 @@ function RecountDots({ row, onlyIfRecounted = false }) {
       es_este: true,
       actual: true,
     }]
-  if (onlyIfRecounted && history.length < 2) return null
   const current = history.find((entry) => entry.es_este) || history[history.length - 1]
   // Conteos que dieron la misma cantidad (dos o mas): esos puntos van en verde.
   const qtyTimes = history.reduce((acc, entry) => {
@@ -193,6 +192,11 @@ function RecountDots({ row, onlyIfRecounted = false }) {
     card.style.left = `${left}px`
     card.style.visibility = 'visible'
   }, [hover])
+
+  // Despues de los hooks: si se salia antes, al aprobar una fila (deja de estar
+  // pendiente y pasa a onlyIfRecounted) cambiaba el numero de hooks y React
+  // dejaba toda la pantalla en blanco.
+  if (onlyIfRecounted && history.length < 2) return null
 
   return (
     <>
