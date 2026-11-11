@@ -3654,29 +3654,20 @@ function RecordatoriosPopup({
                               onClick={() => setActiveDetailReminderId(String(reminder?.id || ''))}
                             >
                               <p className="recordatorios-popup__timeline-item-time">{formatReminderTimeLabel(reminder)}</p>
-                              {/* Con el recorrido a la vista ("Recibido en Valle") el
-                                  estado suelto ("Recibido.") sobra; solo se deja si
-                                  avisa un envio parcial. */}
-                              {(() => {
-                                // Con el recorrido debajo ("En camino a Valle"), el
-                                // estado no se repite: solo queda el aviso de parcial.
-                                const parcialMatch = transferRouteStage
-                                  ? timelineDescription.match(/parcial \(([^)]*)\)/)
-                                  : null
-                                const texto = !transferRouteStage
-                                  ? timelineDescription
-                                  : (parcialMatch ? `Envío parcial (${parcialMatch[1]})` : '')
-                                return texto ? (
-                                  <p className="recordatorios-popup__timeline-item-description" data-title={texto}>
-                                    {texto}
-                                  </p>
-                                ) : null
-                              })()}
+                              {/* Con el recorrido a la vista el estado no se repite
+                                  arriba: los rechazados de un envio parcial van en la
+                                  nota del recorrido ("En camino a Valle (1 rechazado)"). */}
+                              {!transferRouteStage && (
+                                <p className="recordatorios-popup__timeline-item-description" data-title={timelineDescription}>
+                                  {timelineDescription}
+                                </p>
+                              )}
                               {!!transferRouteStage && (
                                 <TransferRoute
                                   stage={transferRouteStage}
                                   origen={transferRouteOrigen}
                                   destino={transferRouteDestino}
+                                  extra={(timelineDescription.match(/parcial \(([^)]*)\)/) || [])[1] || ''}
                                 />
                               )}
                               {isAdminSummaryReminder && Array.isArray(reminder?.context?.detalle_usuarios) && reminder.context.detalle_usuarios.length > 0 && (

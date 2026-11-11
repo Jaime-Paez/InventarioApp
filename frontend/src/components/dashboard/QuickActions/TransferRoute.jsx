@@ -64,7 +64,7 @@ const buildNote = (stage, origen, destino) => {
   }
 }
 
-export default function TransferRoute({ stage, origen, destino }) {
+export default function TransferRoute({ stage, origen, destino, extra = '' }) {
   const config = STAGES[stage]
   if (!config) return null
   const origenLabel = String(origen || '').trim() || 'Origen'
@@ -107,7 +107,10 @@ export default function TransferRoute({ stage, origen, destino }) {
           </span>
         </div>
       </div>
-      <div className="transfer-route__note">{buildNote(stage, origenLabel, destinoLabel)}</div>
+      <div className="transfer-route__note">
+        {buildNote(stage, origenLabel, destinoLabel)}
+        {extra && <span>{`(${extra})`}</span>}
+      </div>
     </div>
   )
 }
