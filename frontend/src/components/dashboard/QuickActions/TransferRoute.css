@@ -74,7 +74,9 @@
   background: var(--tr-surface);
 }
 
-.transfer-route__track { position: relative; height: 26px; }
+/* El icono se centra en el extremo de la linea (mide hasta 30px): el margen
+   evita que al llegar o salir se monte sobre el nombre de la sucursal. */
+.transfer-route__track { position: relative; height: 26px; margin: 0 10px; }
 .transfer-route__rail {
   position: absolute;
   left: 0;
