@@ -36,7 +36,7 @@
    pegan a la linea, asi no queda espacio vacio junto a nombres cortos. */
 .transfer-route__path {
   display: grid;
-  grid-template-columns: minmax(max-content, 1fr) minmax(60px, 200px) minmax(max-content, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(60px, 200px) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
 }
@@ -62,7 +62,22 @@
   text-transform: uppercase;
   letter-spacing: 0.07em;
 }
-.transfer-route__node--destino .transfer-route__label { text-align: left; }
+
+/* Cada sucursal va en una cajita del mismo ancho con el nombre centrado: asi
+   la linea queda en el mismo lugar en todas las tarjetas, sea el nombre corto
+   (Sur) o largo (9 de Octubre (Matriz)); si no entra, baja de linea. */
+.transfer-route__node { width: 100%; max-width: 180px; justify-content: center; }
+.transfer-route__label {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 10px;
+  border: 1px solid var(--tr-line);
+  border-radius: 10px;
+  background: var(--tr-surface);
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 
 .transfer-route__pin {
   position: relative;
@@ -326,7 +341,7 @@
   .transfer-route__node--origen,
   .transfer-route__node--destino { justify-self: start; }
   .transfer-route__node--destino { flex-direction: row; }
-  .transfer-route__node--destino .transfer-route__label { text-align: left; }
+  .transfer-route__node { max-width: 220px; }
   .transfer-route__track { height: 30px; }
 }
 
@@ -343,5 +358,4 @@
 @media (min-width: 521px) and (max-width: 640px) {
   /* En pantallas angostas el nombre baja de linea en vez de cortarse. */
   .transfer-route__path { grid-template-columns: minmax(0, 1fr) minmax(40px, 120px) minmax(0, 1fr); }
-  .transfer-route__node { white-space: normal; }
 }
