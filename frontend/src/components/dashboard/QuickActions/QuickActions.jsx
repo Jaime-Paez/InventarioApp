@@ -231,6 +231,15 @@ const mergeRandomInspectionFromServer = (localInspection, serverInspection) => {
       ) {
         return serverItem
       }
+      // Todavia sin contar y desde Inventario le cambiaron las ubicaciones:
+      // se toman las del servidor para que salga en la fila donde esta ahora.
+      const sinConteo = serverItem?.cantidad_reportada == null &&
+        !(Array.isArray(serverItem?.conteo_ubicaciones) && serverItem.conteo_ubicaciones.length)
+      const localKeys = localLocations.map((location) => buildInspectionLocationKey(location)).sort().join('|')
+      const serverKeys = [...serverLocationsByKey.keys()].sort().join('|')
+      if (sinConteo && localKeys !== serverKeys) {
+        return { ...item, ...serverItem }
+      }
       return {
         ...item,
         cantidad_esperada: serverItem.cantidad_esperada,

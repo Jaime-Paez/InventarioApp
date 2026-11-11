@@ -3892,6 +3892,117 @@ class RandomInspectionCurrentAPIView(APIView):
         )
 
 
+def _sync_division_inspection_items(inspection_id):
+    """Revision por percha (o subdivision) pendiente: la lista sigue al
+    inventario en vivo mientras el revisor cuenta.
+
+    - Un producto que ahora tiene stock en la percha y no estaba en la lista
+      se agrega (lo ubicaron ahi desde Inventario).
+    - Un producto de la lista que todavia no se toco (sin conteo, sin nota,
+      no agregado ni movido por el revisor) y que ya no tiene stock en la
+      percha pero si en otra ubicacion de la sucursal se quita: lo cambiaron
+      a otra percha. Los que estan en 0 en todas partes se quedan (se
+      incluyen a proposito para buscar entradas no registradas).
+
+    Sube `borrador_version` si cambio algo, para que la pantalla abierta lo
+    traiga. Devuelve True si hubo cambios.
+    """
+    with transaction.atomic():
+        inspection = _lock_random_inspection(inspection_id)
+        if (
+            inspection is None
+            or not getattr(inspection, "es_por_division", False)
+            or getattr(inspection, "es_por_lista", False)
+            or not inspection.division_id
+            or not _is_random_inspection_pending(inspection)
+        ):
+            return False
+        scope_subdivision_id = (
+            inspection.subdivision_id if getattr(inspection, "es_por_subdivision", False) else None
+        )
+        sucursal_id = int(
+            inspection.sucursal_id
+            or Division.objects.filter(pk=inspection.division_id)
+            .values_list("bodega__sucursal_id", flat=True)
+            .first()
+            or 0
+        )
+        if sucursal_id <= 0:
+            return False
+
+        scope_rows = Inventario.objects.filter(subdivision__division_id=int(inspection.division_id))
+        if scope_subdivision_id:
+            scope_rows = scope_rows.filter(subdivision_id=int(scope_subdivision_id))
+        stock_in_scope = {
+            int(row["producto_id"]): int(row["total"] or 0)
+            for row in scope_rows.values("producto_id").annotate(total=Sum("cantidad"))
+        }
+
+        items = list(inspection.items.all())
+        listed_ids = {int(item.producto_id) for item in items}
+
+        # Quitar: intactos que ya no estan en la percha pero si en otra parte.
+        untouched = [
+            item for item in items
+            if stock_in_scope.get(int(item.producto_id), 0) <= 0
+            and item.estado_revision == InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
+            and item.cantidad_reportada is None
+            and not item.no_encontrado
+            and not (item.conteo_ubicaciones or [])
+            and not str(item.observacion or "").strip()
+            and not item.agregado_por_revisor
+            and not item.movido_por_revisor
+            and not item.reconteo_de_id
+        ]
+        to_remove = []
+        if untouched:
+            stocked_elsewhere = set(
+                Inventario.objects.filter(
+                    producto_id__in=[int(item.producto_id) for item in untouched],
+                    cantidad__gt=0,
+                    subdivision__division__bodega__sucursal_id=sucursal_id,
+                )
+                .values_list("producto_id", flat=True)
+                .distinct()
+            )
+            to_remove = [item for item in untouched if int(item.producto_id) in stocked_elsewhere]
+
+        # Agregar: con stock en la percha y fuera de la lista.
+        new_ids = {pid for pid, qty in stock_in_scope.items() if qty > 0 and pid not in listed_ids}
+        new_candidates = []
+        if new_ids:
+            new_candidates = [
+                candidate
+                for candidate in _collect_division_inspection_candidates(
+                    inspection.division_id, scope_subdivision_id
+                )
+                if int(candidate["producto_id"]) in new_ids
+            ]
+
+        if not to_remove and not new_candidates:
+            return False
+
+        if to_remove:
+            InspeccionAleatoriaItem.objects.filter(pk__in=[item.pk for item in to_remove]).delete()
+        if new_candidates:
+            new_candidates = _sort_candidates_by_location(
+                new_candidates,
+                division_id=inspection.division_id,
+                subdivision_id=scope_subdivision_id,
+            )
+            InspeccionAleatoriaItem.objects.bulk_create(
+                [
+                    _build_random_inspection_item(inspection, candidate, sucursal_id=sucursal_id)
+                    for candidate in new_candidates
+                ],
+                ignore_conflicts=True,
+            )
+        inspection.total_items = inspection.items.count()
+        inspection.borrador_version = int(inspection.borrador_version or 0) + 1
+        inspection.save(update_fields=["total_items", "borrador_version", "updated_at"])
+        return True
+
+
 class RandomInspectionDetailAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -3912,6 +4023,11 @@ class RandomInspectionDetailAPIView(APIView):
                 {"detail": "No tienes permiso para acceder a esta inspeccion."},
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        # Revision por percha: la lista sigue al inventario en vivo (lo que
+        # se ubico o se saco de la percha desde Inventario).
+        if _sync_division_inspection_items(inspection.id):
+            inspection = _get_random_inspection_queryset().filter(pk=inspection_id).first()
 
         return Response(
             {"inspection": _serialize_random_inspection(inspection, viewer=request.user)},

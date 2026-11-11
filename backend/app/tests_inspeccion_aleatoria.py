@@ -1883,3 +1883,58 @@ class MoverProductoDeFilaTests(InspeccionAleatoriaBaseTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
+
+
+class RevisionPorPerchaEnVivoTests(InspeccionAleatoriaBaseTestCase):
+    """La lista de una revision por percha sigue al inventario mientras se cuenta."""
+
+    def setUp(self):
+        super().setUp()
+        self.inspection = self._crear_inspeccion(
+            productos=[self.producto, self.producto_2],
+            es_por_division=True,
+            division=self.division,
+            sucursal=self.sucursal,
+        )
+
+    def _detalle(self):
+        response = self.revisor_client.get(f"{BASE_URL}/{self.inspection.id}/")
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.data["inspection"]
+
+    def _productos(self, payload):
+        return {item["producto_id"] for item in payload["items"]}
+
+    def test_producto_movido_a_otra_percha_sale_de_la_lista(self):
+        version = self._detalle()["borrador_version"]
+        # Desde Inventario: P-2 pasa de la percha A a la B.
+        Inventario.objects.filter(pk=self.inv_2.pk).update(subdivision=self.sub_b)
+
+        payload = self._detalle()
+        self.assertEqual(self._productos(payload), {self.producto.id})
+        self.assertGreater(payload["borrador_version"], version)
+
+    def test_producto_ubicado_en_la_percha_entra_a_la_lista(self):
+        nuevo = Producto.objects.create(codigo="P-3", nombre="Banda", precio=Decimal("3"))
+        Inventario.objects.create(producto=nuevo, subdivision=self.sub_a, cantidad=5)
+
+        payload = self._detalle()
+        self.assertIn(nuevo.id, self._productos(payload))
+        self.assertEqual(self.inspection.items.count(), 3)
+        # Otra consulta no lo duplica ni sube la version.
+        again = self._detalle()
+        self.assertEqual(again["borrador_version"], payload["borrador_version"])
+        self.assertEqual(self.inspection.items.count(), 3)
+
+    def test_producto_ya_contado_no_se_quita(self):
+        self.inspection.items.filter(producto=self.producto_2).update(cantidad_reportada=4)
+        Inventario.objects.filter(pk=self.inv_2.pk).update(subdivision=self.sub_b)
+
+        payload = self._detalle()
+        self.assertIn(self.producto_2.id, self._productos(payload))
+
+    def test_producto_en_cero_en_todas_partes_se_queda(self):
+        Inventario.objects.filter(pk=self.inv_2.pk).update(cantidad=0)
+
+        payload = self._detalle()
+        self.assertIn(self.producto_2.id, self._productos(payload))
