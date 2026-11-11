@@ -43,10 +43,40 @@ export const authFetch = (url, options = {}, token) => {
     return raw
   }
 
-  return fetch(normalizeLocalRequestUrl(url), {
+  return fetchConMensaje(normalizeLocalRequestUrl(url), {
     ...rest,
     headers: buildAuthHeaders(token, customHeaders),
   })
+}
+
+// Cuando la peticion no llega al servidor el navegador da "Failed to fetch"
+// (Chrome), "NetworkError when attempting to fetch resource" (Firefox) o
+// "Load failed" (Safari). Al usuario se le muestra un mensaje claro.
+export const MENSAJE_ERROR_CONEXION = 'Error de conexión, revisa tu conexión a internet.'
+
+export const esErrorDeConexion = (error) => {
+  if (!error || error?.name === 'AbortError') return false
+  const message = String(error?.message || '').toLowerCase()
+  return error instanceof TypeError && (
+    message.includes('failed to fetch') ||
+    message.includes('networkerror') ||
+    message.includes('load failed') ||
+    message.includes('network request failed')
+  )
+}
+
+export const fetchConMensaje = async (url, options) => {
+  try {
+    return await fetch(url, options)
+  } catch (error) {
+    if (esErrorDeConexion(error)) {
+      const conexion = new Error(MENSAJE_ERROR_CONEXION)
+      conexion.name = 'ConnectionError'
+      conexion.cause = error
+      throw conexion
+    }
+    throw error
+  }
 }
 
 const normalizeLocalHostname = (host) => {

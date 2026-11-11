@@ -9,7 +9,7 @@ import Toast from '../common/AppToast'
 import { Button } from 'primereact/button'
 import { AlertTriangle, Check, Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
-import { API_URL, authFetch } from '../../../utils/api'
+import { API_URL, authFetch, fetchConMensaje } from '../../../utils/api'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
 import { tableLayoutStore } from '../../../utils/tableLayoutStore'
 import { buildFileName, exportToExcel, exportToPdf } from '../../../utils/exportUtils'
@@ -4192,7 +4192,7 @@ const runParseExcelJob = async ({ file, fileName, casaId, token, onProgress, isC
   if (fileName) formData.append('file', file, fileName)
   else formData.append('file', file)
   formData.append('casa_comercial_id', casaId)
-  const startResp = await fetch(`${API_URL}/importaciones/importaciones/parse-excel-iniciar/`, {
+  const startResp = await fetchConMensaje(`${API_URL}/importaciones/importaciones/parse-excel-iniciar/`, {
     method: 'POST',
     headers: { Authorization: `Token ${token}` },
     body: formData,
@@ -4204,7 +4204,7 @@ const runParseExcelJob = async ({ file, fileName, casaId, token, onProgress, isC
     if (isCancelled()) return null
     await new Promise((resolve) => setTimeout(resolve, 500))
     if (isCancelled()) return null
-    const statusResp = await fetch(`${API_URL}/importaciones/importaciones/parse-excel-estado/${jobId}/`, {
+    const statusResp = await fetchConMensaje(`${API_URL}/importaciones/importaciones/parse-excel-estado/${jobId}/`, {
       headers: { Authorization: `Token ${token}` },
     })
     const statusData = await statusResp.json().catch(() => ({}))
