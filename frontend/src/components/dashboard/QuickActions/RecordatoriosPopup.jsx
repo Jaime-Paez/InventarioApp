@@ -4940,6 +4940,7 @@ function RecordatoriosPopup({
                 {activeDetailIsTransferContext && !activeDetailSolicitudLoading && (
                   <TrasladoRechazados
                     items={activeDetailSolicitud?.detalles_no_enviados}
+                    enviados={activeDetailSolicitud?.detalles}
                     className={darkMode ? 'is-dark' : ''}
                   />
                 )}
@@ -5011,6 +5012,35 @@ function RecordatoriosPopup({
                   </div>
                 </div>
               </div>
+
+              {/* Ver traslado: quien pidio lo abre en Entradas; quien envia,
+                  en Salidas una vez hecha la salida. Si no se puede, prueba
+                  el otro modulo. */}
+              {activeDetailIsTransferContext && !isTransferIssueReminder(activeDetailReminder) && activeDetailSolicitudId && (
+                typeof onOpenTransferRequestInEntradas === 'function' || typeof onOpenTransferRequestInSalidas === 'function'
+              ) && (
+                <footer className="recordatorios-popup__detail-footer">
+                  <button
+                    type="button"
+                    className="recordatorios-popup__mark-seen recordatorios-popup__mark-seen--decision"
+                    onClick={() => {
+                      const proveedoraId = normalizeId(
+                        activeDetailSolicitud?.sucursal_proveedora_id || activeDetailReminder?.context?.sucursal_proveedora_id
+                      )
+                      const soyProveedora = Boolean(proveedoraId) && currentReceiveBranchIdSet.has(proveedoraId)
+                      const preferred = soyProveedora && normalizeId(activeDetailSolicitud?.movimiento_salida_id)
+                        ? 'salidas'
+                        : 'entradas'
+                      void handleOpenTransferByPreferredTarget(activeDetailReminder, preferred)
+                    }}
+                    disabled={normalizeId(openingTransferReminderId) === normalizeId(activeDetailReminder?.id)}
+                  >
+                    {normalizeId(openingTransferReminderId) === normalizeId(activeDetailReminder?.id)
+                      ? 'Abriendo...'
+                      : 'Ver traslado'}
+                  </button>
+                </footer>
+              )}
 
               {isTransferIssueReminder(activeDetailReminder) && activeDetailReminderStatus?.label === 'Pendiente' && (
                 <footer className="recordatorios-popup__detail-footer">
