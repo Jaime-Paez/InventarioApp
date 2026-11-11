@@ -2,6 +2,8 @@
 .coverage-map {
   --coverage-done: #16a34a;
   --coverage-partial: #f59e0b;
+  /* En revision: conteo con diferencia sin resolver (amarillo rayado). */
+  --coverage-review: #eab308;
   --coverage-none: #dc2626;
   --coverage-empty: #94a3b8;
   position: fixed;
@@ -939,3 +941,26 @@
 .coverage-map--dark .coverage-map__send-ok {
   color: #86efac;
 }
+
+/* En revision: se conto pero la diferencia aun no se resuelve. Amarillo con
+   rayas para distinguirlo de "En proceso" (naranja) y de "Contada" (verde). */
+.coverage-map__legend-item--review::before {
+  color: var(--coverage-review);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--coverage-review) 45%, transparent) 0 3px, transparent 3px 6px);
+}
+.coverage-map__shape--review {
+  border-color: var(--coverage-review);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--coverage-review) 38%, transparent) 0 6px, color-mix(in srgb, var(--coverage-review) 16%, transparent) 6px 12px);
+}
+.coverage-map__chip--review { border-color: var(--coverage-review); }
+.coverage-map__badge--review { background: var(--coverage-review); color: #1f2937; }
+.coverage-map__bar-fill--review {
+  background: repeating-linear-gradient(135deg, var(--coverage-review) 0 6px, color-mix(in srgb, var(--coverage-review) 60%, transparent) 6px 12px);
+}
+.coverage-map__pending li.coverage-map__product--review {
+  background: color-mix(in srgb, var(--coverage-review) 14%, transparent);
+  border-left: 3px solid var(--coverage-review);
+  padding-left: 5px;
+}
+.coverage-map__result-row--review { border-left-color: var(--coverage-review); }
+.coverage-map--dark .coverage-map__pending li.coverage-map__product--review { background: rgba(234, 179, 8, 0.16); }

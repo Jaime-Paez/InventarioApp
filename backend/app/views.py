@@ -5980,6 +5980,17 @@ class RandomInspectionCoverageMapAPIView(APIView):
                 "revisado_en": _parse_iso_timestamp(row["revisado_en"]) if row.get("revisado_en") else "",
             }
 
+        def result_ok(result):
+            """Mismo criterio que el mapa: una diferencia sin resolver (contaron 0,
+            no lo encontraron, etc.) sigue en revision, no cuenta como lista."""
+            if result["resuelto"]:
+                return True
+            if result["no_encontrado"]:
+                return False
+            if result["por_ubicacion"] and result["cantidad_contada"] is not None and result["cantidad_sistema"] is not None:
+                return result["cantidad_contada"] == result["cantidad_sistema"]
+            return bool(result["coincide"])
+
         bodegas = list(
             Bodega.objects.filter(sucursal_id=sucursal_id).order_by("nombre", "id")
         )
@@ -5991,6 +6002,7 @@ class RandomInspectionCoverageMapAPIView(APIView):
                 "bodega_id": int(division.bodega_id),
                 "total": 0,
                 "contados": 0,
+                "en_revision": 0,
                 "ultimo_conteo": None,
                 "subdivisiones": {},
             }
@@ -6022,6 +6034,7 @@ class RandomInspectionCoverageMapAPIView(APIView):
                     "nombre": _normalize_text(row.get("subdivision__nombre")),
                     "total": 0,
                     "contados": 0,
+                    "en_revision": 0,
                     "pendientes": [],
                     "contados_lista": [],
                 },
@@ -6040,9 +6053,11 @@ class RandomInspectionCoverageMapAPIView(APIView):
                 subdivision["contados"] += 1
                 if when and (division["ultimo_conteo"] is None or when > division["ultimo_conteo"]):
                     division["ultimo_conteo"] = when
-                subdivision["contados_lista"].append(
-                    {**product_payload, "resultado": count_result(count_row, subdivision_id)}
-                )
+                resultado = count_result(count_row, subdivision_id)
+                if not result_ok(resultado):
+                    division["en_revision"] += 1
+                    subdivision["en_revision"] += 1
+                subdivision["contados_lista"].append({**product_payload, "resultado": resultado})
             else:
                 subdivision["pendientes"].append(product_payload)
 

@@ -25,6 +25,9 @@ const getStatus = (division) => {
   const total = Number(division?.total || 0)
   const contados = Number(division?.contados || 0)
   if (!division || total <= 0) return 'empty'
+  // Conteos con diferencia sin resolver (p. ej. contaron 0): la percha queda
+  // en revision hasta que se apruebe o rechace el ajuste; no pasa a verde.
+  if (Number(division?.en_revision || 0) > 0) return 'review'
   if (contados >= total) return 'done'
   if (contados <= 0) return 'none'
   return 'partial'
@@ -38,6 +41,7 @@ const getPercent = (division) => {
 
 const STATUS_LABEL = {
   done: 'Contada',
+  review: 'En revisión',
   partial: 'En proceso',
   none: 'Sin contar',
   empty: 'Sin productos',
@@ -289,9 +293,10 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
     (acc, division) => {
       acc.total += Number(division.total || 0)
       acc.contados += Number(division.contados || 0)
+      acc.en_revision += Number(division.en_revision || 0)
       return acc
     },
-    { total: 0, contados: 0 }
+    { total: 0, contados: 0, en_revision: 0 }
   ), [selectedDivisions])
 
   // Productos que faltan contar en las perchas elegidas (para mandarlos a revisar).
@@ -393,7 +398,8 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
     const result = counted ? product.resultado : null
     const classes = [
       'coverage-map__product',
-      counted ? 'coverage-map__product--done' : 'coverage-map__product--none',
+      !counted ? 'coverage-map__product--none'
+        : (result && !isResultOk(result) ? 'coverage-map__product--review' : 'coverage-map__product--done'),
       searchActive && matchKeys.has(key) ? 'is-match' : '',
       focusKey === key ? 'is-focus' : '',
     ].filter(Boolean).join(' ')
@@ -438,7 +444,10 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
             <li key={subdivision.id} className="coverage-map__level">
               <div className="coverage-map__level-head">
                 <strong>{subdivision.nombre || 'Sin nombre'}</strong>
-                <span>{`${subdivision.contados}/${subdivision.total}`}</span>
+                <span>
+                  {`${subdivision.contados}/${subdivision.total}`}
+                  {Number(subdivision.en_revision || 0) > 0 && ` · ${subdivision.en_revision} en revisión`}
+                </span>
               </div>
               <div className="coverage-map__bar">
                 <div className={`coverage-map__bar-fill coverage-map__bar-fill--${status}`} style={{ width: `${percent}%` }} />
@@ -513,6 +522,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
           )}
           <div className="coverage-map__legend" aria-label="Leyenda">
             <span className="coverage-map__legend-item coverage-map__legend-item--done">Contada</span>
+            <span className="coverage-map__legend-item coverage-map__legend-item--review">En revisión</span>
             <span className="coverage-map__legend-item coverage-map__legend-item--partial">En proceso</span>
             <span className="coverage-map__legend-item coverage-map__legend-item--none">Sin contar</span>
           </div>
@@ -595,7 +605,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                                     type="button"
                                     role="option"
                                     aria-selected="false"
-                                    className={`coverage-map__result-row coverage-map__result-row--${match.counted ? 'done' : 'none'}`}
+                                    className={`coverage-map__result-row coverage-map__result-row--${match.counted ? (isResultOk(result) ? 'done' : 'review') : 'none'}`}
                                     onClick={() => goToMatch(match)}
                                   >
                                     <span className="coverage-map__result-product">
@@ -638,7 +648,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                         const isMatch = searchActive && division && matchDivisionIds.has(String(division.id))
                         const isVertical = shape.alto > shape.ancho * VERTICAL_LABEL_RATIO
                         const title = division && status !== 'empty'
-                          ? `${shape.nombre}: ${division.contados} de ${division.total} contados (${getPercent(division)}%)`
+                          ? `${shape.nombre}: ${division.contados} de ${division.total} contados (${getPercent(division)}%)${Number(division.en_revision || 0) > 0 ? ` · ${division.en_revision} en revisión` : ''}`
                           : `${shape.nombre || 'Ubicacion'}: sin productos con stock`
                         return (
                           <button
