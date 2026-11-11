@@ -605,6 +605,27 @@ const InventarioEditor = forwardRef(function InventarioEditor(
   }
 
   const handleAddLocation = () => {
+    if (soloUbicacion) {
+      if (!locationDraft.sucursalId) {
+        setLocationError('Selecciona una sucursal.')
+        return
+      }
+      if (!origenSoloUbicacion) {
+        setLocationError('No hay unidades de este producto en esa sucursal para pasar a la ubicación nueva.')
+        return
+      }
+      if (!locationDraft.bodegaId || !locationDraft.divisionId || !locationDraft.subdivisionId) {
+        setLocationError('Selecciona bodega, división y subdivisión de la ubicación nueva.')
+        return
+      }
+      void handleConfirmTransfer(origenSoloUbicacion, {
+        bodegaId: locationDraft.bodegaId,
+        divisionId: locationDraft.divisionId,
+        subdivisionId: locationDraft.subdivisionId,
+        cantidad: locationDraft.cantidad,
+      })
+      return
+    }
     const sucursalId = locationDraft.sucursalId
     const bodegaId = locationDraft.bodegaId
     const divisionId = locationDraft.divisionId
@@ -791,31 +812,32 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     setOpenTransferDropdown(null)
   }
 
-  const handleConfirmTransfer = async (sourceLocation) => {
-    if (transferSaving) return
-    const destBodegaId = transferDraft.bodegaId
-    const destDivisionId = transferDraft.divisionId
-    const destSubdivisionId = transferDraft.subdivisionId
-    const moveQty = parseQuantity(transferDraft.cantidad)
+  const handleConfirmTransfer = async (sourceLocation, destinoExterno = null) => {
+    if (transferSaving) return false
+    const destino = destinoExterno || transferDraft
+    const destBodegaId = destino.bodegaId
+    const destDivisionId = destino.divisionId
+    const destSubdivisionId = destino.subdivisionId
+    const moveQty = parseQuantity(destino.cantidad)
     const sourceQty = Number(sourceLocation.cantidad) || 0
 
     if (!destBodegaId || !destDivisionId || !destSubdivisionId) {
       setLocationError('Selecciona bodega, division y subdivision de destino.')
-      return
+      return false
     }
     if (String(destSubdivisionId) === String(sourceLocation.subdivisionId)) {
       setLocationError('Elige una ubicacion distinta a la actual.')
-      return
+      return false
     }
     if (!moveQty || moveQty <= 0) {
       setLocationError('Ingresa una cantidad valida.')
-      return
+      return false
     }
     if (moveQty > sourceQty) {
       setLocationError(`No puedes mover mas de ${sourceQty} unidades.`)
-      return
+      return false
     }
-    if (!productId) return
+    if (!productId) return false
 
     const subdivision = subdivisionById.get(String(destSubdivisionId))
     const division = divisionById.get(String(destDivisionId))
@@ -891,10 +913,20 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         ]
       })
 
-      handleCancelTransfer()
+      if (destinoExterno) {
+        setLocationDraft((prev) => ({ ...prev, divisionId: '', subdivisionId: '', cantidad: '1', origenUid: '' }))
+        setLocationDivisionQuery('')
+        setLocationSubdivisionQuery('')
+        closeAllLocationDropdowns()
+        setShowLocationForm(false)
+      } else {
+        handleCancelTransfer()
+      }
       onSaved?.()
+      return true
     } catch (err) {
       setLocationError(err?.message || 'No se pudo completar el traslado.')
+      return false
     } finally {
       setTransferSaving(false)
     }
@@ -1081,6 +1113,24 @@ const InventarioEditor = forwardRef(function InventarioEditor(
     })
   }, [compareByName])
 
+  // Sin permiso de cambiar cantidades (o sin entrar a "Editar") se puede
+  // agregar una ubicacion, pero recibe unidades de otra ubicacion de la misma
+  // sucursal: el total no cambia (es el mismo traslado del boton de flechas).
+  const soloUbicacion = Boolean(
+    disabled || (locationDraft.sucursalId && !canInlineEditBranchLocation(locationDraft.sucursalId))
+  )
+  const origenesSoloUbicacion = locationDraft.sucursalId
+    ? orderLocations(locations, locationOrder).filter((loc) => (
+      String(loc.sucursalId || '') === String(locationDraft.sucursalId) &&
+      String(loc.uid || '').startsWith('entry-') &&
+      (Number(loc.cantidad) || 0) > 0
+    ))
+    : []
+  const origenSoloUbicacion = origenesSoloUbicacion.find((loc) => loc.uid === locationDraft.origenUid)
+    || origenesSoloUbicacion[0]
+    || null
+  const addFormDisabled = saving || transferSaving
+
   const sortedLocations = useMemo(
     () => orderLocations(locations, locationOrder),
     [locations, locationOrder, orderLocations]
@@ -1266,7 +1316,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                 return next
               })
             }}
-            disabled={editorDisabled}
+            disabled={addFormDisabled}
           >
             {showLocationForm ? 'Cancelar' : 'Agregar ubicacion'}
           </button>
@@ -1311,13 +1361,13 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                     type="button"
                     className="create-user__dropdown-trigger"
                     onClick={() => {
-                      if (editorDisabled) return
+                      if (addFormDisabled) return
                       setShowLocationBranchDropdown((prev) => !prev)
                       setShowLocationBodegaDropdown(false)
                       setShowLocationDivisionDropdown(false)
                       setShowLocationSubdivisionDropdown(false)
                     }}
-                    disabled={editorDisabled}
+                    disabled={addFormDisabled}
                   >
                     <span>{selectedLocationBranch?.nombre || 'Selecciona una sucursal'}</span>
                     <i className={`pi pi-chevron-${showLocationBranchDropdown ? 'up' : 'down'}`} />
@@ -1350,7 +1400,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                                 event.stopPropagation()
                                 handleLocationBranchPick(branch)
                               }}
-                              disabled={editorDisabled || !branchEditable}
+                              disabled={addFormDisabled || !branchEditable}
                               title={branchEditable ? undefined : 'Sin permiso para editar ubicaciones en esta sucursal'}
                             >
                               <div className="create-user__result-info">
@@ -1371,13 +1421,13 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                     type="button"
                     className="create-user__dropdown-trigger"
                     onClick={() => {
-                      if (editorDisabled || !locationDraft.sucursalId) return
+                      if (addFormDisabled || !locationDraft.sucursalId) return
                       setShowLocationBodegaDropdown((prev) => !prev)
                       setShowLocationBranchDropdown(false)
                       setShowLocationDivisionDropdown(false)
                       setShowLocationSubdivisionDropdown(false)
                     }}
-                    disabled={editorDisabled || !locationDraft.sucursalId || !canManageLocationDraft}
+                    disabled={addFormDisabled || !locationDraft.sucursalId || !canManageLocationDraft}
                   >
                     <span>{selectedLocationBodega?.nombre || 'Selecciona una bodega'}</span>
                     <i className={`pi pi-chevron-${showLocationBodegaDropdown ? 'up' : 'down'}`} />
@@ -1412,7 +1462,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                               event.stopPropagation()
                               handleLocationBodegaPick(bodega)
                             }}
-                            disabled={editorDisabled || !canManageLocationDraft}
+                            disabled={addFormDisabled || !canManageLocationDraft}
                           >
                             <div className="create-user__result-info">
                               <strong>{bodega.nombre || `Bodega ${bodega.id}`}</strong>
@@ -1430,13 +1480,13 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                     type="button"
                     className="create-user__dropdown-trigger"
                     onClick={() => {
-                      if (editorDisabled || !locationDraft.bodegaId) return
+                      if (addFormDisabled || !locationDraft.bodegaId) return
                       setShowLocationDivisionDropdown((prev) => !prev)
                       setShowLocationBranchDropdown(false)
                       setShowLocationBodegaDropdown(false)
                       setShowLocationSubdivisionDropdown(false)
                     }}
-                    disabled={editorDisabled || !locationDraft.bodegaId || !canManageLocationDraft}
+                    disabled={addFormDisabled || !locationDraft.bodegaId || !canManageLocationDraft}
                   >
                     <span>{selectedLocationDivision?.nombre || 'Selecciona una division'}</span>
                     <i className={`pi pi-chevron-${showLocationDivisionDropdown ? 'up' : 'down'}`} />
@@ -1471,7 +1521,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                               event.stopPropagation()
                               handleLocationDivisionPick(division)
                             }}
-                            disabled={editorDisabled || !canManageLocationDraft}
+                            disabled={addFormDisabled || !canManageLocationDraft}
                           >
                             <div className="create-user__result-info">
                               <strong>{division.nombre || `Division ${division.id}`}</strong>
@@ -1489,13 +1539,13 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                     type="button"
                     className="create-user__dropdown-trigger"
                     onClick={() => {
-                      if (editorDisabled || !locationDraft.divisionId) return
+                      if (addFormDisabled || !locationDraft.divisionId) return
                       setShowLocationSubdivisionDropdown((prev) => !prev)
                       setShowLocationBranchDropdown(false)
                       setShowLocationBodegaDropdown(false)
                       setShowLocationDivisionDropdown(false)
                     }}
-                    disabled={editorDisabled || !locationDraft.divisionId || !canManageLocationDraft}
+                    disabled={addFormDisabled || !locationDraft.divisionId || !canManageLocationDraft}
                   >
                     <span>{selectedLocationSubdivision?.nombre || 'Selecciona una subdivision'}</span>
                     <i className={`pi pi-chevron-${showLocationSubdivisionDropdown ? 'up' : 'down'}`} />
@@ -1532,7 +1582,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                                 event.stopPropagation()
                                 if (!alreadyUsed) handleLocationSubdivisionPick(subdivision)
                               }}
-                              disabled={editorDisabled || !canManageLocationDraft || alreadyUsed}
+                              disabled={addFormDisabled || !canManageLocationDraft || alreadyUsed}
                               title={alreadyUsed ? 'Esta subdivision ya está en la tabla' : undefined}
                             >
                               <div className="create-user__result-info">
@@ -1552,10 +1602,11 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   type="number"
                   min="1"
                   step="1"
+                  max={soloUbicacion && origenSoloUbicacion ? Number(origenSoloUbicacion.cantidad) || undefined : undefined}
                   placeholder="Cantidad"
                   value={locationDraft.cantidad}
                   onChange={(event) => handleLocationSelect('cantidad', event.target.value)}
-                  disabled={editorDisabled || !canManageLocationDraft}
+                  disabled={addFormDisabled || !canManageLocationDraft || (soloUbicacion && !origenSoloUbicacion)}
                 />
               </span>
               <span data-label="Acciones" className="create-user__locations-cell create-user__locations-cell--action">
@@ -1563,11 +1614,38 @@ const InventarioEditor = forwardRef(function InventarioEditor(
                   type="button"
                   className="create-user__ghost"
                   onClick={handleAddLocation}
-                  disabled={editorDisabled || !canManageLocationDraft}
+                  disabled={addFormDisabled || !canManageLocationDraft || (soloUbicacion && !origenSoloUbicacion)}
                 >
-                  Agregar
+                  {transferSaving ? 'Guardando...' : 'Agregar'}
                 </button>
               </span>
+            </div>
+          )}
+          {showLocationForm && soloUbicacion && locationDraft.sucursalId && (
+            <div className="inventario-editor__solo-ubicacion">
+              {origenesSoloUbicacion.length ? (
+                <>
+                  <span>No puedes cambiar cantidades: la ubicación nueva recibe las unidades desde</span>
+                  <div className="inventario-editor__solo-ubicacion-origenes" role="radiogroup" aria-label="Ubicación de origen">
+                    {origenesSoloUbicacion.map((loc) => (
+                      <button
+                        key={loc.uid}
+                        type="button"
+                        role="radio"
+                        aria-checked={origenSoloUbicacion?.uid === loc.uid}
+                        className={`inventario-editor__solo-ubicacion-origen${origenSoloUbicacion?.uid === loc.uid ? ' is-active' : ''}`}
+                        onClick={() => handleLocationSelect('origenUid', loc.uid)}
+                        disabled={addFormDisabled}
+                      >
+                        {`${loc.bodegaNombre} / ${loc.divisionNombre} / ${loc.subdivisionNombre} (${loc.cantidad})`}
+                      </button>
+                    ))}
+                  </div>
+                  <span>El total no cambia.</span>
+                </>
+              ) : (
+                <span>No hay unidades de este producto en esta sucursal: no puedes agregar ubicaciones sin cambiar cantidades.</span>
+              )}
             </div>
           )}
 

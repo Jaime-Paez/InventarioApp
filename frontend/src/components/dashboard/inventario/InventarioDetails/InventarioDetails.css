@@ -482,3 +482,54 @@ body.app-theme-dark .inventario-editor__drag-ghost {
     content: 'Quitar';
   }
 }
+
+/* "Agregar ubicacion" sin permiso de cantidades: la ubicacion nueva recibe
+   unidades de otra ubicacion de la sucursal (el total no cambia). */
+.inventario-editor__solo-ubicacion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 6px 0 4px;
+  padding: 8px 12px;
+  border: 1px solid #f3c96b;
+  border-radius: 10px;
+  background: #fff8e6;
+  color: #7c4a03;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.inventario-editor__solo-ubicacion-origenes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.inventario-editor__solo-ubicacion-origen {
+  padding: 3px 10px;
+  border: 1px solid #e3b453;
+  border-radius: 999px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.inventario-editor__solo-ubicacion-origen.is-active {
+  background: #b45309;
+  border-color: #b45309;
+  color: #fff;
+}
+.inventario-editor__solo-ubicacion-origen:disabled { opacity: 0.6; cursor: not-allowed; }
+body.app-theme-dark .inventario-editor__solo-ubicacion {
+  background: rgba(180, 83, 9, 0.16);
+  border-color: rgba(243, 201, 107, 0.45);
+  color: #fcd9a0;
+}
+body.app-theme-dark .inventario-editor__solo-ubicacion-origen {
+  background: transparent;
+  border-color: rgba(243, 201, 107, 0.5);
+}
+body.app-theme-dark .inventario-editor__solo-ubicacion-origen.is-active {
+  background: #b45309;
+  color: #fff;
+}
