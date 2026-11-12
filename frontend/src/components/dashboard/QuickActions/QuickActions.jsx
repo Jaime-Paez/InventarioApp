@@ -172,6 +172,21 @@ const buildInspectionLocationKey = (location) => [
 const inspectionBaseCode = (codigo) => (
   String(codigo || '').trim().toUpperCase().match(/^[A-Z]*\d+/) || ['']
 )[0]
+// Que ubicaciones manda el servidor para cada producto de la revision. Si
+// desde Inventario le agregan (o quitan) una ubicacion a un producto, cambia
+// aunque no suba la version del borrador y la pantalla abierta la trae.
+const buildInspectionLocationsSignature = (inspection) => (
+  (Array.isArray(inspection?.items) ? inspection.items : [])
+    .map((item) => {
+      const ids = (Array.isArray(item?.ubicaciones_bodega) ? item.ubicaciones_bodega : [])
+        .map((location) => normalizeId(location?.subdivision_id) || buildInspectionLocationKey(location))
+        .sort()
+        .join(',')
+      return `${normalizeId(item?.id)}:${ids}`
+    })
+    .sort()
+    .join('|')
+)
 const RANDOM_INSPECTION_SYNC_MS = 5000
 const RANDOM_INSPECTION_DRAFT_SAVE_DEBOUNCE_MS = 700
 const RANDOM_INSPECTION_CONFLICT_MESSAGE =
@@ -240,6 +255,14 @@ const mergeRandomInspectionFromServer = (localInspection, serverInspection) => {
       if (sinConteo && localKeys !== serverKeys) {
         return { ...item, ...serverItem }
       }
+      // Ya contado y desde Inventario le agregaron una ubicacion: se suma a
+      // las que ya tenia (sin perder lo contado) para que tambien se cuente.
+      const localKeySet = new Set(localLocations.map((location) => buildInspectionLocationKey(location)))
+      const addedLocations = localLocations.length
+        ? [...serverLocationsByKey.entries()]
+          .filter(([key]) => !localKeySet.has(key))
+          .map(([, location]) => location)
+        : []
       return {
         ...item,
         cantidad_esperada: serverItem.cantidad_esperada,
@@ -251,17 +274,21 @@ const mergeRandomInspectionFromServer = (localInspection, serverInspection) => {
         estado_revision: serverItem.estado_revision,
         verificacion_estado: serverItem.verificacion_estado,
         ubicaciones_bodega: localLocations.length
-          ? localLocations.map((location) => {
-            const serverLocation = serverLocationsByKey.get(buildInspectionLocationKey(location))
-            return serverLocation
-              ? {
-                ...location,
-                cantidad: serverLocation.cantidad,
-                subdivision_id: location?.subdivision_id || serverLocation.subdivision_id,
-              }
-              : location
-          })
+          ? [
+            ...localLocations.map((location) => {
+              const serverLocation = serverLocationsByKey.get(buildInspectionLocationKey(location))
+              return serverLocation
+                ? {
+                  ...location,
+                  cantidad: serverLocation.cantidad,
+                  subdivision_id: location?.subdivision_id || serverLocation.subdivision_id,
+                }
+                : location
+            }),
+            ...addedLocations,
+          ]
           : serverItem.ubicaciones_bodega,
+        ...(addedLocations.length ? { ubicacion_bodega: serverItem.ubicacion_bodega } : {}),
       }
     }),
   }
@@ -659,6 +686,7 @@ function QuickActions({
   // productos cambiaron aca y todavia no se guardaron, y una cola para que
   // los guardados de este mismo dispositivo no se pisen entre si.
   const randomInspectionVersionRef = useRef(null)
+  const randomInspectionLocationsSignatureRef = useRef('')
   const randomInspectionDirtyItemsRef = useRef(new Map())
   const randomInspectionMetaDirtyRef = useRef(false)
   const randomInspectionSaveQueueRef = useRef(Promise.resolve())
@@ -3626,6 +3654,7 @@ function QuickActions({
     randomInspectionMetaDirtyRef.current = false
     randomInspectionLastSentMetaRef.current = ''
     randomInspectionVersionRef.current = null
+    randomInspectionLocationsSignatureRef.current = ''
     randomInspectionActiveIdRef.current = ''
     randomInspectionSubmittingRef.current = false
     setIsRandomInspectionModalOpen(false)
@@ -3703,6 +3732,7 @@ function QuickActions({
     if (!serverInspection || typeof serverInspection !== 'object') return
     const serverVersion = Number(serverInspection?.borrador_version)
     if (Number.isFinite(serverVersion)) randomInspectionVersionRef.current = serverVersion
+    randomInspectionLocationsSignatureRef.current = buildInspectionLocationsSignature(serverInspection)
     const dirtyItems = randomInspectionDirtyItemsRef.current
     const serverDraft = buildRandomInspectionDraft(serverInspection)
     setActiveRandomInspection((prev) => mergeRandomInspectionFromServer(prev, serverInspection))
@@ -3769,7 +3799,11 @@ function QuickActions({
         const serverVersion = Number(serverInspection?.borrador_version)
         const localVersion = Number(randomInspectionVersionRef.current)
         if (!Number.isFinite(serverVersion)) return
-        if (Number.isFinite(localVersion) && serverVersion <= localVersion) return
+        // Tambien se trae si solo cambiaron las ubicaciones de algun producto
+        // (desde Inventario le agregaron una), aunque la version sea la misma.
+        const locationsChanged =
+          buildInspectionLocationsSignature(serverInspection) !== randomInspectionLocationsSignatureRef.current
+        if (Number.isFinite(localVersion) && serverVersion <= localVersion && !locationsChanged) return
         // Con cambios propios sin guardar no se pisa nada: al guardarlos el
         // servidor avisa el conflicto y ahi se combinan.
         if (randomInspectionDirtyItemsRef.current.size > 0 || randomInspectionSaveTimerRef.current) return
@@ -3927,6 +3961,7 @@ function QuickActions({
         randomInspectionActiveIdRef.current = normalizeId(inspection?.id)
         const serverVersion = Number(inspection?.borrador_version)
         randomInspectionVersionRef.current = Number.isFinite(serverVersion) ? serverVersion : null
+        randomInspectionLocationsSignatureRef.current = buildInspectionLocationsSignature(inspection)
         setActiveRandomInspection(inspection)
         if (isVerifyReminder) {
           setRandomInspectionDraftByItemId(buildRandomInspectionVerificationDraft(inspection))

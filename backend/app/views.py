@@ -3967,8 +3967,24 @@ def _sync_division_inspection_items(inspection_id):
             )
             to_remove = [item for item in untouched if int(item.producto_id) in stocked_elsewhere]
 
-        # Agregar: con stock en la percha y fuera de la lista.
+        # Agregar: fuera de la lista y con fila en la percha. Con stock, o en 0
+        # pero sin stock en otra ubicacion de la sucursal (producto recien
+        # creado o ubicado sin unidades); si tiene stock en otra parte y aqui
+        # esta en 0 es que lo movieron, y no entra (si no, la regla de quitar
+        # lo sacaria en la siguiente consulta).
         new_ids = {pid for pid, qty in stock_in_scope.items() if qty > 0 and pid not in listed_ids}
+        zero_ids = {pid for pid, qty in stock_in_scope.items() if qty <= 0 and pid not in listed_ids}
+        if zero_ids:
+            zero_stocked_elsewhere = set(
+                Inventario.objects.filter(
+                    producto_id__in=sorted(zero_ids),
+                    cantidad__gt=0,
+                    subdivision__division__bodega__sucursal_id=sucursal_id,
+                )
+                .values_list("producto_id", flat=True)
+                .distinct()
+            )
+            new_ids |= zero_ids - zero_stocked_elsewhere
         new_candidates = []
         if new_ids:
             new_candidates = [

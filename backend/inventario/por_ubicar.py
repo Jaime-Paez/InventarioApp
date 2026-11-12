@@ -73,6 +73,38 @@ def _special_subdivision(sucursal_id, nombre, *, create):
     return subdivision
 
 
+def is_special_subdivision(subdivision):
+    """True si la subdivision es de POR UBICAR o TEMPORAL (sus filas en 0 se
+    borran solas: ahi no se puede dejar una ubicacion en 0)."""
+    division = getattr(subdivision, "division", None)
+    if division is None:
+        return False
+    nombre = str(getattr(division, "nombre", "") or "").strip().upper()
+    if nombre in (POR_UBICAR_NOMBRE, TEMPORAL_NOMBRE):
+        return True
+    tipo = getattr(division, "tipo_division", None)
+    return str(getattr(tipo, "nombre", "") or "").strip().lower() == POR_UBICAR_TIPO.lower()
+
+
+ZERO_LOCATION_SPECIAL_ERROR = (
+    "Las ubicaciones TEMPORAL y POR UBICAR no pueden quedar en 0 (se borran solas). "
+    "Ingresa una cantidad mayor a 0 o elige otra ubicacion."
+)
+ZERO_LOCATION_ADMIN_ERROR = "Solo un administrador puede agregar una ubicacion con cantidad 0."
+
+
+def zero_location_error(user, subdivision):
+    """Mensaje si `user` no puede crear una ubicacion en 0 en `subdivision`;
+    None si puede (administrador y ubicacion normal)."""
+    from usuarios.utils import is_app_admin
+
+    if is_special_subdivision(subdivision):
+        return ZERO_LOCATION_SPECIAL_ERROR
+    if not is_app_admin(user):
+        return ZERO_LOCATION_ADMIN_ERROR
+    return None
+
+
 def purge_empty_special_rows(pks=None):
     """Borra las filas en 0 (o menos) de POR UBICAR y TEMPORAL: ahi el
     producto solo esta de paso, asi que una ubicacion vacia no sirve de nada.

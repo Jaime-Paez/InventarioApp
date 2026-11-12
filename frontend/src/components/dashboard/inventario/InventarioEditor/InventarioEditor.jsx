@@ -22,6 +22,13 @@ const parseQuantity = (value) => {
   return Math.max(0, Math.floor(parsed))
 }
 const normalizeScopeBranchId = (value) => String(value ?? '').trim()
+// TEMPORAL y POR UBICAR: sus filas en 0 se borran solas, no pueden quedar en 0.
+const isSpecialDivisionName = (nombre) => {
+  const value = String(nombre ?? '').trim().toUpperCase()
+  return value === 'TEMPORAL' || value === 'POR UBICAR'
+}
+const ZERO_SPECIAL_LOCATION_ERROR =
+  'TEMPORAL y POR UBICAR no pueden quedar en 0 (se borran solas). Ingresa una cantidad mayor a 0 o elige otra ubicación.'
 const normalizeForSearch = (value) =>
   String(value ?? '')
     .normalize('NFD')
@@ -652,8 +659,15 @@ const InventarioEditor = forwardRef(function InventarioEditor(
       setLocationError('Selecciona una subdivision.')
       return
     }
-    if (!quantity || quantity <= 0) {
+    if (quantity == null || String(locationDraft.cantidad ?? '').trim() === '') {
       setLocationError('Ingresa una cantidad valida.')
+      return
+    }
+    // En 0 se puede (administrador: este formulario solo lo usa quien puede
+    // cambiar cantidades), menos en TEMPORAL / POR UBICAR, que se borran solas en 0.
+    const pickedDivision = divisionById.get(String(divisionId))
+    if (quantity === 0 && isSpecialDivisionName(pickedDivision?.nombre)) {
+      setLocationError(ZERO_SPECIAL_LOCATION_ERROR)
       return
     }
     const allowedSubs = subdivisionsByDivision.get(String(divisionId)) || []
@@ -1019,6 +1033,9 @@ const InventarioEditor = forwardRef(function InventarioEditor(
         }
         if (quantity > 0) {
           cambios.push({ subdivision_id: subdivisionId, cantidad: quantity })
+        } else if (!isSpecialDivisionName(location.divisionNombre)) {
+          // Ubicacion nueva en 0 a proposito: se crea vacia (no se descarta).
+          cambios.push({ subdivision_id: subdivisionId, cantidad: 0, eliminar: false })
         }
       })
       const locationSubIds = new Set(locations.map((location) => String(location.subdivisionId)))
@@ -1600,7 +1617,7 @@ const InventarioEditor = forwardRef(function InventarioEditor(
               <span data-label="Cantidad">
                 <input
                   type="number"
-                  min="1"
+                  min={soloUbicacion ? '1' : '0'}
                   step="1"
                   max={soloUbicacion && origenSoloUbicacion ? Number(origenSoloUbicacion.cantidad) || undefined : undefined}
                   placeholder="Cantidad"

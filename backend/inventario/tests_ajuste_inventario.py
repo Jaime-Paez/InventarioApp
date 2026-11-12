@@ -80,3 +80,88 @@ class AjusteInventarioTests(APITestCase):
         self.assertEqual(response.status_code, 400, response.content)
         self.assertFalse(Inventario.objects.filter(producto=self.producto, subdivision=self.sub_b).exists())
         self.assertFalse(AjusteInventario.objects.exists())
+
+
+class UbicacionEnCeroTests(APITestCase):
+    """El administrador puede agregar una ubicacion en 0 (producto nuevo o
+    existente), menos en TEMPORAL / POR UBICAR, que se borran solas en 0."""
+
+    def setUp(self):
+        tipo, _ = TipoDivision.objects.get_or_create(nombre="General")
+        self.sucursal = Sucursal.objects.create(nombre="Cero Norte", direccion="Av 1")
+        bodega = Bodega.objects.create(sucursal=self.sucursal, nombre="Principal")
+        percha = Division.objects.create(tipo_division=tipo, bodega=bodega, nombre="Percha")
+        temporal = Division.objects.create(tipo_division=tipo, bodega=bodega, nombre="TEMPORAL")
+        self.sub_a = SubDivision.objects.create(division=percha, nombre="A")
+        self.sub_temp = SubDivision.objects.create(division=temporal, nombre="TEMPORAL")
+        self.producto = Producto.objects.create(codigo="CE-01", nombre="Filtro")
+        self.admin = get_user_model().objects.create_superuser(username="ce", email="ce@x.com", password="x")
+        self.client.force_authenticate(self.admin)
+
+    def _ajustar(self, subdivision, eliminar=False):
+        return self.client.post(
+            URL,
+            {
+                "producto_id": self.producto.id,
+                "cambios": [{"subdivision_id": subdivision.id, "cantidad": 0, "eliminar": eliminar}],
+            },
+            format="json",
+        )
+
+    def test_admin_agrega_ubicacion_en_cero(self):
+        response = self._ajustar(self.sub_a)
+        self.assertEqual(response.status_code, 200, response.content)
+        row = Inventario.objects.get(producto=self.producto, subdivision=self.sub_a)
+        self.assertEqual(row.cantidad, 0)
+        self.assertFalse(AjusteInventario.objects.exists())  # el total no cambia
+
+    def test_sin_eliminar_false_no_crea_nada(self):
+        response = self._ajustar(self.sub_a, eliminar=True)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(Inventario.objects.filter(producto=self.producto).exists())
+
+    def test_temporal_en_cero_no_se_permite(self):
+        response = self._ajustar(self.sub_temp)
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertFalse(Inventario.objects.filter(producto=self.producto).exists())
+
+    def test_no_admin_no_puede_en_cero(self):
+        user = get_user_model().objects.create_user(username="ce2", email="ce2@x.com", password="x")
+        self.client.force_authenticate(user)
+        response = self.client.post(
+            "/inventario/inventario/",
+            {"producto_id": self.producto.id, "subdivision_id": self.sub_a.id, "referencia": "", "cantidad": 0},
+            format="json",
+        )
+        self.assertIn(response.status_code, (400, 403), response.content)
+        self.assertFalse(Inventario.objects.filter(producto=self.producto).exists())
+
+    def test_admin_crea_en_cero_por_post(self):
+        response = self.client.post(
+            "/inventario/inventario/",
+            {"producto_id": self.producto.id, "subdivision_id": self.sub_a.id, "referencia": "", "cantidad": 0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_admin_temporal_en_cero_por_post_no(self):
+        response = self.client.post(
+            "/inventario/inventario/",
+            {"producto_id": self.producto.id, "subdivision_id": self.sub_temp.id, "referencia": "", "cantidad": 0},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+
+    def test_temporal_existente_en_cero_se_borra(self):
+        inv = Inventario.objects.create(producto=self.producto, subdivision=self.sub_temp, cantidad=3)
+        response = self.client.post(
+            URL,
+            {
+                "producto_id": self.producto.id,
+                "motivo": "Ajuste de inventario",
+                "cambios": [{"id": inv.id, "subdivision_id": self.sub_temp.id, "cantidad": 0, "eliminar": False}],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertFalse(Inventario.objects.filter(id=inv.id).exists())

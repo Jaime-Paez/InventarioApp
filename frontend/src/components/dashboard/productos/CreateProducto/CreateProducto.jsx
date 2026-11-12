@@ -30,6 +30,13 @@ const initialForm = {
 
 const parseNumber = (value) => parseMoneyInput(value)
 const parseApiList = (payload) => (Array.isArray(payload) ? payload : payload?.results || [])
+// TEMPORAL y POR UBICAR: sus filas en 0 se borran solas, no pueden quedar en 0.
+const isSpecialDivisionName = (nombre) => {
+  const value = String(nombre ?? '').trim().toUpperCase()
+  return value === 'TEMPORAL' || value === 'POR UBICAR'
+}
+const ZERO_SPECIAL_LOCATION_ERROR =
+  'TEMPORAL y POR UBICAR no pueden quedar en 0 (se borran solas). Ingresa una cantidad mayor a 0 o elige otra ubicación.'
 const parseQuantity = (value) => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return null
@@ -323,6 +330,15 @@ function CreateProducto({
     () => getAnyModuleScopeBranchIdSet(currentUser?.sucursales_por_modulo),
     [currentUser]
   )
+  // Solo el administrador puede dejar una ubicacion en 0.
+  const isAdminUser = Boolean(
+    currentUser?.is_superuser ||
+      currentUser?.is_staff ||
+      currentUser?.es_administrador ||
+      String(currentUser?.rol || '').trim().toLowerCase() === 'administrador'
+  )
+  const minLocationQuantity = isAdminUser ? 0 : 1
+
   const canManageLocationBranch = useCallback(
     (branchId) => {
       if (!(scopedProductBranchIds instanceof Set)) return true
@@ -1234,8 +1250,6 @@ function CreateProducto({
       setLocationError('La subdivision no pertenece a la division seleccionada.')
       return
     }
-    const safeQuantity = quantity && quantity > 0 ? quantity : 1
-
     const subdivision = subdivisionById.get(String(subdivisionId))
     if (!subdivision) {
       setLocationError('Selecciona una subdivision valida.')
@@ -1248,6 +1262,16 @@ function CreateProducto({
     }
 
     const division = divisionById.get(String(divisionId))
+    let safeQuantity = quantity && quantity > 0 ? quantity : 1
+    if (quantity === 0 && String(locationDraft.cantidad ?? '').trim() !== '' && isAdminUser) {
+      // Administrador: puede agregarla en 0, menos en TEMPORAL / POR UBICAR.
+      if (isSpecialDivisionName(division?.nombre || subdivision?.division?.nombre)) {
+        setLocationError(ZERO_SPECIAL_LOCATION_ERROR)
+        return
+      }
+      safeQuantity = 0
+    }
+
     const bodega = bodegaById.get(String(bodegaId))
     const branch = branchById.get(String(sucursalId))
     const divisionName = division?.nombre || subdivision?.division?.nombre || '-'
@@ -1337,8 +1361,13 @@ function CreateProducto({
 
       if (editingField === 'cantidad') {
         const quantity = parseQuantity(value)
-        if (!quantity || quantity <= 0) {
+        const zeroAllowed = quantity === 0 && String(value ?? '').trim() !== '' && isAdminUser
+        if (quantity == null || (quantity <= 0 && !zeroAllowed)) {
           setEditError('Ingresa una cantidad valida.')
+          return prev
+        }
+        if (quantity === 0 && isSpecialDivisionName(current.divisionNombre)) {
+          setEditError(ZERO_SPECIAL_LOCATION_ERROR)
           return prev
         }
         const updated = [...prev]
@@ -1384,7 +1413,8 @@ function CreateProducto({
     const errors = []
     for (const location of locations) {
       const quantity = parseQuantity(location.cantidad)
-      if (!quantity || quantity <= 0) continue
+      // En 0 solo si lo agrego un administrador (el servidor lo vuelve a validar).
+      if (quantity == null || (quantity <= 0 && (!isAdminUser || isSpecialDivisionName(location.divisionNombre)))) continue
       try {
         const response = await authFetch(
           `${API_URL}/inventario/inventario/`,
@@ -2737,7 +2767,7 @@ function CreateProducto({
                       <span data-label="Cantidad">
                         <input
                           type="number"
-                          min="1"
+                          min={minLocationQuantity}
                           step="1"
                           placeholder="Cantidad"
                           value={locationDraft.cantidad}
@@ -2814,7 +2844,7 @@ function CreateProducto({
                           {editingCantidad ? (
                             <input
                               type="number"
-                              min="1"
+                              min={minLocationQuantity}
                               step="1"
                               value={editingValue}
                               onChange={(event) => setEditingValue(event.target.value)}

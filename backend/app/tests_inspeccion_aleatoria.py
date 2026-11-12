@@ -1926,6 +1926,23 @@ class RevisionPorPerchaEnVivoTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(again["borrador_version"], payload["borrador_version"])
         self.assertEqual(self.inspection.items.count(), 3)
 
+    def test_producto_nuevo_en_cero_en_la_percha_entra_a_la_lista(self):
+        nuevo = Producto.objects.create(codigo="P-4", nombre="Polea", precio=Decimal("3"))
+        Inventario.objects.create(producto=nuevo, subdivision=self.sub_a, cantidad=0)
+
+        payload = self._detalle()
+        self.assertIn(nuevo.id, self._productos(payload))
+        # La siguiente consulta no lo saca.
+        self.assertIn(nuevo.id, self._productos(self._detalle()))
+
+    def test_en_cero_en_la_percha_con_stock_en_otra_no_entra(self):
+        nuevo = Producto.objects.create(codigo="P-5", nombre="Correa", precio=Decimal("3"))
+        Inventario.objects.create(producto=nuevo, subdivision=self.sub_a, cantidad=0)
+        Inventario.objects.create(producto=nuevo, subdivision=self.sub_b, cantidad=2)
+
+        payload = self._detalle()
+        self.assertNotIn(nuevo.id, self._productos(payload))
+
     def test_producto_ya_contado_no_se_quita(self):
         self.inspection.items.filter(producto=self.producto_2).update(cantidad_reportada=4)
         Inventario.objects.filter(pk=self.inv_2.pk).update(subdivision=self.sub_b)

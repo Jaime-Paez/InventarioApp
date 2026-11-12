@@ -23,6 +23,7 @@ from django.db.models.functions import Coalesce, Concat, Lower
 from django.utils.dateparse import parse_date
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -51,6 +52,7 @@ from usuarios.sucursal_scope import (
 )
 
 from .models import Bodega, Division, Inventario, SubDivision, Sucursal
+from .por_ubicar import is_special_subdivision, zero_location_error
 from .serializers import (
     BodegaSerializer,
     DivisionSerializer,
@@ -2231,6 +2233,11 @@ class InventarioViewSet(viewsets.ModelViewSet):
             sucursal_id,
             action_key="puede_crear",
         )
+        if int(serializer.validated_data.get("cantidad") or 0) <= 0:
+            # Ubicacion en 0: solo administrador y nunca en TEMPORAL/POR UBICAR.
+            zero_error = zero_location_error(self.request.user, subdivision)
+            if zero_error:
+                raise ValidationError({"detail": zero_error})
         serializer.save()
 
     def perform_update(self, serializer):
@@ -2323,6 +2330,9 @@ class InventarioViewSet(viewsets.ModelViewSet):
                         transaction.set_rollback(True)
                         return Response({"detail": "Una de las ubicaciones ya no existe; recarga el producto."}, status=status.HTTP_404_NOT_FOUND)
                     sucursal_id = inv.subdivision.division.bodega.sucursal_id
+                    if cantidad == 0 and not eliminar and is_special_subdivision(inv.subdivision):
+                        # TEMPORAL / POR UBICAR no se quedan en 0: se borran.
+                        eliminar = True
                     plan.append(("existing", inv, None, cantidad, eliminar, sucursal_id))
                 else:
                     subdivision = SubDivision.objects.select_related("division__bodega").filter(id=subdivision_id).first()
@@ -2330,6 +2340,12 @@ class InventarioViewSet(viewsets.ModelViewSet):
                         transaction.set_rollback(True)
                         return Response({"detail": "Ubicacion no valida."}, status=status.HTTP_400_BAD_REQUEST)
                     sucursal_id = subdivision.division.bodega.sucursal_id
+                    if cantidad == 0 and not eliminar:
+                        # Ubicacion nueva en 0 (pedida a proposito con eliminar=false).
+                        zero_error = zero_location_error(request.user, subdivision)
+                        if zero_error:
+                            transaction.set_rollback(True)
+                            return Response({"detail": zero_error}, status=status.HTTP_400_BAD_REQUEST)
                     plan.append(("new", None, subdivision, cantidad, eliminar, sucursal_id))
                 sucursales_tocadas.add(sucursal_id)
 
@@ -2358,7 +2374,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     elif existing.cantidad != cantidad:
                         existing.cantidad = cantidad
                         existing.save(update_fields=["cantidad"])
-                elif cantidad > 0:
+                elif cantidad > 0 or not eliminar:
                     Inventario.objects.create(
                         producto_id=producto_id, subdivision=subdivision, referencia="", cantidad=cantidad
                     )
