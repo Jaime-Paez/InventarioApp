@@ -147,7 +147,7 @@ const describeCountQty = (entry) => {
 // Puntos de conteo: uno por cada vez que se cuenta el producto (de 3). Al
 // pasar el mouse por un punto sale una tarjeta con todos los conteos (cuanto
 // conto cada vez y contra cuanto esperado), marcando el del punto y el actual.
-function RecountDots({ row, onlyIfRecounted = false }) {
+function RecountDots({ row }) {
   const [hover, setHover] = useState(null)
   const max = getMaxCounts(row)
   const history = Array.isArray(row?.conteos) && row.conteos.length
@@ -192,11 +192,6 @@ function RecountDots({ row, onlyIfRecounted = false }) {
     card.style.left = `${left}px`
     card.style.visibility = 'visible'
   }, [hover])
-
-  // Despues de los hooks: si se salia antes, al aprobar una fila (deja de estar
-  // pendiente y pasa a onlyIfRecounted) cambiaba el numero de hooks y React
-  // dejaba toda la pantalla en blanco.
-  if (onlyIfRecounted && history.length < 2) return null
 
   return (
     <>
@@ -1864,7 +1859,7 @@ function RandomInspectionAdminTable({
                               {`Lo encontró en una ubicación nueva${row?.encontrado_en?.label ? ` (${String(row.encontrado_en.label).trim()})` : ''}. Acepta o rechaza la ubicación antes de reenviar el conteo: así el reconteo busca donde corresponde.`}
                             </small>
                           ) : null}
-                          <RecountDots row={row} onlyIfRecounted={status.key !== 'pendiente'} />
+                          <RecountDots row={row} />
                         </div>
                         {diff ? (
                           <span className={`transfer-issues-item__qty transfer-issues-cantidad--${diff > 0 ? 'sobrante' : 'faltante'}`}>
