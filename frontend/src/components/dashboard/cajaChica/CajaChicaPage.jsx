@@ -7,6 +7,7 @@ import BlockerNotice from '../common/BlockerNotice'
 import { TallerDialogsOcultos } from '../taller/tallerDialogContext'
 import CascadeDropdown from '../common/CascadeDropdown'
 import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
+import CajaAccionesMenu from './CajaAccionesMenu'
 import '../admin/UsersTable/UsersTable.css'
 import '../admin/CreateUsuario/CreateUsuario.css'
 import '../movimientos/TrasladosInconvenientesTable.css'
@@ -597,25 +598,18 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
                         const propio = String(m.registrado_por) === String(user?.id)
                         const editable = m.estado !== 'aprobado' && (isAdmin || propio) && !['apertura', 'vuelto'].includes(m.tipo) && !m.de_anticipo
                         const anticipoAbierto = m.tipo === 'anticipo' && m.estado === 'aprobado' && !m.liquidado_en
+                        // Maximo un boton por fila: con varias acciones, un "!"
+                        // que al pasar el mouse muestra todas.
+                        const acciones = [
+                          isAdmin && m.estado === 'pendiente' && { key: 'aprobar', label: 'Aprobar', tone: 'primary', onClick: () => revisar(m, true) },
+                          isAdmin && m.estado === 'pendiente' && { key: 'rechazar', label: 'Rechazar', tone: 'danger', onClick: () => { setMotivo(''); setConfirm({ kind: 'rechazar', mov: m }) } },
+                          anticipoAbierto && puedeRegistrar && { key: 'liquidar', label: 'Liquidar', tone: 'warn', onClick: () => setDialog({ kind: 'liquidar', mov: m }) },
+                          editable && { key: 'corregir', label: 'Corregir', tone: '', onClick: () => setDialog({ kind: 'mov', mov: m }) },
+                          isAdmin && !['apertura', 'vuelto'].includes(m.tipo) && !m.de_anticipo && !m.liquidado_en && { key: 'eliminar', label: 'Eliminar', tone: 'danger', onClick: () => setConfirm({ kind: 'eliminar', mov: m }) },
+                        ].filter(Boolean)
                         return (
                           <div className="caja-table__actions">
-                            {isAdmin && m.estado === 'pendiente' && (
-                              <>
-                                <button type="button" className="create-user__ghost create-user__ghost--primary" onClick={() => revisar(m, true)} disabled={busy}>Aprobar</button>
-                                <button type="button" className="create-user__ghost caja-btn--rechazar" onClick={() => { setMotivo(''); setConfirm({ kind: 'rechazar', mov: m }) }} disabled={busy}>Rechazar</button>
-                              </>
-                            )}
-                            {anticipoAbierto && puedeRegistrar && (
-                              <button type="button" className="create-user__ghost caja-btn--liquidar" onClick={() => setDialog({ kind: 'liquidar', mov: m })}>Liquidar</button>
-                            )}
-                            {editable && (
-                              <button type="button" className="create-user__ghost" onClick={() => setDialog({ kind: 'mov', mov: m })}>Corregir</button>
-                            )}
-                            {isAdmin && !['apertura', 'vuelto'].includes(m.tipo) && !m.de_anticipo && !m.liquidado_en && (
-                              <button type="button" className="create-user__locations-remove" aria-label="Eliminar" data-title="Eliminar movimiento" onClick={() => setConfirm({ kind: 'eliminar', mov: m })} disabled={busy}>
-                                x
-                              </button>
-                            )}
+                            <CajaAccionesMenu acciones={acciones} disabled={busy} />
                           </div>
                         )
                       }}
