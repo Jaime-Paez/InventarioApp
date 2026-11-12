@@ -407,6 +407,7 @@ class SolicitudTrasladoDetalleSerializer(serializers.ModelSerializer):
             "producto_nombre",
             "cantidad",
             "valor",
+            "importante",
             "verificado",
             "no_enviar",
             "motivo_no_envio",

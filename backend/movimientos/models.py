@@ -280,6 +280,9 @@ class SolicitudTrasladoDetalle(models.Model):
     )
     cantidad = models.PositiveIntegerField()
     valor = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    # Marcado con estrella por quien pide: es el motivo del traslado. Si la
+    # proveedora lo rechaza, se rechaza toda la solicitud.
+    importante = models.BooleanField(default=False, db_default=False)
     verificado = models.BooleanField(
         default=False,
         help_text="Indica si la persona que recibe ya ubico fisicamente este producto.",

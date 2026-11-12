@@ -212,3 +212,58 @@ class RechazoPorProductoTrasladoTests(APITestCase):
         opcion = next(u for u in response.data["ubicaciones_sucursal"] if u["subdivision_id"] == self.sub_a.id)
         self.assertEqual(opcion["division_id"], self.sub_a.division_id)
         self.assertEqual(opcion["bodega_id"], self.sub_a.division.bodega_id)
+
+    def test_rechazar_producto_importante_rechaza_toda_la_solicitud(self):
+        self.detalle_2.importante = True
+        self.detalle_2.save(update_fields=["importante"])
+        self.assertEqual(self._marcar(self.detalle_1, {"estado": "separado"}).status_code, 200)
+        self.assertEqual(
+            self._marcar(
+                self.detalle_2,
+                {"estado": "no_enviar", "motivo_tipo": "no_tengo", "conteo": [{"subdivision_id": self.sub_a.id, "cantidad": 1}]},
+            ).status_code,
+            200,
+        )
+        response = self._decidir()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["decision"], "rechazada")
+        self.solicitud.refresh_from_db()
+        self.assertEqual(self.solicitud.estado, SolicitudTraslado.Estados.CANCELADA)
+        self.assertIn("producto importante", self.solicitud.motivo_rechazo)
+        self.assertIn("RCH-2 x4", self.solicitud.motivo_rechazo)
+        # No se envia nada: los dos productos siguen en la solicitud rechazada.
+        self.assertEqual(self.solicitud.detalles.count(), 2)
+        # El conteo de "No tengo" igual queda registrado.
+        self.assertTrue(InspeccionAleatoriaItem.objects.filter(producto=self.producto_2).exists())
+
+    def test_rechazar_producto_no_importante_sigue_siendo_parcial(self):
+        self.detalle_1.importante = True
+        self.detalle_1.save(update_fields=["importante"])
+        self.assertEqual(self._marcar(self.detalle_1, {"estado": "separado"}).status_code, 200)
+        self.assertEqual(
+            self._marcar(self.detalle_2, {"estado": "no_enviar", "motivo_tipo": "vendido"}).status_code, 200
+        )
+        response = self._decidir()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["decision"], "aceptada")
+
+    def test_la_estrella_se_guarda_al_crear(self):
+        response = self.client.post(
+            self.base_url,
+            {
+                "sucursal_solicitante_id": self.solicitante.id,
+                "sucursal_proveedora_id": self.proveedora.id,
+                "fecha": "2026-10-27",
+                "detalles": [
+                    {"producto_id": self.producto_1.id, "cantidad": 1, "valor": "10.00", "importante": True},
+                    {"producto_id": self.producto_2.id, "cantidad": 1, "valor": "10.00"},
+                ],
+                "recordatorio_destinatario_ids": [
+                    get_user_model().objects.get(username="bodeguero_rechazo").id
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        importantes = {d["producto_codigo"]: d["importante"] for d in response.data["detalles"]}
+        self.assertEqual(importantes, {"RCH-1": True, "RCH-2": False})

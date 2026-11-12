@@ -4109,3 +4109,16 @@
 .dashboard-shell.dark .recordatorios-popup__live-dot::after {
   background: #22c55e;
 }
+
+/* Producto con estrella (importante para quien pidio): si se rechaza, se
+   rechaza toda la solicitud. */
+.recordatorios-popup__decision-star {
+  flex: none;
+  color: #f59e0b;
+  font-size: 15px;
+  line-height: 1;
+  margin-right: 2px;
+}
+.recordatorios-popup__decision-row--importante > td {
+  background: color-mix(in srgb, #f59e0b 9%, transparent);
+}

@@ -2239,7 +2239,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         actor_user,
         decision_status,
         rejection_reason="",
+        urgente=None,
     ):
+        """`urgente=True` fuerza el aviso urgente (p. ej. se rechazo un producto
+        con estrella): el circulo de "corrige tu solicitud" sale en rojo."""
         if solicitud is None:
             return False
 
@@ -2367,7 +2370,8 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     "type": "solicitud_traslado",
                     "id": str(solicitud_id),
                     "label": context_label,
-                    "urgente": bool(getattr(solicitud, "urgente", False)),
+                    "urgente": bool(getattr(solicitud, "urgente", False)) or bool(urgente),
+                    "rechazo_por_importante": bool(urgente),
                 },
                 "kind": "recordatorio_general",
                 "createdAt": resolved_at,
@@ -3961,6 +3965,10 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 # Todos los productos rechazados: se rechaza la solicitud con
                 # el motivo de cada uno.
                 return self._reject_transfer_by_products(request, solicitud)
+            if solicitud.detalles.filter(no_enviar=True, importante=True).exists():
+                # Se rechazo un producto con estrella (el motivo del traslado):
+                # no tiene sentido mandar el resto, se rechaza todo.
+                return self._reject_transfer_by_products(request, solicitud, por_importante=True)
             with transaction.atomic():
                 solicitud_locked = (
                     SolicitudTraslado.objects.select_for_update(of=("self",))
@@ -4401,7 +4409,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                     solicitud.id,
                 )
 
-    def _reject_transfer_by_products(self, request, solicitud):
+    def _reject_transfer_by_products(self, request, solicitud, por_importante=False):
         with transaction.atomic():
             solicitud_locked = (
                 SolicitudTraslado.objects.select_for_update(of=("self",))
@@ -4410,21 +4418,39 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 .first()
             )
             detalles = list(solicitud_locked.detalles.all()) if solicitud_locked else []
+            rechazados = [detalle for detalle in detalles if detalle.no_enviar]
+            importantes_rechazados = [detalle for detalle in rechazados if detalle.importante]
             if (
                 solicitud_locked is None
                 or solicitud_locked.estado != SolicitudTraslado.Estados.PENDIENTE
                 or not detalles
-                or not all(detalle.no_enviar and detalle.motivo_no_envio for detalle in detalles)
+                or not all(detalle.motivo_no_envio for detalle in rechazados)
+                or any(not detalle.verificado and not detalle.no_enviar for detalle in detalles)
+                or (por_importante and not importantes_rechazados)
+                or (not por_importante and len(rechazados) != len(detalles))
             ):
                 return Response(
                     {"detail": "La solicitud cambio mientras se rechazaba. Vuelve a revisarla."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            motivo = "; ".join(
-                f"{getattr(detalle.producto, 'codigo', '') or getattr(detalle.producto, 'nombre', '')} "
-                f"x{int(detalle.cantidad or 0)} ({detalle.motivo_no_envio})"
-                for detalle in detalles
-            )
+
+            def describir(detalle):
+                return (
+                    f"{getattr(detalle.producto, 'codigo', '') or getattr(detalle.producto, 'nombre', '')} "
+                    f"x{int(detalle.cantidad or 0)} ({detalle.motivo_no_envio})"
+                )
+
+            motivo = "; ".join(describir(detalle) for detalle in rechazados)
+            if por_importante:
+                plural = len(importantes_rechazados) != 1
+                motivo = (
+                    f"Se rechazo {'los productos importantes' if plural else 'el producto importante'} "
+                    f"(con estrella): {'; '.join(describir(d) for d in importantes_rechazados)}. "
+                    "Sin ese producto no se envia el resto del traslado."
+                )
+                otros = [detalle for detalle in rechazados if not detalle.importante]
+                if otros:
+                    motivo += f" Tambien se rechazo: {'; '.join(describir(d) for d in otros)}."
             solicitud_locked.estado = SolicitudTraslado.Estados.CANCELADA
             solicitud_locked.motivo_rechazo = motivo
             solicitud_locked.rechazada_por = request.user
@@ -4439,12 +4465,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 ]
             )
 
-        self._register_transfer_reject_counts(request.user, solicitud_locked, detalles)
+        self._register_transfer_reject_counts(request.user, solicitud_locked, rechazados)
         self._append_transfer_decision_result_reminder(
             solicitud=solicitud_locked,
             actor_user=request.user,
             decision_status="rechazada",
             rejection_reason=motivo,
+            urgente=True if por_importante else None,
         )
         output = SolicitudTrasladoSerializer(instance=solicitud_locked)
         return Response(

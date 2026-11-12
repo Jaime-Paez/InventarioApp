@@ -2076,8 +2076,15 @@ function RecordatoriosPopup({
   const allDetallesResueltos =
     activeDecisionIsGarantia ||
     decisionDetalles.every((detalle) => Boolean(detalle?.verificado) || Boolean(detalle?.no_enviar))
+  // Un producto con estrella (el motivo del traslado) rechazado: se rechaza
+  // toda la solicitud, igual que si se rechazara todo.
+  const importantesRechazados = activeDecisionIsGarantia
+    ? []
+    : decisionDetalles.filter((detalle) => Boolean(detalle?.no_enviar) && Boolean(detalle?.importante))
   const todosNoEnviados =
-    !activeDecisionIsGarantia && decisionDetalles.length > 0 && detallesNoEnviadosCount === decisionDetalles.length
+    !activeDecisionIsGarantia && decisionDetalles.length > 0 && (
+      detallesNoEnviadosCount === decisionDetalles.length || importantesRechazados.length > 0
+    )
   const canAcceptDecision = allDetallesResueltos && (activeDecisionIsGarantia || decisionDetalles.length > 0)
   const acceptBlockedReason = !allDetallesResueltos
     ? 'Marca cada producto como separado o como rechazado.'
@@ -2446,6 +2453,7 @@ function RecordatoriosPopup({
         producto_nombre: detalle.producto_nombre,
         cantidad: String(detalle.cantidad ?? ''),
         valor: detalle.valor ?? 0,
+        importante: Boolean(detalle.importante),
       }))
     )
     setEditError('')
@@ -2494,6 +2502,7 @@ function RecordatoriosPopup({
               producto_id: row.producto_id,
               cantidad: Number(row.cantidad) || 0,
               valor: row.valor ?? 0,
+              importante: Boolean(row.importante),
             })),
           }),
         },
@@ -4145,9 +4154,21 @@ function RecordatoriosPopup({
                                 const estadoBloqueado = !canSubmitDecision || decisionSubmitting || verificandoDetalleId === detalleId
                                 return (
                                   <React.Fragment key={detalle.id || `${detalle.producto_id}-${detalle.cantidad}`}>
-                                    <tr className={detalle?.no_enviar ? 'recordatorios-popup__decision-row--no-enviar' : undefined}>
+                                    <tr className={[
+                                      detalle?.no_enviar ? 'recordatorios-popup__decision-row--no-enviar' : '',
+                                      detalle?.importante ? 'recordatorios-popup__decision-row--importante' : '',
+                                    ].filter(Boolean).join(' ') || undefined}>
                                       <td>
                                         <span className="recordatorios-popup__decision-codigo">
+                                          {detalle?.importante && (
+                                            <span
+                                              className="recordatorios-popup__decision-star"
+                                              data-title="Importante para quien pidió: si lo rechazas, se rechaza toda la solicitud."
+                                              aria-label="Producto importante"
+                                            >
+                                              ★
+                                            </span>
+                                          )}
                                           <span>{detalle?.producto_codigo || '-'}</span>
                                           {!activeDecisionIsGarantia && detalleId && (
                                             <button
@@ -4310,7 +4331,9 @@ function RecordatoriosPopup({
                     )}
                     {canSubmitDecision && !activeDecisionIsGarantia && canAcceptDecision && detallesNoEnviadosCount > 0 && (
                       <p className="recordatorios-popup__decision-hint">
-                        {todosNoEnviados
+                        {importantesRechazados.length > 0
+                          ? `*${importantesRechazados.map((detalle) => detalle?.producto_codigo || 'Producto').join(', ')} ${importantesRechazados.length === 1 ? 'es importante' : 'son importantes'} (★) para quien pidió: al rechazar${importantesRechazados.length === 1 ? 'lo' : 'los'} se rechaza toda la solicitud.`
+                          : todosNoEnviados
                           ? '*Todos los productos están rechazados: se rechazará la solicitud con el motivo de cada uno.'
                           : `*Se aceptará parcialmente: ${detallesNoEnviadosCount} producto${detallesNoEnviadosCount === 1 ? '' : 's'} rechazado${detallesNoEnviadosCount === 1 ? '' : 's'}.`}
                       </p>
@@ -4443,6 +4466,12 @@ function RecordatoriosPopup({
                         <p className="recordatorios-popup__no-enviar-producto">
                           {noEnviarModal.detalle?.producto_nombre || '-'} · Pedido: {noEnviarModal.detalle?.cantidad ?? '-'}
                         </p>
+                        {noEnviarModal.detalle?.importante && (
+                          <BlockerNotice
+                            title="Este producto es importante para quien pidió (★)"
+                            reason="Es el motivo del traslado: si lo rechazas, aunque sea por no tener la cantidad completa, se rechaza toda la solicitud y no se envía nada."
+                          />
+                        )}
                         <p className="recordatorios-popup__no-enviar-titulo">¿Por qué lo rechazas?</p>
                         <div className="recordatorios-popup__no-enviar-motivos" role="radiogroup" aria-label="Motivo del rechazo">
                           {RECHAZO_MOTIVOS.map((opcion) => (

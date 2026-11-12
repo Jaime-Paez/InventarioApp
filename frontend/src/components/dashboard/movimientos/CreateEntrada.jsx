@@ -1919,6 +1919,7 @@ function CreateEntrada({
           cantidad: safeCantidad,
           valor: safeValor,
           valor_total: valorTotal,
+          importante: Boolean(detalle?.importante),
         }
       })
       .filter(Boolean)
@@ -3659,6 +3660,7 @@ function CreateEntrada({
             producto_id: Number(detail.productoId),
             cantidad: Number(detail.cantidad),
             valor: Math.max(0, parseNumber(detail.valor) ?? 0),
+            importante: Boolean(detail.importante),
           })),
           guardar_borrador: guardarBorrador,
         }
@@ -4854,8 +4856,25 @@ function CreateEntrada({
                         : null
 
                       return (
-                        <div key={detail.uid} className="create-user__locations-row">
+                        <div key={detail.uid} className={`create-user__locations-row${isTraslado && detail.importante ? ' create-entrada__row--importante' : ''}`}>
                           <span>
+                            {isTraslado && (
+                              <button
+                                type="button"
+                                className={`create-entrada__star${detail.importante ? ' is-on' : ''}`}
+                                aria-pressed={Boolean(detail.importante)}
+                                aria-label={detail.importante ? 'Quitar estrella' : 'Marcar como importante'}
+                                data-title={detail.importante
+                                  ? 'Importante: si lo rechazan (o no hay la cantidad completa), se rechaza toda la solicitud. Clic para quitar.'
+                                  : 'Marcar como importante: si lo rechazan, se rechaza toda la solicitud.'}
+                                onClick={() => setDetails((prev) => prev.map((row) => (
+                                  row.uid === detail.uid ? { ...row, importante: !row.importante } : row
+                                )))}
+                                disabled={loading}
+                              >
+                                <i className={`pi ${detail.importante ? 'pi-star-fill' : 'pi-star'}`} aria-hidden="true" />
+                              </button>
+                            )}
                             {detail.productoCodigo || '-'}
                             {stockLabel !== null && (
                               <small className="create-salida__row-stock">
@@ -4958,6 +4977,15 @@ function CreateEntrada({
                       </div>
                     )}
                   </div>
+
+                  {isTraslado && details.length > 0 && (
+                    <p className="create-entrada__star-hint">
+                      <i className="pi pi-star-fill" aria-hidden="true" />
+                      {details.some((detail) => detail.importante)
+                        ? `Importante: ${details.filter((detail) => detail.importante).map((detail) => detail.productoCodigo).join(', ')}. Si lo rechazan, se rechaza toda la solicitud y te avisa para pedir de nuevo.`
+                        : 'Marca con la estrella el producto que es el motivo del traslado: si lo rechazan, se rechaza toda la solicitud.'}
+                    </p>
+                  )}
 
                 </section>
 
