@@ -13,6 +13,12 @@ const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
 
+// Para comparar codigos ignorando guiones, espacios y mayusculas (C0104 ~ C-0104-A).
+const normalizeCodigoMatch = (value) =>
+  String(value ?? '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+
 const initialForm = {
   codigo: '',
   nombre: '',
@@ -154,6 +160,9 @@ function CreateProducto({
   const [casaSearch, setCasaSearch] = useState('')
   const [codigoChecking, setCodigoChecking] = useState(false)
   const [codigoError, setCodigoError] = useState('')
+  // Productos del catalogo cuyo codigo coincide con el que se escribe: sus
+  // descripciones se ofrecen para escoger y se sugieren como alternos.
+  const [codigoMatches, setCodigoMatches] = useState([])
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -611,6 +620,7 @@ function CreateProducto({
     setAlternoQuery('')
     setAlternoOptions([])
     setAlternosSelected([])
+    setCodigoMatches([])
     setAlternoLoading(false)
     setShowAlternoDropdown(false)
     setAlternoDraft(null)
@@ -887,6 +897,7 @@ function CreateProducto({
       if (!term || !token) {
         setCodigoChecking(false)
         setCodigoError('')
+        setCodigoMatches([])
         return
       }
 
@@ -909,9 +920,16 @@ function CreateProducto({
             (item) => String(item?.codigo ?? '').trim().toLowerCase() === term.toLowerCase()
           )
           setCodigoError(exists ? 'Este codigo ya existe.' : '')
+          const normTerm = normalizeCodigoMatch(term)
+          setCodigoMatches(
+            normTerm
+              ? list.filter((item) => normalizeCodigoMatch(item?.codigo).includes(normTerm))
+              : []
+          )
         } catch {
           if (seq !== codigoCheckSeqRef.current) return
           setCodigoError('')
+          setCodigoMatches([])
         } finally {
           if (seq === codigoCheckSeqRef.current) {
             setCodigoChecking(false)
@@ -935,6 +953,37 @@ function CreateProducto({
     () => new Set(alternosSelected.map((item) => String(item?.id)).filter(Boolean)),
     [alternosSelected]
   )
+
+  const descripcionOptions = useMemo(() => {
+    const groups = new Map()
+    codigoMatches.forEach((item) => {
+      const nombre = String(item?.nombre ?? '').trim()
+      if (!nombre) return
+      const key = nombre.toLowerCase()
+      if (!groups.has(key)) groups.set(key, { nombre, codigos: [] })
+      if (item?.codigo) groups.get(key).codigos.push(item.codigo)
+    })
+    return Array.from(groups.values())
+  }, [codigoMatches])
+
+  const alternoSugeridos = useMemo(
+    () => codigoMatches.filter((item) => item?.id && !alternoIdSet.has(String(item.id))),
+    [codigoMatches, alternoIdSet]
+  )
+
+  const handleAddAlternosSugeridos = () => {
+    if (!alternoSugeridos.length) return
+    setAlternosSelected((prev) => [
+      ...prev,
+      ...alternoSugeridos.map((product) => ({
+        id: product.id,
+        codigo: product.codigo,
+        nombre: product.nombre,
+        descripcion: product.descripcion,
+      })),
+    ])
+    setAlternoError('')
+  }
 
   const handleAlternoSelect = (product) => {
     if (!product) return
@@ -1616,6 +1665,7 @@ function CreateProducto({
 
       setFormData(initialForm)
       setAlternosSelected([])
+      setCodigoMatches([])
       setOemItems([])
       setOemDraft({ codigo: '' })
       setOemError('')
@@ -1914,6 +1964,13 @@ function CreateProducto({
               aria-selected={activeTab === 'alternos'}
             >
               Alternos
+              {alternoSugeridos.length > 0 && (
+                <span
+                  className="create-user__tab-dot"
+                  data-title={`${alternoSugeridos.length} producto(s) con codigo parecido: puede ser alterno`}
+                  aria-label="Hay productos con codigo parecido"
+                />
+              )}
             </button>
           </div>
 
@@ -1955,6 +2012,35 @@ function CreateProducto({
                         required
                         disabled={loading}
                       />
+                      {descripcionOptions.length > 0 && (
+                        <div className="create-user__desc-options">
+                          <small className="muted">
+                            {descripcionOptions.length === 1
+                              ? 'Descripcion de un producto con este codigo:'
+                              : `Descripciones de productos con este codigo (${descripcionOptions.length}):`}
+                          </small>
+                          <div className="create-user__desc-options-list">
+                            {descripcionOptions.map((opt) => {
+                              const selected = formData.nombre.trim().toLowerCase() === opt.nombre.toLowerCase()
+                              return (
+                                <button
+                                  key={opt.nombre}
+                                  type="button"
+                                  className={`create-user__desc-option${selected ? ' is-selected' : ''}`}
+                                  onClick={(event) => {
+                                    event.preventDefault()
+                                    setFormData((prev) => ({ ...prev, nombre: opt.nombre }))
+                                  }}
+                                  disabled={loading}
+                                >
+                                  <strong>{opt.nombre}</strong>
+                                  <small>{opt.codigos.join(', ')}</small>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </label>
 
                     <label className="create-user__field create-user__field--required">
@@ -2222,6 +2308,33 @@ function CreateProducto({
                 <div className="create-user__section-header">
                   <h4>Alternos</h4>
                 </div>
+
+                {alternoSugeridos.length > 0 && (
+                  <div className="create-user__alterno-sugeridos">
+                    <BlockerNotice
+                      title={`Hay ${alternoSugeridos.length} producto(s) con un codigo parecido a ${formData.codigo.trim()}.`}
+                      reason="Si este producto es del mismo grupo, agregalo como alterno."
+                      actionLabel={alternoSugeridos.length > 1 ? 'Agregar todos como alternos' : 'Agregar como alterno'}
+                      onAction={handleAddAlternosSugeridos}
+                    />
+                    <div className="create-user__alterno-sugeridos-list">
+                      {alternoSugeridos.map((product) => (
+                        <div key={product.id} className="create-user__alterno-sugerido">
+                          <span className="create-user__alterno-sugerido-codigo">{product.codigo || '-'}</span>
+                          <span>{product.nombre || 'Sin descripción'}</span>
+                          <button
+                            type="button"
+                            className="create-user__ghost"
+                            onClick={() => handleAddAlterno(product)}
+                            disabled={loading}
+                          >
+                            Agregar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="create-user__locations-table create-user__locations-table--alternos create-user__locations-table--alternos-sin-ver">
                   <div className="create-user__locations-row create-user__locations-row--head">

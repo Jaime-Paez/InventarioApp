@@ -2765,3 +2765,107 @@ button.create-user__locations-row {
     width: auto !important;
   }
 }
+
+/* Crear producto: punto amarillo en la pestana Alternos cuando hay productos
+   con codigo parecido que podrian ser del mismo grupo. */
+.create-user__tab-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+  vertical-align: middle;
+}
+
+/* Descripciones de productos con el mismo codigo, para escoger. */
+.create-user__desc-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.create-user__desc-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.create-user__desc-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.create-user__desc-option strong {
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 600;
+}
+
+.create-user__desc-option small {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.create-user__desc-option:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.create-user__desc-option.is-selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-button-primary);
+}
+
+/* Alternos sugeridos por codigo parecido */
+.create-user__alterno-sugeridos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.create-user__alterno-sugeridos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.create-user__alterno-sugerido {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #78350f;
+  font-size: var(--font-size-sm, 13px);
+}
+
+.create-user__alterno-sugerido-codigo {
+  font-weight: 700;
+}
+
+.dashboard-shell.dark .create-user__alterno-sugerido {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #fde68a;
+}
