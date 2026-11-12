@@ -64,6 +64,7 @@ class CajaSerializer(serializers.ModelSerializer):
     pendientes = serializers.SerializerMethodField()
     anticipos_abiertos = serializers.SerializerMethodField()
     ultimo_arqueo = serializers.SerializerMethodField()
+    reposicion_pendiente = serializers.SerializerMethodField()
 
     class Meta:
         model = Caja
@@ -84,6 +85,7 @@ class CajaSerializer(serializers.ModelSerializer):
             "pendientes",
             "anticipos_abiertos",
             "ultimo_arqueo",
+            "reposicion_pendiente",
             "configurada",
             "creado_en",
         ]
@@ -112,6 +114,11 @@ class CajaSerializer(serializers.ModelSerializer):
 
     def get_anticipos_abiertos(self, obj):
         return obj.movimientos.filter(tipo=M.Tipos.ANTICIPO, estado=M.Estados.APROBADO, liquidado_en__isnull=True).count()
+
+    def get_reposicion_pendiente(self, obj):
+        """Monto de la reposicion pedida que espera al administrador (o None)."""
+        movimiento = obj.movimientos.filter(tipo=M.Tipos.REPOSICION, estado=M.Estados.PENDIENTE).first()
+        return str(movimiento.monto) if movimiento is not None else None
 
     def get_ultimo_arqueo(self, obj):
         arqueo = obj.arqueos.first()

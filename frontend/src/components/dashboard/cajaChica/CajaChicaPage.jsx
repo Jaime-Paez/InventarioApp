@@ -36,7 +36,7 @@ const nombreCaja = (c) => {
   return c.sucursal_nombre || c.nombre
 }
 
-function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitcherChange }) {
+function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitcherChange, pendingOpenCajaId, onPendingOpenCajaHandled }) {
   const toast = useRef(null)
   const isAdmin = Boolean(
     user?.is_superuser || user?.is_staff || user?.es_administrador || String(user?.rol || '').trim().toLowerCase() === 'administrador'
@@ -122,6 +122,15 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
   }, [token])
 
   const caja = cajas.find((c) => String(c.id) === String(cajaId)) || null
+
+  // Desde el aviso "Reponer caja chica" (acciones rapidas): se abre esa caja
+  // con sus valores al dia.
+  useEffect(() => {
+    if (!pendingOpenCajaId?.id) return
+    setCajaId(String(pendingOpenCajaId.id))
+    void loadCajas()
+    onPendingOpenCajaHandled?.()
+  }, [pendingOpenCajaId, loadCajas, onPendingOpenCajaHandled])
 
   const loadMovimientos = useCallback(async () => {
     if (!cajaId) {

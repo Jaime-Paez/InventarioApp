@@ -147,6 +147,12 @@ function Workspace({
   const [pendingOpenDetailsId, setPendingOpenDetailsId] = useState(null)
   const [pendingOpenDetailsTab, setPendingOpenDetailsTab] = useState(null)
   const [pendingOpenDetailsStatus, setPendingOpenDetailsStatus] = useState(null)
+  // Aviso "Reponer caja chica" (acciones rapidas): abre Caja chica en esa caja.
+  const [pendingOpenCajaId, setPendingOpenCajaId] = useState(null)
+  const handleOpenCajaChica = useCallback((cajaId) => {
+    onSelectTab?.('Caja chica')
+    setPendingOpenCajaId(cajaId ? { id: String(cajaId), key: Date.now() } : null)
+  }, [onSelectTab])
 
   const handleOpenImportacionBorrador = useCallback((borradorData) => {
     // Tabs that show borradores (no fixed statusProp). Prefer whichever is already open.
@@ -612,6 +618,8 @@ function Workspace({
               : undefined
         }
         onTitleSwitcherChange={tab === 'Caja chica' ? getTitleSwitcherSetter(tab) : undefined}
+        pendingOpenCajaId={tab === 'Caja chica' ? pendingOpenCajaId : undefined}
+        onPendingOpenCajaHandled={tab === 'Caja chica' ? () => setPendingOpenCajaId(null) : undefined}
         isTabActive={
           tab === 'Entradas' || tab === 'Salidas' || tab === 'Solicitudes' ||
           tab === INVENTORY_REVIEW_TAB || tab === INVENTORY_REVIEW_TAB_LEGACY ||
@@ -761,6 +769,7 @@ function Workspace({
           onOpenTransferIssuesSection={handleOpenTransferIssuesSection}
           onOpenSolicitudCliente={handleOpenSolicitudCliente}
           onOpenSolicitudWeb={handleOpenSolicitudWeb}
+          onOpenCajaChica={handleOpenCajaChica}
         />
       </div>
 

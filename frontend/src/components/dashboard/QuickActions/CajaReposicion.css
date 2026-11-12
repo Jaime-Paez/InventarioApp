@@ -1,0 +1,32 @@
+/* Aviso de caja chica por reponer: misma pildora que "Envios en camino",
+   en ambar (dinero que falta). */
+.caja-reposicion__trigger {
+  border-color: color-mix(in srgb, #d97706 40%, var(--color-border));
+  background: color-mix(in srgb, #f59e0b 16%, var(--color-surface));
+}
+.caja-reposicion__trigger .quick-actions__pending-shipments-count {
+  background: #d97706;
+  color: #fff;
+}
+.quick-actions__dock.dark .caja-reposicion__trigger,
+.caja-reposicion.is-dark .caja-reposicion__trigger {
+  background: color-mix(in srgb, #d97706 24%, rgba(17, 24, 39, 0.92));
+  border-color: color-mix(in srgb, #d97706 42%, var(--color-border));
+}
+
+.caja-reposicion__item {
+  border-left: 3px solid #d97706;
+}
+.caja-reposicion__item--aprobar {
+  border-left-color: var(--color-primary, #004570);
+}
+.caja-reposicion__accion {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #b45309;
+}
+.caja-reposicion__item--aprobar .caja-reposicion__accion {
+  color: var(--color-primary, #004570);
+}
+.quick-actions__dock.dark .caja-reposicion__accion,
+.caja-reposicion.is-dark .caja-reposicion__accion { color: #fcd34d; }

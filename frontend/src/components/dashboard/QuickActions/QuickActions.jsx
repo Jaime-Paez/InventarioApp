@@ -7,6 +7,7 @@ import './QuickActions.css'
 import RecordatoriosPopup from './RecordatoriosPopup'
 import ReceiveCompleteDialog from './ReceiveCompleteDialog'
 import PorGuardar from './PorGuardar'
+import CajaReposicion from './CajaReposicion'
 import LlegadaDialog from './LlegadaDialog'
 import useDockEntrance from './useDockEntrance'
 import { requestPorGuardarRefresh } from './porGuardarEvents'
@@ -582,6 +583,7 @@ function QuickActions({
   onOpenTransferIssuesSection,
   onOpenSolicitudCliente,
   onOpenSolicitudWeb,
+  onOpenCajaChica,
   allowUrgentShield = true,
 }) {
   const wrapRef = useRef(null)
@@ -6556,6 +6558,13 @@ function QuickActions({
             onSaved={(message) => toast.current?.show({ severity: 'success', summary: 'Por ubicar', detail: message, life: 2600 })}
           />
         )}
+        <CajaReposicion
+          token={token}
+          user={user}
+          isAdmin={isAdministrator}
+          darkMode={darkMode}
+          onOpenCaja={onOpenCajaChica}
+        />
         {canOpenInTransitShipments && hasInTransitShipments && (
           <div
             ref={inTransitShipmentsRef}
