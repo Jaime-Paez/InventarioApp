@@ -585,8 +585,8 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
                         </>
                       )}
                     />
-                    <Column header="Entrada" style={{ minWidth: '90px' }} body={(m) => <span className="caja-in">{m.es_entrada ? formatMoney(m.monto) : ''}</span>} />
-                    <Column header="Salida" style={{ minWidth: '90px' }} body={(m) => <span className="caja-out">{m.es_entrada ? '' : formatMoney(m.monto)}</span>} />
+                    <Column header="Entrada" alignHeader="center" headerClassName="caja-col--centro" bodyClassName="caja-col--centro" style={{ minWidth: '90px' }} body={(m) => <span className="caja-in">{m.es_entrada ? formatMoney(m.monto) : ''}</span>} />
+                    <Column header="Salida" alignHeader="center" headerClassName="caja-col--centro" bodyClassName="caja-col--centro" style={{ minWidth: '90px' }} body={(m) => <span className="caja-out">{m.es_entrada ? '' : formatMoney(m.monto)}</span>} />
                     <Column field="estado" header="Estado" sortable alignHeader="center" headerClassName="caja-col--centro" bodyClassName="caja-col--centro" style={{ minWidth: '110px' }} body={(m) => <span className={`taller-chip taller-chip--${ESTADO_CHIP[m.estado] || 'cerrada'}`}>{m.estado_label}</span>} />
                     <Column
                       header="Acciones"
