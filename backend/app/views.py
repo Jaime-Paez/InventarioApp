@@ -6171,7 +6171,22 @@ class RandomInspectionCoverageMapAPIView(APIView):
             ):
                 target[product_id] = row
 
+        # Conteos mandados a reconteo cuyo reconteo el admin disculpo (nadie
+        # lo va a contar): la diferencia queda cerrada, no sigue en revision.
+        # Si hay otro reconteo vigente sin contar, sigue en revision.
+        recount_rows = InspeccionAleatoriaItem.objects.filter(
+            sucursal_id=sucursal_id,
+            reconteo_de__isnull=False,
+            estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE,
+        ).values_list("reconteo_de_id", "inspeccion__disculpada")
+        recount_excused = set()
+        recount_active = set()
+        for origin_id, excused in recount_rows:
+            (recount_excused if excused else recount_active).add(int(origin_id))
+        recount_excused -= recount_active
+
         for row in counted_qs.values(
+            "id",
             "producto_id",
             "revisado_en",
             "estado_revision",
@@ -6241,7 +6256,9 @@ class RandomInspectionCoverageMapAPIView(APIView):
                 "verificacion": verificacion,
                 # La diferencia ya se resolvio (aprobada o rechazada): el
                 # conteo queda cerrado aunque no coincidiera.
-                "resuelto": verificacion in (estados.APROBADA, estados.RECHAZADA),
+                "resuelto": verificacion in (estados.APROBADA, estados.RECHAZADA) or (
+                    verificacion == estados.RECONTEO and _normalize_int(row.get("id"), 0) in recount_excused
+                ),
                 "coincide": row.get("estado_revision") == InspeccionAleatoriaItem.EstadosRevision.COINCIDE,
                 "no_encontrado": bool(row.get("no_encontrado")),
                 "cantidad_contada": _normalize_int(contada, 0) if contada is not None else None,
