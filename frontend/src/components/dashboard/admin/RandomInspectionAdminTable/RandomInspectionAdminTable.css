@@ -2505,3 +2505,23 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   border-color: rgba(148, 163, 184, 0.3);
   color: #cbd5e1;
 }
+
+/* "No lo encontre" -> TEMPORAL al aprobar (el total no cambia). */
+.inspection-admin__temporal {
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.08);
+}
+.inspection-admin__temporal-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+.inspection-admin__temporal-check input { margin-top: 3px; flex: 0 0 auto; }
+.inspection-admin__temporal-check span { display: grid; gap: 2px; min-width: 0; }
+.inspection-admin__temporal-check strong { font-size: var(--font-size-sm, 13px); color: #92400e; }
+.inspection-admin__temporal-check small { font-size: var(--font-size-xs, 12px); line-height: 1.4; }
+.quick-actions__inspection-overlay.dark .inspection-admin__temporal-check strong { color: #fcd34d; }

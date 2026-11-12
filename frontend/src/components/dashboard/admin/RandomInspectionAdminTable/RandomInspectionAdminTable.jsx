@@ -61,6 +61,42 @@ const getVerifiableLocations =(item) => (Array.isArray(item?.ubicaciones_conteo)
     location?.cantidad_sistema != null &&
     location?.cantidad_contada != null
   ))
+// "No lo encontre" no es "hay 0": al aprobar, lo que el sistema tenia en esas
+// ubicaciones pasa a TEMPORAL de la sucursal (el total no cambia), salvo que
+// el admin escriba otra cantidad o desmarque la opcion. Mismo calculo que el
+// backend (_plan_not_found_to_temporal).
+const getNotFoundCandidates = (item) => {
+  const verifiable = getVerifiableLocations(item)
+  // "No lo encontre" en esa ubicacion, o en todo el producto (donde conto 0).
+  const locations = verifiable.filter((location) => (
+    (location?.no_encontrado || (item?.no_encontrado && (Number.parseInt(String(location.cantidad_contada ?? 0), 10) || 0) === 0)) &&
+    Number(location.cantidad_sistema) > 0
+  ))
+  const expected = Number.parseInt(String(item?.cantidad_esperada ?? 0), 10) || 0
+  const whole = Boolean(item?.no_encontrado) && !verifiable.length && expected > 0
+  return { verifiable, locations, whole, expected }
+}
+const getNotFoundToTemporalQty = (item, { perLocation = null, confirmed = Number.NaN, enabled = true } = {}) => {
+  if (!enabled) return 0
+  const { verifiable, locations, whole, expected } = getNotFoundCandidates(item)
+  if (perLocation) {
+    return locations.reduce((total, location) => {
+      const value = Number.parseInt(String(perLocation[String(location.subdivision_id)] ?? '').trim(), 10)
+      return value === 0 ? total + Number(location.cantidad_sistema) : total
+    }, 0)
+  }
+  if (!Number.isFinite(confirmed)) return 0
+  if (verifiable.length) {
+    const counted = verifiable.reduce((total, location) => total + (Number.parseInt(String(location.cantidad_contada ?? 0), 10) || 0), 0)
+    if (confirmed !== counted) return 0
+    return locations
+      .filter((location) => (Number.parseInt(String(location.cantidad_contada ?? 0), 10) || 0) === 0)
+      .reduce((total, location) => total + Number(location.cantidad_sistema), 0)
+  }
+  const reported = Number.parseInt(String(item?.cantidad_reportada ?? 0), 10) || 0
+  return whole && confirmed === reported ? expected : 0
+}
+
 // Total correcto pero repartido distinto entre ubicaciones: solo se decide
 // si se aprueba el reparto del revisor o se deja como estaba.
 const isLocationChangeAwaitingDecision = (row) => (
@@ -1452,6 +1488,10 @@ function RandomInspectionAdminTable({
       changedFromCount = Number.isFinite(reportedQty) && nextQty !== reportedQty
     }
 
+    if (action === 'aprobar') {
+      body.no_encontrado_a_temporal = draft?.aTemporal !== false
+    }
+
     if (action === 'aprobar' && changedFromCount) {
       // Se va a dejar una cantidad distinta de la contada: primero la
       // advertencia, y no se guarda sin una nota que explique que paso.
@@ -2389,14 +2429,19 @@ function RandomInspectionAdminTable({
         const firstCount = item?.cantidad_primer_conteo == null ? null : Number.parseInt(String(item.cantidad_primer_conteo), 10) || 0
         const perLocationDraft = draft?.porUbicacion || null
         const verifiableLocations = perLocationDraft ? getVerifiableLocations(item) : []
+        const aTemporal = draft?.aTemporal !== false
+        const notFoundCandidates = getNotFoundCandidates(item)
+        const hasNotFoundCandidates = notFoundCandidates.locations.length > 0 || notFoundCandidates.whole
         const perLocationValues = verifiableLocations.map((location) => {
           const raw = String(perLocationDraft?.[String(location.subdivision_id)] ?? '').trim()
           const value = Number.parseInt(raw, 10)
+          const toTemporal = aTemporal && notFoundCandidates.locations.some((candidate) => String(candidate.subdivision_id) === String(location.subdivision_id)) && value === 0
           return {
             ...location,
             raw,
             value: Number.isFinite(value) ? value : null,
-            delta: Number.isFinite(value) ? value - Number(location.cantidad_sistema) : null,
+            toTemporal,
+            delta: toTemporal ? 0 : Number.isFinite(value) ? value - Number(location.cantidad_sistema) : null,
           }
         })
         const confirmed = perLocationDraft
@@ -2404,7 +2449,8 @@ function RandomInspectionAdminTable({
             ? perLocationValues.reduce((total, location) => total + location.value, 0)
             : Number.NaN)
           : Number.parseInt(String(draft?.cantidad ?? '').trim(), 10)
-        const adjustment = Number.isFinite(confirmed) ? confirmed - expected : null
+        const temporalQty = getNotFoundToTemporalQty(item, { perLocation: perLocationDraft, confirmed, enabled: aTemporal })
+        const adjustment = Number.isFinite(confirmed) ? confirmed + temporalQty - expected : null
         const locations = Array.isArray(item?.ubicaciones_conteo) ? item.ubicaciones_conteo : []
         const busy = verifyWizardSubmitting || verifyWizardLoading
         return (
@@ -2621,7 +2667,7 @@ function RandomInspectionAdminTable({
                       {item?.no_encontrado && !decision && (
                         <div className="inspection-admin__relocate">
                           <strong>El revisor no lo encontró</strong>
-                          <p>Si sabes dónde está, elige su nueva ubicación: se mueve ahí todo su stock y el total no cambia. Si de verdad no está, ajusta la cantidad abajo: lo que falte queda como faltante abierto (en "Faltantes abiertos") hasta que aparezca.</p>
+                          <p>Si sabes dónde está, elige su nueva ubicación: se mueve ahí todo su stock y el total no cambia. Si no, al aprobar sus unidades pasan a TEMPORAL (el total no cambia). Si de verdad no está, desmarca "Lo no encontrado pasa a TEMPORAL" abajo: lo que falte queda como faltante abierto hasta que aparezca.</p>
                           <div className="inspection-admin__relocate-row">
                             {(() => {
                               // Bodega -> Division -> Subdivision con buscador (como en el resto).
@@ -2728,9 +2774,11 @@ function RandomInspectionAdminTable({
                                   <span>
                                     <strong>{String(location?.label || '-').trim()}</strong>
                                     <small>
-                                      {location.delta == null || location.delta === 0
-                                        ? 'Sin cambios en esta ubicación'
-                                        : `Se ${location.delta > 0 ? 'sumarán' : 'restarán'} ${Math.abs(location.delta)} (sistema: ${location.cantidad_sistema})`}
+                                      {location.toTemporal
+                                        ? `No lo encontraron: sus ${location.cantidad_sistema} pasan a TEMPORAL`
+                                        : location.delta == null || location.delta === 0
+                                          ? 'Sin cambios en esta ubicación'
+                                          : `Se ${location.delta > 0 ? 'sumarán' : 'restarán'} ${Math.abs(location.delta)} (sistema: ${location.cantidad_sistema})`}
                                     </small>
                                   </span>
                                   <input
@@ -2783,12 +2831,39 @@ function RandomInspectionAdminTable({
                             />
                           </label>
                           )}
+                          {hasNotFoundCandidates && (
+                            <div className="inspection-admin__temporal">
+                              <label className="inspection-admin__temporal-check">
+                                <input
+                                  type="checkbox"
+                                  checked={aTemporal}
+                                  onChange={(event) => {
+                                    const checked = event.target.checked
+                                    setVerifyWizardDrafts((prev) => ({ ...prev, [itemId]: { ...(prev[itemId] || {}), aTemporal: checked } }))
+                                  }}
+                                  disabled={busy}
+                                />
+                                <span>
+                                  <strong>Lo no encontrado pasa a TEMPORAL</strong>
+                                  <small>
+                                    {aTemporal
+                                      ? (temporalQty
+                                        ? `${temporalQty} u. salen de donde no lo encontraron y quedan en TEMPORAL: el total no cambia. Cuando aparezca, se mueve de TEMPORAL a su ubicación.`
+                                        : 'Solo pasa a TEMPORAL lo que quede en 0 donde no lo encontraron.')
+                                      : 'Desmarcado: lo no encontrado se descuenta del inventario (queda como faltante abierto).'}
+                                  </small>
+                                </span>
+                              </label>
+                            </div>
+                          )}
                           <p className="quick-actions__inspection-stage-help">
                             {adjustment == null
                               ? 'Ingresa la cantidad real que hay en la sucursal.'
                               : adjustment === 0
-                                ? 'Con esta cantidad el inventario queda igual (coincide con lo esperado).'
-                                : `Al aprobar se ${adjustment > 0 ? 'sumarán' : 'restarán'} ${Math.abs(adjustment)} unidad(es) al inventario.`}
+                                ? (temporalQty
+                                  ? `El total queda igual: ${temporalQty} u. pasan a TEMPORAL.`
+                                  : 'Con esta cantidad el inventario queda igual (coincide con lo esperado).')
+                                : `Al aprobar se ${adjustment > 0 ? 'sumarán' : 'restarán'} ${Math.abs(adjustment)} unidad(es) al inventario${temporalQty ? ` y ${temporalQty} u. pasan a TEMPORAL` : ''}.`}
                           </p>
                           <label className="quick-actions__inspection-note">
                             <span>Nota de verificación (opcional)</span>

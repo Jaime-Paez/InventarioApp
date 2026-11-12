@@ -2899,6 +2899,119 @@ def _move_inspection_item_stock(item, target_subdivision):
     return {"cantidad": moved, "origenes": origins}
 
 
+def _plan_not_found_to_temporal(item, cantidad_confirmada, confirmed_by_location):
+    """No lo encontre no es "hay 0": al aprobar, lo que el sistema tenia en
+    las ubicaciones donde no lo encontraron pasa a TEMPORAL de la sucursal (el
+    total no cambia) en vez de descontarse. Si el admin escribio otra cantidad
+    para esa ubicacion (o desmarco la opcion) se respeta lo que puso.
+
+    Devuelve None si no aplica, o {modo, subdivisiones, cantidad,
+    cantidad_confirmada, confirmed_by_location} con lo que se debe ajustar."""
+    from inventario.por_ubicar import get_temporal_subdivision
+
+    temporal = get_temporal_subdivision(item.sucursal_id, create=False)
+    temporal_id = int(temporal.id) if temporal is not None else None
+    raw_entries = {
+        _normalize_int(entry.get("subdivision_id"), 0): entry
+        for entry in (item.conteo_ubicaciones if isinstance(item.conteo_ubicaciones, list) else [])
+        if isinstance(entry, dict)
+    }
+    valid = _valid_location_counts(item)
+    if valid:
+        if confirmed_by_location:
+            confirmed = {
+                entry["subdivision_id"]: int(confirmed_by_location.get(entry["subdivision_id"], entry["cantidad_contada"]))
+                for entry in valid
+            }
+        elif int(cantidad_confirmada) == sum(entry["cantidad_contada"] for entry in valid):
+            confirmed = {entry["subdivision_id"]: entry["cantidad_contada"] for entry in valid}
+        else:
+            # El admin escribio otro total: decide el.
+            return None
+        targets = [
+            entry for entry in valid
+            # "No lo encontre" en esa ubicacion, o en todo el producto.
+            if (
+                bool((raw_entries.get(entry["subdivision_id"]) or {}).get("no_encontrado"))
+                or (bool(item.no_encontrado) and entry["cantidad_contada"] == 0)
+            )
+            and entry["cantidad_sistema"] > 0
+            and confirmed[entry["subdivision_id"]] == 0
+            and entry["subdivision_id"] != temporal_id
+        ]
+        if not targets:
+            return None
+        adjusted = dict(confirmed)
+        for entry in targets:
+            # Para el ajuste esa ubicacion "queda como estaba"; luego se mueve.
+            adjusted[entry["subdivision_id"]] = entry["cantidad_sistema"]
+        return {
+            "modo": "ubicaciones",
+            "subdivisiones": [entry["subdivision_id"] for entry in targets],
+            "cantidad": sum(entry["cantidad_sistema"] for entry in targets),
+            "cantidad_confirmada": sum(adjusted.values()),
+            "confirmed_by_location": adjusted,
+        }
+    expected = int(item.cantidad_esperada or 0)
+    if item.no_encontrado and expected > 0 and int(cantidad_confirmada) == int(item.cantidad_reportada or 0):
+        # No lo encontro en ninguna parte (sin conteo por ubicacion): todo lo
+        # que habia en lo revisado pasa a TEMPORAL.
+        return {
+            "modo": "todo",
+            "subdivisiones": [],
+            "cantidad": expected,
+            "cantidad_confirmada": expected,
+            "confirmed_by_location": None,
+        }
+    return None
+
+
+def _move_not_found_to_temporal(item, plan):
+    """Mueve a TEMPORAL el stock actual de las ubicaciones del plan (o de todo
+    lo revisado si modo == "todo"). Cada referencia conserva la suya; la
+    ubicacion vieja no queda en 0, se quita."""
+    from inventario.por_ubicar import get_temporal_subdivision
+
+    temporal = get_temporal_subdivision(item.sucursal_id)
+    if temporal is None:
+        return {"cantidad": 0, "origenes": [], "temporal": None}
+    if plan["modo"] == "todo":
+        rows = _inspection_scope_stock_rows(
+            sucursal_id=item.sucursal_id,
+            producto_id=item.producto_id,
+            division_id=_inspection_division_scope(item.inspeccion),
+            subdivision_id=_inspection_subdivision_scope(item.inspeccion),
+        )
+    else:
+        rows = Inventario.objects.select_for_update().filter(
+            producto_id=int(item.producto_id),
+            subdivision_id__in=[int(sub_id) for sub_id in plan["subdivisiones"]],
+            subdivision__division__bodega__sucursal_id=int(item.sucursal_id),
+        ).order_by("id")
+    moved = 0
+    origins = {}
+    for row in list(rows.exclude(subdivision_id=int(temporal.id))):
+        quantity = int(row.cantidad or 0)
+        if quantity <= 0:
+            continue
+        target_row, _ = Inventario.objects.select_for_update().get_or_create(
+            subdivision=temporal,
+            producto_id=int(item.producto_id),
+            referencia=row.referencia or "",
+            defaults={"cantidad": 0},
+        )
+        target_row.cantidad = int(target_row.cantidad or 0) + quantity
+        target_row.save(update_fields=["cantidad"])
+        origins[int(row.subdivision_id)] = origins.get(int(row.subdivision_id), 0) + quantity
+        moved += quantity
+        row.delete()
+    return {
+        "cantidad": moved,
+        "origenes": [{"subdivision_id": sub_id, "cantidad": qty} for sub_id, qty in origins.items()],
+        "temporal": _subdivision_label(temporal),
+    }
+
+
 def _move_found_stock_here(item, target_subdivision, quantity):
     """El revisor encontro `quantity` unidades en `target_subdivision`: se
     traen desde las otras ubicaciones del producto en la sucursal; si no
@@ -5586,6 +5699,15 @@ class RandomInspectionVerifyItemAPIView(APIView):
                         .order_by("-verificado_en")
                         .first()
                     )
+                # "No lo encontre" -> TEMPORAL (salvo que el admin lo desmarque).
+                raw_a_temporal = request.data.get("no_encontrado_a_temporal", True)
+                a_temporal = str(raw_a_temporal).strip().lower() not in {"false", "0", "no", ""}
+                temporal_plan = None
+                temporal_moved = None
+                if a_temporal and newer_adjustment is None:
+                    temporal_plan = _plan_not_found_to_temporal(
+                        item, int(cantidad_confirmada), confirmed_by_location or None
+                    )
                 if newer_adjustment is not None:
                     adjustment = {"delta_total": 0, "por_ubicacion": [], "residual": 0}
                     skipped_note = (
@@ -5594,9 +5716,26 @@ class RandomInspectionVerifyItemAPIView(APIView):
                     )
                     note = f"{note} · {skipped_note}" if note else skipped_note
                 else:
-                    adjustment = _apply_random_inspection_adjustment(
-                        item, int(cantidad_confirmada), confirmed_by_location or None
-                    )
+                    if temporal_plan is not None and temporal_plan["modo"] == "todo":
+                        adjustment = {"delta_total": 0, "por_ubicacion": [], "residual": 0}
+                    elif temporal_plan is not None:
+                        adjustment = _apply_random_inspection_adjustment(
+                            item, int(temporal_plan["cantidad_confirmada"]), temporal_plan["confirmed_by_location"]
+                        )
+                    else:
+                        adjustment = _apply_random_inspection_adjustment(
+                            item, int(cantidad_confirmada), confirmed_by_location or None
+                        )
+                    if temporal_plan is not None:
+                        temporal_moved = _move_not_found_to_temporal(item, temporal_plan)
+                        cantidad_confirmada = int(temporal_plan["cantidad_confirmada"])
+                        adjustment["a_temporal"] = temporal_moved
+                        if temporal_moved["cantidad"]:
+                            temporal_note = (
+                                f"No lo encontraron: {temporal_moved['cantidad']} u. pasaron a "
+                                f"{temporal_moved['temporal'] or 'TEMPORAL'} (el total no cambia)."
+                            )
+                            note = f"{note} · {temporal_note}" if note else temporal_note
                     registrar_ajuste_inventario(
                         producto_id=item.producto_id,
                         sucursal_id=item.sucursal_id,
@@ -5635,7 +5774,7 @@ class RandomInspectionVerifyItemAPIView(APIView):
                         else entry
                         for entry in (item.conteo_ubicaciones or [])
                     ]
-                if adjustment["delta_total"] or adjustment["por_ubicacion"]:
+                if adjustment["delta_total"] or adjustment["por_ubicacion"] or temporal_moved:
                     _record_random_inspection_audit(
                         item,
                         request.user,
