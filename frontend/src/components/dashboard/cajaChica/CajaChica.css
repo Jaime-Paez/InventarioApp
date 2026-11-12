@@ -475,3 +475,31 @@
   padding: 10px 22px;
 }
 .caja-registrar__menu { z-index: 1200; }
+
+/* Celular: la franja de valores pasa a dos columnas y las acciones ocupan una
+   fila entera (Configurar/Categorias a la izquierda, Registrar a la derecha);
+   el encabezado de la tabla se apila. */
+@media (max-width: 760px) {
+  .caja-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .caja-stat + .caja-stat { border-left: 0; }
+  .caja-stat { border-top: 1px solid var(--color-border); }
+  .caja-stat:nth-child(-n + 2) { border-top: 0; }
+  .caja-stat:nth-child(even):not(.caja-stat--acciones) { border-left: 1px solid var(--color-border); }
+  .dashboard-shell.dark .caja-stat { border-color: var(--color-border-dark); }
+  .caja-stat--saldo { grid-column: 1 / -1; }
+  .caja-stats .caja-stat--acciones {
+    grid-column: 1 / -1;
+    margin-left: 0;
+    justify-content: stretch;
+  }
+  .caja-stats .caja-acciones { width: 100%; justify-content: space-between; }
+  .caja-acciones .caja-registrar { flex: 1 1 auto; justify-content: flex-end; }
+  .caja-header { grid-template-columns: 1fr; }
+  .caja-header .caja-header__izq,
+  .caja-header .caja-header__centro,
+  .caja-header .users-header__right { justify-self: stretch; justify-content: center; flex-wrap: wrap; }
+  .caja-mes__label { min-width: 0; }
+}
