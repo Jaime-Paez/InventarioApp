@@ -4866,7 +4866,7 @@ function CreateEntrada({
                                 aria-label={detail.importante ? 'Quitar estrella' : 'Marcar como importante'}
                                 data-title={detail.importante
                                   ? 'Importante: si lo rechazan (o no hay la cantidad completa), se rechaza toda la solicitud. Clic para quitar.'
-                                  : 'Marcar como importante: si lo rechazan, se rechaza toda la solicitud.'}
+                                  : 'Marcar como importante: si lo rechazan, se rechaza toda la solicitud y se debe volver a hacer la solicitud.'}
                                 onClick={() => setDetails((prev) => prev.map((row) => (
                                   row.uid === detail.uid ? { ...row, importante: !row.importante } : row
                                 )))}
@@ -4985,10 +4985,10 @@ function CreateEntrada({
                         ? (() => {
                           const importantes = details.filter((detail) => detail.importante).map((detail) => detail.productoCodigo)
                           return importantes.length > 1
-                            ? `Importantes: ${importantes.join(', ')}. Si rechazan alguno, se rechaza toda la solicitud y te avisa para pedir de nuevo.`
-                            : `Importante: ${importantes[0]}. Si lo rechazan, se rechaza toda la solicitud y te avisa para pedir de nuevo.`
+                            ? `Importantes: ${importantes.join(', ')}. Si rechazan alguno, se rechaza toda la solicitud y se debe volver a hacer la solicitud.`
+                            : `Importante: ${importantes[0]}. Si lo rechazan, se rechaza toda la solicitud y se debe volver a hacer la solicitud.`
                         })()
-                        : 'Marca con la estrella el o los productos importantes: si rechazan alguno, se rechaza toda la solicitud.'}
+                        : 'Marca con la estrella el o los productos importantes: si rechazan alguno, se rechaza toda la solicitud y se debe volver a hacer la solicitud.'}
                     </p>
                   )}
 
