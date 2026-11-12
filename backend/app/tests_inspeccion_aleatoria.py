@@ -1094,7 +1094,11 @@ class NoEncontradoTests(InspeccionAleatoriaBaseTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(self._stock(subdivision=self.sub_a), 10)
+        # "No lo encontre" ya lo paso a TEMPORAL al contar; no se movio a la otra sucursal.
+        from inventario.por_ubicar import get_temporal_subdivision
+
+        self.assertEqual(self._stock(subdivision=get_temporal_subdivision(self.sucursal.id, create=False)), 10)
+        self.assertEqual(self._stock(), 10)
 
 
 class AgregarProductoEncontradoTests(InspeccionAleatoriaBaseTestCase):
@@ -1566,7 +1570,9 @@ class FaltanteAbiertoTests(InspeccionAleatoriaBaseTestCase):
             format="json",
         )
         item = inspection.items.get()
-        response = self._verificar(item, accion="aprobar", cantidad_confirmada=0)
+        # "No lo encontre" ya lo paso a TEMPORAL; el admin lo da por perdido
+        # (desmarca TEMPORAL) y se descuenta: queda como faltante abierto.
+        response = self._verificar(item, accion="aprobar", cantidad_confirmada=0, no_encontrado_a_temporal=False)
         self.assertEqual(response.status_code, 200, response.data)
         # Fue otro dia: la siguiente revision del mismo revisor puede ser hoy.
         InspeccionAleatoriaDiaria.objects.filter(pk=inspection.pk).update(
@@ -1722,14 +1728,19 @@ class NoEncontradoPorUbicacionTests(InspeccionAleatoriaBaseTestCase):
         ubicaciones = {row["subdivision_id"]: row["no_encontrado"] for row in rows[0]["ubicaciones_conteo"]}
         self.assertEqual(ubicaciones, {self.sub_a.id: False, self.sub_b.id: True})
 
-        # Al aprobar, lo que falta queda abierto como cualquier faltante.
+        # Al guardar el conteo, lo no encontrado ya paso a TEMPORAL (no es 0).
+        from inventario.por_ubicar import get_temporal_subdivision
+
+        temporal = get_temporal_subdivision(self.sucursal.id, create=False)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 0)
+        self.assertEqual(self._stock(subdivision=temporal), 3)
         response = self.admin_client.post(
             f"{BASE_URL}/items/{item.id}/verificar/", {"accion": "aprobar", "cantidad_confirmada": 5}, format="json"
         )
         self.assertEqual(response.status_code, 200, response.data)
         item.refresh_from_db()
-        self.assertEqual(item.cantidad_faltante, 3)
-        self.assertEqual(self._stock(subdivision=self.sub_b), 0)
+        self.assertEqual(item.cantidad_faltante, 0)
+        self.assertEqual(self._stock(subdivision=temporal), 3)
         self.assertEqual(self._stock(subdivision=self.sub_a), 5)
 
     def test_no_encontrado_en_todas_es_no_encontrado(self):
