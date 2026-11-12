@@ -21,6 +21,13 @@ const toPositive = (value) => {
   return Number.isFinite(numeric) ? Math.max(0, numeric) : 0
 }
 
+// Con diferencias sin resolver no se muestra "100%" (confunde: todo esta
+// contado pero aun no cuadra); se muestra cuantos siguen en revision.
+const progressLabel = (division) => {
+  const enRevision = Number(division?.en_revision || 0)
+  return enRevision > 0 ? `${enRevision} en revisión` : `${getPercent(division)}%`
+}
+
 const getStatus = (division) => {
   const total = Number(division?.total || 0)
   const contados = Number(division?.contados || 0)
@@ -676,7 +683,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                           >
                             <span className="coverage-map__shape-name">{shape.nombre || 'Ubicacion'}</span>
                             {division && status !== 'empty' && (
-                              <span className="coverage-map__shape-pct">{`${getPercent(division)}%`}</span>
+                              <span className="coverage-map__shape-pct">{progressLabel(division)}</span>
                             )}
                           </button>
                         )
@@ -706,7 +713,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                           className={`coverage-map__chip coverage-map__chip--${getStatus(division)}${isSelected ? ' is-selected' : ''}${isMatch ? ' is-match' : ''}`}
                           onClick={() => handleDivisionClick(division)}
                         >
-                          {`${division.nombre} · ${getPercent(division)}%`}
+                          {`${division.nombre} · ${progressLabel(division)}`}
                         </button>
                       )
                     })}
@@ -745,6 +752,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                     )}
                     <p className="coverage-map__side-meta">
                       {`${selectionTotals.contados} de ${selectionTotals.total} contados (${selectionPercent}%)`}
+                      {Number(selectionTotals.en_revision || 0) > 0 ? ` · ${selectionTotals.en_revision} con diferencia sin resolver` : ''}
                       {singleDivision?.ultimo_conteo ? ` · Ultimo conteo: ${formatDateTime(singleDivision.ultimo_conteo)}` : ''}
                     </p>
                     {onSendMissing && missingProductIds.length > 0 && (
