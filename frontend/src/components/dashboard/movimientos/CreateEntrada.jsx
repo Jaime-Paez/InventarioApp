@@ -4982,8 +4982,13 @@ function CreateEntrada({
                     <p className="create-entrada__star-hint">
                       <i className="pi pi-star-fill" aria-hidden="true" />
                       {details.some((detail) => detail.importante)
-                        ? `Importante: ${details.filter((detail) => detail.importante).map((detail) => detail.productoCodigo).join(', ')}. Si lo rechazan, se rechaza toda la solicitud y te avisa para pedir de nuevo.`
-                        : 'Marca con la estrella el producto que es el motivo del traslado: si lo rechazan, se rechaza toda la solicitud.'}
+                        ? (() => {
+                          const importantes = details.filter((detail) => detail.importante).map((detail) => detail.productoCodigo)
+                          return importantes.length > 1
+                            ? `Importantes: ${importantes.join(', ')}. Si rechazan alguno, se rechaza toda la solicitud y te avisa para pedir de nuevo.`
+                            : `Importante: ${importantes[0]}. Si lo rechazan, se rechaza toda la solicitud y te avisa para pedir de nuevo.`
+                        })()
+                        : 'Marca con la estrella el o los productos importantes: si rechazan alguno, se rechaza toda la solicitud.'}
                     </p>
                   )}
 

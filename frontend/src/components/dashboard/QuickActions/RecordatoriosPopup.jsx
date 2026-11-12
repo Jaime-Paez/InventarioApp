@@ -2076,7 +2076,7 @@ function RecordatoriosPopup({
   const allDetallesResueltos =
     activeDecisionIsGarantia ||
     decisionDetalles.every((detalle) => Boolean(detalle?.verificado) || Boolean(detalle?.no_enviar))
-  // Un producto con estrella (el motivo del traslado) rechazado: se rechaza
+  // Un producto con estrella (importante) rechazado: se rechaza
   // toda la solicitud, igual que si se rechazara todo.
   const importantesRechazados = activeDecisionIsGarantia
     ? []
@@ -4469,7 +4469,7 @@ function RecordatoriosPopup({
                         {noEnviarModal.detalle?.importante && (
                           <BlockerNotice
                             title="Este producto es importante para quien pidió (★)"
-                            reason="Es el motivo del traslado: si lo rechazas, aunque sea por no tener la cantidad completa, se rechaza toda la solicitud y no se envía nada."
+                            reason="Quien pidió lo marcó como importante: si lo rechazas, aunque sea por no tener la cantidad completa, se rechaza toda la solicitud y no se envía nada."
                           />
                         )}
                         <p className="recordatorios-popup__no-enviar-titulo">¿Por qué lo rechazas?</p>
