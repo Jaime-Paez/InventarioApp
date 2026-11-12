@@ -503,3 +503,53 @@
   .caja-header .users-header__right { justify-self: stretch; justify-content: center; flex-wrap: wrap; }
   .caja-mes__label { min-width: 0; }
 }
+
+/* Caja baja (solo administrador): franja delgada de una linea en vez del
+   aviso grande. */
+.caja-aviso-bajo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, #f59e0b 45%, var(--color-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, #f59e0b 9%, var(--table-color, #fff));
+  color: #92400e;
+  font-size: 0.85rem;
+}
+.caja-aviso-bajo > .pi { color: #d97706; font-size: 0.9rem; }
+.caja-aviso-bajo > span { flex: 1 1 auto; min-width: 0; }
+.caja-aviso-bajo__btn {
+  flex: none;
+  padding: 3px 12px;
+  border: 1px solid #d97706;
+  border-radius: 999px;
+  background: transparent;
+  color: #b45309;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.caja-aviso-bajo__btn:hover:not(:disabled) { background: color-mix(in srgb, #f59e0b 16%, transparent); }
+.dashboard-shell.dark .caja-aviso-bajo {
+  background: rgba(217, 119, 6, 0.12);
+  border-color: rgba(217, 119, 6, 0.5);
+  color: #fde68a;
+}
+.dashboard-shell.dark .caja-aviso-bajo__btn { color: #fcd34d; border-color: #f59e0b; }
+
+/* Acciones de la tabla en una sola fila y compactas (antes se apilaban). */
+.caja-datatable .caja-table__actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.caja-datatable .caja-table__actions .create-user__ghost {
+  padding: 3px 10px;
+  min-height: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.caja-datatable .caja-table__actions .create-user__locations-remove {
+  flex: none;
+}

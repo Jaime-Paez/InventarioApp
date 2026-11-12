@@ -4,9 +4,8 @@ import { API_URL, authFetch } from '../../../utils/api'
 import './CajaReposicion.css'
 
 // Aviso de caja chica en las acciones rapidas (como "Envios en camino"):
-// - al custodio (y al administrador) cuando la caja bajo del % de alerta y
-//   todavia no se pidio la reposicion;
-// - al administrador cuando hay una reposicion pedida esperando su aprobacion.
+// solo al administrador: cuando una caja bajo del % de alerta (y no se pidio
+// la reposicion) o cuando hay una reposicion pedida esperando su aprobacion.
 // Al tocar una caja se abre Caja chica con esa caja elegida.
 const POLL_MS = 30000
 
@@ -25,12 +24,10 @@ const nombreCaja = (caja) => {
   return caja?.sucursal_nombre || caja?.nombre || 'Caja'
 }
 
-const buildAlerts = (cajas, user, isAdmin) => {
-  const userId = String(user?.id ?? '')
+const buildAlerts = (cajas, isAdmin) => {
   return (Array.isArray(cajas) ? cajas : [])
     .filter((caja) => caja?.activa && caja?.configurada)
     .map((caja) => {
-      const esCustodio = userId && String(caja?.custodio ?? '') === userId
       const saldo = Number(caja?.saldo || 0)
       const fondo = Number(caja?.monto_fondo || 0)
       const porcentaje = fondo > 0 ? Math.max(0, Math.min(100, (saldo / fondo) * 100)) : 100
@@ -44,7 +41,8 @@ const buildAlerts = (cajas, user, isAdmin) => {
           detalle: `Reposición pedida de ${money(caja.reposicion_pendiente)}: apruébala para entregar el dinero.`,
         }
       }
-      if (porcentaje < umbral && (isAdmin || esCustodio)) {
+      // Solo el administrador (es quien repone la caja).
+      if (porcentaje < umbral && isAdmin) {
         return {
           caja,
           tipo: 'pedir',
@@ -57,7 +55,7 @@ const buildAlerts = (cajas, user, isAdmin) => {
     .filter(Boolean)
 }
 
-function CajaReposicion({ token, user, isAdmin, darkMode, onOpenCaja }) {
+function CajaReposicion({ token, isAdmin, darkMode, onOpenCaja }) {
   const [alerts, setAlerts] = useState([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
@@ -76,17 +74,20 @@ function CajaReposicion({ token, user, isAdmin, darkMode, onOpenCaja }) {
         return
       }
       const data = await response.json().catch(() => [])
-      setAlerts(buildAlerts(Array.isArray(data) ? data : data?.results || [], user, isAdmin))
+      setAlerts(buildAlerts(Array.isArray(data) ? data : data?.results || [], isAdmin))
     } catch {
       // Sin conexion: se reintenta en el siguiente ciclo.
     } finally {
       inFlightRef.current = false
       if (!silent) setLoading(false)
     }
-  }, [isAdmin, token, user])
+  }, [isAdmin, token])
 
   useEffect(() => {
-    if (!token) return undefined
+    if (!token || !isAdmin) {
+      setAlerts([])
+      return undefined
+    }
     void load()
     const intervalId = window.setInterval(() => {
       if (document.visibilityState !== 'hidden') void load()
@@ -97,7 +98,7 @@ function CajaReposicion({ token, user, isAdmin, darkMode, onOpenCaja }) {
       window.clearInterval(intervalId)
       window.removeEventListener('focus', onFocus)
     }
-  }, [load, token])
+  }, [isAdmin, load, token])
 
   useEffect(() => {
     if (!open) return undefined

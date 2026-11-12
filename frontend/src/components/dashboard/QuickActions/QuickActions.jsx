@@ -6560,7 +6560,6 @@ function QuickActions({
         )}
         <CajaReposicion
           token={token}
-          user={user}
           isAdmin={isAdministrator}
           darkMode={darkMode}
           onOpenCaja={onOpenCajaChica}

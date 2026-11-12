@@ -466,13 +466,30 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
                 <div className="caja-stat caja-stat--acciones">{accionesCaja}</div>
               </div>
 
-              {bajo && (
-                <BlockerNotice
-                  title={`Queda poco en la caja (${Math.round(porcentaje)}%)`}
-                  reason={`Pide la reposición de ${formatMoney(fondo - saldo)} para que el fondo vuelva a ${formatMoney(fondo)}.`}
-                  actionLabel={puedeRegistrar ? 'Pedir reposición' : undefined}
-                  onAction={puedeRegistrar ? () => setConfirm({ kind: 'reposicion' }) : undefined}
-                />
+              {/* Caja baja: franja de una linea, solo para el administrador
+                  (es quien repone). Si ya se pidio, dice que esta por aprobar. */}
+              {bajo && isAdmin && (
+                <div className="caja-aviso-bajo" role="status">
+                  <i className="pi pi-exclamation-triangle" aria-hidden="true" />
+                  {caja.reposicion_pendiente != null ? (
+                    <span>
+                      <strong>{`Queda poco (${Math.round(porcentaje)}%).`}</strong>
+                      {` Reposición de ${formatMoney(caja.reposicion_pendiente)} pedida: apruébala en la tabla.`}
+                    </span>
+                  ) : (
+                    <>
+                      <span>
+                        <strong>{`Queda poco (${Math.round(porcentaje)}%).`}</strong>
+                        {` Faltan ${formatMoney(fondo - saldo)} para volver a ${formatMoney(fondo)}.`}
+                      </span>
+                      {caja.activa && (
+                        <button type="button" className="caja-aviso-bajo__btn" onClick={() => setConfirm({ kind: 'reposicion' })} disabled={busy}>
+                          Reponer
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               )}
               {!caja.activa && <BlockerNotice title="Caja desactivada" reason="Solo se puede consultar. Actívala en Configurar para seguir registrando." />}
               {!puedeRegistrar && caja.activa && !isAdmin && (
