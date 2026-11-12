@@ -438,6 +438,8 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
           const status = getStatus(subdivision)
           const pending = subdivision.pendientes || []
           const counted = subdivision.contados_lista || []
+          const inReview = counted.filter((product) => product.resultado && !isResultOk(product.resultado))
+          const countedOk = counted.filter((product) => !(product.resultado && !isResultOk(product.resultado)))
           const openPending = subdivisionHasMatch(subdivision, false) || subdivisionHasFocus(subdivision, false)
           const openCounted = subdivisionHasMatch(subdivision, true) || subdivisionHasFocus(subdivision, true)
           return (
@@ -462,14 +464,22 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
                   <ul>{pending.map((product) => renderProductRow(product, subdivision, false))}</ul>
                 </details>
               )}
-              {counted.length > 0 && (
+              {/* Los que tienen diferencia sin resolver van aparte y abiertos:
+                  asi se ve de una vez cuales dejan la percha "En revision". */}
+              {inReview.length > 0 && (
+                <details className="coverage-map__pending coverage-map__pending--review" open>
+                  <summary>{`En revisión ${inReview.length}`}</summary>
+                  <ul>{inReview.map((product) => renderProductRow(product, subdivision, true))}</ul>
+                </details>
+              )}
+              {countedOk.length > 0 && (
                 <details
                   key={`counted-${openCounted ? `open-${normalizedQuery}-${focusKey}` : 'closed'}`}
                   className="coverage-map__pending coverage-map__pending--done"
                   open={openCounted || undefined}
                 >
-                  <summary>{`Contados ${counted.length}`}</summary>
-                  <ul>{counted.map((product) => renderProductRow(product, subdivision, true))}</ul>
+                  <summary>{`Contados ${countedOk.length}`}</summary>
+                  <ul>{countedOk.map((product) => renderProductRow(product, subdivision, true))}</ul>
                 </details>
               )}
             </li>

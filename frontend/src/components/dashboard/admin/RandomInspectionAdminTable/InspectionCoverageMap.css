@@ -795,6 +795,10 @@
 .coverage-map__pending--done summary {
   color: var(--coverage-done);
 }
+.coverage-map__pending--review summary {
+  color: #a16207;
+}
+.coverage-map--dark .coverage-map__pending--review summary { color: #fcd34d; }
 
 .coverage-map__pending li.coverage-map__product--done {
   background: color-mix(in srgb, var(--coverage-done) 10%, transparent);
