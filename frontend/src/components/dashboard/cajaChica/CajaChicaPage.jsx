@@ -19,7 +19,6 @@ import {
   ArqueoDialog,
   CajaConfigDialog,
   CategoriasDialog,
-  ImagenDialog,
   LiquidarDialog,
   MovimientoDialog,
 } from './CajaChicaDialogs'
@@ -565,12 +564,6 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
                       body={(m) => (
                         <>
                           {m.comprobante_label || '-'} {m.comprobante_numero}
-                          {m.tiene_imagen && (
-                            <button type="button" className="taller-link" onClick={() => setDialog({ kind: 'imagen', mov: m })}>Ver foto</button>
-                          )}
-                          {m.tipo === 'gasto' && m.comprobante_tipo && m.comprobante_tipo !== 'sin' && !m.tiene_imagen && (
-                            <small className="taller-lineas__error">Sin foto</small>
-                          )}
                         </>
                       )}
                     />
@@ -653,7 +646,6 @@ function CajaChicaPage({ token, user, moduleActions, isTabActive, onTitleSwitche
         onClose={() => setDialog(null)}
         onChanged={loadCajas}
       />
-      <ImagenDialog open={dialog?.kind === 'imagen'} movimiento={dialog?.mov} token={token} onClose={() => setDialog(null)} />
 
       <ConfirmDialog
         open={Boolean(confirm) && isTabActive !== false}

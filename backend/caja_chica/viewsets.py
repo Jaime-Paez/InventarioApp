@@ -557,7 +557,6 @@ class CajaViewSet(viewsets.ModelViewSet):
                 "total_gastos": str(total_gastos),
                 "por_categoria": por_categoria,
                 "sin_comprobante": gastos.filter(Q(comprobante_tipo=M.Comprobantes.SIN) | Q(comprobante_tipo="")).count(),
-                "sin_foto": gastos.filter(comprobante_imagen="").exclude(comprobante_tipo=M.Comprobantes.SIN).count(),
                 "ingresos": str(
                     caja.movimientos.filter(
                         tipo__in=M.TIPOS_ENTRADA, estado=M.Estados.APROBADO, fecha__gte=desde, fecha__lte=hasta

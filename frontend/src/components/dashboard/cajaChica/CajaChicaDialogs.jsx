@@ -7,7 +7,6 @@ import TallerDialog from '../taller/TallerDialog'
 import {
   COMPROBANTES,
   DENOMINACIONES,
-  fileToReducedDataUrl,
   formatMoney,
   parseApiError,
   todayIso,
@@ -32,19 +31,6 @@ const DialogFooter = ({ motivo, busy, onClose, onSubmit, label }) => (
 )
 
 function ComprobanteFields({ form, setForm, disabled }) {
-  const [error, setError] = useState('')
-  const onFile = async (event) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    try {
-      const dataUrl = await fileToReducedDataUrl(file)
-      setForm((prev) => ({ ...prev, comprobante_imagen: dataUrl }))
-      setError('')
-    } catch (err) {
-      setError(err.message)
-    }
-  }
   return (
     <>
       <div className="taller-dialog__grid">
@@ -56,7 +42,7 @@ function ComprobanteFields({ form, setForm, disabled }) {
             options={COMPROBANTES.map((c) => ({ id: c.key, nombre: c.label }))}
             valueId={form.comprobante_tipo}
             getOptionLabel={(o) => o.nombre}
-            onSelect={(o) => setForm((prev) => ({ ...prev, comprobante_tipo: o.id, ...(o.id === 'sin' ? { comprobante_numero: '', comprobante_imagen: '' } : {}) }))}
+            onSelect={(o) => setForm((prev) => ({ ...prev, comprobante_tipo: o.id, ...(o.id === 'sin' ? { comprobante_numero: '' } : {}) }))}
             disabled={disabled}
           />
         </div>
@@ -70,27 +56,6 @@ function ComprobanteFields({ form, setForm, disabled }) {
           />
         </label>
       </div>
-      {form.comprobante_tipo !== 'sin' && (
-        <div className="create-user__field">
-          <span>Foto del comprobante</span>
-          <div className="caja-foto">
-            {form.comprobante_imagen ? (
-              <>
-                <img src={form.comprobante_imagen} alt="Comprobante" />
-                <button type="button" className="taller-link" onClick={() => setForm((prev) => ({ ...prev, comprobante_imagen: '' }))} disabled={disabled}>
-                  Quitar foto
-                </button>
-              </>
-            ) : (
-              <label className="create-user__ghost caja-foto-btn">
-                <i className="pi pi-camera" /> Tomar o subir foto
-                <input type="file" accept="image/*" capture="environment" hidden onChange={onFile} disabled={disabled} />
-              </label>
-            )}
-          </div>
-          {error && <small className="taller-lineas__error">{error}</small>}
-        </div>
-      )}
     </>
   )
 }
@@ -103,7 +68,6 @@ const EMPTY_MOV = {
   beneficiario: '',
   comprobante_tipo: '',
   comprobante_numero: '',
-  comprobante_imagen: '',
 }
 
 // Registrar (o corregir) un gasto, anticipo o ingreso.
@@ -124,14 +88,7 @@ export function MovimientoDialog({ open, tipo, caja, categorias, movimiento, tok
         beneficiario: movimiento.beneficiario || '',
         comprobante_tipo: movimiento.comprobante_tipo || '',
         comprobante_numero: movimiento.comprobante_numero || '',
-        comprobante_imagen: '',
       })
-      if (movimiento.tiene_imagen) {
-        authFetch(`${API_URL}/caja-chica/movimientos/${movimiento.id}/imagen/`, {}, token)
-          .then((r) => (r.ok ? r.json() : null))
-          .then((data) => data?.imagen && setForm((prev) => ({ ...prev, comprobante_imagen: data.imagen })))
-          .catch(() => {})
-      }
     } else {
       setForm({ ...EMPTY_MOV, fecha: todayIso() })
     }
@@ -589,31 +546,6 @@ export function CategoriasDialog({ open, categorias, token, onClose, onChanged }
         ))}
       </div>
       {error && <BlockerNotice title="No se guardó" reason={error} />}
-    </TallerDialog>
-  )
-}
-
-export function ImagenDialog({ open, movimiento, token, onClose }) {
-  const [imagen, setImagen] = useState('')
-  const [error, setError] = useState('')
-  useEffect(() => {
-    if (!open || !movimiento) return undefined
-    let cancelled = false
-    setImagen('')
-    setError('')
-    authFetch(`${API_URL}/caja-chica/movimientos/${movimiento.id}/imagen/`, {}, token)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(await parseApiError(r, 'No se pudo cargar la foto.'))
-        return r.json()
-      })
-      .then((data) => { if (!cancelled) setImagen(data?.imagen || '') })
-      .catch((err) => { if (!cancelled) setError(err.message) })
-    return () => { cancelled = true }
-  }, [open, movimiento, token])
-  return (
-    <TallerDialog tab={null} open={open} wide title="Comprobante" subtitle={movimiento ? `${movimiento.comprobante_label || ''} ${movimiento.comprobante_numero || ''} · ${formatMoney(movimiento.monto)}` : ''} onClose={onClose}>
-      {imagen ? <img className="caja-foto__full" src={imagen} alt="Comprobante" /> : !error && <span className="taller-muted"><i className="pi pi-spin pi-spinner" /> Cargando...</span>}
-      {error && <BlockerNotice title="No se pudo ver la foto" reason={error} />}
     </TallerDialog>
   )
 }
