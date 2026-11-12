@@ -893,8 +893,9 @@ const formatTransferIssueValue = (value, fallback = '-') => {
 const INSPECTION_LIVE_WINDOW_MS = 5 * 60 * 1000
 
 // Estado de cada usuario en el resumen de inspecciones: termino (✓), esta
-// contando (◔ con su avance) o todavia no empieza (✗).
-const getInspectionUserStatus = (u) => {
+// contando (◔ con su avance), todavia no empieza pero aun es el dia en que se
+// creo (punto amarillo) o ya paso ese dia sin hacerla (✗).
+const getInspectionUserStatus = (u, reminderDate) => {
   if (u?.completada) return { key: 'done', icon: '✓', label: '' }
   if (u?.disculpada) return { key: 'done', icon: '✓', label: 'Dejado pasar' }
   if (u?.en_curso) {
@@ -905,7 +906,11 @@ const getInspectionUserStatus = (u) => {
     const live = Number.isFinite(lastActivity) && Date.now() - lastActivity < INSPECTION_LIVE_WINDOW_MS
     return { key: 'counting', icon: '◔', label: total ? `Contando ${contados} de ${total}` : 'Contando', live }
   }
-  return { key: 'pending', icon: '✗', label: 'Sin empezar' }
+  const dateKey = formatDateKey(reminderDate)
+  if (!dateKey || dateKey >= getTodayDateKey()) {
+    return { key: 'waiting', icon: <span className="recordatorios-popup__inspection-waiting-dot" aria-label="Aún no la hace (es hoy)" />, label: '' }
+  }
+  return { key: 'pending', icon: '✗', label: '' }
 }
 
 function RecordatoriosPopup({
@@ -3682,7 +3687,7 @@ function RecordatoriosPopup({
                               {isAdminSummaryReminder && Array.isArray(reminder?.context?.detalle_usuarios) && reminder.context.detalle_usuarios.length > 0 && (
                                 <ul className="recordatorios-popup__inspection-summary-list">
                                   {reminder.context.detalle_usuarios.map((u) => {
-                                    const status = getInspectionUserStatus(u)
+                                    const status = getInspectionUserStatus(u, reminder?.date)
                                     return (
                                       <li
                                         key={u.id}
@@ -4878,7 +4883,7 @@ function RecordatoriosPopup({
                       <tbody>
                         {activeDetailReminder.context.detalle_usuarios.map((u) => {
                           const isDone = u.completada || u.disculpada
-                          const status = getInspectionUserStatus(u)
+                          const status = getInspectionUserStatus(u, activeDetailReminder?.date)
                           const discuseKey = `${u.id}:${activeDetailReminder?.context?.id}`
                           const isDiscusing = discusingUserId === discuseKey
                           const notaGeneral = String(u?.nota_general || '').trim()
