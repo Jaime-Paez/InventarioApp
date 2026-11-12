@@ -2431,7 +2431,9 @@ function RandomInspectionAdminTable({
         const verifiableLocations = perLocationDraft ? getVerifiableLocations(item) : []
         const aTemporal = draft?.aTemporal !== false
         const notFoundCandidates = getNotFoundCandidates(item)
-        const hasNotFoundCandidates = notFoundCandidates.locations.length > 0 || notFoundCandidates.whole
+        // Ya paso a TEMPORAL al contar ("No lo encontre"): desmarcar = descontarlo.
+        const enTemporal = Number(item?.en_temporal || 0)
+        const hasNotFoundCandidates = notFoundCandidates.locations.length > 0 || notFoundCandidates.whole || enTemporal > 0
         const perLocationValues = verifiableLocations.map((location) => {
           const raw = String(perLocationDraft?.[String(location.subdivision_id)] ?? '').trim()
           const value = Number.parseInt(raw, 10)
@@ -2450,7 +2452,7 @@ function RandomInspectionAdminTable({
             : Number.NaN)
           : Number.parseInt(String(draft?.cantidad ?? '').trim(), 10)
         const temporalQty = getNotFoundToTemporalQty(item, { perLocation: perLocationDraft, confirmed, enabled: aTemporal })
-        const adjustment = Number.isFinite(confirmed) ? confirmed + temporalQty - expected : null
+        const adjustment = Number.isFinite(confirmed) ? confirmed + temporalQty - expected - (aTemporal ? 0 : enTemporal) : null
         const locations = Array.isArray(item?.ubicaciones_conteo) ? item.ubicaciones_conteo : []
         const busy = verifyWizardSubmitting || verifyWizardLoading
         return (
@@ -2846,7 +2848,11 @@ function RandomInspectionAdminTable({
                                 <span>
                                   <strong>Lo no encontrado pasa a TEMPORAL</strong>
                                   <small>
-                                    {aTemporal
+                                    {enTemporal > 0
+                                      ? (aTemporal
+                                        ? `${enTemporal} u. ya están en TEMPORAL desde el conteo: el total no cambia. Reenvía el conteo para encontrarlo y devolverle su ubicación.`
+                                        : `Desmarcado: las ${enTemporal} u. se descuentan de TEMPORAL (queda como faltante abierto).`)
+                                      : aTemporal
                                       ? (temporalQty
                                         ? `${temporalQty} u. salen de donde no lo encontraron y quedan en TEMPORAL: el total no cambia. Cuando aparezca, se mueve de TEMPORAL a su ubicación.`
                                         : 'Solo pasa a TEMPORAL lo que quede en 0 donde no lo encontraron.')

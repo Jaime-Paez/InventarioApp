@@ -2189,9 +2189,12 @@ def _serialize_random_inspection_admin_item(item, subdivision_labels=None):
                 "cantidad_contada": entry.get("cantidad_contada"),
                 "cantidad_sistema": entry.get("cantidad_sistema"),
                 "no_encontrado": bool(entry.get("no_encontrado")),
+                # Unidades que pasaron a TEMPORAL al contar ("No lo encontre").
+                "a_temporal": max(0, _normalize_int(entry.get("a_temporal"), 0)),
             }
         )
     serialized["ubicaciones_conteo"] = location_counts
+    serialized["en_temporal"] = sum(entry["a_temporal"] for entry in location_counts)
     shortfall = int(getattr(item, "cantidad_faltante", 0) or 0)
     recovered = int(getattr(item, "faltante_recuperado", 0) or 0)
     serialized["cantidad_faltante"] = shortfall
@@ -2896,7 +2899,22 @@ def _move_inspection_item_stock(item, target_subdivision):
         )
         target_row.cantidad = int(target_row.cantidad or 0) + moved
         target_row.save(update_fields=["cantidad"])
+    # "No lo encontre" ya paso sus unidades a TEMPORAL al contar: se traen de ahi.
+    pending_temporal = _temporal_pending_qty(item)
+    if pending_temporal and int(target_subdivision.id) != int(
+        getattr(_temporal_subdivision_or_none(item.sucursal_id), "id", 0) or 0
+    ):
+        from_temporal = _take_from_temporal(item, pending_temporal, target_subdivision)
+        if from_temporal:
+            origins.append({"subdivision_id": "TEMPORAL", "cantidad": from_temporal})
+            moved += from_temporal
     return {"cantidad": moved, "origenes": origins}
+
+
+def _temporal_subdivision_or_none(sucursal_id):
+    from inventario.por_ubicar import get_temporal_subdivision
+
+    return get_temporal_subdivision(sucursal_id, create=False)
 
 
 def _plan_not_found_to_temporal(item, cantidad_confirmada, confirmed_by_location):
@@ -3010,6 +3028,112 @@ def _move_not_found_to_temporal(item, plan):
         "origenes": [{"subdivision_id": sub_id, "cantidad": qty} for sub_id, qty in origins.items()],
         "temporal": _subdivision_label(temporal),
     }
+
+
+def _temporal_pending_qty(item):
+    """Unidades de este conteo que pasaron a TEMPORAL por "No lo encontre"."""
+    return sum(
+        max(0, _normalize_int(entry.get("a_temporal"), 0))
+        for entry in (item.conteo_ubicaciones if isinstance(item.conteo_ubicaciones, list) else [])
+        if isinstance(entry, dict)
+    )
+
+
+def _take_from_temporal(item, quantity, target_subdivision=None):
+    """Saca hasta `quantity` unidades del producto de TEMPORAL: las lleva a
+    `target_subdivision` o, sin destino, las descuenta. Devuelve cuantas."""
+    from inventario.por_ubicar import get_temporal_subdivision
+
+    temporal = get_temporal_subdivision(item.sucursal_id, create=False)
+    if temporal is None or int(quantity) <= 0:
+        return 0
+    remaining = int(quantity)
+    for row in Inventario.objects.select_for_update().filter(
+        producto_id=int(item.producto_id), subdivision_id=int(temporal.id), cantidad__gt=0
+    ).order_by("id"):
+        if remaining <= 0:
+            break
+        take = min(int(row.cantidad or 0), remaining)
+        row.cantidad = int(row.cantidad or 0) - take
+        if row.cantidad <= 0:
+            row.delete()
+        else:
+            row.save(update_fields=["cantidad"])
+        if target_subdivision is not None:
+            target_row, _ = Inventario.objects.select_for_update().get_or_create(
+                subdivision=target_subdivision,
+                producto_id=int(item.producto_id),
+                referencia=row.referencia or "",
+                defaults={"cantidad": 0},
+            )
+            target_row.cantidad = int(target_row.cantidad or 0) + take
+            target_row.save(update_fields=["cantidad"])
+        remaining -= take
+    return int(quantity) - remaining
+
+
+def _not_found_to_temporal_on_count(item, actor_user):
+    """"No lo encontre" no es 0: al guardar el conteo, lo que el sistema tenia
+    en las ubicaciones donde no lo encontraron pasa YA a TEMPORAL con la misma
+    cantidad (el total no cambia) y queda ahi hasta que aparezca. El reconteo
+    sirve para encontrarlo y devolverle su ubicacion.
+
+    Esas ubicaciones quedan en el conteo marcadas `a_temporal` con sistema 0,
+    para que aprobar despues no vuelva a sumar ni descontar nada. Devuelve las
+    unidades movidas (0 si no aplica)."""
+    if not item.no_encontrado and not any(
+        isinstance(entry, dict) and entry.get("no_encontrado")
+        for entry in (item.conteo_ubicaciones if isinstance(item.conteo_ubicaciones, list) else [])
+    ):
+        return 0
+    plan = _plan_not_found_to_temporal(item, int(item.cantidad_reportada or 0), None)
+    if plan is None:
+        return 0
+    moved = _move_not_found_to_temporal(item, plan)
+    quantity = int(moved["cantidad"] or 0)
+    if quantity <= 0:
+        return 0
+    moved_by_location = {int(origin["subdivision_id"]): int(origin["cantidad"]) for origin in moved["origenes"]}
+    if isinstance(item.conteo_ubicaciones, list):
+        entries = []
+        for entry in item.conteo_ubicaciones:
+            if isinstance(entry, dict) and _normalize_int(entry.get("subdivision_id"), 0) in moved_by_location:
+                entry = {
+                    **entry,
+                    "cantidad_contada": 0,
+                    "cantidad_sistema": 0,
+                    "a_temporal": moved_by_location[_normalize_int(entry.get("subdivision_id"), 0)],
+                }
+            entries.append(entry)
+    else:
+        entries = []
+    present = {_normalize_int(entry.get("subdivision_id"), 0) for entry in entries if isinstance(entry, dict)}
+    for sub_id, qty in moved_by_location.items():
+        if sub_id not in present:
+            # Sin conteo por ubicacion: se deja constancia de donde salio.
+            entries.append({
+                "subdivision_id": sub_id,
+                "cantidad_contada": 0,
+                "cantidad_sistema": 0,
+                "no_encontrado": True,
+                "a_temporal": qty,
+            })
+    item.conteo_ubicaciones = entries
+    item.cantidad_esperada = max(0, int(item.cantidad_esperada or 0) - quantity)
+    note = (
+        f"[Sistema] No lo encontraron: {quantity} u. pasaron a {moved['temporal'] or 'TEMPORAL'} "
+        "hasta que aparezca (el total no cambia). Reenvia el conteo para ubicarlo."
+    )
+    item.observacion = f"{item.observacion}\n{note}".strip() if item.observacion else note
+    item.save(update_fields=["conteo_ubicaciones", "cantidad_esperada", "observacion", "updated_at"])
+    _record_random_inspection_audit(
+        item,
+        actor_user,
+        f"Inspeccion aleatoria #{int(item.inspeccion_id)}: no lo encontraron; {quantity} u. pasaron a "
+        f"{moved['temporal'] or 'TEMPORAL'} (el total no cambia).",
+        moved,
+    )
+    return quantity
 
 
 def _move_found_stock_here(item, target_subdivision, quantity):
@@ -4639,6 +4763,14 @@ class RandomInspectionRespondAPIView(APIView):
                 ],
             )
 
+            # "No lo encontre": sus unidades pasan ya a TEMPORAL (sin ajuste).
+            for item in inspection_items:
+                if item.no_encontrado or any(
+                    isinstance(entry, dict) and entry.get("no_encontrado")
+                    for entry in (item.conteo_ubicaciones if isinstance(item.conteo_ubicaciones, list) else [])
+                ):
+                    _not_found_to_temporal_on_count(item, request.user)
+
             if "nota_general" in request.data:
                 nota_general = _normalize_text(request.data.get("nota_general"))
             else:
@@ -5736,6 +5868,15 @@ class RandomInspectionVerifyItemAPIView(APIView):
                                 f"{temporal_moved['temporal'] or 'TEMPORAL'} (el total no cambia)."
                             )
                             note = f"{note} · {temporal_note}" if note else temporal_note
+                    if not a_temporal:
+                        # Ya estaba en TEMPORAL (paso al contar) y el admin
+                        # decide que no esta: se descuenta de alli.
+                        descontado = _take_from_temporal(item, _temporal_pending_qty(item))
+                        if descontado:
+                            adjustment["delta_total"] = int(adjustment["delta_total"]) - descontado
+                            cantidad_confirmada = max(0, int(cantidad_confirmada))
+                            discount_note = f"Se descontaron {descontado} u. de TEMPORAL (no aparecio)."
+                            note = f"{note} · {discount_note}" if note else discount_note
                     registrar_ajuste_inventario(
                         producto_id=item.producto_id,
                         sucursal_id=item.sucursal_id,
@@ -6235,10 +6376,12 @@ class RandomInspectionCoverageMapAPIView(APIView):
             """Resultado del conteo en esta ubicacion: lo contado vs el sistema."""
             contada = None
             sistema = None
+            no_encontrado_aqui = False
             for entry in row.get("conteo_ubicaciones") or []:
                 if isinstance(entry, dict) and _normalize_int(entry.get("subdivision_id"), 0) == subdivision_id:
                     contada = entry.get("cantidad_contada")
                     sistema = entry.get("cantidad_sistema")
+                    no_encontrado_aqui = bool(entry.get("no_encontrado"))
                     break
             por_ubicacion = contada is not None
             if not por_ubicacion:
@@ -6260,7 +6403,7 @@ class RandomInspectionCoverageMapAPIView(APIView):
                     verificacion == estados.RECONTEO and _normalize_int(row.get("id"), 0) in recount_excused
                 ),
                 "coincide": row.get("estado_revision") == InspeccionAleatoriaItem.EstadosRevision.COINCIDE,
-                "no_encontrado": bool(row.get("no_encontrado")),
+                "no_encontrado": no_encontrado_aqui if por_ubicacion else bool(row.get("no_encontrado")),
                 "cantidad_contada": _normalize_int(contada, 0) if contada is not None else None,
                 "cantidad_sistema": _normalize_int(sistema, 0) if sistema is not None else None,
                 "por_ubicacion": por_ubicacion,
@@ -6336,12 +6479,17 @@ class RandomInspectionCoverageMapAPIView(APIView):
                 "nombre": _normalize_text(row.get("producto__nombre")),
                 "cantidad": _normalize_int(row.get("total"), 0),
             }
+            resultado = count_result(count_row, subdivision_id) if is_counted else None
+            if resultado is not None and resultado["no_encontrado"]:
+                # "No lo encontre" no es un conteo: sigue faltando (sus
+                # unidades estan en TEMPORAL hasta que aparezca).
+                is_counted = False
+                product_payload["no_encontrado"] = True
             if is_counted:
                 division["contados"] += 1
                 subdivision["contados"] += 1
                 if when and (division["ultimo_conteo"] is None or when > division["ultimo_conteo"]):
                     division["ultimo_conteo"] = when
-                resultado = count_result(count_row, subdivision_id)
                 if not result_ok(resultado):
                     division["en_revision"] += 1
                     subdivision["en_revision"] += 1

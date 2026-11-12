@@ -410,6 +410,11 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
         <span className="coverage-map__pending-code">{product.codigo}</span>
         <span className="coverage-map__pending-name">{product.nombre}</span>
         <span className="coverage-map__pending-qty">{product.cantidad}</span>
+        {!counted && product.no_encontrado && (
+          <span className="coverage-map__result coverage-map__result--bad">
+            <strong>No lo encontraron · sus unidades están en TEMPORAL hasta que aparezca</strong>
+          </span>
+        )}
         {counted && result && (
           <span className={`coverage-map__result coverage-map__result--${isResultOk(result) ? 'ok' : 'bad'}`}>
             <strong>{describeResult(result)}</strong>
