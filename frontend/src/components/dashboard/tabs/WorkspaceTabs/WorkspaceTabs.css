@@ -1,199 +1,161 @@
+/* Pestañas estilo navegador: la activa al inicio y unida al contenido; las
+   demas se encogen para caber (sin flechas). */
 .workspace__tabs {
+  --tabs-active-bg: var(--color-surface);
+  --tabs-line: color-mix(in srgb, var(--color-border) 70%, transparent);
+  --tabs-text: #4b5563;
+  --tabs-text-active: var(--color-primary);
+  --tabs-hover: color-mix(in srgb, var(--color-primary) 8%, transparent);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   min-height: 30px;
-  gap: 8px;
   flex: 1;
   min-width: 0;
   padding-top: 10px;
 }
 
+.dashboard-shell.dark .workspace__tabs {
+  --tabs-active-bg: var(--color-surface-darker);
+  --tabs-line: var(--color-border-dark);
+  --tabs-text: #9ca3af;
+  --tabs-text-active: var(--color-primary-dark-soft);
+  --tabs-hover: rgba(255, 255, 255, 0.06);
+}
+
 .workspace__tablist-wrapper {
-  position: relative;
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  --tabs-fade-left: 0px;
-  --tabs-fade-right: 0px;
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--tabs-fade-left), #000 calc(100% - var(--tabs-fade-right)), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 var(--tabs-fade-left), #000 calc(100% - var(--tabs-fade-right)), transparent 100%);
-}
-
-/* Desvanece el borde donde hay mas pestañas ocultas */
-.workspace__tablist-wrapper.fade-left {
-  --tabs-fade-left: 36px;
-}
-
-.workspace__tablist-wrapper.fade-right {
-  --tabs-fade-right: 36px;
+  /* Linea base sobre la que se apoyan las pestañas. */
+  box-shadow: inset 0 -1px 0 var(--tabs-line);
 }
 
 .workspace__tablist {
   display: flex;
-  gap: 10px;
-  align-items: center;
+  align-items: flex-end;
+  min-width: 0;
+  padding: 0 6px;
   overflow-x: auto;
   overflow-y: hidden;
-  scroll-behavior: smooth;
-  padding: 0 12px;
+  scrollbar-width: none;
 }
 
 .workspace__tablist::-webkit-scrollbar {
   display: none;
 }
 
-.workspace__tablist {
-  scrollbar-width: none;
-}
-
-.workspace__tablist.is-dragging {
-  user-select: none;
-}
-
-.workspace__tablist.is-dragging .workspace__tab {
-  pointer-events: none;
-}
-
-.workspace__tabs.is-tab-dragging,
-.workspace__tabs.is-tab-dragging * {
-  cursor: default !important;
-  user-select: none;
-}
-
-/* Source tab — becomes a dim placeholder while ghost follows cursor */
-.workspace__tab.is-tab-source {
-  opacity: 0.25;
-  pointer-events: none;
-}
-
-/* Ghost — fixed-position clone that follows the cursor */
-.workspace__tab-ghost {
-  display: inline-flex;
-  cursor: default !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.18);
-  transform: scale(1.04);
-  opacity: 1 !important;
-  user-select: none;
-}
-
 .workspace__tab {
-  border: none;
-  outline: none;
-  background: var(--color-primary-soft);
-  color: var(--color-button-primary);
-  padding: 8px;
-  border-radius: 10px;
-  display: inline-flex;
+  position: relative;
+  flex: 0 1 180px;
+  min-width: 52px;
+  display: flex;
   align-items: center;
-  transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-  width: 100px;
-  flex: 0 0 100px;
-  min-width: 0;
-  opacity: 0.8;
+  gap: 7px;
+  padding: 8px 8px 8px 12px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+  color: var(--tabs-text);
+  font: inherit;
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
   user-select: none;
-  -webkit-user-drag: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Separador fino entre pestañas inactivas (como en el navegador). */
+.workspace__tab + .workspace__tab::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 25%;
+  height: 50%;
+  width: 1px;
+  background: var(--tabs-line);
+}
+
+.workspace__tab.active + .workspace__tab::before,
+.workspace__tab:hover::before,
+.workspace__tab:hover + .workspace__tab::before {
+  display: none;
 }
 
 .workspace__tab:hover,
 .workspace__tab:focus-visible {
-  background: var(--color-primary-strong);
-  opacity: 0.9;
+  background: var(--tabs-hover);
+  color: var(--tabs-text-active);
 }
 
+.workspace__tab:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-primary) 45%, transparent);
+}
+
+/* Activa: al inicio, nombre completo, se une al contenido de abajo. */
 .workspace__tab.active {
-  background: var(--color-primary);
-  opacity: 1;
+  flex: 0 0 auto;
+  max-width: 320px;
+  background: var(--tabs-active-bg);
+  border-color: var(--tabs-line);
+  color: var(--tabs-text-active);
+  font-weight: 700;
+  z-index: 1;
+  /* Tapa la linea base para que la pestaña "abra" hacia el contenido. */
+  box-shadow: 0 1px 0 var(--tabs-active-bg);
 }
 
-.dashboard-shell.dark .workspace__tab {
-  background: color-mix(in srgb, var(--color-primary-dark) 35%, transparent);
-  opacity: 0.7;
+.workspace__tab-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
 }
 
-.dashboard-shell.dark .workspace__tab:hover,
-.dashboard-shell.dark .workspace__tab:focus-visible {
-  background: color-mix(in srgb, var(--color-primary-dark) 55%, transparent);
-  opacity: 0.85;
-}
-
-.dashboard-shell.dark .workspace__tab.active {
-  background: var(--color-primary-dark);
+.workspace__tab.active .workspace__tab-dot {
   opacity: 1;
 }
 
 .workspace__tab-label {
-  font-size: var(--font-size-base);
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
+  text-align: left;
 }
 
 .workspace__tab-close {
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  font-weight: 900;
+  font-size: 15px;
   line-height: 1;
+  opacity: 0.55;
 }
 
 .workspace__tab-close:hover {
-  background: var(--color-primary-hover)
-}
-
-.workspace__tab-control {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
-  align-self: center;
-  position: relative;
-  z-index: 2;
-}
-
-.dashboard-shell.dark .workspace__tab-control {
-  background: var(--color-surface-dark);
-  border-color: var(--color-border-dark);
-  color: var(--color-text-dark);
-}
-
-.workspace__tab-control:hover:enabled,
-.workspace__tab-control:focus-visible:enabled {
-  transform: translateY(-1px);
-}
-
-.workspace__tab-control:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 16%, transparent);
 }
 
 @media (max-width: 900px) {
   .workspace__tabs {
-    gap: 6px;
     min-height: 28px;
   }
 
-  .workspace__tablist {
-    padding: 0 6px;
-  }
-
   .workspace__tab {
-    width: 108px;
-    flex: 0 0 108px;
+    min-width: 44px;
+    padding: 7px 6px 7px 10px;
   }
 
-  .workspace__tab-control {
-    width: 28px;
-    height: 28px;
+  .workspace__tab.active {
+    max-width: 220px;
   }
 }
