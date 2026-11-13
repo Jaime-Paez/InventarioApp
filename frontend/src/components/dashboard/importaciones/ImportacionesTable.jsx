@@ -50,9 +50,7 @@ const oemPorDefecto = (matches, elegida = -1) => {
   return delBase || lista.flatMap((m) => m?.oems || []).map((o) => String(o || '').trim()).find(Boolean) || ''
 }
 const oemClave = (o) => String(o || '').trim().toUpperCase()
-// Clic en un OEM de la tarjeta: si ya estaba escogido se quita (si era el
-// unico, la fila queda sin OEM a proposito: oem_quitado); si no, se usa ese.
-// Referencias: se pueden escoger una o varias; clic agrega o quita esa.
+// Referencias y OEMs: se pueden escoger uno o varios; clic agrega o quita ese.
 const toggleReferencia = (actual, ref) => {
   const lista = String(actual || '').split(',').map((r) => r.trim()).filter(Boolean)
   const valor = String(ref || '').trim()
@@ -60,17 +58,17 @@ const toggleReferencia = (actual, ref) => {
   return (tiene ? lista.filter((r) => oemClave(r) !== oemClave(valor)) : [...lista, valor]).join(', ')
 }
 const referenciasDe = (p) => (p?.referencias?.length ? p.referencias : [p?.referencia]).map((r) => String(r || '').trim()).filter(Boolean)
+// OEM: si se quita el ultimo, la fila queda sin OEM a proposito (oem_quitado)
+// y no vuelve el OEM por defecto.
 const toggleOem = (actual, oem) => {
-  const lista = String(actual || '').split(',').map((o) => o.trim()).filter(Boolean)
-  if (!lista.some((o) => oemClave(o) === oemClave(oem))) return { oem: String(oem || '').trim(), oem_quitado: false }
-  const resto = lista.filter((o) => oemClave(o) !== oemClave(oem)).join(', ')
-  return { oem: resto, oem_quitado: !resto }
+  const resultado = toggleReferencia(actual, oem)
+  return { oem: resultado, oem_quitado: !resultado }
 }
 
 // OEMs de un producto en la tarjeta de coincidencias: con onPick cada uno se
 // puede escoger como OEM de la fila (de este producto o de otro, aparte del
 // producto base del precio). El escogido va en verde con visto.
-function OemChips({ oems, elegidos, onPick, tituloActivo = 'OEM escogido · clic para quitarlo', tituloEscoger = 'Clic para usar este OEM' }) {
+function OemChips({ oems, elegidos, onPick, tituloActivo = 'OEM escogido · clic para quitarlo', tituloEscoger = 'Clic para agregar este OEM' }) {
   const lista = (oems || []).map((o) => String(o || '').trim()).filter(Boolean)
   if (!lista.length) return '-'
   return (
@@ -7374,7 +7372,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     const cambio = toggleOem(actual, oem)
     setDetails((prev) => prev.map((item) => (item._key === _key ? { ...item, ...cambio } : item)))
     const quitado = String(cambio.oem || '').split(',').every((o) => oemClave(o) !== oemClave(oem))
-    toastRef.current?.show({ severity: 'success', summary: quitado ? 'OEM quitado' : 'OEM elegido', detail: `${oem}. Recuerda guardar.`, life: 3000 })
+    toastRef.current?.show({ severity: 'success', summary: quitado ? 'OEM quitado' : 'OEM agregado', detail: `${oem}. Recuerda guardar.`, life: 3000 })
   }
 
   // Referencias escogidas en la tarjeta de coincidencias (una o varias).
