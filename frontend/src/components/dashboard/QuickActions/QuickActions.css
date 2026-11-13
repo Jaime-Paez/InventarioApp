@@ -2902,11 +2902,22 @@
 
 /* Muchas pildoras a la vez (en cualquier pantalla): pasan a solo icono +
    numero, igual que en el telefono. */
+/* Circulos del mismo alto (32px) y la misma sombra que el grupo de
+   recordatorios / tema, para que el dock se vea como una sola familia. */
 .quick-actions__dock.is-compact .quick-actions__pending-shipments-trigger {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
   min-height: 32px;
-  min-width: 36px;
-  padding: 4px 9px;
+  padding: 0;
   justify-content: center;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.quick-actions__dock.dark.is-compact .quick-actions__pending-shipments-trigger {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
 .quick-actions__dock.is-compact .quick-actions__pending-shipments-label {
