@@ -789,6 +789,9 @@ function Workspace({
 
       {!showWelcome && (
         <section className="workspace__panel">
+          {/* El nombre ya se ve en la pestaña activa: el titulo solo queda
+              cuando trae un selector (sucursal, caja, etc.). */}
+          {(showMovementBranchSwitcher || pageTitleSwitcher) && (
           <div className="workspace__view-head">
             <h1 className="workspace__view-title">{activeItem}</h1>
             {showMovementBranchSwitcher && (
@@ -870,6 +873,7 @@ function Workspace({
               </div>
             )}
           </div>
+          )}
           {renderContent()}
         </section>
       )}
