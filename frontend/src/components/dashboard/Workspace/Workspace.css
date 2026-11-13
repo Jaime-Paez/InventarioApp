@@ -398,7 +398,6 @@
 /* Selector dentro de la barra de botones del modulo (al final, a la derecha):
    se ve como un boton mas de la barra. */
 .workspace__view-switcher-slot {
-  margin-left: auto;
   display: flex;
   align-items: center;
   flex: none;
@@ -430,6 +429,6 @@
 }
 
 .workspace__view-switcher-slot .workspace__view-branch-panel {
-  left: auto;
-  right: 0;
+  left: 0;
+  right: auto;
 }

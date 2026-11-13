@@ -513,8 +513,8 @@ function Workspace({
   }, [activeItem])
 
   // El selector ("Todas", la sucursal, la caja...) va dentro de la barra de
-  // botones del modulo, al final a la derecha: asi todas las pantallas quedan
-  // iguales. Si el modulo no tiene esa barra, queda arriba como antes.
+  // botones del modulo, al inicio a la izquierda (antes de Crear/Buscar):
+  // asi todas las pantallas quedan iguales. Si el modulo no tiene esa barra, queda arriba como antes.
   const hasViewSwitcher = Boolean(showMovementBranchSwitcher || pageTitleSwitcher)
   const [switcherHost, setSwitcherHost] = useState(null)
   useLayoutEffect(() => {
@@ -529,7 +529,7 @@ function Workspace({
       if (!bar) return false
       host = document.createElement('div')
       host.className = 'workspace__view-switcher-slot'
-      bar.appendChild(host)
+      bar.insertBefore(host, bar.firstChild)
       setSwitcherHost(host)
       return true
     }
