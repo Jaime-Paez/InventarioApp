@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, Wallet } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
+import usePillExit from './usePillExit'
 import './CajaReposicion.css'
 
 // Aviso de caja chica en las acciones rapidas (como "Envios en camino"):
@@ -59,6 +60,7 @@ function CajaReposicion({ token, isAdmin, darkMode, onOpenCaja }) {
   const [alerts, setAlerts] = useState([])
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
+  const pill = usePillExit(alerts.length > 0)
   const rootRef = useRef(null)
   const inFlightRef = useRef(false)
 
@@ -114,14 +116,14 @@ function CajaReposicion({ token, isAdmin, darkMode, onOpenCaja }) {
     }
   }, [open])
 
-  if (!alerts.length) return null
+  if (!pill.present) return null
 
   const porAprobar = alerts.some((alert) => alert.tipo === 'aprobar')
 
   return (
     <div
       ref={rootRef}
-      className={`quick-actions__pending-shipments caja-reposicion${open ? ' is-open' : ''}${darkMode ? ' is-dark' : ''}`}
+      className={`quick-actions__pending-shipments caja-reposicion${open ? ' is-open' : ''}${darkMode ? ' is-dark' : ''}${pill.leaving ? ' is-leaving' : ''}`}
     >
       <button
         type="button"

@@ -10,6 +10,7 @@ import PorGuardar from './PorGuardar'
 import CajaReposicion from './CajaReposicion'
 import LlegadaDialog from './LlegadaDialog'
 import useDockEntrance from './useDockEntrance'
+import usePillExit from './usePillExit'
 import { requestPorGuardarRefresh } from './porGuardarEvents'
 import BlockerNotice from '../common/BlockerNotice'
 import TrasladoRechazados from '../common/TrasladoRechazados'
@@ -4018,6 +4019,9 @@ function QuickActions({
   const hasPendingReviews = pendingReviewReminders.length > 0
   const pendingReviewsRef = useRef(null)
   const [isPendingReviewsOpen, setIsPendingReviewsOpen] = useState(false)
+  const inTransitPill = usePillExit(canOpenInTransitShipments && hasInTransitShipments)
+  const pendingShipmentsPill = usePillExit(canDecideTransferRequest && hasPendingShipments)
+  const pendingReviewsPill = usePillExit(hasPendingReviews)
 
   useEffect(() => {
     if (hasPendingReviews) return
@@ -6495,10 +6499,10 @@ function QuickActions({
           darkMode={darkMode}
           onOpenCaja={onOpenCajaChica}
         />
-        {canOpenInTransitShipments && hasInTransitShipments && (
+        {inTransitPill.present && (
           <div
             ref={inTransitShipmentsRef}
-            className={`quick-actions__pending-shipments quick-actions__in-transit${isInTransitShipmentsOpen ? ' is-open' : ''}`}
+            className={`quick-actions__pending-shipments quick-actions__in-transit${isInTransitShipmentsOpen ? ' is-open' : ''}${inTransitPill.leaving ? ' is-leaving' : ''}`}
           >
             <button
               ref={handleInTransitShipmentsTriggerRef}
@@ -6598,10 +6602,10 @@ function QuickActions({
           </div>
         )}
 
-        {canDecideTransferRequest && hasPendingShipments && (
+        {pendingShipmentsPill.present && (
           <div
             ref={pendingShipmentsRef}
-            className={`quick-actions__pending-shipments${isPendingShipmentsOpen ? ' is-open' : ''}`}
+            className={`quick-actions__pending-shipments${isPendingShipmentsOpen ? ' is-open' : ''}${pendingShipmentsPill.leaving ? ' is-leaving' : ''}`}
           >
             <button
               ref={handlePendingShipmentsTriggerRef}
@@ -6687,10 +6691,10 @@ function QuickActions({
           </div>
         )}
 
-        {hasPendingReviews && (
+        {pendingReviewsPill.present && (
           <div
             ref={pendingReviewsRef}
-            className={`quick-actions__pending-shipments quick-actions__pending-reviews${isPendingReviewsOpen ? ' is-open' : ''}`}
+            className={`quick-actions__pending-shipments quick-actions__pending-reviews${isPendingReviewsOpen ? ' is-open' : ''}${pendingReviewsPill.leaving ? ' is-leaving' : ''}`}
           >
             <button
               type="button"

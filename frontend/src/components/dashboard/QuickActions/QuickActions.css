@@ -4630,3 +4630,48 @@
     transition: none;
   }
 }
+
+/* Salida de una pildora del dock: el contador pasa a 0 con un rebote y luego
+   la pildora sube y se desvanece (usePillExit la desmonta al terminar). */
+.quick-actions__pending-shipments.is-leaving {
+  pointer-events: none;
+  animation: quick-actions-pill-leave 420ms cubic-bezier(0.55, 0, 0.75, 0) 380ms forwards;
+}
+
+.quick-actions__pending-shipments.is-leaving .quick-actions__pending-shipments-panel {
+  display: none;
+}
+
+.quick-actions__pending-shipments.is-leaving .quick-actions__pending-shipments-count {
+  animation: quick-actions-count-zero 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes quick-actions-pill-leave {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-80px);
+    opacity: 0;
+  }
+}
+
+@keyframes quick-actions-count-zero {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-actions__pending-shipments.is-leaving,
+  .quick-actions__pending-shipments.is-leaving .quick-actions__pending-shipments-count {
+    animation: none;
+  }
+}

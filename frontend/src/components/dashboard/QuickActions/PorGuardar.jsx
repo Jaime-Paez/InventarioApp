@@ -8,6 +8,7 @@ import BlockerNotice from '../common/BlockerNotice'
 import { matchesFirst } from '../common/productDetailMatches'
 import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
 import { POR_GUARDAR_REFRESH_EVENT } from './porGuardarEvents'
+import usePillExit from './usePillExit'
 import './PorGuardar.css'
 
 // "Por ubicar": paso 2 de la recepcion de importaciones. Al confirmar la
@@ -132,6 +133,7 @@ function ReceiveDropdown({ label, value, placeholder, options, onSelect, disable
 function PorGuardar({ token, darkMode, onSaved }) {
   const [count, setCount] = useState(0)
   const [open, setOpen] = useState(false)
+  const pill = usePillExit(count > 0)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -641,8 +643,8 @@ function PorGuardar({ token, darkMode, onSaved }) {
     <>
       {/* Como "Envios en camino" y "Envios pendientes": solo aparece si hay
           algo por ubicar (el dialogo abierto se mantiene aunque llegue a 0). */}
-      {count > 0 && (
-        <div className="quick-actions__pending-shipments por-guardar__dock">
+      {pill.present && (
+        <div className={`quick-actions__pending-shipments por-guardar__dock${pill.leaving ? ' is-leaving' : ''}`}>
           <button
             type="button"
             className="quick-actions__pending-shipments-trigger por-guardar__trigger has-items"
