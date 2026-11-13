@@ -4077,6 +4077,11 @@ function QuickActions({
         setIsDockCompact(false)
         return
       }
+      // Movil/tablet: con 3 o mas, siempre solo iconos (sin medir).
+      if (window.innerWidth <= 900) {
+        setIsDockCompact(true)
+        return
+      }
       // Ancho del dock con los nombres completos (sin pintar: se mide y se
       // devuelve la clase en el mismo instante).
       const wasCompact = dock.classList.contains('is-compact')
