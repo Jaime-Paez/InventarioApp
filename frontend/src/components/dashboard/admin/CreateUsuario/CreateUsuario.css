@@ -2779,58 +2779,36 @@ button.create-user__locations-row {
   vertical-align: middle;
 }
 
-/* Descripciones de productos con el mismo codigo, para escoger. */
-.create-user__desc-options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.create-user__desc-options-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 180px;
-  overflow-y: auto;
-}
-
-.create-user__desc-option {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
+/* Descripcion: campo editable con desplegable de las descripciones de
+   productos con el mismo codigo base. */
+.create-user__desc-combo input {
   width: 100%;
-  padding: 6px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface);
+  padding-right: 2.2rem;
+}
+
+.create-user__desc-combo-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
   color: var(--color-text-primary);
-  text-align: left;
   cursor: pointer;
-  font: inherit;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.create-user__desc-option strong {
-  font-size: var(--font-size-sm, 13px);
-  font-weight: 600;
-}
-
-.create-user__desc-option small {
-  flex-shrink: 0;
-  font-size: 0.75rem;
   opacity: 0.7;
 }
 
-.create-user__desc-option:hover:not(:disabled) {
-  border-color: var(--color-primary);
+.create-user__desc-combo-toggle i {
+  font-size: 0.85rem;
 }
 
-.create-user__desc-option.is-selected {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-  color: var(--color-button-primary);
+.dashboard-shell.dark .create-user__desc-combo-toggle {
+  color: var(--color-text-dark);
 }
 
 /* Aviso de productos con el mismo codigo base, debajo de la tabla de alternos */

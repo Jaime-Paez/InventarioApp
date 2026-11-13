@@ -172,6 +172,7 @@ function CreateProducto({
   // Productos del catalogo cuyo codigo coincide con el que se escribe: sus
   // descripciones se ofrecen para escoger y se sugieren como alternos.
   const [codigoMatches, setCodigoMatches] = useState([])
+  const [showDescDropdown, setShowDescDropdown] = useState(false)
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [isMaximized, setIsMaximized] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -2053,47 +2054,88 @@ function CreateProducto({
                       {!codigoChecking && codigoError && <small className="create-user__field-error">{codigoError}</small>}
                     </label>
 
-                    <label className="create-user__field create-user__field--required">
+                    <div className="create-user__field create-user__field--required">
                       <span>Descripción</span>
-                      <input
-                        name="nombre"
-                        type="text"
-                        placeholder="Descripción del producto"
-                        value={formData.nombre}
-                        onChange={handleChange}
-                        required
-                        disabled={loading}
-                      />
-                      {descripcionOptions.length > 0 && (
-                        <div className="create-user__desc-options">
-                          <small className="muted">
-                            {descripcionOptions.length === 1
-                              ? 'Descripcion de un producto con este codigo:'
-                              : `Descripciones de productos con este codigo (${descripcionOptions.length}):`}
-                          </small>
-                          <div className="create-user__desc-options-list">
-                            {descripcionOptions.map((opt) => {
-                              const selected = formData.nombre.trim().toLowerCase() === opt.nombre.toLowerCase()
-                              return (
-                                <button
-                                  key={opt.nombre}
-                                  type="button"
-                                  className={`create-user__desc-option${selected ? ' is-selected' : ''}`}
-                                  onClick={(event) => {
-                                    event.preventDefault()
-                                    setFormData((prev) => ({ ...prev, nombre: opt.nombre }))
-                                  }}
-                                  disabled={loading}
-                                >
-                                  <strong>{opt.nombre}</strong>
-                                  <small>{opt.codigos.join(', ')}</small>
-                                </button>
-                              )
-                            })}
+                      <div
+                        className="create-user__dropdown create-user__desc-combo"
+                        onBlur={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget)) setShowDescDropdown(false)
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') setShowDescDropdown(false)
+                        }}
+                      >
+                        <input
+                          name="nombre"
+                          type="text"
+                          placeholder={
+                            descripcionOptions.length
+                              ? 'Escribe o escoge una descripción'
+                              : 'Descripción del producto'
+                          }
+                          value={formData.nombre}
+                          onChange={handleChange}
+                          onFocus={() => descripcionOptions.length && setShowDescDropdown(true)}
+                          onClick={() => descripcionOptions.length && setShowDescDropdown(true)}
+                          autoComplete="off"
+                          required
+                          disabled={loading}
+                        />
+                        {descripcionOptions.length > 0 && (
+                          <button
+                            type="button"
+                            className="create-user__desc-combo-toggle"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => setShowDescDropdown((prev) => !prev)}
+                            disabled={loading}
+                            aria-label="Ver descripciones de productos con este código"
+                          >
+                            <i className={`pi pi-chevron-${showDescDropdown ? 'up' : 'down'}`} />
+                          </button>
+                        )}
+                        {showDescDropdown && descripcionOptions.length > 0 && (
+                          <div className="create-user__dropdown-panel">
+                            <small className="muted">
+                              {descripcionOptions.length === 1
+                                ? 'Descripción de un producto con este código'
+                                : `Descripciones de productos con este código (${descripcionOptions.length})`}
+                            </small>
+                            <div className="create-user__dropdown-results">
+                              {descripcionOptions.map((opt) => {
+                                const selected = formData.nombre.trim().toLowerCase() === opt.nombre.toLowerCase()
+                                return (
+                                  <button
+                                    key={opt.nombre}
+                                    type="button"
+                                    className="create-user__result-option"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => {
+                                      setFormData((prev) => ({ ...prev, nombre: opt.nombre }))
+                                      setShowDescDropdown(false)
+                                    }}
+                                  >
+                                    <div className="create-user__result-info">
+                                      <strong>{opt.nombre}</strong>
+                                      <small>{`Código: ${opt.codigos.join(', ')}`}</small>
+                                    </div>
+                                    <span className={`create-user__result-tag ${selected ? 'is-selected' : ''}`}>
+                                      {selected ? 'Elegida' : 'Usar'}
+                                    </span>
+                                  </button>
+                                )
+                              })}
+                            </div>
                           </div>
-                        </div>
+                        )}
+                      </div>
+                      {descripcionOptions.length > 0 && !showDescDropdown && (
+                        <small className="muted">
+                          {descripcionOptions.length === 1
+                            ? 'Hay 1 descripción de un producto con este código.'
+                            : `Hay ${descripcionOptions.length} descripciones de productos con este código.`}
+                        </small>
                       )}
-                    </label>
+                    </div>
 
                     <label className="create-user__field create-user__field--required">
                       <span>Casa comercial</span>
