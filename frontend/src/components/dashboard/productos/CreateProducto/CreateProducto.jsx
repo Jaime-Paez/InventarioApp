@@ -13,18 +13,12 @@ const MIN_WIDTH = 720
 const MIN_HEIGHT = 520
 const VIEWPORT_PADDING = 12
 
-// Para comparar codigos ignorando guiones, espacios y mayusculas (C0104 ~ C-0104-A).
-const normalizeCodigoMatch = (value) =>
-  String(value ?? '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-
-// Raiz del codigo: letras + numeros del inicio (C0104MIAU -> C0104). Si no
-// tiene numeros, se usa el codigo completo.
-const getCodigoRoot = (value) => {
-  const norm = normalizeCodigoMatch(value)
-  const match = norm.match(/^[A-Z]*\d+/)
-  return match ? match[0] : norm
+// Codigo base del grupo: primeros 5 caracteres, igual que el backend
+// (productos.viewsets.codigo_base) y la ficha del producto. C0104MIAU -> C0104.
+const GRUPO_BASE_LEN = 5
+const getCodigoBase = (value) => {
+  const codigo = String(value ?? '').trim().toUpperCase()
+  return codigo.length >= GRUPO_BASE_LEN ? codigo.slice(0, GRUPO_BASE_LEN) : ''
 }
 
 const initialForm = {
@@ -944,11 +938,11 @@ function CreateProducto({
             (item) => String(item?.codigo ?? '').trim().toLowerCase() === term.toLowerCase()
           )
           setCodigoError(exists ? 'Este codigo ya existe.' : '')
-          // Se compara por la raiz del codigo (letras + numeros iniciales):
+          // Se compara por el codigo base (primeros 5 caracteres):
           // C0104MIAU -> C0104, que coincide con C0104CL-A, C0104PX-M, etc.
-          const root = getCodigoRoot(term)
+          const root = getCodigoBase(term)
           let rootList = list
-          if (root && root !== normalizeCodigoMatch(term)) {
+          if (root && root !== term.toUpperCase()) {
             const rootResponse = await authFetch(
               `${API_URL}/productos/listado/?search=${encodeURIComponent(root)}&page_size=50`,
               {},
@@ -963,7 +957,11 @@ function CreateProducto({
           }
           setCodigoMatches(
             root
-              ? rootList.filter((item) => normalizeCodigoMatch(item?.codigo).startsWith(root))
+              ? rootList.filter(
+                  (item) =>
+                    String(item?.codigo ?? '').trim().toUpperCase().startsWith(root) &&
+                    String(item?.codigo ?? '').trim().toUpperCase() !== term.toUpperCase()
+                )
               : []
           )
         } catch {
@@ -2363,33 +2361,6 @@ function CreateProducto({
                   <h4>Alternos</h4>
                 </div>
 
-                {alternoSugeridos.length > 0 && (
-                  <div className="create-user__alterno-sugeridos">
-                    <BlockerNotice
-                      title={`Hay ${alternoSugeridos.length} producto(s) con un codigo parecido a ${formData.codigo.trim()}.`}
-                      reason="Si este producto es del mismo grupo, agregalo como alterno."
-                      actionLabel={alternoSugeridos.length > 1 ? 'Agregar todos como alternos' : 'Agregar como alterno'}
-                      onAction={handleAddAlternosSugeridos}
-                    />
-                    <div className="create-user__alterno-sugeridos-list">
-                      {alternoSugeridos.map((product) => (
-                        <div key={product.id} className="create-user__alterno-sugerido">
-                          <span className="create-user__alterno-sugerido-codigo">{product.codigo || '-'}</span>
-                          <span>{product.nombre || 'Sin descripción'}</span>
-                          <button
-                            type="button"
-                            className="create-user__ghost"
-                            onClick={() => handleAddAlterno(product)}
-                            disabled={loading}
-                          >
-                            Agregar
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 <div className="create-user__locations-table create-user__locations-table--alternos create-user__locations-table--alternos-sin-ver">
                   <div className="create-user__locations-row create-user__locations-row--head">
                     <span>Código</span>
@@ -2502,7 +2473,15 @@ function CreateProducto({
                   ))}
                 </div>
 
-
+                {alternoSugeridos.length > 0 && (
+                  <BlockerNotice
+                    className="create-user__alterno-sugeridos"
+                    title={`${alternoSugeridos.length} producto${alternoSugeridos.length === 1 ? '' : 's'} con el código base ${getCodigoBase(formData.codigo)} sin vincular`}
+                    reason={`${alternoSugeridos.map((item) => item.codigo).join(', ')}. Si son la misma pieza, vincúlalos como alternos para que se recomienden entre sí.`}
+                    actionLabel={alternoSugeridos.length === 1 ? 'Vincularlo como alterno' : 'Vincularlos como alternos'}
+                    onAction={handleAddAlternosSugeridos}
+                  />
+                )}
               </section>
             )}
 
