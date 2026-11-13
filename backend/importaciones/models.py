@@ -117,6 +117,9 @@ class ImportacionDetalle(models.Model):
     codigo = models.CharField(max_length=150, blank=True, default="")
     nombre = models.CharField(max_length=255, blank=True, default="")
     oem = models.CharField(max_length=500, blank=True, default="")
+    # El usuario quito el OEM a proposito: no se muestra el OEM por defecto
+    # de las coincidencias del catalogo.
+    oem_quitado = models.BooleanField(default=False)
     referencia = models.CharField(max_length=500, blank=True, default="")
     cantidad = models.PositiveIntegerField(default=1)
     orden = models.PositiveIntegerField(

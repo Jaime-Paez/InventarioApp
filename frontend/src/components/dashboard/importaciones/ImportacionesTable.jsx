@@ -50,6 +50,14 @@ const oemPorDefecto = (matches, elegida = -1) => {
   return delBase || lista.flatMap((m) => m?.oems || []).map((o) => String(o || '').trim()).find(Boolean) || ''
 }
 const oemClave = (o) => String(o || '').trim().toUpperCase()
+// Clic en un OEM de la tarjeta: si ya estaba escogido se quita (si era el
+// unico, la fila queda sin OEM a proposito: oem_quitado); si no, se usa ese.
+const toggleOem = (actual, oem) => {
+  const lista = String(actual || '').split(',').map((o) => o.trim()).filter(Boolean)
+  if (!lista.some((o) => oemClave(o) === oemClave(oem))) return { oem: String(oem || '').trim(), oem_quitado: false }
+  const resto = lista.filter((o) => oemClave(o) !== oemClave(oem)).join(', ')
+  return { oem: resto, oem_quitado: !resto }
+}
 
 // OEMs de un producto en la tarjeta de coincidencias: con onPick cada uno se
 // puede escoger como OEM de la fila (de este producto o de otro, aparte del
@@ -67,7 +75,7 @@ function OemChips({ oems, elegidos, onPick }) {
             key={o}
             type="button"
             className={`imp-oem-chip imp-oem-chip--pickable${activo ? ' is-active' : ''}`}
-            data-title={activo ? 'OEM escogido para este producto' : 'Clic para usar este OEM'}
+            data-title={activo ? 'OEM escogido · clic para quitarlo' : 'Clic para usar este OEM'}
             onClick={(event) => { event.stopPropagation(); onPick(o) }}
           >
             {activo && <Check size={11} aria-hidden="true" />}
@@ -3321,7 +3329,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const creadoAqui = !sinCat && d.producto?.creado_desde_importacion === imp.id
                       const codigo = d.producto?.codigo || d.codigo || '-'
                       const nombre = d.producto?.nombre || d.nombre || '-'
-                      const oem = String(getProductoOem(d.producto) || d.oem || oemPorDefecto(coincidenciasByKey[d.id]) || '').trim() || '-'
+                      const oem = String(getProductoOem(d.producto) || d.oem || (d.oem_quitado ? '' : oemPorDefecto(coincidenciasByKey[d.id])) || '').trim() || '-'
                       const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                       const referencia = getDetalleReferencia(d) || '-'
                       const precio = d.precio_confirmado != null ? `$${Number(d.precio_confirmado).toFixed(2)}` : '-'
@@ -4731,6 +4739,7 @@ const detalleToSugerenciaRow = (item, oemMatches) => {
     codigo: producto?.codigo || item.codigo || '',
     descripcion: producto?.nombre || item.nombre || '',
     oem: getProductoOem(producto) || item.oem || '',
+    oem_quitado: Boolean(item.oem_quitado),
     referencia: getDetalleReferencia({ ...item, producto }),
     cantidad: item.cantidad ?? '',
     comentario: item.comentario || '',
@@ -4773,6 +4782,7 @@ const sugerenciaRowToDetalle = (row) => {
     codigo: row.codigo || '',
     nombre: row.descripcion || '',
     oem: row.oem || '',
+    oem_quitado: Boolean(row.oem_quitado),
     // Del catalogo: la tabla muestra la referencia del producto, pero la fila
     // conserva la suya (p. ej. dos filas del mismo codigo con otra referencia).
     referencia: row.matched_producto_id && base.referencia !== undefined ? (base.referencia || '') : (row.referencia || ''),
@@ -5452,10 +5462,10 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                   {row.oem || (row.oem_matches || []).length ? (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                                       <span
-                                        data-title={row.oem || oemPorDefecto(row.oem_matches) || undefined}
+                                        data-title={row.oem || (row.oem_quitado ? '' : oemPorDefecto(row.oem_matches)) || undefined}
                                         style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                       >
-                                        {row.oem || oemPorDefecto(row.oem_matches) || '—'}
+                                        {row.oem || (row.oem_quitado ? '' : oemPorDefecto(row.oem_matches)) || '—'}
                                       </span>
                                       <Info
                                         size={13}
@@ -5604,7 +5614,7 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
               <tbody>
                 {oemMatchesHover.matches.map((p, i) => {
                   const filaOem = rows.find((r) => r.fila_excel === oemMatchesHover.filaExcel)
-                  const oemElegidosSugerencia = new Set(String(filaOem?.oem || oemPorDefecto(oemMatchesHover.matches)).split(',').map(oemClave).filter(Boolean))
+                  const oemElegidosSugerencia = new Set(String(filaOem?.oem || (filaOem?.oem_quitado ? '' : oemPorDefecto(oemMatchesHover.matches))).split(',').map(oemClave).filter(Boolean))
                   const canPick = Boolean(oemMatchesHover.filaExcel) && (p.precio != null || p.nombre)
                   return (
                     <tr
@@ -5630,7 +5640,12 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                           oems={p.oems}
                           elegidos={oemElegidosSugerencia}
                           onPick={oemMatchesHover.filaExcel && !readOnly ? (o) => {
-                            updateRowCampo(oemMatchesHover.filaExcel, 'oem', o)
+                            const filaExcel = oemMatchesHover.filaExcel
+                            setRows((prev) => prev.map((r) => {
+                              if (r.fila_excel !== filaExcel) return r
+                              const actual = r.oem || (r.oem_quitado ? '' : oemPorDefecto(r.oem_matches))
+                              return { ...r, ...toggleOem(actual, o) }
+                            }))
                             titleHoverRef.current = null
                             hideCellHover()
                           } : undefined}
@@ -6145,7 +6160,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
           return {
             codigo: row.codigo || '',
             referencia: row.referencia || '',
-            oem: row.oem || oemPorDefecto(row.oem_matches),
+            oem: row.oem || (row.oem_quitado ? '' : oemPorDefecto(row.oem_matches)),
             descripcion: row.descripcion || '',
             cantidad: row.cantidad ?? '',
             pvpJp: getSistemaPrecio(row) != null ? Number(getSistemaPrecio(row)) : '',
@@ -6299,7 +6314,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
           // producto recién se crea en el catálogo al importar.
           : {
               ...extra,
-              codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, cantidad: row.cantidad, precio_estimado: (precio?.valor ?? 0).toFixed(2), precio_casa: precio?.casa || '', orden: pos + 1,
+              codigo: row.codigo, nombre: row.descripcion, referencia: row.referencia, oem: row.oem, oem_quitado: Boolean(row.oem_quitado), cantidad: row.cantidad, precio_estimado: (precio?.valor ?? 0).toFixed(2), precio_casa: precio?.casa || '', orden: pos + 1,
               // Amarillo/naranja de esta vista previa, para que la sugerencia
               // guardada se vea igual. Solo referencia: no crea el producto.
               coincidencia: row.conflicto_casa ? 'otra_casa' : row.codigo_sugerido ? 'oem' : '',
@@ -7082,7 +7097,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       }
       return {
         _key: 'sc_' + (d.id ?? i), _detalleId: d.id ?? null, orden: d.orden, producto: null,
-        codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '', referencia: d.referencia || '',
+        codigo: d.codigo || '', nombre: d.nombre || '', oem: d.oem || '', oem_quitado: Boolean(d.oem_quitado), referencia: d.referencia || '',
         cantidad: String(d.cantidad ?? ''), comentario: d.comentario || '', _solId: solId, seleccionado: d.seleccionado, quitado: Boolean(d.quitado), precio_pvp_snapshot: d.precio_pvp_snapshot, precio_casa: d.precio_casa || '', ...confirmed,
       }
     })
@@ -7314,7 +7329,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           _sugeridoCasa: (p.casas_comerciales_nombres || []).join(', '),
         } : {}),
         ...(!String(item.nombre || '').trim() && p.nombre ? { nombre: p.nombre } : {}),
-        ...(!String(item.oem || '').trim() && p.oems?.length ? { oem: String(p.oems[0] || '').trim() } : {}),
+        ...(!String(item.oem || '').trim() && !item.oem_quitado && p.oems?.length ? { oem: String(p.oems[0] || '').trim() } : {}),
       }
     }))
     toastRef.current?.show({
@@ -7327,9 +7342,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
 
   // OEM escogido en la tarjeta de coincidencias (de cualquier producto de la
   // lista), aparte del producto base del precio.
-  const usarOem = (_key, oem) => {
-    setDetails((prev) => prev.map((item) => (item._key === _key ? { ...item, oem: String(oem || '').trim() } : item)))
-    toastRef.current?.show({ severity: 'success', summary: 'OEM elegido', detail: `${oem}. Recuerda guardar.`, life: 3000 })
+  const usarOem = (_key, oem, actual) => {
+    const cambio = toggleOem(actual, oem)
+    setDetails((prev) => prev.map((item) => (item._key === _key ? { ...item, ...cambio } : item)))
+    const quitado = String(cambio.oem || '').split(',').every((o) => oemClave(o) !== oemClave(oem))
+    toastRef.current?.show({ severity: 'success', summary: quitado ? 'OEM quitado' : 'OEM elegido', detail: `${oem}. Recuerda guardar.`, life: 3000 })
   }
 
   const handleComentarioChange = (_key, value) => {
@@ -7432,6 +7449,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         codigo: item.codigo || '',
         nombre: item.nombre || '',
         oem: item.oem || '',
+        oem_quitado: Boolean(item.oem_quitado),
         referencia: item.referencia || '',
         cantidad: Number(item.cantidad || item.cantidad_aproximada || 0),
         comentario: item.comentario || '',
@@ -8291,7 +8309,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
             : null,
         }
         if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
       })
       const saveResponse = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -8392,7 +8410,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         }
         const cantidad = Number(item.cantidad || item.cantidad_aproximada || 0)
         if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
       })
       const saveResponse = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -8436,7 +8454,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         }
         const detalleId = item._detalleId != null ? { detalle_id: item._detalleId } : {}
         if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
       })
       const selectedKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'check').map(([k]) => k)
       const xKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'x').map(([k]) => k)
@@ -8494,7 +8512,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
         } : {}
         if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
       })
       const response = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -9178,7 +9196,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const creadoAqui = !sinCatalogo && item.producto?.creado_desde_importacion === imp.id
                         const codigo = item.producto?.codigo || item.codigo || ''
                         const nombre = item.producto?.nombre || item.nombre || ''
-                        const oem = String(getProductoOem(item.producto) || item.oem || oemPorDefecto(coincidenciasByKey[item._key], coincidenciaElegidaDe(item)) || '').trim() || '-'
+                        const oem = String(getProductoOem(item.producto) || item.oem || (item.oem_quitado ? '' : oemPorDefecto(coincidenciasByKey[item._key], coincidenciaElegidaDe(item))) || '').trim() || '-'
                         const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                         const referencia = getDetalleReferencia(item) || '-'
                         const precioEstimadoValue = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
@@ -9243,7 +9261,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                   ? (p) => usarCoincidencia(item._key, p)
                                   : undefined}
                                 onPickOem={sinCatalogo && !item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
-                                  ? (o) => usarOem(item._key, o)
+                                  ? (o) => usarOem(item._key, o, oem !== '-' ? oem : '')
                                   : undefined}
                               />
                             </span>

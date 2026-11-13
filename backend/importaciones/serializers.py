@@ -55,7 +55,7 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ImportacionDetalle
-        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "referencia", "cantidad", "comentario", "precio_estimado", "precio_casa", "coincidencia", "coincidencia_codigo", "coincidencia_casa", "coincidencia_precio", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "precio_pvp_snapshot", "cantidad_recibida", "seleccionado", "quitado", "solicitud_id", "orden"]
+        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "oem_quitado", "referencia", "cantidad", "comentario", "precio_estimado", "precio_casa", "coincidencia", "coincidencia_codigo", "coincidencia_casa", "coincidencia_precio", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "precio_pvp_snapshot", "cantidad_recibida", "seleccionado", "quitado", "solicitud_id", "orden"]
 
     def validate(self, data):
         producto = data.get("producto")
@@ -468,6 +468,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
             # Lo mismo con la coincidencia (amarillo/naranja de la sugerencia).
             casa_previa = {}
             coincidencia_previa = {}
+            oem_quitado_previo = set()
             for detalle in instance.detalles.all():
                 claves = []
                 if detalle.producto_id:
@@ -475,6 +476,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
                 if detalle.codigo:
                     claves.append(("c", detalle.codigo.strip().lower()))
                 for clave in claves:
+                    if detalle.oem_quitado:
+                        oem_quitado_previo.add(clave)
                     if detalle.precio_casa:
                         casa_previa[clave] = detalle.precio_casa
                     if detalle.coincidencia:
@@ -490,6 +493,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
                 claves = ([("p", producto.id)] if producto else []) + [("c", codigo)]
                 if "precio_casa" not in item:
                     item["precio_casa"] = next((casa_previa[c] for c in claves if c in casa_previa), "")
+                if "oem_quitado" not in item:
+                    item["oem_quitado"] = any(c in oem_quitado_previo for c in claves)
                 if "coincidencia" not in item:
                     previa = next((coincidencia_previa[c] for c in claves if c in coincidencia_previa), None)
                     if previa:
@@ -502,6 +507,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     codigo=str(item.get("codigo") or ""),
                     nombre=str(item.get("nombre") or ""),
                     oem=str(item.get("oem") or ""),
+                    oem_quitado=bool(item.get("oem_quitado")) and not str(item.get("oem") or "").strip(),
                     referencia=str(item.get("referencia") or ""),
                     cantidad=item["cantidad"],
                     comentario=str(item.get("comentario") or ""),
@@ -550,6 +556,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     codigo=str(item.get("codigo") or ""),
                     nombre=str(item.get("nombre") or ""),
                     oem=str(item.get("oem") or ""),
+                    oem_quitado=bool(item.get("oem_quitado")) and not str(item.get("oem") or "").strip(),
                     referencia=str(item.get("referencia") or ""),
                     cantidad=item["cantidad"],
                     comentario=str(item.get("comentario") or ""),
