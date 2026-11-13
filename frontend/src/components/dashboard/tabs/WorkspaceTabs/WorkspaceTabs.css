@@ -2,6 +2,7 @@
    demas se encogen para caber (sin flechas). */
 .workspace__tabs {
   --tabs-active-bg: var(--color-surface);
+  --tabs-active-fill: var(--color-primary);
   --tabs-line: color-mix(in srgb, var(--color-border) 70%, transparent);
   --tabs-text: #4b5563;
   --tabs-text-active: var(--color-primary);
@@ -16,6 +17,7 @@
 
 .dashboard-shell.dark .workspace__tabs {
   --tabs-active-bg: var(--color-surface-darker);
+  --tabs-active-fill: var(--color-primary-dark);
   --tabs-line: var(--color-border-dark);
   --tabs-text: #9ca3af;
   --tabs-text-active: var(--color-primary-dark-soft);
@@ -96,13 +98,19 @@
 .workspace__tab.active {
   flex: 0 0 auto;
   max-width: 320px;
-  background: var(--tabs-active-bg);
-  border-color: var(--tabs-line);
-  color: var(--tabs-text-active);
+  /* Seleccionada en azul solido (texto blanco). */
+  background: var(--tabs-active-fill);
+  border-color: var(--tabs-active-fill);
+  color: #fff;
   font-weight: 700;
   z-index: 1;
-  /* Tapa la linea base para que la pestaña "abra" hacia el contenido. */
-  box-shadow: 0 1px 0 var(--tabs-active-bg);
+  box-shadow: 0 1px 0 var(--tabs-active-fill);
+}
+
+.workspace__tab.active:hover,
+.workspace__tab.active:focus-visible {
+  background: var(--tabs-active-fill);
+  color: #fff;
 }
 
 .workspace__tab-dot {
