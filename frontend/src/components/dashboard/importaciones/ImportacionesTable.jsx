@@ -52,6 +52,14 @@ const oemPorDefecto = (matches, elegida = -1) => {
 const oemClave = (o) => String(o || '').trim().toUpperCase()
 // Clic en un OEM de la tarjeta: si ya estaba escogido se quita (si era el
 // unico, la fila queda sin OEM a proposito: oem_quitado); si no, se usa ese.
+// Referencias: se pueden escoger una o varias; clic agrega o quita esa.
+const toggleReferencia = (actual, ref) => {
+  const lista = String(actual || '').split(',').map((r) => r.trim()).filter(Boolean)
+  const valor = String(ref || '').trim()
+  const tiene = lista.some((r) => oemClave(r) === oemClave(valor))
+  return (tiene ? lista.filter((r) => oemClave(r) !== oemClave(valor)) : [...lista, valor]).join(', ')
+}
+const referenciasDe = (p) => (p?.referencias?.length ? p.referencias : [p?.referencia]).map((r) => String(r || '').trim()).filter(Boolean)
 const toggleOem = (actual, oem) => {
   const lista = String(actual || '').split(',').map((o) => o.trim()).filter(Boolean)
   if (!lista.some((o) => oemClave(o) === oemClave(oem))) return { oem: String(oem || '').trim(), oem_quitado: false }
@@ -62,7 +70,7 @@ const toggleOem = (actual, oem) => {
 // OEMs de un producto en la tarjeta de coincidencias: con onPick cada uno se
 // puede escoger como OEM de la fila (de este producto o de otro, aparte del
 // producto base del precio). El escogido va en verde con visto.
-function OemChips({ oems, elegidos, onPick }) {
+function OemChips({ oems, elegidos, onPick, tituloActivo = 'OEM escogido · clic para quitarlo', tituloEscoger = 'Clic para usar este OEM' }) {
   const lista = (oems || []).map((o) => String(o || '').trim()).filter(Boolean)
   if (!lista.length) return '-'
   return (
@@ -75,7 +83,7 @@ function OemChips({ oems, elegidos, onPick }) {
             key={o}
             type="button"
             className={`imp-oem-chip imp-oem-chip--pickable${activo ? ' is-active' : ''}`}
-            data-title={activo ? 'OEM escogido · clic para quitarlo' : 'Clic para usar este OEM'}
+            data-title={activo ? tituloActivo : tituloEscoger}
             onClick={(event) => { event.stopPropagation(); onPick(o) }}
           >
             {activo && <Check size={11} aria-hidden="true" />}
@@ -5632,8 +5640,19 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                     >
                       <td title={p.codigo || ''}>{p.codigo || '-'}</td>
                       <td>{p.nombre || '-'}</td>
-                      <td title={(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ')}>
-                        {(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ') || '-'}
+                      <td>
+                        <OemChips
+                          oems={referenciasDe(p)}
+                          elegidos={new Set(String(filaOem?.referencia || '').split(',').map(oemClave).filter(Boolean))}
+                          onPick={oemMatchesHover.filaExcel && !readOnly ? (r) => {
+                            const filaExcel = oemMatchesHover.filaExcel
+                            setRows((prev) => prev.map((row) => (row.fila_excel === filaExcel ? { ...row, referencia: toggleReferencia(row.referencia, r) } : row)))
+                            titleHoverRef.current = null
+                            hideCellHover()
+                          } : undefined}
+                          tituloActivo="Referencia escogida · clic para quitarla"
+                          tituloEscoger="Clic para agregar esta referencia"
+                        />
                       </td>
                       <td>
                         <OemChips
@@ -5707,13 +5726,14 @@ const useCoincidencias = (token, casaId, items) => {
 // Icono "i" junto al OEM en las tablas de importaciones: que productos del
 // catalogo tienen ese OEM o esa referencia (la misma tarjeta que en la
 // sugerencia). Sin coincidencias el icono se ve opaco.
-function CoincidenciasInfo({ matches, onPick, elegida = -1, oemElegido = '', onPickOem }) {
+function CoincidenciasInfo({ matches, onPick, elegida = -1, oemElegido = '', onPickOem, referenciaElegida = '', onPickReferencia }) {
   const [hover, setHover] = useState(null)
   const [pos, setPos] = useState(null)
   const cardRef = useRef(null)
   const timerRef = useRef(null)
   const lista = Array.isArray(matches) ? matches : null
   const oemsElegidos = new Set(String(oemElegido || '').split(',').map(oemClave).filter(Boolean))
+  const referenciasElegidas = new Set(String(referenciaElegida || '').split(',').map(oemClave).filter(Boolean))
   const cancelar = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null } }
   const mostrar = (event) => {
     cancelar()
@@ -5771,7 +5791,15 @@ function CoincidenciasInfo({ matches, onPick, elegida = -1, oemElegido = '', onP
                   >
                     <td>{i === elegida && <Check size={13} className="imp-alternos-hover-card__check" aria-label="Escogido" />}{p.codigo || '-'}</td>
                     <td>{p.nombre || '-'}</td>
-                    <td>{(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ') || '-'}</td>
+                    <td>
+                      <OemChips
+                        oems={referenciasDe(p)}
+                        elegidos={referenciasElegidas}
+                        onPick={onPickReferencia ? (r) => onPickReferencia(r) : undefined}
+                        tituloActivo="Referencia escogida · clic para quitarla"
+                        tituloEscoger="Clic para agregar esta referencia"
+                      />
+                    </td>
                     <td><OemChips oems={p.oems} elegidos={oemsElegidos} onPick={onPickOem ? (o) => onPickOem(o) : undefined} /></td>
                     <td>{(p.casas_comerciales_nombres || []).join(', ') || '-'}</td>
                     <td>{p.precio != null ? `$${Number(p.precio).toFixed(2)}` : '-'}</td>
@@ -7347,6 +7375,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     setDetails((prev) => prev.map((item) => (item._key === _key ? { ...item, ...cambio } : item)))
     const quitado = String(cambio.oem || '').split(',').every((o) => oemClave(o) !== oemClave(oem))
     toastRef.current?.show({ severity: 'success', summary: quitado ? 'OEM quitado' : 'OEM elegido', detail: `${oem}. Recuerda guardar.`, life: 3000 })
+  }
+
+  // Referencias escogidas en la tarjeta de coincidencias (una o varias).
+  const usarReferencia = (_key, ref) => {
+    const actual = details.find((item) => item._key === _key)?.referencia || ''
+    const agregada = !actual.split(',').some((r) => oemClave(r) === oemClave(ref))
+    setDetails((prev) => prev.map((item) => (item._key === _key ? { ...item, referencia: toggleReferencia(item.referencia, ref) } : item)))
+    toastRef.current?.show({ severity: 'success', summary: agregada ? 'Referencia agregada' : 'Referencia quitada', detail: `${ref}. Recuerda guardar.`, life: 3000 })
   }
 
   const handleComentarioChange = (_key, value) => {
@@ -9259,6 +9295,10 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                 oemElegido={oem !== '-' ? oem : ''}
                                 onPick={sinCatalogo && !item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
                                   ? (p) => usarCoincidencia(item._key, p)
+                                  : undefined}
+                                referenciaElegida={sinCatalogo ? (item.referencia || '') : ''}
+                                onPickReferencia={sinCatalogo && !item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
+                                  ? (r) => usarReferencia(item._key, r)
                                   : undefined}
                                 onPickOem={sinCatalogo && !item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
                                   ? (o) => usarOem(item._key, o, oem !== '-' ? oem : '')
