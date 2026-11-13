@@ -432,3 +432,14 @@
   left: 0;
   right: auto;
 }
+
+/* Barra con selector de sucursal: selector + Crear/Buscar a la izquierda y
+   los filtros de tipo (Todos, Compra local, ...) alineados a la derecha. */
+.workspace__panel .users-page__actions .workspace__view-switcher-slot ~ .entradas-type-filter,
+.workspace__panel .users-page__actions .workspace__view-switcher-slot ~ .salidas-type-filter,
+.workspace__panel .users-page__actions .workspace__view-switcher-slot ~ .transfer-issues-page__type-filter {
+  margin-left: auto;
+  padding-left: 0;
+  border-left: none;
+  justify-content: flex-end;
+}
