@@ -4579,3 +4579,54 @@
 .quick-actions__inspection-add-overlay.dark .quick-actions__inspection-move-companions label {
   background: rgba(0, 0, 0, 0.25);
 }
+
+/* Nombre del aviso al pasar el mouse (los avisos van solo con icono). Globo
+   propio de la app, no el tooltip nativo del navegador. */
+.quick-actions__dock.is-compact .quick-actions__pending-shipments-trigger {
+  position: relative;
+}
+
+.quick-actions__dock.is-compact .quick-actions__pending-shipments-trigger[data-title]::after {
+  content: attr(data-title);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translate(-50%, -4px);
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--modal-color, #fff);
+  color: var(--color-text-primary);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 60;
+}
+
+.quick-actions__dock.is-compact .quick-actions__pending-shipments-trigger[data-title]:hover::after,
+.quick-actions__dock.is-compact .quick-actions__pending-shipments-trigger[data-title]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* Con su panel abierto no hace falta el globo. */
+.quick-actions__dock.is-compact .is-open > .quick-actions__pending-shipments-trigger[data-title]::after {
+  display: none;
+}
+
+.quick-actions__dock.dark.is-compact .quick-actions__pending-shipments-trigger[data-title]::after {
+  background: var(--table-color-dark, #1f2937);
+  border-color: var(--color-border-dark);
+  color: var(--color-text-dark, #e5e7eb);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-actions__dock.is-compact .quick-actions__pending-shipments-trigger[data-title]::after {
+    transition: none;
+  }
+}
