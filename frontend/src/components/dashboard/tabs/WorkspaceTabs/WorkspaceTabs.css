@@ -167,3 +167,18 @@
     max-width: 220px;
   }
 }
+
+/* Pestaña que se esta arrastrando para reordenarla: por encima de las demas. */
+.workspace__tab.is-dragging {
+  z-index: 2;
+  cursor: grabbing;
+  background: var(--tabs-hover);
+  color: var(--tabs-text-active);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.18);
+  transition: none;
+}
+
+.workspace__tab.is-dragging::before,
+.workspace__tab.is-dragging + .workspace__tab::before {
+  display: none;
+}

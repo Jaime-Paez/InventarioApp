@@ -125,6 +125,18 @@ function DashboardLayout({
 
   // Si la pestana tiene ventanas con cambios sin guardar, se pregunta antes
   // de cerrarla (antes se cerraba y se perdia todo).
+  // Orden de las pestañas que no estan seleccionadas (arrastrandolas); la
+  // activa conserva su lugar en la lista.
+  const handleReorderTabs = (inactiveOrder) => {
+    setOpenTabs((prev) => {
+      const activeIndex = prev.indexOf(activeItem)
+      const rest = inactiveOrder.filter((tab) => prev.includes(tab) && tab !== activeItem)
+      prev.forEach((tab) => { if (tab !== activeItem && !rest.includes(tab)) rest.push(tab) })
+      if (activeIndex === -1) return rest
+      return [...rest.slice(0, activeIndex), activeItem, ...rest.slice(activeIndex)]
+    })
+  }
+
   const handleCloseTab = (label) => {
     requestTabClose(label, () => closeTabNow(label))
   }
@@ -180,6 +192,7 @@ function DashboardLayout({
         openTabs={openTabs}
         onSelectTab={handleSelect}
         onCloseTab={handleCloseTab}
+        onReorderTabs={handleReorderTabs}
         user={user}
         logo={heroLogo}
         token={token}

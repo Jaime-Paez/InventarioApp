@@ -92,6 +92,7 @@ function Workspace({
   openTabs,
   onSelectTab,
   onCloseTab,
+  onReorderTabs,
   user,
   logo,
   darkMode,
@@ -794,6 +795,7 @@ function Workspace({
           activeItem={activeItem}
           onSelectTab={onSelectTab}
           onCloseTab={onCloseTab}
+          onReorderTabs={onReorderTabs}
         />
         <QuickActions
           darkMode={darkMode}
