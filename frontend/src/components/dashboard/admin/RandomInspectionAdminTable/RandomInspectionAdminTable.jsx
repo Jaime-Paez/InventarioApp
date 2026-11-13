@@ -2188,6 +2188,18 @@ function RandomInspectionAdminTable({
           reviewers={sendNowSummary.find((branch) => branch.id === normalizeId(coverageMapBranch.id))?.reviewers || []}
           reviewersLoading={assignmentsLoading}
           onSendMissing={(payload) => runExclusiveSend(() => sendProductListToReviewer({ ...payload, sucursalId: coverageMapBranch.id }))}
+          onOpenRevision={({ inspeccionId }) => {
+            // Producto en revision en el mapa: se abre Diferencias con esa
+            // revision desplegada (igual que desde un recordatorio).
+            const revisionId = normalizeId(inspeccionId)
+            const branchId = normalizeId(coverageMapBranch.id)
+            setCoverageMapBranch(null)
+            setView('diferencias')
+            setItemsFilter('todos')
+            pendingExpandRevisionRef.current = revisionId
+            setExpandedRevisionId(revisionId)
+            if (branchId) setSelectedBranchId(branchId)
+          }}
         />
       )}
 

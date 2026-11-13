@@ -99,7 +99,7 @@ const MAX_SEARCH_RESULTS = 40
 
 const productKey = (subdivisionId, productId) => `${subdivisionId}-${productId}`
 
-function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers = [], reviewersLoading = false, onSendMissing }) {
+function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers = [], reviewersLoading = false, onSendMissing, onOpenRevision }) {
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
   const [data, setData] = useState(null)
@@ -405,8 +405,21 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
       searchActive && matchKeys.has(key) ? 'is-match' : '',
       focusKey === key ? 'is-focus' : '',
     ].filter(Boolean).join(' ')
+    // En revision: clic = abrir la revision donde se resuelve la diferencia.
+    const canOpen = Boolean(onOpenRevision && counted && result && !isResultOk(result) && result.inspeccion_id)
+    const openProps = canOpen ? {
+      role: 'button',
+      tabIndex: 0,
+      'data-title': `Abrir ${result.inspeccion_codigo || 'la revisión'} para resolverlo`,
+      onClick: () => onOpenRevision({ inspeccionId: result.inspeccion_id, itemId: result.item_id }),
+      onKeyDown: (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onOpenRevision({ inspeccionId: result.inspeccion_id, itemId: result.item_id })
+      },
+    } : {}
     return (
-      <li key={key} className={classes} data-product-key={key}>
+      <li key={key} className={`${classes}${canOpen ? ' is-openable' : ''}`} data-product-key={key} {...openProps}>
         <span className="coverage-map__pending-code">{product.codigo}</span>
         <span className="coverage-map__pending-name">{product.nombre}</span>
         <span className="coverage-map__pending-qty">{product.cantidad}</span>
@@ -419,6 +432,7 @@ function InspectionCoverageMap({ sucursal, token, darkMode, onClose, reviewers =
           <span className={`coverage-map__result coverage-map__result--${isResultOk(result) ? 'ok' : 'bad'}`}>
             <strong>{describeResult(result)}</strong>
             {describeResultMeta(result) && <small>{describeResultMeta(result)}</small>}
+            {canOpen && <small className="coverage-map__open-link">{`Abrir ${result.inspeccion_codigo || 'revisión'} ›`}</small>}
           </span>
         )}
       </li>

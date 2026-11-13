@@ -6343,6 +6343,8 @@ class RandomInspectionCoverageMapAPIView(APIView):
             "inspeccion__division_id",
             "inspeccion__es_por_subdivision",
             "inspeccion__subdivision_id",
+            "inspeccion_id",
+            "inspeccion__codigo",
         ):
             product_id = _normalize_int(row.get("producto_id"), 0)
             # Por subdivision: el producto se conto en todas sus ubicaciones.
@@ -6409,6 +6411,10 @@ class RandomInspectionCoverageMapAPIView(APIView):
                 "por_ubicacion": por_ubicacion,
                 "revisor": name,
                 "revisado_en": _parse_iso_timestamp(row["revisado_en"]) if row.get("revisado_en") else "",
+                # Para abrir desde el mapa la revision donde se resuelve.
+                "item_id": _normalize_int(row.get("id"), 0) or None,
+                "inspeccion_id": _normalize_int(row.get("inspeccion_id"), 0) or None,
+                "inspeccion_codigo": _normalize_text(row.get("inspeccion__codigo")),
             }
 
         def result_ok(result):

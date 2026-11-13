@@ -968,3 +968,20 @@
 }
 .coverage-map__result-row--review { border-left-color: var(--coverage-review); }
 .coverage-map--dark .coverage-map__pending li.coverage-map__product--review { background: rgba(234, 179, 8, 0.16); }
+
+/* Producto en revision: clic abre la revision donde se resuelve. */
+.coverage-map__pending li.coverage-map__product--review.is-openable {
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.coverage-map__pending li.coverage-map__product--review.is-openable:hover,
+.coverage-map__pending li.coverage-map__product--review.is-openable:focus-visible {
+  background: color-mix(in srgb, var(--coverage-review) 26%, transparent);
+  outline: none;
+}
+.coverage-map__open-link {
+  font-weight: 700;
+  color: #1d4ed8;
+  white-space: nowrap;
+}
+.coverage-map--dark .coverage-map__open-link { color: #93c5fd; }
