@@ -42,6 +42,43 @@ const getOemDeCoincidencias = (matches) => [...new Set(
   (Array.isArray(matches) ? matches : []).flatMap((m) => m?.oems || []).map((o) => String(o || '').trim()).filter(Boolean)
 )].join(', ')
 
+// OEM por defecto de una fila sin OEM propio: el primero del producto base
+// escogido (posicion "elegida") o, si no tiene, el primero de la lista.
+const oemPorDefecto = (matches, elegida = -1) => {
+  const lista = Array.isArray(matches) ? matches : []
+  const delBase = (lista[elegida]?.oems || []).map((o) => String(o || '').trim()).find(Boolean)
+  return delBase || lista.flatMap((m) => m?.oems || []).map((o) => String(o || '').trim()).find(Boolean) || ''
+}
+const oemClave = (o) => String(o || '').trim().toUpperCase()
+
+// OEMs de un producto en la tarjeta de coincidencias: con onPick cada uno se
+// puede escoger como OEM de la fila (de este producto o de otro, aparte del
+// producto base del precio). El escogido va en verde con visto.
+function OemChips({ oems, elegidos, onPick }) {
+  const lista = (oems || []).map((o) => String(o || '').trim()).filter(Boolean)
+  if (!lista.length) return '-'
+  return (
+    <span className="imp-oem-chips">
+      {lista.map((o) => {
+        const activo = elegidos.has(oemClave(o))
+        if (!onPick) return <span key={o} className={`imp-oem-chip${activo ? ' is-active' : ''}`}>{o}</span>
+        return (
+          <button
+            key={o}
+            type="button"
+            className={`imp-oem-chip imp-oem-chip--pickable${activo ? ' is-active' : ''}`}
+            data-title={activo ? 'OEM escogido para este producto' : 'Clic para usar este OEM'}
+            onClick={(event) => { event.stopPropagation(); onPick(o) }}
+          >
+            {activo && <Check size={11} aria-hidden="true" />}
+            {o}
+          </button>
+        )
+      })}
+    </span>
+  )
+}
+
 // Fila de la sugerencia a partir de un producto del catalogo (vinculada).
 const buildCatalogSugerenciaRow = (producto, extra = {}) => ({
   codigo: producto.codigo || '',
@@ -3284,7 +3321,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const creadoAqui = !sinCat && d.producto?.creado_desde_importacion === imp.id
                       const codigo = d.producto?.codigo || d.codigo || '-'
                       const nombre = d.producto?.nombre || d.nombre || '-'
-                      const oem = String(getProductoOem(d.producto) || d.oem || getOemDeCoincidencias(coincidenciasByKey[d.id]) || '').trim() || '-'
+                      const oem = String(getProductoOem(d.producto) || d.oem || oemPorDefecto(coincidenciasByKey[d.id]) || '').trim() || '-'
                       const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                       const referencia = getDetalleReferencia(d) || '-'
                       const precio = d.precio_confirmado != null ? `$${Number(d.precio_confirmado).toFixed(2)}` : '-'
@@ -5415,10 +5452,10 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                                   {row.oem || (row.oem_matches || []).length ? (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                                       <span
-                                        data-title={row.oem || getOemDeCoincidencias(row.oem_matches) || undefined}
+                                        data-title={row.oem || oemPorDefecto(row.oem_matches) || undefined}
                                         style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                                       >
-                                        {row.oem || getOemDeCoincidencias(row.oem_matches) || '—'}
+                                        {row.oem || oemPorDefecto(row.oem_matches) || '—'}
                                       </span>
                                       <Info
                                         size={13}
@@ -5566,6 +5603,8 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
               </thead>
               <tbody>
                 {oemMatchesHover.matches.map((p, i) => {
+                  const filaOem = rows.find((r) => r.fila_excel === oemMatchesHover.filaExcel)
+                  const oemElegidosSugerencia = new Set(String(filaOem?.oem || oemPorDefecto(oemMatchesHover.matches)).split(',').map(oemClave).filter(Boolean))
                   const canPick = Boolean(oemMatchesHover.filaExcel) && (p.precio != null || p.nombre)
                   return (
                     <tr
@@ -5586,7 +5625,17 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                       <td title={(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ')}>
                         {(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ') || '-'}
                       </td>
-                      <td title={(p.oems || []).join(', ')}>{(p.oems || []).join(', ') || '-'}</td>
+                      <td>
+                        <OemChips
+                          oems={p.oems}
+                          elegidos={oemElegidosSugerencia}
+                          onPick={oemMatchesHover.filaExcel && !readOnly ? (o) => {
+                            updateRowCampo(oemMatchesHover.filaExcel, 'oem', o)
+                            titleHoverRef.current = null
+                            hideCellHover()
+                          } : undefined}
+                        />
+                      </td>
                       <td title={(p.casas_comerciales_nombres || []).join(', ')}>{(p.casas_comerciales_nombres || []).join(', ') || '-'}</td>
                       <td>{p.precio != null ? `$${Number(p.precio).toFixed(2)}` : '-'}</td>
                       <td>{p.precio_con_iva != null ? `$${Number(p.precio_con_iva).toFixed(2)}` : '-'}</td>
@@ -5643,12 +5692,13 @@ const useCoincidencias = (token, casaId, items) => {
 // Icono "i" junto al OEM en las tablas de importaciones: que productos del
 // catalogo tienen ese OEM o esa referencia (la misma tarjeta que en la
 // sugerencia). Sin coincidencias el icono se ve opaco.
-function CoincidenciasInfo({ matches, onPick, elegida = -1 }) {
+function CoincidenciasInfo({ matches, onPick, elegida = -1, oemElegido = '', onPickOem }) {
   const [hover, setHover] = useState(null)
   const [pos, setPos] = useState(null)
   const cardRef = useRef(null)
   const timerRef = useRef(null)
   const lista = Array.isArray(matches) ? matches : null
+  const oemsElegidos = new Set(String(oemElegido || '').split(',').map(oemClave).filter(Boolean))
   const cancelar = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null } }
   const mostrar = (event) => {
     cancelar()
@@ -5707,7 +5757,7 @@ function CoincidenciasInfo({ matches, onPick, elegida = -1 }) {
                     <td>{i === elegida && <Check size={13} className="imp-alternos-hover-card__check" aria-label="Escogido" />}{p.codigo || '-'}</td>
                     <td>{p.nombre || '-'}</td>
                     <td>{(p.referencias?.length ? p.referencias : [p.referencia]).filter(Boolean).join(', ') || '-'}</td>
-                    <td>{(p.oems || []).join(', ') || '-'}</td>
+                    <td><OemChips oems={p.oems} elegidos={oemsElegidos} onPick={onPickOem ? (o) => onPickOem(o) : undefined} /></td>
                     <td>{(p.casas_comerciales_nombres || []).join(', ') || '-'}</td>
                     <td>{p.precio != null ? `$${Number(p.precio).toFixed(2)}` : '-'}</td>
                     <td>{p.precio_con_iva != null ? `$${Number(p.precio_con_iva).toFixed(2)}` : '-'}</td>
@@ -6095,7 +6145,7 @@ function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 
           return {
             codigo: row.codigo || '',
             referencia: row.referencia || '',
-            oem: row.oem || '',
+            oem: row.oem || oemPorDefecto(row.oem_matches),
             descripcion: row.descripcion || '',
             cantidad: row.cantidad ?? '',
             pvpJp: getSistemaPrecio(row) != null ? Number(getSistemaPrecio(row)) : '',
@@ -7264,7 +7314,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           _sugeridoCasa: (p.casas_comerciales_nombres || []).join(', '),
         } : {}),
         ...(!String(item.nombre || '').trim() && p.nombre ? { nombre: p.nombre } : {}),
-        ...(!String(item.oem || '').trim() && p.oems?.length ? { oem: p.oems.join(', ') } : {}),
+        ...(!String(item.oem || '').trim() && p.oems?.length ? { oem: String(p.oems[0] || '').trim() } : {}),
       }
     }))
     toastRef.current?.show({
@@ -7273,6 +7323,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       detail: `${p.codigo || 'Producto'}${p.precio != null ? `: PVP $${Number(p.precio).toFixed(2)}` : ''}. Recuerda guardar.`,
       life: 3500,
     })
+  }
+
+  // OEM escogido en la tarjeta de coincidencias (de cualquier producto de la
+  // lista), aparte del producto base del precio.
+  const usarOem = (_key, oem) => {
+    setDetails((prev) => prev.map((item) => (item._key === _key ? { ...item, oem: String(oem || '').trim() } : item)))
+    toastRef.current?.show({ severity: 'success', summary: 'OEM elegido', detail: `${oem}. Recuerda guardar.`, life: 3000 })
   }
 
   const handleComentarioChange = (_key, value) => {
@@ -9121,7 +9178,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const creadoAqui = !sinCatalogo && item.producto?.creado_desde_importacion === imp.id
                         const codigo = item.producto?.codigo || item.codigo || ''
                         const nombre = item.producto?.nombre || item.nombre || ''
-                        const oem = String(getProductoOem(item.producto) || item.oem || getOemDeCoincidencias(coincidenciasByKey[item._key]) || '').trim() || '-'
+                        const oem = String(getProductoOem(item.producto) || item.oem || oemPorDefecto(coincidenciasByKey[item._key], coincidenciaElegidaDe(item)) || '').trim() || '-'
                         const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                         const referencia = getDetalleReferencia(item) || '-'
                         const precioEstimadoValue = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
@@ -9181,8 +9238,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                               <CoincidenciasInfo
                                 matches={coincidenciasByKey[item._key]}
                                 elegida={coincidenciaElegidaDe(item)}
+                                oemElegido={oem !== '-' ? oem : ''}
                                 onPick={sinCatalogo && !item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
                                   ? (p) => usarCoincidencia(item._key, p)
+                                  : undefined}
+                                onPickOem={sinCatalogo && !item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
+                                  ? (o) => usarOem(item._key, o)
                                   : undefined}
                               />
                             </span>

@@ -2919,3 +2919,57 @@ body.app-theme-dark .imp-receive-footer-hint {
   background: var(--color-surface-darker);
   color: var(--color-text-dark);
 }
+
+/* OEMs en la tarjeta de coincidencias: se puede escoger uno como OEM de la
+   fila (de cualquier producto), aparte del producto base del precio. */
+.imp-oem-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  max-width: 260px;
+}
+
+.imp-oem-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.imp-oem-chip--pickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.imp-oem-chip--pickable:hover,
+.imp-oem-chip--pickable:focus-visible {
+  border-color: var(--color-primary, #2563eb);
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 10%, transparent);
+  outline: none;
+}
+
+.imp-oem-chip.is-active {
+  border-color: #16a34a;
+  background: color-mix(in srgb, #22c55e 18%, transparent);
+  color: #15803d;
+  font-weight: 700;
+}
+
+.dashboard-shell.dark .imp-oem-chip {
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.dashboard-shell.dark .imp-oem-chip.is-active {
+  border-color: #4ade80;
+  color: #4ade80;
+}
