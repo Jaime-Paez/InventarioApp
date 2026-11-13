@@ -19,6 +19,14 @@ const normalizeCodigoMatch = (value) =>
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '')
 
+// Raiz del codigo: letras + numeros del inicio (C0104MIAU -> C0104). Si no
+// tiene numeros, se usa el codigo completo.
+const getCodigoRoot = (value) => {
+  const norm = normalizeCodigoMatch(value)
+  const match = norm.match(/^[A-Z]*\d+/)
+  return match ? match[0] : norm
+}
+
 const initialForm = {
   codigo: '',
   nombre: '',
@@ -936,10 +944,26 @@ function CreateProducto({
             (item) => String(item?.codigo ?? '').trim().toLowerCase() === term.toLowerCase()
           )
           setCodigoError(exists ? 'Este codigo ya existe.' : '')
-          const normTerm = normalizeCodigoMatch(term)
+          // Se compara por la raiz del codigo (letras + numeros iniciales):
+          // C0104MIAU -> C0104, que coincide con C0104CL-A, C0104PX-M, etc.
+          const root = getCodigoRoot(term)
+          let rootList = list
+          if (root && root !== normalizeCodigoMatch(term)) {
+            const rootResponse = await authFetch(
+              `${API_URL}/productos/listado/?search=${encodeURIComponent(root)}&page_size=50`,
+              {},
+              token
+            )
+            if (seq !== codigoCheckSeqRef.current) return
+            if (rootResponse.ok) {
+              const rootData = await rootResponse.json()
+              if (seq !== codigoCheckSeqRef.current) return
+              rootList = Array.isArray(rootData) ? rootData : rootData?.results || []
+            }
+          }
           setCodigoMatches(
-            normTerm
-              ? list.filter((item) => normalizeCodigoMatch(item?.codigo).includes(normTerm))
+            root
+              ? rootList.filter((item) => normalizeCodigoMatch(item?.codigo).startsWith(root))
               : []
           )
         } catch {
