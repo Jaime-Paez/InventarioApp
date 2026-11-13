@@ -394,3 +394,42 @@
     border-radius: 0;
   }
 }
+
+/* Selector dentro de la barra de botones del modulo (al final, a la derecha):
+   se ve como un boton mas de la barra. */
+.workspace__view-switcher-slot {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.workspace__view-switcher-slot .workspace__view-head {
+  margin: 0;
+  min-height: 0;
+}
+
+.workspace__view-switcher-slot .workspace__view-branch {
+  font-size: var(--font-size-base);
+  font-weight: 700;
+}
+
+.workspace__view-switcher-slot .workspace__view-branch-trigger {
+  column-gap: 8px;
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--table-color, #fff);
+  cursor: pointer;
+}
+
+.dashboard-shell.dark .workspace__view-switcher-slot .workspace__view-branch-trigger {
+  background: var(--color-surface-darker);
+  border-color: var(--color-border-dark);
+}
+
+.workspace__view-switcher-slot .workspace__view-branch-panel {
+  left: auto;
+  right: 0;
+}

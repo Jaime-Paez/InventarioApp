@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import WorkspaceTabs from '../tabs/WorkspaceTabs/WorkspaceTabs'
 import { UnsavedTabScope } from '../common/unsavedChanges/unsavedChanges'
 import QuickActions from '../QuickActions/QuickActions'
@@ -511,6 +512,42 @@ function Workspace({
     setIsMovementBranchMenuOpen(false)
   }, [activeItem])
 
+  // El selector ("Todas", la sucursal, la caja...) va dentro de la barra de
+  // botones del modulo, al final a la derecha: asi todas las pantallas quedan
+  // iguales. Si el modulo no tiene esa barra, queda arriba como antes.
+  const hasViewSwitcher = Boolean(showMovementBranchSwitcher || pageTitleSwitcher)
+  const [switcherHost, setSwitcherHost] = useState(null)
+  useLayoutEffect(() => {
+    if (!hasViewSwitcher) {
+      setSwitcherHost(null)
+      return undefined
+    }
+    let host = null
+    let observer = null
+    const attach = () => {
+      const bar = document.querySelector('.workspace__tab-panel.active .users-page__actions')
+      if (!bar) return false
+      host = document.createElement('div')
+      host.className = 'workspace__view-switcher-slot'
+      bar.appendChild(host)
+      setSwitcherHost(host)
+      return true
+    }
+    if (!attach()) {
+      // El modulo aun no pinta su barra (carga diferida): se espera.
+      const root = document.querySelector('.workspace__panel') || document.body
+      observer = new MutationObserver(() => {
+        if (attach()) observer.disconnect()
+      })
+      observer.observe(root, { childList: true, subtree: true })
+      setSwitcherHost(null)
+    }
+    return () => {
+      observer?.disconnect()
+      host?.remove()
+    }
+  }, [activeItem, hasViewSwitcher])
+
   useEffect(() => {
     if (!isMovementBranchMenuOpen) return undefined
 
@@ -730,6 +767,8 @@ function Workspace({
     dispatchCloseAllDropdowns()
   }, [activeItem])
 
+  const placeViewSwitcher = (node) => (switcherHost ? createPortal(node, switcherHost) : node)
+
   const renderContent = () => {
     if (!openTabs.length) return null
 
@@ -791,7 +830,7 @@ function Workspace({
         <section className="workspace__panel">
           {/* El nombre ya se ve en la pestaña activa: el titulo solo queda
               cuando trae un selector (sucursal, caja, etc.). */}
-          {(showMovementBranchSwitcher || pageTitleSwitcher) && (
+          {hasViewSwitcher && placeViewSwitcher(
           <div className="workspace__view-head">
             {/* Solo el selector ("Todas", la sucursal...): el modulo ya esta en la pestaña. */}
             {showMovementBranchSwitcher && (
@@ -872,7 +911,7 @@ function Workspace({
                 )}
               </div>
             )}
-          </div>
+          </div>,
           )}
           {renderContent()}
         </section>
