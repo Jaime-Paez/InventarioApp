@@ -648,7 +648,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
             className="quick-actions__pending-shipments-trigger por-guardar__trigger has-items"
             onClick={() => setOpen(true)}
             aria-label={`Por ubicar: ${count} producto(s)`}
-            title="Envios que ya llegaron (importaciones y compras locales): cuenta lo que queda y guardalo en su ubicacion"
+            data-title="Por ubicar"
           >
             <Inbox className="quick-actions__pending-shipments-icon" aria-hidden="true" />
             <span className="quick-actions__pending-shipments-label">Por ubicar</span>

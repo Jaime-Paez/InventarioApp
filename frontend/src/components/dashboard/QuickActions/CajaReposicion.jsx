@@ -131,6 +131,7 @@ function CajaReposicion({ token, isAdmin, darkMode, onOpenCaja }) {
           if (!open) void load({ silent: false })
         }}
         aria-label={porAprobar ? 'Reposiciones de caja chica por aprobar' : 'Caja chica por reponer'}
+        data-title={porAprobar ? 'Reposición por aprobar' : 'Reponer caja chica'}
       >
         <Wallet className="quick-actions__pending-shipments-icon" aria-hidden="true" />
         <span className="quick-actions__pending-shipments-label">
