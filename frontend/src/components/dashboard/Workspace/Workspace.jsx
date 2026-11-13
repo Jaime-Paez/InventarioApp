@@ -793,7 +793,7 @@ function Workspace({
               cuando trae un selector (sucursal, caja, etc.). */}
           {(showMovementBranchSwitcher || pageTitleSwitcher) && (
           <div className="workspace__view-head">
-            <h1 className="workspace__view-title">{activeItem}</h1>
+            {/* Solo el selector ("Todas", la sucursal...): el modulo ya esta en la pestaña. */}
             {showMovementBranchSwitcher && (
               <div className="workspace__view-branch" ref={movementBranchMenuRef}>
                 <button
