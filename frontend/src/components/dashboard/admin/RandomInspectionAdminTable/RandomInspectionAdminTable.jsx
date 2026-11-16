@@ -15,6 +15,7 @@ import '../../movimientos/TrasladosInconvenientesTable.css'
 import './RandomInspectionAdminTable.css'
 import InspectionCoverageMap from './InspectionCoverageMap'
 import RecountWarningDialog from './RecountWarningDialog'
+import NotFoundZeroLocations from './NotFoundZeroLocations'
 import useResizableModal from '../../common/useResizableModal'
 import CascadeDropdown from '../../common/CascadeDropdown'
 import BlockerNotice from '../../common/BlockerNotice'
@@ -2178,6 +2179,15 @@ function RandomInspectionAdminTable({
           )}
         </div>
       </header>
+
+      <NotFoundZeroLocations
+        token={token}
+        branchId={selectedBranchId}
+        canUpdate={canUpdate}
+        isDarkTheme={isDarkTheme}
+        notifySuccess={notifySuccess}
+        notifyError={notifyError}
+      />
 
       {coverageMapBranch && (
         <InspectionCoverageMap

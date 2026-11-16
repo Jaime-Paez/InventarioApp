@@ -137,4 +137,14 @@ urlpatterns = [
         views.RandomInspectionShortfallFoundAPIView.as_view(),
         name="recordatorios-inspeccion-aleatoria-aparecio",
     ),
+    path(
+        "recordatorios/inspeccion-aleatoria/ubicaciones-cero/",
+        views.RandomInspectionNotFoundZeroListAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-ubicaciones-cero",
+    ),
+    path(
+        "recordatorios/inspeccion-aleatoria/items/<int:item_id>/ubicacion-cero/",
+        views.RandomInspectionNotFoundZeroDecideAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-ubicacion-cero",
+    ),
 ]

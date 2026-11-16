@@ -7820,3 +7820,179 @@ class RandomInspectionSendListAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+# --- "No lo encontre" en una ubicacion con 0 -------------------------------
+# Si no lo encontraron y la ubicacion tenia stock, las unidades pasan a
+# TEMPORAL (ver _not_found_to_temporal_on_count). Si la ubicacion ya estaba en
+# 0 no hay nada que mover: administracion decide si esa ubicacion se mantiene
+# asignada al producto o se quita.
+
+def _not_found_zero_rows(item):
+    """Filas de inventario en 0 de las ubicaciones donde no lo encontraron."""
+    entries = [
+        entry for entry in (item.conteo_ubicaciones if isinstance(item.conteo_ubicaciones, list) else [])
+        if isinstance(entry, dict)
+    ]
+    flagged = {
+        _normalize_int(entry.get("subdivision_id"), 0)
+        for entry in entries
+        if entry.get("no_encontrado") and not _normalize_int(entry.get("a_temporal"), 0)
+    }
+    flagged.discard(0)
+    if not flagged and not item.no_encontrado:
+        return Inventario.objects.none()
+    rows = Inventario.objects.filter(
+        producto_id=int(item.producto_id),
+        subdivision__division__bodega__sucursal_id=int(item.sucursal_id),
+        cantidad__lte=0,
+    )
+    if flagged:
+        rows = rows.filter(subdivision_id__in=flagged)
+    else:
+        division_id = _inspection_division_scope(item.inspeccion)
+        subdivision_id = _inspection_subdivision_scope(item.inspeccion)
+        if division_id is not None:
+            rows = rows.filter(subdivision__division_id=int(division_id))
+        if subdivision_id is not None:
+            rows = rows.filter(subdivision_id=int(subdivision_id))
+    temporal = _temporal_subdivision_or_none(item.sucursal_id)
+    if temporal is not None:
+        rows = rows.exclude(subdivision_id=int(temporal.id))
+    return rows.select_related("subdivision__division__bodega").order_by("id")
+
+
+def _not_found_zero_candidates(sucursal_ids=None):
+    """Productos (uno por sucursal, el conteo mas reciente) que no encontraron
+    en una ubicacion con 0 y todavia no tienen decision."""
+    queryset = (
+        InspeccionAleatoriaItem.objects.filter(revisado_en__isnull=False, ubicacion_cero_decision="")
+        .select_related("inspeccion", "sucursal", "producto")
+        .order_by("-revisado_en", "-id")
+    )
+    if sucursal_ids is not None:
+        queryset = queryset.filter(sucursal_id__in=list(sucursal_ids))
+    seen = set()
+    result = []
+    for item in queryset.iterator():
+        entries = item.conteo_ubicaciones if isinstance(item.conteo_ubicaciones, list) else []
+        if not item.no_encontrado and not any(
+            isinstance(entry, dict) and entry.get("no_encontrado") for entry in entries
+        ):
+            continue
+        key = (int(item.sucursal_id), int(item.producto_id))
+        if key in seen:
+            continue
+        rows = list(_not_found_zero_rows(item))
+        if not rows:
+            continue
+        seen.add(key)
+        result.append((item, rows))
+    return result
+
+
+class RandomInspectionNotFoundZeroListAPIView(APIView):
+    """Lista de "no lo encontre" en ubicaciones con 0, pendientes de decidir."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para verificar inspecciones aleatorias."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        allowed_branch_ids = _get_allowed_inventory_branch_ids_for_user(request.user)
+        sucursal_id = _normalize_int(request.query_params.get("sucursal_id"), 0)
+        sucursal_ids = allowed_branch_ids
+        if sucursal_id:
+            if allowed_branch_ids is not None and sucursal_id not in allowed_branch_ids:
+                return Response({"detail": "No tienes acceso a esta sucursal."}, status=status.HTTP_403_FORBIDDEN)
+            sucursal_ids = {sucursal_id}
+        data = []
+        for item, rows in _not_found_zero_candidates(sucursal_ids):
+            stock_rows = Inventario.objects.filter(
+                producto_id=int(item.producto_id),
+                subdivision__division__bodega__sucursal_id=int(item.sucursal_id),
+                cantidad__gt=0,
+            ).select_related("subdivision__division__bodega")
+            data.append({
+                "item_id": int(item.id),
+                "inspeccion_id": int(item.inspeccion_id),
+                "inspeccion_codigo": _normalize_text(getattr(item.inspeccion, "codigo", "")),
+                "sucursal_id": int(item.sucursal_id),
+                "sucursal_nombre": _normalize_text(getattr(item.sucursal, "nombre", "")),
+                "producto_id": int(item.producto_id),
+                "producto_codigo": _normalize_text(getattr(item.producto, "codigo", "")),
+                "producto_nombre": _normalize_text(getattr(item.producto, "nombre", "")),
+                "revisado_en": item.revisado_en,
+                "verificacion_estado": item.verificacion_estado,
+                "ubicaciones": [
+                    {"subdivision_id": int(row.subdivision_id), "ubicacion": _subdivision_label(row.subdivision)}
+                    for row in rows
+                ],
+                "con_stock": [
+                    {
+                        "subdivision_id": int(row.subdivision_id),
+                        "ubicacion": _subdivision_label(row.subdivision),
+                        "cantidad": int(row.cantidad or 0),
+                    }
+                    for row in stock_rows
+                ],
+            })
+        return Response({"results": data, "count": len(data)}, status=status.HTTP_200_OK)
+
+
+class RandomInspectionNotFoundZeroDecideAPIView(APIView):
+    """Mantener o quitar las ubicaciones en 0 donde no lo encontraron."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, item_id):
+        if not _can_verify_random_inspection(request.user):
+            return Response(
+                {"detail": "No tienes permiso para verificar inspecciones aleatorias."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        accion = str(request.data.get("accion") or "").strip().lower()
+        if accion not in {"mantener", "quitar"}:
+            return Response({"detail": "La accion debe ser mantener o quitar."}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            item = (
+                InspeccionAleatoriaItem.objects.select_for_update(of=("self",))
+                .select_related("inspeccion", "sucursal", "producto")
+                .filter(pk=item_id)
+                .first()
+            )
+            if item is None:
+                return Response({"detail": "No se encontro el item de inspeccion."}, status=status.HTTP_404_NOT_FOUND)
+            allowed_branch_ids = _get_allowed_inventory_branch_ids_for_user(request.user)
+            if allowed_branch_ids is not None and int(item.sucursal_id) not in allowed_branch_ids:
+                return Response({"detail": "No tienes acceso a esta sucursal."}, status=status.HTTP_403_FORBIDDEN)
+            rows = list(_not_found_zero_rows(item).select_for_update(of=("self",)))
+            labels = [_subdivision_label(row.subdivision) for row in rows]
+            removed = []
+            if accion == "quitar":
+                # Solo se quitan si siguen en 0 (pudo llegar stock mientras tanto).
+                to_remove = [row for row in rows if int(row.cantidad or 0) <= 0]
+                removed = [_subdivision_label(row.subdivision) for row in to_remove]
+                Inventario.objects.filter(pk__in=[row.pk for row in to_remove]).delete()
+                detalle = (
+                    f"Inspeccion aleatoria #{int(item.inspeccion_id)}: no lo encontraron y estaba en 0; "
+                    f"se quito la ubicacion {', '.join(removed) or '-'}."
+                )
+            else:
+                detalle = (
+                    f"Inspeccion aleatoria #{int(item.inspeccion_id)}: no lo encontraron y estaba en 0; "
+                    f"se mantiene la ubicacion {', '.join(labels) or '-'}."
+                )
+            _record_random_inspection_audit(item, request.user, detalle, {"accion": accion, "ubicaciones": labels})
+            # La decision vale para todos los conteos de ese producto en la
+            # sucursal que seguian sin decidir.
+            InspeccionAleatoriaItem.objects.filter(
+                sucursal_id=item.sucursal_id,
+                producto_id=item.producto_id,
+                revisado_en__isnull=False,
+                ubicacion_cero_decision="",
+            ).update(ubicacion_cero_decision=accion)
+        return Response({"accion": accion, "ubicaciones": labels, "quitadas": removed}, status=status.HTTP_200_OK)

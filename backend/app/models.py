@@ -370,6 +370,9 @@ class InspeccionAleatoriaItem(models.Model):
     # stock a la fila nueva, "rechazado" no mueve nada) y solo despues, si la
     # cantidad no cuadra, ajusta o manda a recontar.
     movimiento_decision = models.CharField(max_length=10, blank=True, default="", db_default="")
+    # "No lo encontre" en una ubicacion que tenia 0: administracion decide si
+    # la ubicacion se mantiene ("mantener") o se quita del producto ("quitar").
+    ubicacion_cero_decision = models.CharField(max_length=10, blank=True, default="", db_default="")
     encontrado_en = models.ForeignKey(
         "inventario.SubDivision",
         on_delete=models.SET_NULL,
