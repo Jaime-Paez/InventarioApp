@@ -2157,7 +2157,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         ? `Se registrará un inconveniente por sobrante de ${diff} unidad${diff === 1 ? '' : 'es'}.`
                         : ''
                     return (
-                      <div key={row.id} className={`create-user__locations-row imp-receive__productos-row${hasError ? ' has-validation-error' : ''}${row.creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}`}>
+                      <div key={row.id} className={`create-user__locations-row imp-receive__productos-row${hasError ? ' has-validation-error' : ''}${row.creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${filter.trim() && importItemMatches(row, filter) ? ' imp-search-hit' : ''}`}>
                         <span
                           className="imp-table-cell-tip"
                           onMouseEnter={(e) => showCellHover(e, row.codigo, 'Código')}
@@ -3343,7 +3343,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const comentario = d.comentario || '-'
                       const envios = d.producto?.id != null ? (enviosDistribucion.porProducto.get(d.producto.id) || []) : []
                       return (
-                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}`} style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
+                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${productSearch.trim() && importItemMatches(d, productSearch) ? ' imp-search-hit' : ''}`} style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
                           <span
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => !sinCat && showCellHover(e, codigo, 'Código')}
@@ -3637,7 +3637,7 @@ function HistorialVerificacionModal({ imp, onClose }) {
               ) : (productSearch.trim() ? matchesFirst(visibles, (row) => importItemMatches(row, productSearch)) : visibles).map((row, i) => {
                 const estado = VERIFICACION_ESTADOS[row.estado] || VERIFICACION_ESTADOS.pedido
                 return (
-                  <div key={i} className={`create-user__locations-row imp-historial__row${estado.className}`} style={{ gridTemplateColumns: gridTemplate }}>
+                  <div key={i} className={`create-user__locations-row imp-historial__row${estado.className}${productSearch.trim() && importItemMatches(row, productSearch) ? ' imp-search-hit' : ''}`} style={{ gridTemplateColumns: gridTemplate }}>
                     <span><span className="imp-table-cell-text imp-table-cell-text--full">{row.codigo || '-'}</span></span>
                     <span><span className="imp-table-cell-text">{row.nombre || '-'}</span></span>
                     <span><span className="imp-table-cell-text">{row.referencia || '-'}</span></span>
@@ -3744,7 +3744,7 @@ function HistorialConfirmacionModal({ imp, onClose }) {
               ) : (productSearch.trim() ? matchesFirst(historial, (row) => importItemMatches(row, productSearch)) : historial).map((row, i) => {
                 const envios = distribucion.porCodigo.get(row.codigo) || []
                 return (
-                <div key={i} className="create-user__locations-row imp-historial__row" style={{ gridTemplateColumns: historialGridTemplate }}>
+                <div key={i} className={`create-user__locations-row imp-historial__row${productSearch.trim() && importItemMatches(row, productSearch) ? ' imp-search-hit' : ''}`} style={{ gridTemplateColumns: historialGridTemplate }}>
                   <span
                     className="imp-table-cell-tip"
                     onMouseEnter={(e) => showCellHover(e, row.nombre, 'Descripción')}
@@ -5333,7 +5333,7 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                               <td colSpan={8} style={{ padding: '12px', textAlign: 'center', color: 'var(--color-text-secondary)' }}>Sin productos agregados.</td>
                             </tr>
                           )}
-                          {reviewRows.slice(0, reviewRenderCount).map(({ row, i }, pos) => {
+                          {reviewRows.slice(0, reviewRenderCount).map(({ row, i, hit }, pos) => {
                             const conflict = hasReferenciaConflict(row)
                             const decision = referenciaDecisions[row.fila_excel]
                             const isSuggested = Boolean(row.codigo_sugerido)
@@ -5350,6 +5350,7 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                               <tr
                                 key={row.fila_excel}
                                 data-review-pos={pos}
+                                className={reviewHasQuery && hit ? 'imp-search-hit' : undefined}
                                 style={{
                                   borderBottom: '1px solid var(--color-border, #e2e8f0)',
                                   background: isCasaConflict
@@ -9237,7 +9238,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const pvpValue = pvpJpDe(item) ?? precioEstimadoValue
                         const precio = pvpValue != null ? `$${Number(pvpValue).toFixed(2)}` : '-'
                         return (
-                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? (sinCatalogo ? ' imp-verificar__row--agregado-nuevo' : ' imp-verificar__row--agregado') : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
+                          <div key={item._key} data-detail-key={item._key} className={`create-user__locations-row${isVerificar && item.quitado ? ' imp-verificar__row--quitado' : esAgregadoVerificacion(item) ? (sinCatalogo ? ' imp-verificar__row--agregado-nuevo' : ' imp-verificar__row--agregado') : sinCatalogo ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${highlightedDetailKey === String(item._key) ? ' imp-row--highlight' : ''}${productSearch.trim() && importItemMatches(item, productSearch) ? ' imp-search-hit' : ''}`} title={isVerificar && item.quitado ? 'Quitado de la verificación: no pasa a confirmación' : undefined}>
                             <span
                               className="imp-table-cell-tip"
                               onMouseEnter={(e) => codigo && showCellHover(e, sinCatalogo ? `${codigo} (nuevo: se crea al importar)` : codigo, 'Código')}
