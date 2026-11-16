@@ -3749,6 +3749,10 @@ function CreateSalida({
       setShowCloseConfirm(true)
       return
     }
+    // Cerrar con la X/"Cancelar" es un cancelar de verdad: no debe dejar un
+    // borrador que la proxima vez que se le de "Crear" salte directo al tipo
+    // ya elegido en vez de mostrar el selector.
+    void borrador.clear()
     unsavedGuard.requestClose()
   }
 
@@ -5175,6 +5179,7 @@ function CreateSalida({
           onCancel={() => setShowCloseConfirm(false)}
           onDiscard={() => {
             setShowCloseConfirm(false)
+            void borrador.clear()
             onClose?.()
           }}
           onSave={() => {
