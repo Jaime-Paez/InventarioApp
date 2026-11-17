@@ -6788,6 +6788,8 @@ const NOTA_QUITADO_EXCEL = 'Eliminado en el Excel'
 // Texto anterior de esa nota (comentarios ya guardados asi).
 const NOTA_QUITADO_EXCEL_ANTERIOR = 'No venía en el Excel'
 const NOTA_AGREGADO_VERIFICACION = 'Agregado en la verificación'
+// Fila repetida que se sumo a otra del mismo codigo al pedir la confirmacion.
+const NOTA_AGRUPADO_VERIFICACION = 'Agrupado con otra fila del mismo código'
 const withNotaVerificacion = (comentario, nota) => {
   const actual = String(comentario || '').trim()
   if (actual.startsWith(nota)) return actual
@@ -6799,7 +6801,7 @@ const withoutNotaVerificacion = (comentario, nota) => {
   return actual.slice(nota.length).replace(/^\s*-\s*/, '').trim()
 }
 // Al restaurar se quita cualquier nota de quitado (la vieja y la del Excel).
-const sinNotasQuitado = (comentario) => [NOTA_QUITADO_EXCEL, NOTA_QUITADO_EXCEL_ANTERIOR, NOTA_QUITADO_VERIFICACION]
+const sinNotasQuitado = (comentario) => [NOTA_QUITADO_EXCEL, NOTA_QUITADO_EXCEL_ANTERIOR, NOTA_QUITADO_VERIFICACION, NOTA_AGRUPADO_VERIFICACION]
   .reduce((texto, nota) => withoutNotaVerificacion(texto, nota), comentario)
 
 function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions }) {
@@ -6844,6 +6846,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // Verificacion: productos a los que les falta PVP Aprox. o Cant. aprox. al
   // pedir la confirmacion (se marcan en rojo hasta completarlos).
   const [faltanConfirmar, setFaltanConfirmar] = useState(new Set())
+  // Repetidos que bloquean pedir la confirmacion: se ofrece agruparlos.
+  const [agruparRepetidos, setAgruparRepetidos] = useState(null)
   const [codigosInvalidos, setCodigosInvalidos] = useState([])
   const [showAceptadosView, setShowAceptadosView] = useState(false)
   const [aceptadosCount, setAceptadosCount] = useState(null)
@@ -8388,6 +8392,47 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     return true
   }
 
+  // Agrupa cada codigo repetido en su primera fila: se suman la cantidad y la
+  // Cant. aprox.; el PVP Aprox. y la referencia quedan los de la primera fila
+  // (o el primer PVP que haya). Las demas filas quedan quitadas con una nota
+  // (se pueden restaurar); las agregadas en esta etapa se borran.
+  const handleAgruparRepetidos = (grupos) => {
+    const sumar = (a, b) => {
+      const total = Number(a || 0) + Number(b || 0)
+      return total > 0 ? String(total) : (a || b || '')
+    }
+    setDetails((prev) => {
+      let next = prev
+      for (const grupo of grupos) {
+        const filas = next.filter((item) => !item.quitado && grupo.keys.includes(item._key))
+        if (filas.length < 2) continue
+        const [primera, ...resto] = filas
+        const precioDe = (item) => parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
+        const unida = {
+          ...primera,
+          cantidad: resto.reduce((acc, item) => sumar(acc, item.cantidad), primera.cantidad),
+          cantidad_aproximada: resto.reduce((acc, item) => sumar(acc, item.cantidad_aproximada), primera.cantidad_aproximada),
+          precio_estimado: precioDe(primera) > 0 ? primera.precio_estimado : (resto.find((item) => precioDe(item) > 0)?.precio_estimado || primera.precio_estimado),
+        }
+        const restoKeys = new Set(resto.map((item) => item._key))
+        next = next.flatMap((item) => {
+          if (item._key === primera._key) return [unida]
+          if (!restoKeys.has(item._key)) return [item]
+          if (esAgregadoVerificacion(item)) return []
+          return [{ ...item, quitado: true, comentario: withNotaVerificacion(item.comentario, NOTA_AGRUPADO_VERIFICACION) }]
+        })
+      }
+      return next
+    })
+    setAgruparRepetidos(null)
+    toastRef.current?.show({
+      severity: 'success',
+      summary: 'Repetidos agrupados',
+      detail: `${grupos.length} código${grupos.length !== 1 ? 's' : ''} quedó en una sola fila. Revisa y vuelve a pedir la confirmación.`,
+      life: 5000,
+    })
+  }
+
   const handleConfirmar = async () => {
     // Los productos quitados en la verificacion ya no pasan a confirmacion.
     const vigentes = details.filter((item) => !item.quitado)
@@ -8402,10 +8447,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       toastRef.current?.show({
         severity: 'error',
         summary: 'Códigos repetidos',
-        detail: `${codigosRepetidosBloqueados.map((grupo) => grupo.codigo).join(', ')} ${codigosRepetidosBloqueados.length === 1 ? 'está' : 'están'} repetido con la misma referencia: deja solo una fila (quita las demás) para pedir la confirmación.`,
+        detail: `${codigosRepetidosBloqueados.map((grupo) => grupo.codigo).join(', ')} ${codigosRepetidosBloqueados.length === 1 ? 'está' : 'están'} repetido: agrúpalos en una sola fila o quita las demás para pedir la confirmación.`,
         life: 6000,
       })
       jumpToDetailRows(codigosRepetidosBloqueados[0].keys)
+      setAgruparRepetidos(codigosRepetidosBloqueados.map((grupo) => ({
+        ...grupo,
+        filas: details.filter((item) => !item.quitado && grupo.keys.includes(item._key)),
+      })))
       return
     }
     // Guardar se puede sin completar; para pasar a confirmacion cada producto
@@ -9756,6 +9805,42 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           onDiscard={() => { setShowSaveOnCloseModal(false); onClose?.() }}
           onSave={handleSaveAndClose}
         />
+
+        {agruparRepetidos && createPortal(
+          <div className="user-details__confirm-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setAgruparRepetidos(null) }}>
+            <div className="user-details__confirm-dialog">
+              <div className="user-details__confirm-icon">
+                <Info size={18} />
+              </div>
+              <div className="user-details__confirm-content">
+                <h4>Tienes productos repetidos</h4>
+                <p>No se puede pedir la confirmación con estos productos repetidos. ¿Quieres agruparlos como uno solo?</p>
+                <ul style={{ margin: '8px 0', paddingLeft: 18, maxHeight: 220, overflowY: 'auto' }}>
+                  {agruparRepetidos.map((grupo) => (
+                    <li key={grupo.keys.join('|')} style={{ marginBottom: 4 }}>
+                      <strong>{grupo.codigo}</strong>{grupo.nombre ? ` · ${grupo.nombre}` : ''} — {grupo.filas.length} filas
+                      {' '}(cant. {grupo.filas.map((item) => Number(item.cantidad_aproximada || item.cantidad || 0)).join(' + ')})
+                    </li>
+                  ))}
+                </ul>
+                <p>Se suman las cantidades en la primera fila de cada código (con su referencia y su PVP Aprox.); las demás quedan quitadas y se pueden restaurar.</p>
+              </div>
+              <div className="user-details__confirm-actions">
+                <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setAgruparRepetidos(null)}>
+                  No, lo reviso yo
+                </button>
+                <button
+                  type="button"
+                  className="create-user__action create-user__action--primary"
+                  onClick={() => handleAgruparRepetidos(agruparRepetidos)}
+                >
+                  Agrupar
+                </button>
+              </div>
+            </div>
+          </div>,
+          getPortalRoot()
+        )}
 
         {showNuevoProductoView && (
           <SugerenciaNuevoProductoPopup
