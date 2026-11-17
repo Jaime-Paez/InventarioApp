@@ -9381,13 +9381,29 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                             >
                               <span className="imp-table-cell-text">{referencia}</span>
                             </span>
-                            <span
-                              className="imp-table-cell-tip"
-                              onMouseEnter={(e) => showCellHover(e, precio !== '-' ? precio : null, 'PVP JP')}
-                              onMouseLeave={hideCellHover}
-                            >
-                              <span className="imp-table-cell-text">{precio}</span>
-                            </span>
+                            {(() => {
+                              // Doble clic en el PVP JP: pasa ese precio al Precio conf.
+                              // (o al PVP Aprox. en la verificacion) de esta fila.
+                              const pvpJp = pvpJpDe(item)
+                              const puedeUsarPvpJp = isVerificarOrConfirmacion && !isImportRealizada && !item.quitado && canEdit && pvpJp != null
+                              return (
+                                <span
+                                  className="imp-table-cell-tip"
+                                  onMouseEnter={(e) => showCellHover(
+                                    e,
+                                    precio !== '-' ? (puedeUsarPvpJp ? `${precio} · Doble clic: usarlo como ${isVerificar ? 'PVP Aprox.' : 'precio confirmado'}` : precio) : null,
+                                    'PVP JP'
+                                  )}
+                                  onMouseLeave={hideCellHover}
+                                  onDoubleClick={puedeUsarPvpJp
+                                    ? () => handleConfirmedChange(item._key, isVerificar ? 'precio_estimado' : 'precio_confirmado', Math.round(Number(pvpJp) * 100))
+                                    : undefined}
+                                  style={puedeUsarPvpJp ? { cursor: 'pointer', userSelect: 'none' } : undefined}
+                                >
+                                  <span className="imp-table-cell-text">{precio}</span>
+                                </span>
+                              )
+                            })()}
                             {!isVerificarOrConfirmacion && (
                               <span>
                                 <input
