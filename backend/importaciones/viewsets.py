@@ -1113,8 +1113,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # si: se suman al importar).
         repetidos = ImportacionSerializer.productos_repetidos(vigentes.select_related("producto"))
         invalidos = ImportacionSerializer.validar_codigos_nuevos(
-            vigentes.filter(producto__isnull=True).values_list("codigo", "nombre"),
-            vigentes.filter(producto__isnull=False).values_list("producto__codigo", flat=True),
+            vigentes.filter(producto__isnull=True).values_list("codigo", "nombre", "referencia"),
+            [
+                (detalle.producto.codigo, detalle.referencia or detalle.producto.referencia or "")
+                for detalle in vigentes.filter(producto__isnull=False).select_related("producto")
+            ],
         )
         if repetidos or invalidos:
             # Todo lo que hay que corregir, de una vez.
@@ -1329,12 +1332,12 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 detalle.codigo = str(confirmed["codigo"]).strip()
         invalidos = ImportacionSerializer.validar_codigos_nuevos(
             [
-                (detalle.codigo, detalle.nombre)
+                (detalle.codigo, detalle.nombre, detalle.referencia or "")
                 for detalle in detalles
                 if not detalle.producto_id and f"sc_{detalle.id}" in selected_keys
             ],
             [
-                detalle.producto.codigo
+                (detalle.producto.codigo, detalle.referencia or detalle.producto.referencia or "")
                 for detalle in detalles
                 if detalle.producto_id and str(detalle.producto_id) in selected_keys
             ],
@@ -1402,17 +1405,27 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if detalles_to_delete:
             ImportacionDetalle.objects.filter(id__in=detalles_to_delete).delete()
 
+        # Fin del proceso: recien ahora los productos nuevos que si se importan
+        # entran al catalogo (los negados ya se borraron arriba). Un codigo
+        # nuevo en varias filas (otra referencia cada una) queda en un solo
+        # producto con todas sus referencias.
+        self.get_serializer(instance).crear_productos_pendientes(instance)
+
         # Mismo producto en varias filas (cada una con otra referencia de la
-        # fabrica): desde aqui es un solo producto, con las cantidades sumadas
-        # y las referencias juntas en el comentario.
+        # fabrica): desde aqui es un solo producto, con las cantidades sumadas,
+        # todas las referencias en el producto y juntas en el comentario. Va
+        # despues de crear los nuevos para que tambien se sumen sus filas.
         por_producto = {}
-        for detalle in detalles:
-            if detalle.id in detalles_to_delete or not detalle.producto_id:
+        for detalle in instance.detalles.select_related("producto").all():
+            if not detalle.producto_id:
                 continue
             por_producto.setdefault(detalle.producto_id, []).append(detalle)
         for filas in por_producto.values():
             if len(filas) < 2:
                 continue
+            for fila in filas:
+                for token in str(fila.referencia or "").split(","):
+                    add_producto_referencia(fila.producto, token)
             principal, otras = filas[0], filas[1:]
             principal.cantidad = sum(int(fila.cantidad or 0) for fila in filas)
             if any(fila.cantidad_confirmada is not None for fila in filas):
@@ -1425,10 +1438,6 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             principal.comentario = " | ".join(dict.fromkeys(comentarios + ([nota] if nota else [])))
             principal.save(update_fields=["cantidad", "cantidad_confirmada", "cantidad_aproximada", "comentario"])
             ImportacionDetalle.objects.filter(id__in=[fila.id for fila in otras]).delete()
-
-        # Fin del proceso: recien ahora los productos nuevos que si se importan
-        # entran al catalogo (los negados ya se borraron arriba).
-        self.get_serializer(instance).crear_productos_pendientes(instance)
 
         # El precio se actualiza al marcar llegada (ver marcar_llegada), que es
         # cuando se reparten las cantidades a las sucursales -- no aqui.

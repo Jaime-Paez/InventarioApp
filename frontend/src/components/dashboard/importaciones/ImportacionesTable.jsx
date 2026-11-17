@@ -8392,19 +8392,40 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     return true
   }
 
-  // Agrupa cada codigo repetido en su primera fila: se suman la cantidad y la
-  // Cant. aprox.; el PVP Aprox. y la referencia quedan los de la primera fila
-  // (o el primer PVP que haya). Las demas filas quedan quitadas con una nota
-  // (se pueden restaurar); las agregadas en esta etapa se borran.
+  // Agrupa cada codigo repetido: solo se juntan las filas con la MISMA
+  // referencia (en la primera de ellas se suman la cantidad y la Cant. aprox.;
+  // el PVP Aprox. queda el de esa fila o el primero que haya, y los OEM se
+  // juntan). Las filas con otra referencia no se tocan: siguen separadas hasta
+  // el final y al importar se suman en ese unico producto, con todas sus
+  // referencias. Las juntadas quedan quitadas con una nota (se pueden
+  // restaurar); las agregadas en esta etapa se borran.
   const handleAgruparRepetidos = (grupos) => {
     const sumar = (a, b) => {
       const total = Number(a || 0) + Number(b || 0)
       return total > 0 ? String(total) : (a || b || '')
     }
+    const juntarCodigos = (filas, field) => {
+      const vistos = new Map()
+      filas.forEach((item) => String(item?.[field] || '').split(',').forEach((token) => {
+        const valor = token.trim()
+        if (valor && !vistos.has(valor.toUpperCase())) vistos.set(valor.toUpperCase(), valor)
+      }))
+      return [...vistos.values()].join(', ')
+    }
     setDetails((prev) => {
       let next = prev
+      const porReferencia = []
       for (const grupo of grupos) {
-        const filas = next.filter((item) => !item.quitado && grupo.keys.includes(item._key))
+        const subgrupos = new Map()
+        next.filter((item) => !item.quitado && grupo.keys.includes(item._key)).forEach((item) => {
+          const ref = String(getDetalleReferencia(item) || '').trim().toUpperCase()
+          if (!subgrupos.has(ref)) subgrupos.set(ref, [])
+          subgrupos.get(ref).push(item._key)
+        })
+        subgrupos.forEach((keys) => porReferencia.push(keys))
+      }
+      for (const keys of porReferencia) {
+        const filas = next.filter((item) => !item.quitado && keys.includes(item._key))
         if (filas.length < 2) continue
         const [primera, ...resto] = filas
         const precioDe = (item) => parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
@@ -8413,6 +8434,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           cantidad: resto.reduce((acc, item) => sumar(acc, item.cantidad), primera.cantidad),
           cantidad_aproximada: resto.reduce((acc, item) => sumar(acc, item.cantidad_aproximada), primera.cantidad_aproximada),
           precio_estimado: precioDe(primera) > 0 ? primera.precio_estimado : (resto.find((item) => precioDe(item) > 0)?.precio_estimado || primera.precio_estimado),
+          oem: juntarCodigos(filas, 'oem') || primera.oem,
         }
         const restoKeys = new Set(resto.map((item) => item._key))
         next = next.flatMap((item) => {
@@ -8428,7 +8450,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     toastRef.current?.show({
       severity: 'success',
       summary: 'Repetidos agrupados',
-      detail: `${grupos.length} código${grupos.length !== 1 ? 's' : ''} quedó en una sola fila. Revisa y vuelve a pedir la confirmación.`,
+      detail: `${grupos.length} código${grupos.length !== 1 ? 's' : ''} agrupado${grupos.length !== 1 ? 's' : ''}: las filas con otra referencia siguen aparte y se suman al importar. Revisa y vuelve a pedir la confirmación.`,
       life: 5000,
     })
   }
@@ -8773,12 +8795,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     })
     return [...grupos.values()].filter((grupo) => grupo.filas > 1)
   })()
-  // Los que no pasan a confirmacion: mismo producto con la misma referencia, o
-  // un codigo nuevo repetido. Con referencias distintas siguen juntos y se
-  // suman al importar.
+  // Los que no pasan a confirmacion: el mismo codigo (del catalogo o nuevo)
+  // con la misma referencia. Con referencias distintas siguen separados hasta
+  // el final y se suman en un solo producto al importar.
   const codigosRepetidosBloqueados = codigosRepetidosVerificacion.filter((grupo) => {
     const filas = details.filter((item) => !item.quitado && grupo.keys.includes(item._key))
-    if (filas.some((item) => !item.producto?.id)) return true
     const refs = filas.map((item) => String(getDetalleReferencia(item) || '').trim().toUpperCase())
     return new Set(refs).size < refs.length
   })
@@ -9823,7 +9844,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                     </li>
                   ))}
                 </ul>
-                <p>Se suman las cantidades en la primera fila de cada código (con su referencia y su PVP Aprox.); las demás quedan quitadas y se pueden restaurar.</p>
+                <p>Se juntan las filas con la misma referencia (se suman sus cantidades en una; las otras quedan quitadas y se pueden restaurar). Las filas con otra referencia siguen separadas y al importar se suman en ese único producto, con todas sus referencias.</p>
               </div>
               <div className="user-details__confirm-actions">
                 <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setAgruparRepetidos(null)}>

@@ -311,8 +311,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
         # Un producto puede tener varias referencias -- si esta ya la tiene
         # no se duplica, y si no la tiene se agrega sin borrar las demás (ver
         # add_producto_referencia).
-        if referencia:
-            add_producto_referencia(producto, referencia)
+        for token in referencia.split(","):
+            add_producto_referencia(producto, token)
 
         if casa_comercial and not producto.casas_comerciales.filter(pk=casa_comercial.pk).exists():
             producto.casas_comerciales.add(casa_comercial)
@@ -336,26 +336,52 @@ class ImportacionSerializer(serializers.ModelSerializer):
         de los productos del catálogo que ya están en ella. Un código que ya
         existe en el catálogo es ese mismo producto y se vincula (no es error)
         salvo que ese producto ya esté en la importación."""
+        # Con referencias (tuplas de 3 / pares (codigo, referencia)): el mismo
+        # codigo con OTRA referencia no es repetido -- siguen separados y se
+        # suman en un solo producto al importar. Sin referencia (None) se
+        # trata como repetido, como antes.
+        def _ref(valor):
+            return None if valor is None else str(valor or "").strip().upper()
+
         max_codigo = Producto._meta.get_field("codigo").max_length
         max_nombre = Producto._meta.get_field("nombre").max_length
-        en_importacion = {str(c or "").strip().upper() for c in codigos_en_importacion}
-        nuevos = [(str(c or "").strip(), str(n or "").strip()) for c, n in nuevos]
-        nuevos = [(c, n) for c, n in nuevos if c]
-        conteo = {}
-        for codigo, _ in nuevos:
-            conteo[codigo.upper()] = conteo.get(codigo.upper(), 0) + 1
+        en_importacion = {}
+        for entry in codigos_en_importacion:
+            codigo, referencia = entry if isinstance(entry, (tuple, list)) else (entry, None)
+            en_importacion.setdefault(str(codigo or "").strip().upper(), []).append(_ref(referencia))
+        normalizados = []
+        for entry in nuevos:
+            codigo, nombre = entry[0], entry[1]
+            referencia = entry[2] if len(entry) > 2 else None
+            codigo = str(codigo or "").strip()
+            if codigo:
+                normalizados.append((codigo, str(nombre or "").strip(), _ref(referencia)))
+        nuevos = normalizados
+        refs_por_codigo = {}
+        for codigo, _, referencia in nuevos:
+            refs_por_codigo.setdefault(codigo.upper(), []).append(referencia)
+
+        def _chocan(refs):
+            if any(ref is None for ref in refs):
+                return len(refs) > 1
+            return len(set(refs)) < len(refs)
+
         invalidos = []
         vistos = set()
-        for codigo, nombre in nuevos:
+        for codigo, nombre, _ in nuevos:
             clave = codigo.upper()
             if clave in vistos:
                 continue
             vistos.add(clave)
             motivos = []
-            if clave in en_importacion:
-                motivos.append("ese producto ya está en esta importación")
-            if conteo[clave] > 1:
-                motivos.append(f"está repetido {conteo[clave]} veces en esta importación")
+            refs = refs_por_codigo[clave]
+            existentes = en_importacion.get(clave)
+            if existentes and (
+                None in refs or None in existentes or set(refs) & set(existentes)
+            ):
+                motivos.append("ese producto ya está en esta importación con la misma referencia")
+            if _chocan(refs):
+                motivos.append(f"está repetido {len(refs)} veces en esta importación con la misma referencia")
             if len(codigo) > max_codigo:
                 motivos.append(f"tiene más de {max_codigo} caracteres")
             if len(nombre or codigo) > max_nombre:
