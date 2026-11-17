@@ -272,6 +272,11 @@ class TecnicoViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+# Pasar una cotizacion a orden de trabajo esta deshabilitado por ahora (solo
+# se crean cotizaciones). True lo vuelve a habilitar.
+TALLER_ORDENES_HABILITADAS = False
+
+
 class OrdenTallerViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, TallerModulePermission]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
@@ -533,6 +538,10 @@ class OrdenTallerViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="aceptar")
     def aceptar(self, request, pk=None):
+        # Bloqueado por ahora: solo se crean cotizaciones, no pasan a orden de
+        # trabajo. Para volver a habilitarlo, quitar estas dos lineas.
+        if not TALLER_ORDENES_HABILITADAS:
+            raise ValidationError({"detail": "Error"})
         with transaction.atomic():
             orden = self._orden_bloqueada(pk)
             if orden.estado != Estados.COTIZACION:
