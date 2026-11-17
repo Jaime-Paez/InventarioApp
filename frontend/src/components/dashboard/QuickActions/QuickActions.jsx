@@ -103,6 +103,9 @@ const toPositiveInt = (value, fallback = 0) => {
   return Math.max(0, parsed)
 }
 const normalizeQuantityInputString = (value) => String(value ?? '').replace(/\D+/g, '').slice(0, 4)
+// La division "SIN UBICACION" (de la migracion) no es un lugar fisico.
+const isSinUbicacionLocation = (location) =>
+  /^sin ubicaci[oó]n$/i.test(String(location?.division_nombre || '').trim())
 const normalizeIntegerInputString = (value) => {
   const text = normalizeQuantityInputString(value)
   if (!text) return ''
@@ -2861,15 +2864,29 @@ function QuickActions({
           }
           : { row, rowIndex, location: null })
       } else if (row?.requiere_conteo_por_ubicacion) {
-        const inside = locations.filter((location, index) => !isOutside(location, index))
-        const outside = locations.filter((location, index) => isOutside(location, index))
+        // "SIN UBICACION" no es un lugar al que se pueda ir: si el producto
+        // tiene una ubicacion real, lo que el sistema tiene sin ubicacion se
+        // cuenta ahi mismo, debajo del producto en su fila real. Antes salia
+        // como una fila aparte al final y el revisor no sabia donde buscar
+        // un producto que ya estaba en su percha.
+        const realLocations = locations.filter((location) => !isSinUbicacionLocation(location))
+        const sinUbicacion = realLocations.length ? locations.filter(isSinUbicacionLocation) : []
+        const countable = realLocations.length ? realLocations : locations
+        const inside = countable.filter((location, index) => !isOutside(location, index))
+        const outside = countable.filter((location, index) => isOutside(location, index))
+        const withSinUbicacion = (location, index) => ({
+          row,
+          rowIndex,
+          location,
+          outsideLocations: index === 0 ? sinUbicacion : [],
+        })
         if (!inside.length) {
-          locations.forEach((location) => addEntry(location, { row, rowIndex, location }))
+          countable.forEach((location, index) => addEntry(location, withSinUbicacion(location, index)))
           return
         }
         // Las otras ubicaciones no se cuentan en ese momento: van al final,
         // cada una como su propia fila (arriba sale la ubicacion y se cuenta ahi).
-        inside.forEach((location) => addEntry(location, { row, rowIndex, location }))
+        inside.forEach((location, index) => addEntry(location, withSinUbicacion(location, index)))
         outside.forEach((location) => addEntry(location, { row, rowIndex, location, otraUbicacion: true }))
       } else {
         addEntry(locations[0] || null, { row, rowIndex, location: null })
@@ -7310,7 +7327,9 @@ function QuickActions({
                                 )}
                               </span>
                             </div>
-                            {outsideLocations.map((location) => (
+                            {outsideLocations.map((location) => {
+                              const sinUbicacionHere = isSinUbicacionLocation(location)
+                              return (
                               <div
                                 key={`inspection-rowtable-${rowId}-fuera-${location.key}`}
                                 className="create-user__locations-row quick-actions__inspection-row--outside"
@@ -7318,14 +7337,25 @@ function QuickActions({
                                 {/* Otra ubicacion del mismo producto (en amarillo): se cuenta aqui mismo. */}
                                 <span className="quick-actions__inspection-row-code">
                                   <strong>{row?.producto_codigo || `Producto ${rowId}`}</strong>
-                                  <small className="quick-actions__inspection-row-other">(otra ubicación)</small>
+                                  <small className="quick-actions__inspection-row-other">
+                                    {sinUbicacionHere ? '(sin ubicación)' : '(otra ubicación)'}
+                                  </small>
                                 </span>
                                 <span className="quick-actions__inspection-row-name">
                                   {String(row?.producto_nombre || '').trim()}
+                                  {sinUbicacionHere && (
+                                    <small className="quick-actions__inspection-row-other">
+                                      {`El sistema tiene unidades sin percha asignada. Si encuentras más aparte de las de ${String(entry.location?.label || activeRandomInspectionGroup.label || 'arriba').trim()}, escríbelas aquí; si no hay más, pon 0.`}
+                                    </small>
+                                  )}
                                 </span>
                                 <span className="quick-actions__inspection-row-location">
                                   <i className="pi pi-map-marker" aria-hidden="true" />
-                                  <strong>{String(location?.label || location?.subdivision_nombre || '').trim() || '-'}</strong>
+                                  <strong>
+                                    {sinUbicacionHere
+                                      ? 'Sin ubicación'
+                                      : String(location?.label || location?.subdivision_nombre || '').trim() || '-'}
+                                  </strong>
                                 </span>
                                 <span>
                                   <input
@@ -7360,7 +7390,8 @@ function QuickActions({
                                   </button>
                                 </span>
                               </div>
-                            ))}
+                              )
+                            })}
                             </React.Fragment>
                           )
                         })}
