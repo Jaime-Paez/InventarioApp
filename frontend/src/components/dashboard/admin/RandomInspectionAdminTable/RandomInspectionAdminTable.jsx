@@ -359,7 +359,7 @@ function RandomInspectionAdminTable({
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
   const [assignmentSearch, setAssignmentSearch] = useState('')
   const [localAssignmentMap, setLocalAssignmentMap] = useState({})
-  const [configData, setConfigData] = useState({ hora_recordatorio: '', cantidad_productos: '', inspeccion_automatica: false })
+  const [configData, setConfigData] = useState({ hora_recordatorio: '', cantidad_productos: '', inspeccion_automatica: false, umbral_aviso_diferencia: '5' })
   const [configLoading, setConfigLoading] = useState(false)
   const [showSendNowDialog, setShowSendNowDialog] = useState(false)
   const [sendNowLoading, setSendNowLoading] = useState(false)
@@ -443,6 +443,7 @@ function RandomInspectionAdminTable({
         hora_recordatorio: payload?.hora_recordatorio ?? '',
         cantidad_productos: payload?.cantidad_productos != null ? String(payload.cantidad_productos) : '',
         inspeccion_automatica: Boolean(payload?.inspeccion_automatica),
+        umbral_aviso_diferencia: payload?.umbral_aviso_diferencia != null ? String(payload.umbral_aviso_diferencia) : '5',
       })
     } catch (error) {
       notifyError(error?.message || 'No se pudo cargar la configuracion.')
@@ -1324,6 +1325,9 @@ function RandomInspectionAdminTable({
     const cantidad = Number.parseInt(String(data?.cantidad_productos ?? ''), 10)
     // A medio escribir no se guarda: se guarda cuando quede valido.
     if (!hora || !Number.isFinite(cantidad) || cantidad < 1 || cantidad > 200) return false
+    const umbralRaw = String(data?.umbral_aviso_diferencia ?? '').trim()
+    const umbral = Number.parseInt(umbralRaw, 10)
+    if (umbralRaw && (!Number.isFinite(umbral) || umbral < 0)) return false
     setConfigSaveState('saving')
     try {
       const response = await authFetch(
@@ -3711,6 +3715,26 @@ function RandomInspectionAdminTable({
                     disabled={locked}
                   />
                 </div>
+              </div>
+
+              <div className="inspection-admin__send-qty-col inspection-admin__config-threshold">
+                <label htmlFor="inspection-config-threshold" className="inspection-admin__send-label">
+                  Avisar &quot;busca bien&quot; si la diferencia es de (unidades)
+                </label>
+                <input
+                  id="inspection-config-threshold"
+                  className="inspection-admin__send-qty"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={configData.umbral_aviso_diferencia}
+                  onChange={(e) => editConfig({ umbral_aviso_diferencia: e.target.value })}
+                  disabled={locked}
+                />
+                <small className="create-user__hint">
+                  Al enviar un conteo, si un producto se aleja esta cantidad o más de lo que dice el sistema, se le pide a quien cuenta que busque bien (sin mostrarle números). 0 = sin aviso.
+                </small>
               </div>
 
               <div className="inspection-admin__config-reviewers">

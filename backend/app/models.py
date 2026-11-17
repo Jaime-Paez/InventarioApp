@@ -84,6 +84,10 @@ class InspeccionAleatoriaConfiguracion(models.Model):
     # Inspeccion automatica diaria (una al dia a cada revisor sin que nadie la
     # envie). Apagada: solo existen las que el admin envia.
     inspeccion_automatica = models.BooleanField(default=False)
+    # Al enviar un conteo, si un producto se aleja esta cantidad de unidades
+    # (o mas) del sistema, se le pide a quien cuenta que busque bien antes de
+    # enviar. 0 = sin aviso.
+    umbral_aviso_diferencia = models.PositiveIntegerField(default=5, db_default=5)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -2525,3 +2525,15 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
 .inspection-admin__temporal-check strong { font-size: var(--font-size-sm, 13px); color: #92400e; }
 .inspection-admin__temporal-check small { font-size: var(--font-size-xs, 12px); line-height: 1.4; }
 .quick-actions__inspection-overlay.dark .inspection-admin__temporal-check strong { color: #fcd34d; }
+
+/* Aviso "busca bien" por diferencia grande (configuracion). */
+.inspection-admin__config-threshold {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.inspection-admin__config-threshold .inspection-admin__send-qty {
+  max-width: 140px;
+}

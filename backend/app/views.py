@@ -4664,12 +4664,21 @@ class RandomInspectionRespondAPIView(APIView):
             # 2a pasada: se compara contra el stock del sistema AHORA (al contar).
             now = timezone.now()
             mismatch_count = 0
+            # Diferencia grande: antes de enviar se le pide que busque bien
+            # (sin decirle cuanto ni hacia donde). Si confirma, queda anotado.
+            umbral_aviso = int(InspeccionAleatoriaConfiguracion.get_global().umbral_aviso_diferencia or 0)
+            confirmar_diferencias = str(request.data.get("confirmar_diferencias") or "").strip().lower() in {
+                "1", "true", "si", "yes",
+            }
+            aviso_diferencia = []
             for item in inspection_items:
                 parsed = parsed_rows[int(item.id)]
                 row = parsed["row"]
                 key = (int(item.sucursal_id), int(item.producto_id))
                 system_qty = int(live_expected.get(key, 0))
                 reported = parsed["reported"]
+                if umbral_aviso and abs(int(reported or 0) - system_qty) >= umbral_aviso:
+                    aviso_diferencia.append(item)
 
                 location_counts = []
                 for entry in parsed["location_counts"]:
@@ -4745,6 +4754,28 @@ class RandomInspectionRespondAPIView(APIView):
                 item.revisado_en = now
                 item.verificacion_estado = verificacion_estado
                 item.updated_at = now
+
+            if aviso_diferencia and not confirmar_diferencias:
+                transaction.set_rollback(True)
+                return Response(
+                    {
+                        "detail": "Revisa bien estos productos antes de enviar.",
+                        "revisar_conteo": [
+                            {
+                                "item_id": int(item.id),
+                                "producto_codigo": _normalize_text(getattr(item.producto, "codigo", "")),
+                                "producto_nombre": _normalize_text(getattr(item.producto, "nombre", "")),
+                            }
+                            for item in aviso_diferencia
+                        ],
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            for item in aviso_diferencia:
+                aviso_note = (
+                    "[Sistema] Se le pidio buscar bien por la diferencia grande y confirmo su conteo."
+                )
+                item.observacion = f"{item.observacion}\n{aviso_note}".strip() if item.observacion else aviso_note
 
             InspeccionAleatoriaItem.objects.bulk_update(
                 inspection_items,
@@ -7156,6 +7187,7 @@ class RandomInspectionConfigAPIView(APIView):
                 "hora_recordatorio": hora.strftime("%H:%M") if hora else "",
                 "cantidad_productos": int(sys_config.random_inspection_items_per_day),
                 "inspeccion_automatica": bool(config.inspeccion_automatica),
+                "umbral_aviso_diferencia": int(config.umbral_aviso_diferencia or 0),
             },
             status=status.HTTP_200_OK,
         )
@@ -7190,6 +7222,15 @@ class RandomInspectionConfigAPIView(APIView):
             if "inspeccion_automatica" in request.data:
                 config.inspeccion_automatica = bool(request.data.get("inspeccion_automatica"))
                 update_fields.append("inspeccion_automatica")
+            if request.data.get("umbral_aviso_diferencia") not in (None, ""):
+                umbral = _normalize_int(request.data.get("umbral_aviso_diferencia"), -1)
+                if umbral < 0 or umbral > 100000:
+                    return Response(
+                        {"detail": "El aviso de diferencia debe ser 0 (sin aviso) o un numero de unidades."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                config.umbral_aviso_diferencia = umbral
+                update_fields.append("umbral_aviso_diferencia")
             config.save(update_fields=update_fields)
 
             cantidad_raw = request.data.get("cantidad_productos")
@@ -7212,6 +7253,7 @@ class RandomInspectionConfigAPIView(APIView):
                 "hora_recordatorio": hora.strftime("%H:%M") if hora else "",
                 "cantidad_productos": int(sys_config.random_inspection_items_per_day),
                 "inspeccion_automatica": bool(config.inspeccion_automatica),
+                "umbral_aviso_diferencia": int(config.umbral_aviso_diferencia or 0),
             },
             status=status.HTTP_200_OK,
         )

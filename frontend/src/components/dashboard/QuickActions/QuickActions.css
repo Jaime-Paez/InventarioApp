@@ -4675,3 +4675,19 @@
     animation: none;
   }
 }
+
+/* Aviso de diferencia grande al enviar un conteo: productos a revisar. */
+.quick-actions__review-warning-list {
+  margin: 0 0 12px;
+  padding: 8px 12px 8px 28px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 8px;
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  font-size: var(--font-size-sm);
+  text-align: left;
+}
+
+.quick-actions__review-warning-list li + li {
+  margin-top: 4px;
+}

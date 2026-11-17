@@ -13,6 +13,7 @@ import useDockEntrance from './useDockEntrance'
 import usePillExit from './usePillExit'
 import { requestPorGuardarRefresh } from './porGuardarEvents'
 import BlockerNotice from '../common/BlockerNotice'
+import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
 import TrasladoRechazados from '../common/TrasladoRechazados'
 import { matchesFirst } from '../common/productDetailMatches'
 import notificationAudioSrc from '../common/reminders/notifications.mp3'
@@ -673,6 +674,9 @@ function QuickActions({
   const [randomInspectionMode, setRandomInspectionMode] = useState('review')
   const [randomInspectionStepIndex, setRandomInspectionStepIndex] = useState(0)
   const [randomInspectionShowSummary, setRandomInspectionShowSummary] = useState(false)
+  // Diferencia grande al enviar: productos que se le pide revisar (sin
+  // decirle cuanto ni hacia donde). null = sin aviso.
+  const [randomInspectionReviewWarning, setRandomInspectionReviewWarning] = useState(null)
   const [randomInspectionLoading, setRandomInspectionLoading] = useState(false)
   const [randomInspectionSubmitting, setRandomInspectionSubmitting] = useState(false)
   const [randomInspectionError, setRandomInspectionError] = useState('')
@@ -5704,7 +5708,8 @@ function QuickActions({
   }, [markRandomInspectionItemDirty, randomInspectionSubmitting])
 
   const handleSubmitRandomInspection = useCallback(
-    async () => {
+    async (options = {}) => {
+      const confirmarDiferencias = Boolean(options?.confirmarDiferencias)
       const inspectionId = normalizeId(activeRandomInspection?.id)
       if (!token || !inspectionId) return
       const inspectionStatus = String(activeRandomInspection?.estado || '').trim().toLowerCase()
@@ -5783,6 +5788,7 @@ function QuickActions({
               items: itemsPayload,
               nota_general: generalNote,
               version: randomInspectionVersionRef.current,
+              confirmar_diferencias: confirmarDiferencias,
             }),
           },
           token
@@ -5790,6 +5796,11 @@ function QuickActions({
         const payload = await response.json().catch(() => ({}))
         if (response.status === 409 && payload?.completed) {
           handleRandomInspectionCompletedElsewhere()
+          return
+        }
+        if (response.status === 409 && Array.isArray(payload?.revisar_conteo) && payload.revisar_conteo.length) {
+          // Diferencia grande: no se envia todavia; se le pide buscar bien.
+          setRandomInspectionReviewWarning(payload.revisar_conteo)
           return
         }
         if (response.status === 409 && payload?.conflict) {
@@ -5814,6 +5825,7 @@ function QuickActions({
           life: 3200,
         })
 
+        setRandomInspectionReviewWarning(null)
         randomInspectionDirtyItemsRef.current = new Map()
         randomInspectionMetaDirtyRef.current = false
         closeRandomInspectionModal()
@@ -5840,6 +5852,24 @@ function QuickActions({
       token,
     ]
   )
+
+  // "Volver a revisar": sale del resumen y va a la fila del primer producto
+  // con diferencia grande.
+  const handleReviewWarningGoBack = useCallback(() => {
+    const ids = new Set((randomInspectionReviewWarning || []).map((entry) => normalizeId(entry?.item_id)))
+    setRandomInspectionReviewWarning(null)
+    const rowMatches = (row) => ids.has(normalizeId(row?.row_id || row?.id)) || ids.has(normalizeId(row?.id))
+    let target = -1
+    if (randomInspectionGroups.length) {
+      target = randomInspectionGroups.findIndex((group) => group.entries.some((entry) => rowMatches(entry?.row)))
+    } else {
+      target = randomInspectionRows.findIndex(rowMatches)
+    }
+    setRandomInspectionShowSummary(false)
+    const step = target >= 0 ? target : 0
+    setRandomInspectionStepIndex(step)
+    void saveInspectionDraftToBackend(step)
+  }, [randomInspectionGroups, randomInspectionReviewWarning, randomInspectionRows, saveInspectionDraftToBackend])
 
   const handleVerifyRandomInspection = useCallback(
     async () => {
@@ -6485,6 +6515,26 @@ function QuickActions({
           }}
         />
       )}
+      <ConfirmDialog
+        open={Boolean(randomInspectionReviewWarning?.length)}
+        title="Revisa bien antes de enviar"
+        message="Lo que contaste en estos productos es muy distinto a lo esperado. Busca en todas sus ubicaciones y vuelve a contarlos antes de enviar."
+        details={(
+          <ul className="quick-actions__review-warning-list">
+            {(randomInspectionReviewWarning || []).map((entry) => (
+              <li key={`review-warning-${entry?.item_id}`}>
+                <strong>{String(entry?.producto_codigo || '').trim() || 'Producto'}</strong>
+                {String(entry?.producto_nombre || '').trim() ? ` · ${String(entry.producto_nombre).trim()}` : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+        cancelLabel="Volver a revisar"
+        confirmLabel="Mi conteo es correcto, enviar"
+        busy={randomInspectionSubmitting}
+        onCancel={handleReviewWarningGoBack}
+        onConfirm={() => void handleSubmitRandomInspection({ confirmarDiferencias: true })}
+      />
       <div ref={dockRef} className={`quick-actions__dock ${darkMode ? 'dark' : 'light'}${urgentShieldStyles.length ? ' has-urgent-shield' : ''} is-compact`}>
         {canViewInTransitShipments && (
           <PorGuardar
