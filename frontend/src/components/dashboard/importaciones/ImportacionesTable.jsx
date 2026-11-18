@@ -3857,28 +3857,49 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                 Ver confirmación
               </button>
             )}
-            {imp.estado === 'en_camino' && canMarcarLlegada && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--primary"
-                onClick={() => {
-                  if (!imp.fecha_llegada) {
-                    toastRef.current?.show({
-                      severity: 'warn',
-                      summary: 'Primero marca que llegó',
-                      detail: 'En la pestaña General marca "¿La importación llegó?"; después verificas el precio y la cantidad final.',
-                      life: 5000,
-                    })
-                    setActiveTab('general')
-                    return
-                  }
-                  // Lo escrito en la tabla se guarda antes de abrir la verificacion.
-                  guardarLlegadaEdits().then(() => setShowReceive(true))
-                }}
-              >
-                Importación verificada
-              </button>
-            )}
+            {imp.estado === 'en_camino' && canMarcarLlegada && (() => {
+              // "Importación verificada" solo se ilumina con TODO lleno: precio
+              // final y cantidad final de cada producto (y la llegada marcada).
+              // Mientras tanto se puede ir guardando.
+              const faltanFinales = detalles.filter((d) => {
+                const precio = parseInt(String(llegadaValorDe(d, 'precioFinal') || '').replace(/\D/g, '') || '0', 10)
+                return !(precio > 0) || String(llegadaValorDe(d, 'cantidadRecibida') ?? '').trim() === ''
+              }).length
+              const motivo = faltanFinales
+                ? `Falta el precio final o la cant. final de ${faltanFinales} producto${faltanFinales === 1 ? '' : 's'}.`
+                : !imp.fecha_llegada
+                  ? 'Falta marcar que la importación llegó (pestaña General).'
+                  : ''
+              return (
+                <>
+                  {motivo && <span className="imp-receive-footer-hint" style={{ marginLeft: 'auto' }}>{motivo}</span>}
+                  <button
+                    type="button"
+                    className="create-user__action create-user__action--secondary"
+                    style={motivo ? undefined : { marginLeft: 'auto' }}
+                    onClick={async () => {
+                      await guardarLlegadaEdits()
+                      toastRef.current?.show({ severity: 'success', summary: 'Guardado', detail: 'Precio final, cant. final y comentarios guardados.', life: 2500 })
+                    }}
+                  >
+                    Guardar
+                  </button>
+                  <button
+                    type="button"
+                    className={`create-user__action ${motivo ? 'create-user__action--cancel' : 'create-user__action--primary'}`}
+                    disabled={Boolean(motivo)}
+                    data-title={motivo || undefined}
+                    onClick={() => {
+                      if (motivo) return
+                      // Lo escrito en la tabla se guarda antes de abrir la verificacion.
+                      guardarLlegadaEdits().then(() => setShowReceive(true))
+                    }}
+                  >
+                    Importación verificada
+                  </button>
+                </>
+              )
+            })()}
             {imp.estado === 'importada' && (
               <button type="button" className="users-circle users-circle--excel" style={{ marginLeft: 'auto' }} title="Descargar Excel" onClick={handleDownloadExcel}>
                 <i className="pi pi-file-excel" />
