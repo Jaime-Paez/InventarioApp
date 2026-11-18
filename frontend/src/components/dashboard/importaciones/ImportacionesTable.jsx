@@ -2974,7 +2974,6 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   // "Importación verificada") mientras se escribe.
   const [llegadaEdits, setLlegadaEdits] = useState({})
   const llegadaEditsRef = useRef({})
-  const llegadaSaveTimerRef = useRef(null)
   const impRef = useRef(imp)
   impRef.current = imp
   const llegadaValorDe = (d, field) => {
@@ -2990,10 +2989,9 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     return saved?.cantidadesRecibidas?.[d.id] ?? (d.cantidad_recibida != null ? String(d.cantidad_recibida) : '')
   }
   const guardarLlegadaEdits = useCallback(async () => {
-    if (llegadaSaveTimerRef.current) { clearTimeout(llegadaSaveTimerRef.current); llegadaSaveTimerRef.current = null }
     const edits = llegadaEditsRef.current
     const actual = impRef.current
-    if (!actual?.id || !Object.keys(edits).length) return
+    if (!actual?.id || !Object.keys(edits).length) return true
     const saved = getSavedDraft(actual) || {}
     const preciosFinales = { ...(saved.preciosFinales || {}) }
     const cantidadesRecibidas = { ...(saved.cantidadesRecibidas || {}) }
@@ -3025,19 +3023,46 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       impRef.current = fresh
       setImpOverride(fresh)
       setLlegadaEdits(siguen)
+      return true
     } catch (e) {
-      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: e.message, life: 5000 })
+      toastRef.current?.show({ severity: 'error', summary: 'Error al guardar', detail: e.message, life: 5000 })
+      return false
     }
   }, [token])
+  // Igual que en confirmacion: lo escrito se guarda con "Guardar" (y cierra);
+  // cerrar con cambios pregunta guardar / descartar.
   const setLlegadaValor = (id, field, value) => {
     const next = { ...llegadaEditsRef.current, [id]: { ...(llegadaEditsRef.current[id] || {}), [field]: value } }
     llegadaEditsRef.current = next
     setLlegadaEdits(next)
-    if (llegadaSaveTimerRef.current) clearTimeout(llegadaSaveTimerRef.current)
-    llegadaSaveTimerRef.current = setTimeout(() => { guardarLlegadaEdits() }, 700)
   }
-  // Al cerrar el modal no se pierde lo ultimo que se escribio.
-  useEffect(() => () => { if (llegadaSaveTimerRef.current) guardarLlegadaEdits() }, [guardarLlegadaEdits])
+  const [llegadaSaving, setLlegadaSaving] = useState(false)
+  const [showLlegadaCloseDialog, setShowLlegadaCloseDialog] = useState(false)
+  const llegadaDirty = Object.keys(llegadaEdits).length > 0
+  const handleGuardarLlegada = async () => {
+    setLlegadaSaving(true)
+    try {
+      const ok = await guardarLlegadaEdits()
+      if (ok) {
+        // Como en confirmacion: guarda, refresca el listado y cierra.
+        if (onSaved) onSaved(impRef.current)
+        else onClose?.()
+      }
+      return ok
+    } finally {
+      setLlegadaSaving(false)
+    }
+  }
+  const handleCloseEnCamino = () => {
+    if (llegadaSaving) return
+    if (llegadaDirty) { setShowLlegadaCloseDialog(true); return }
+    onClose?.()
+  }
+  useUnsavedChangesRegistration({
+    dirty: llegadaDirty,
+    onSave: handleGuardarLlegada,
+    label: `Importación ${imp?.codigo || ''}`.trim(),
+  })
   const [trackerEditingField, setTrackerEditingField] = useState(null)
   const [trackerDateDraft, setTrackerDateDraft] = useState('')
   const [trackerMinDate, setTrackerMinDate] = useState(null)
@@ -3371,11 +3396,13 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   ]
   // Se llenan cuando ya se marco que llego.
   const enCamino = imp.estado === 'en_camino'
-  // Se pueden llenar en cualquier momento mientras esta en camino (queda
-  // guardado como borrador); lo que exige haber marcado que llego es
-  // "Importación verificada".
-  const puedeLlenarLlegada = enCamino && canMarcarLlegada
-  const motivoNoLlegada = 'No tienes permiso para verificar la llegada.'
+  // El usuario lo pidio asi (2026-11-18): precio final, cant. final y
+  // comentario se bloquean hasta marcar que llego, con el aviso y el boton
+  // "Marcar que llegó". No volver a abrirlos antes de la llegada.
+  const puedeLlenarLlegada = enCamino && canMarcarLlegada && Boolean(imp.fecha_llegada)
+  const motivoNoLlegada = !canMarcarLlegada
+    ? 'No tienes permiso para verificar la llegada.'
+    : 'Primero marca que la importación llegó (pestaña General).'
   const precioAntesCentavos = (d) => {
     const antes = d.precio_confirmado ?? d.precio_estimado
     return antes != null ? String(Math.round(Number(antes) * 100)) : null
@@ -3431,7 +3458,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
               >
                 <i className={isMaximized ? 'pi pi-window-minimize' : 'pi pi-window-maximize'} aria-hidden="true" />
               </button>
-              <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={onClose} aria-label="Cerrar">
+              <button type="button" className="create-user__icon-button" onMouseDown={(e) => e.stopPropagation()} onClick={handleCloseEnCamino} disabled={llegadaSaving} aria-label="Cerrar">
                 <i className="pi pi-times" />
               </button>
             </div>
@@ -3574,8 +3601,18 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                 <section className="create-user__section">
                   {enCamino && !puedeLlenarLlegada && (
                     <BlockerNotice
-                      title="Precio final, Cant. final y comentario no se pueden llenar"
-                      reason="No tienes permiso para verificar la llegada: pídeselo a un administrador."
+                      title="Precio final, Cant. final y comentario todavía no se pueden llenar"
+                      reason={canMarcarLlegada
+                        ? (imp.fecha_puerto
+                          ? 'Primero marca que la importación llegó; después llenas lo que llegó.'
+                          : 'Falta la fecha de llegada a puerto (pestaña General) y después marcar que llegó.')
+                        : 'No tienes permiso para verificar la llegada: pídeselo a un administrador.'}
+                      actionLabel={canMarcarLlegada ? (imp.fecha_puerto ? 'Marcar que llegó' : 'Ir a General') : undefined}
+                      onAction={canMarcarLlegada
+                        ? () => (imp.fecha_puerto
+                          ? setLlegoDialog({ llego: true, fecha: getDefaultFechaLlegada(imp) })
+                          : setActiveTab('general'))
+                        : undefined}
                     />
                   )}
                   <ImportProductSearch
@@ -3865,24 +3902,22 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                 const precio = parseInt(String(llegadaValorDe(d, 'precioFinal') || '').replace(/\D/g, '') || '0', 10)
                 return !(precio > 0) || String(llegadaValorDe(d, 'cantidadRecibida') ?? '').trim() === ''
               }).length
-              const motivo = faltanFinales
-                ? `Falta el precio final o la cant. final de ${faltanFinales} producto${faltanFinales === 1 ? '' : 's'}.`
-                : !imp.fecha_llegada
-                  ? 'Falta marcar que la importación llegó (pestaña General).'
+              const motivo = !imp.fecha_llegada
+                ? 'Falta marcar que la importación llegó.'
+                : faltanFinales
+                  ? `Falta el precio final o la cant. final de ${faltanFinales} producto${faltanFinales === 1 ? '' : 's'}.`
                   : ''
               return (
                 <>
                   {motivo && <span className="imp-receive-footer-hint" style={{ marginLeft: 'auto' }}>{motivo}</span>}
                   <button
                     type="button"
-                    className="create-user__action create-user__action--secondary"
+                    className="create-user__action create-user__action--primary"
                     style={motivo ? undefined : { marginLeft: 'auto' }}
-                    onClick={async () => {
-                      await guardarLlegadaEdits()
-                      toastRef.current?.show({ severity: 'success', summary: 'Guardado', detail: 'Precio final, cant. final y comentarios guardados.', life: 2500 })
-                    }}
+                    disabled={llegadaSaving}
+                    onClick={handleGuardarLlegada}
                   >
-                    Guardar
+                    {llegadaSaving ? 'Guardando...' : 'Guardar'}
                   </button>
                   <button
                     type="button"
@@ -3951,6 +3986,13 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       {showHistorial && (
         <HistorialImportacionModal imp={imp} onClose={() => setShowHistorial(false)} />
       )}
+      <UnsavedChangesDialog
+        open={showLlegadaCloseDialog}
+        saving={llegadaSaving}
+        onCancel={() => setShowLlegadaCloseDialog(false)}
+        onDiscard={() => { setShowLlegadaCloseDialog(false); onClose?.() }}
+        onSave={async () => { setShowLlegadaCloseDialog(false); await handleGuardarLlegada() }}
+      />
       {llegoDialog && createPortal(
         <div className="user-details__confirm-overlay" style={{ zIndex: 3000 }} onMouseDown={(e) => { if (e.target === e.currentTarget && !llegoSaving) setLlegoDialog(null) }}>
           <div className="user-details__confirm-dialog">
