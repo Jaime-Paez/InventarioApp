@@ -1637,17 +1637,19 @@
 
 .imp-alternos-hover-card__table--oem th:nth-child(1),
 .imp-alternos-hover-card__table--oem td:nth-child(1) {
-  width: 72px;
+  width: 96px;
 }
 
+/* Referencia y OEM se escogen haciendo clic en su chip: tienen que verse
+   enteros (antes una referencia larga quedaba cortada y no se podia leer). */
 .imp-alternos-hover-card__table--oem th:nth-child(3),
 .imp-alternos-hover-card__table--oem td:nth-child(3) {
-  width: 92px;
+  width: 140px;
 }
 
 .imp-alternos-hover-card__table--oem th:nth-child(4),
 .imp-alternos-hover-card__table--oem td:nth-child(4) {
-  width: 110px;
+  width: 130px;
 }
 
 /* Casa comercial: con 78px su titulo se salia por encima de la linea de la
@@ -1673,13 +1675,24 @@
 }
 
 .imp-alternos-hover-card__table--oem td:nth-child(1),
-.imp-alternos-hover-card__table--oem td:nth-child(3),
-.imp-alternos-hover-card__table--oem td:nth-child(4),
 .imp-alternos-hover-card__table--oem td:nth-child(5),
 .imp-alternos-hover-card__table--oem td:nth-child(6) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.imp-alternos-hover-card__table--oem td:nth-child(3) .imp-oem-chips,
+.imp-alternos-hover-card__table--oem td:nth-child(4) .imp-oem-chips {
+  max-width: 100%;
+}
+
+.imp-alternos-hover-card__table--oem td:nth-child(3) .imp-oem-chip,
+.imp-alternos-hover-card__table--oem td:nth-child(4) .imp-oem-chip {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .imp-alternos-hover-card__table--oem th:nth-child(2),
