@@ -68,6 +68,14 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
         # poder identificarlo y vincularlo después al confirmar la llegada.
         if not producto and not codigo and not nombre and not referencia and not oem:
             raise serializers.ValidationError("Se requiere producto, código/nombre, o referencia/OEM.")
+        # Cada producto lleva UNA sola referencia en la importacion (otra
+        # referencia del mismo codigo va en su propia fila).
+        if "," in referencia or ";" in referencia:
+            etiqueta = (producto.codigo if producto else codigo) or nombre or referencia
+            raise serializers.ValidationError(
+                f"{etiqueta}: cada producto lleva una sola referencia en la importación ({referencia}). "
+                "Deja una; si llegan con otra referencia, ponla en otra fila."
+            )
         # La cantidad puede quedar en 0 (p. ej. un Excel que solo trae los
         # productos buscados): las unidades se completan después.
         return data

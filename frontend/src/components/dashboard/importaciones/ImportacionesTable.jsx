@@ -2906,6 +2906,19 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
 
 const DETAILS_VIEWPORT_PADDING = 12
 
+// En camino / importada: mas ancho que las demas (la tabla tiene precio y
+// cantidad final y comentario), ~57% del ancho y ~82% del alto de la pantalla.
+const detailsModalSize = (estado) => {
+  const ancha = estado === 'en_camino' || estado === 'importada'
+  if (!ancha) {
+    return { width: Math.min(720, window.innerWidth - 56), height: Math.min(700, window.innerHeight * 0.88) }
+  }
+  return {
+    width: Math.min(Math.max(Math.round(window.innerWidth * 0.57), 900), 1120, window.innerWidth - 56),
+    height: Math.min(Math.round(window.innerHeight * 0.82), 820),
+  }
+}
+
 function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, moduleActions, onOpenOrigen }) {
   // Buscador de productos de esta importacion.
   const [productSearch, setProductSearch] = useState('')
@@ -3173,13 +3186,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const modalRestoreRef = useRef(null)
   // En camino / importada la tabla tiene mas columnas (precio y cantidad
   // final, comentario, sucursales): abre ancha para verla completa.
-  const [initialSize] = useState(() => {
-    const ancha = impProp?.estado === 'en_camino' || impProp?.estado === 'importada'
-    return {
-      width: Math.min(ancha ? 1400 : 720, window.innerWidth - 56),
-      height: Math.min(ancha ? 860 : 700, window.innerHeight * (ancha ? 0.92 : 0.88)),
-    }
-  })
+  const [initialSize] = useState(() => detailsModalSize(impProp?.estado))
   const [position, setPosition] = useState(() => ({
     x: Math.max((window.innerWidth - initialSize.width) / 2, DETAILS_VIEWPORT_PADDING + 28),
     y: Math.max((window.innerHeight - initialSize.height) / 2, DETAILS_VIEWPORT_PADDING),
@@ -3190,9 +3197,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const abiertoEstado = impProp?.id ? `${impProp.id}-${impProp.estado}` : ''
   useEffect(() => {
     if (!abiertoEstado) return
-    const ancha = impProp?.estado === 'en_camino' || impProp?.estado === 'importada'
-    const width = Math.min(ancha ? 1400 : 720, window.innerWidth - 56)
-    const height = Math.min(ancha ? 860 : 700, window.innerHeight * (ancha ? 0.92 : 0.88))
+    const { width, height } = detailsModalSize(impProp?.estado)
     setIsMaximized(false)
     setModalSize({ width, height })
     setPosition({
@@ -6246,12 +6251,12 @@ function SugerenciaTabla({ token, casa, rows, setRows, referenciaDecisions = {},
                           elegidos={new Set(String(filaOem?.referencia || '').split(',').map(oemClave).filter(Boolean))}
                           onPick={oemMatchesHover.filaExcel && !readOnly ? (r) => {
                             const filaExcel = oemMatchesHover.filaExcel
-                            setRows((prev) => prev.map((row) => (row.fila_excel === filaExcel ? { ...row, referencia: toggleReferencia(row.referencia, r) } : row)))
+                            setRows((prev) => prev.map((row) => (row.fila_excel === filaExcel ? { ...row, referencia: String(r || '').trim() } : row)))
                             titleHoverRef.current = null
                             hideCellHover()
                           } : undefined}
-                          tituloActivo="Referencia escogida · clic para quitarla"
-                          tituloEscoger="Clic para agregar esta referencia"
+                          tituloActivo="Referencia de esta fila"
+                          tituloEscoger="Clic para usar esta referencia (reemplaza la actual)"
                         />
                       </td>
                       <td>
@@ -6396,8 +6401,8 @@ function CoincidenciasInfo({ matches, onPick, elegida = -1, oemElegido = '', onP
                         oems={referenciasDe(p)}
                         elegidos={referenciasElegidas}
                         onPick={onPickReferencia ? (r) => onPickReferencia(r) : undefined}
-                        tituloActivo="Referencia escogida · clic para quitarla"
-                        tituloEscoger="Clic para agregar esta referencia"
+                        tituloActivo="Referencia de esta fila"
+                        tituloEscoger="Clic para usar esta referencia (reemplaza la actual)"
                       />
                     </td>
                     <td><OemChips oems={p.oems} elegidos={oemsElegidos} onPick={onPickOem ? (o) => onPickOem(o) : undefined} /></td>
@@ -6467,7 +6472,7 @@ function ReferenciasProductoInfo({ producto, elegida = '', onPick }) {
         <div
           ref={cardRef}
           className="imp-alternos-hover-card"
-          style={{ top: pos?.top ?? hover.triggerBottom + 4, left: pos?.left ?? hover.triggerLeft, visibility: pos ? 'visible' : 'hidden' }}
+          style={{ top: pos?.top ?? hover.triggerBottom + 4, left: pos?.left ?? hover.triggerLeft, visibility: pos ? 'visible' : 'hidden', pointerEvents: 'auto' }}
           onMouseEnter={cancelar}
           onMouseLeave={ocultar}
         >
@@ -8058,11 +8063,13 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   }
 
   // Referencias escogidas en la tarjeta de coincidencias (una o varias).
+  // Cada producto lleva UNA sola referencia en la importacion: escoger otra
+  // la reemplaza (nunca se juntan dos).
   const usarReferencia = (_key, ref) => {
     const actual = details.find((item) => item._key === _key)?.referencia || ''
-    const agregada = !actual.split(',').some((r) => oemClave(r) === oemClave(ref))
-    setDetails((prev) => prev.map((item) => (item._key === _key ? { ...item, referencia: toggleReferencia(item.referencia, ref) } : item)))
-    toastRef.current?.show({ severity: 'success', summary: agregada ? 'Referencia agregada' : 'Referencia quitada', detail: `${ref}. Recuerda guardar.`, life: 3000 })
+    if (oemClave(actual) === oemClave(ref)) return
+    setDetails((prev) => prev.map((item) => (item._key === _key ? { ...item, referencia: String(ref || '').trim() } : item)))
+    toastRef.current?.show({ severity: 'success', summary: 'Referencia escogida', detail: `${ref}. Recuerda guardar.`, life: 3000 })
   }
 
   // Producto del catalogo: escoge cual de sus referencias va en esta fila.
