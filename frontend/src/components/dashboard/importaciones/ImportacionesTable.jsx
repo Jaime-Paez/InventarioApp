@@ -8950,10 +8950,21 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         // Sugerencia: lo que trae el Excel es lo que queda, tambien el codigo
         // (de un producto nuevo) y la referencia de la fila.
         if (item && isSugerencia) {
+          // Si el Excel le cambia (o le quita) el codigo a un producto nuevo,
+          // la fila suelta el OEM y la coincidencia (PVP JP) que venian del
+          // codigo anterior: eran de otro grupo y no tienen que ver con este
+          // producto (p. ej. KCR10107 se quedaba con el OEM y el $25 de P1034).
+          const cambiaCodigo = !item.producto?.id && codeOf(item) !== fileCodeLc
+          const oemExcel = cellText(row, oemIdx)
           item = {
             ...item,
             ...(fileRef ? { referencia: cellText(row, refIdx) } : {}),
             ...(!item.producto?.id ? { codigo: fileCodeLc ? fileCode : '' } : {}),
+            ...(cambiaCodigo ? {
+              oem: oemExcel, oem_quitado: false, precio: undefined,
+              coincidencia: '', coincidencia_codigo: '', coincidencia_casa: '', coincidencia_precio: null,
+              _sugeridoDesde: '', _sugeridoCasa: '',
+            } : {}),
           }
         }
         if (item) {
