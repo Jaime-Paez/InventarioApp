@@ -9198,7 +9198,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                               title={isImportRealizada ? undefined : 'Doble click: llenar todas con precio original'}
                               style={isImportRealizada ? undefined : { cursor: 'pointer' }}
                             >
-                              Precio estimado
+                              Precio Est.
                             </span>
                             <span>Diferencia</span>
                             <span>Cant. Sug.</span>
