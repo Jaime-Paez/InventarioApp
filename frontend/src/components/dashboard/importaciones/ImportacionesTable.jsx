@@ -3779,8 +3779,9 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           {/* En camino: la descripcion se escoge de las coincidencias
                               (clic en la "i" del OEM). Solo un producto nuevo (sin
                               catalogo) tiene ademas el campo para escribir un nombre;
-                              uno que ya existe solo se escoge. Se guarda con "Guardar". */}
-                          {sinCat && enCamino && canEditDetalle && canMarcarLlegada ? (
+                              o creado por esta importacion, en crema) tiene ademas el campo
+                              para escribir un nombre; uno que ya existia solo se escoge. */}
+                          {(sinCat || creadoAqui) && enCamino && canEditDetalle && canMarcarLlegada ? (
                             <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
                               <input
                                 type="text"
