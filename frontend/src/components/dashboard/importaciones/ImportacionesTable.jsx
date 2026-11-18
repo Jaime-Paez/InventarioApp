@@ -8562,6 +8562,14 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       porValor.set(clave, [...(porValor.get(clave) || []), { fila, etiqueta }])
       let candidatos = []
       if (norm(codigo)) candidatos = current.filter((d) => codigoDe(d) === norm(codigo))
+      // La referencia de la fila manda: si ninguna fila de ese codigo tiene
+      // esa referencia pero otra fila de la lista si la tiene exactamente (un
+      // producto nuevo sin codigo o con el codigo cruzado), el precio va a esa
+      // fila y no a otra referencia del mismo codigo.
+      if (norm(ref) && !candidatos.some((d) => norm(d.referencia) === norm(ref))) {
+        const conEsaRef = current.filter((d) => norm(d.referencia) === norm(ref) && (!d.producto?.id || !norm(codigo)))
+        if (conEsaRef.length) candidatos = conEsaRef
+      }
       // Mismo codigo en varias filas (otra referencia): desempata la referencia.
       if (candidatos.length > 1 && norm(ref)) {
         // La referencia propia de la fila; si no, las del producto.
@@ -8873,6 +8881,17 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         const libre = (d) => !used.has(d._key)
         let item = byKey.get(cellText(row, keyIdx))
         if (item && (used.has(item._key) || (fileCodeLc && codeOf(item) !== fileCodeLc))) item = null
+        // La referencia de la fila manda: si una fila libre de la lista tiene
+        // exactamente esa referencia (con el mismo codigo, o sin codigo / con
+        // un codigo de un producto nuevo que el Excel corrige), es esa linea.
+        // Asi una fila del Excel nunca cae en otra referencia del mismo codigo.
+        if (!item && fileRef) {
+          const mismaRef = current.filter((d) => libre(d) && refOf(d) === fileRef)
+          item = mismaRef.find((d) => fileCodeLc && codeOf(d) === fileCodeLc)
+            || mismaRef.find((d) => !d.producto?.id)
+            || (!fileCodeLc ? mismaRef[0] : null)
+            || null
+        }
         if (!item && fileCodeLc) {
           const mismoCodigo = current.filter((d) => libre(d) && codeOf(d) === fileCodeLc)
           item = (fileRef ? mismoCodigo.find((d) => refOf(d) === fileRef) : mismoCodigo[0])
@@ -8944,10 +8963,15 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
             // Ya estaba en la lista y esa fila quedo libre: es esa fila. Si
             // no, entra como otra fila del mismo producto (con su propia
             // referencia); solo en el inventario se suman.
-            const enLista = current.find((d) => String(d.producto?.id ?? '') === id && !used.has(d._key))
+            // Solo si esa fila es la misma referencia (o una que ya no viene
+            // en el Excel): nunca se cruza con otra referencia del producto.
+            const nRef = refNorm(n.item.referencia)
+            const libresDelProducto = current.filter((d) => String(d.producto?.id ?? '') === id && !used.has(d._key))
+            const enLista = (nRef ? libresDelProducto.find((d) => refOf(d) === nRef) : libresDelProducto[0])
+              || libresDelProducto.find((d) => !refOf(d) || !refsDelExcel.has(refOf(d)))
             if (enLista) {
               used.add(enLista._key)
-              matched.push({ item: enLista, row: n.row })
+              matched.push({ item: isSugerencia && nRef ? { ...enLista, referencia: n.item.referencia } : enLista, row: n.row })
               return
             }
             const repetido = current.some((d) => String(d.producto?.id ?? '') === id)
