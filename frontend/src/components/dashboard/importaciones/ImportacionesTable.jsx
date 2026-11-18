@@ -2961,6 +2961,9 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     if (field === 'precioFinal') {
       return saved?.preciosFinales?.[d.id] ?? (d.precio_final != null ? String(Math.round(Number(d.precio_final) * 100)) : '')
     }
+    if (field === 'comentarioLlegada') {
+      return saved?.comentariosLlegada?.[d.id] ?? d.comentario_llegada ?? ''
+    }
     return saved?.cantidadesRecibidas?.[d.id] ?? (d.cantidad_recibida != null ? String(d.cantidad_recibida) : '')
   }
   const guardarLlegadaEdits = useCallback(async () => {
@@ -2971,11 +2974,13 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     const saved = getSavedDraft(actual) || {}
     const preciosFinales = { ...(saved.preciosFinales || {}) }
     const cantidadesRecibidas = { ...(saved.cantidadesRecibidas || {}) }
+    const comentariosLlegada = { ...(saved.comentariosLlegada || {}) }
     Object.entries(edits).forEach(([id, edit]) => {
       if (edit.precioFinal !== undefined) preciosFinales[id] = edit.precioFinal
       if (edit.cantidadRecibida !== undefined) cantidadesRecibidas[id] = edit.cantidadRecibida
+      if (edit.comentarioLlegada !== undefined) comentariosLlegada[id] = edit.comentarioLlegada
     })
-    const borrador = { step: 1, ...saved, preciosFinales, cantidadesRecibidas }
+    const borrador = { step: 1, ...saved, preciosFinales, cantidadesRecibidas, comentariosLlegada }
     try {
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/${actual.id}/guardar-borrador-llegada/`,
@@ -2990,6 +2995,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
         const nuevo = {}
         if (edit.precioFinal !== undefined && edit.precioFinal !== preciosFinales[id]) nuevo.precioFinal = edit.precioFinal
         if (edit.cantidadRecibida !== undefined && edit.cantidadRecibida !== cantidadesRecibidas[id]) nuevo.cantidadRecibida = edit.cantidadRecibida
+        if (edit.comentarioLlegada !== undefined && edit.comentarioLlegada !== comentariosLlegada[id]) nuevo.comentarioLlegada = edit.comentarioLlegada
         if (Object.keys(nuevo).length) siguen[id] = nuevo
       })
       llegadaEditsRef.current = siguen
@@ -3290,6 +3296,25 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   if (!imp) return null
   const detalles = imp.detalles || []
   const llegoMinDate = getTrackerMinDate(imp, 'fecha_llegada')
+  const canEditDetalle = moduleActions?.puede_actualizar !== false
+  const escogerReferenciaEnCamino = async (detalle, ref) => {
+    try {
+      const resp = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/detalles/${detalle.id}/`,
+        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ referencia: ref }) },
+        token
+      )
+      if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo cambiar la referencia.'))
+      const actualizado = await resp.json()
+      setImpOverride((prev) => {
+        const base = prev && prev.id === imp.id ? prev : imp
+        return { ...base, detalles: (base.detalles || []).map((d) => (d.id === actualizado.id ? { ...d, referencia: actualizado.referencia } : d)) }
+      })
+      toastRef.current?.show({ severity: 'success', summary: 'Referencia escogida', detail: ref, life: 3000 })
+    } catch (e) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: e.message, life: 5000 })
+    }
+  }
   const sucursalesCols = enviosDistribucion.sucursales
   // Columnas con minmax(px, fr): crecen para llenar el modal, pero nunca por
   // debajo de su mínimo en px. El mínimo es un número fijo (no depende del
@@ -3595,12 +3620,24 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                             </span>
                             <CoincidenciasInfo matches={coincidenciasByKey[d.id]} />
                           </span>
-                          <span
-                            className="imp-table-cell-tip"
-                            onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')}
-                            onMouseLeave={hideCellHover}
-                          >
-                            <span className="imp-table-cell-text">{referencia}</span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                            <span
+                              className="imp-table-cell-tip"
+                              style={{ flex: '1 1 auto', minWidth: 0 }}
+                              onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')}
+                              onMouseLeave={hideCellHover}
+                            >
+                              <span className="imp-table-cell-text">{referencia}</span>
+                            </span>
+                            {/* Cual de las referencias del producto va en esta fila
+                                (tambien en camino; importada ya no cambia). */}
+                            {d.producto?.id && (
+                              <ReferenciasProductoInfo
+                                producto={d.producto}
+                                elegida={referencia !== '-' ? referencia : ''}
+                                onPick={enCamino && canEditDetalle ? (r) => escogerReferenciaEnCamino(d, r) : undefined}
+                              />
+                            )}
                           </span>
                           <span
                             className="imp-table-cell-tip"
@@ -3659,13 +3696,27 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                               </span>
                             )
                           })}
-                          <span
-                            className="imp-table-cell-tip"
-                            onMouseEnter={(e) => showCellHover(e, comentario !== '-' ? comentario : null, 'Comentario')}
-                            onMouseLeave={hideCellHover}
-                          >
-                            <span className="imp-table-cell-text">{comentario}</span>
-                          </span>
+                          {enCamino ? (
+                            <span>
+                              <input
+                                type="text"
+                                className="imp-receive__comentario-input"
+                                value={llegadaValorDe(d, 'comentarioLlegada')}
+                                placeholder={puedeLlenarLlegada ? '¿Por qué cambió?' : 'Comentario'}
+                                disabled={!puedeLlenarLlegada}
+                                data-title={!puedeLlenarLlegada ? motivoNoLlegada : undefined}
+                                onChange={(e) => setLlegadaValor(d.id, 'comentarioLlegada', e.target.value)}
+                              />
+                            </span>
+                          ) : (
+                            <span
+                              className="imp-table-cell-tip"
+                              onMouseEnter={(e) => showCellHover(e, comentario !== '-' ? comentario : null, 'Comentario')}
+                              onMouseLeave={hideCellHover}
+                            >
+                              <span className="imp-table-cell-text">{comentario}</span>
+                            </span>
+                          )}
                         </div>
                       )
                     })}
