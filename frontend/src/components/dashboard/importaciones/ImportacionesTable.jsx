@@ -2930,7 +2930,71 @@ const detailsModalSize = (estado) => {
   }
 }
 
-function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, moduleActions, onOpenOrigen }) {
+// Cambiar una fecha de la importacion (solo administrador, cualquier etapa).
+function FechaImportacionDialog({ imp, token, campo, label, onClose, onSaved, notify }) {
+  const [draft, setDraft] = useState(String(imp?.[campo] || '').slice(0, 10) || todayISO())
+  const [saving, setSaving] = useState(false)
+  const guardar = async () => {
+    if (!draft) return
+    setSaving(true)
+    try {
+      const resp = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/actualizar-fecha-tracker/`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ campo, fecha: draft }) },
+        token
+      )
+      if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo guardar la fecha.'))
+      onSaved?.(await resp.json())
+      onClose?.()
+    } catch (e) {
+      notify?.('error', 'Error', e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+  return createPortal(
+    <div
+      className="create-user__overlay"
+      role="dialog"
+      aria-modal="true"
+      style={{ zIndex: 3000, pointerEvents: 'auto', background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget && !saving) onClose?.() }}
+    >
+      <div
+        className="create-user__modal"
+        style={{ position: 'relative', top: 'auto', left: 'auto', transform: 'none', width: 320, minWidth: 320, height: 'auto', minHeight: 'auto' }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <header className="create-user__header">
+          <div className="create-user__header-text">
+            <h3>{label}</h3>
+          </div>
+          <div className="create-user__header-actions">
+            <button type="button" className="create-user__icon-button" onClick={onClose} disabled={saving} aria-label="Cerrar">
+              <i className="pi pi-times" />
+            </button>
+          </div>
+        </header>
+        <div className="create-user__form" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <label className="create-user__field">
+            <span>Fecha</span>
+            <input type="date" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus />
+            <small style={{ color: 'var(--color-text-secondary)' }}>Solo el administrador puede cambiar las fechas.</small>
+          </label>
+          <div className="create-user__footer" style={{ padding: 0, border: 'none' }}>
+            <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose} disabled={saving}>Cancelar</button>
+            <button type="button" className="create-user__action create-user__action--primary" onClick={guardar} disabled={saving || !draft}>
+              {saving ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    getPortalRoot()
+  )
+}
+
+function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, moduleActions, onOpenOrigen, isAdmin = false }) {
   // Buscador de productos de esta importacion.
   const [productSearch, setProductSearch] = useState('')
   const canMarcarLlegada = moduleActions?.puede_marcar_llegada === true
@@ -3518,7 +3582,11 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           const rawValue = imp[trackerStep.field]
                           const value = trackerStep.isDateTime ? String(rawValue || '').slice(0, 10) : (rawValue || '')
                           const filled = Boolean(value)
-                          const isEditable = trackerStep.editable && imp.estado !== 'importada'
+                          // El administrador cambia cualquier fecha en cualquier etapa;
+                          // los demas solo registran salida/puerto vacias en camino.
+                          const isEditable = isAdmin
+                            ? trackerStep.field !== 'creado_en'
+                            : trackerStep.editable && imp.estado === 'en_camino' && canMarcarLlegada && !value
                           return (
                             <div key={trackerStep.field} className={`imp-tracker__step${filled ? ' is-filled' : ''}`}>
                               <button
@@ -3526,12 +3594,12 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                                 className={`imp-tracker__dot${filled ? ' is-filled' : ''}${isEditable ? ' is-editable' : ''}`}
                                 onClick={() => isEditable && openTrackerEditor(trackerStep.field, value)}
                                 disabled={!isEditable}
-                                title={isEditable ? 'Clic para editar la fecha' : undefined}
+                                data-title={isEditable ? (isAdmin && value ? 'Clic para cambiar la fecha (administrador)' : 'Clic para poner la fecha') : (value && trackerStep.field !== 'creado_en' ? 'Solo el administrador puede cambiar esta fecha' : undefined)}
                               >
                                 {filled ? <Check size={14} /> : idx + 1}
                               </button>
                               <span className="imp-tracker__label">{trackerStep.label}</span>
-                              <span className="imp-tracker__date">{value ? formatDate(value) : (trackerStep.editable ? 'Sin definir' : 'Pendiente')}</span>
+                              <span className="imp-tracker__date">{value ? formatDate(value) : (isEditable ? 'Sin definir' : 'Pendiente')}</span>
                             </div>
                           )
                         })}
@@ -7616,7 +7684,7 @@ const withoutNotaVerificacion = (comentario, nota) => {
 const sinNotasQuitado = (comentario) => [NOTA_QUITADO_EXCEL, NOTA_QUITADO_EXCEL_ANTERIOR, NOTA_QUITADO_VERIFICACION, NOTA_AGRUPADO_VERIFICACION]
   .reduce((texto, nota) => withoutNotaVerificacion(texto, nota), comentario)
 
-function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions }) {
+function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onOpenBorrador, onOpenEnCamino, moduleActions, isAdmin = false }) {
   // Buscador de productos de esta importacion.
   const [productSearch, setProductSearch] = useState('')
   const canEdit = moduleActions?.puede_actualizar !== false
@@ -7632,6 +7700,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // confirmado ya guardado se revierta al reabrir el modal más tarde.
   const [freshImp, setFreshImp] = useState(null)
   const imp = freshImp && impProp && freshImp.id === impProp.id ? freshImp : impProp
+  // Fecha cambiada por el administrador: se muestra sin recargar la tabla
+  // (recargar `imp` borraria lo que no se ha guardado).
+  const [fechaEditada, setFechaEditada] = useState(null)
+  const [showFechaDialog, setShowFechaDialog] = useState(false)
+  useEffect(() => { setFechaEditada(null); setShowFechaDialog(false) }, [impProp?.id])
   const [loadingImp, setLoadingImp] = useState(true)
   const [uploadingExcel, setUploadingExcel] = useState(false)
   useEffect(() => {
@@ -9846,7 +9919,25 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         <div className="create-user__grid create-user__grid--two">
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                             <StaticFieldDisplay label="Código" value={imp.codigo} />
-                            <StaticFieldDisplay label="Fecha" value={formatDate(imp.fecha)} />
+                            {isAdmin ? (
+                              <div className="create-user__field create-salida__static-field">
+                                <span>Fecha</span>
+                                <div className="create-salida__static-value" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                  <span>{formatDate(fechaEditada?.id === imp.id ? fechaEditada.fecha : imp.fecha) || '-'}</span>
+                                  <button
+                                    type="button"
+                                    className="create-user__icon-button"
+                                    onClick={() => setShowFechaDialog(true)}
+                                    aria-label="Cambiar la fecha"
+                                    data-title="Cambiar la fecha (administrador)"
+                                  >
+                                    <i className="pi pi-pencil" />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <StaticFieldDisplay label="Fecha" value={formatDate(imp.fecha)} />
+                            )}
                             <StaticFieldDisplay label="Casa comercial" value={formatCasaLabel(selectedCasa)} />
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -10667,6 +10758,21 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           getPortalRoot()
         )}
 
+        {showFechaDialog && isAdmin && imp && (
+          <FechaImportacionDialog
+            imp={fechaEditada?.id === imp.id ? { ...imp, fecha: fechaEditada.fecha } : imp}
+            token={token}
+            campo="fecha"
+            label="Fecha de la importación"
+            onClose={() => setShowFechaDialog(false)}
+            onSaved={(updated) => {
+              setFechaEditada({ id: imp.id, fecha: updated?.fecha })
+              toastRef.current?.show({ severity: 'success', summary: 'Fecha cambiada', detail: formatDate(updated?.fecha), life: 3000 })
+            }}
+            notify={(severity, summary, detail) => toastRef.current?.show({ severity, summary, detail, life: 4500 })}
+          />
+        )}
+
         <UnsavedChangesDialog
           open={showSaveOnCloseModal}
           saving={submitting}
@@ -10796,9 +10902,14 @@ function AlternosSugeridosDialog({ token, data, onClose, notify }) {
   )
 }
 
-function ImportacionesTable({ token, moduleActions, status: statusProp, isTabActive, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled, pendingCreatePrefill, onPendingCreatePrefillHandled }) {
+function ImportacionesTable({ token, user, moduleActions, status: statusProp, isTabActive, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled, pendingCreatePrefill, onPendingCreatePrefillHandled }) {
   const toast = useRef(null)
   const tableWrapperRef = useRef(null)
+  // Solo el administrador cambia las fechas de una importacion (en cualquier etapa).
+  const isAdmin = Boolean(
+    user?.is_superuser || user?.is_staff || user?.es_administrador
+    || String(user?.rol || '').trim().toLowerCase() === 'administrador'
+  )
 
   // Ajusta automaticamente el ancho de las columnas para llenar el espacio
   // disponible en pantallas grandes, sin comprimir en pantallas chicas.
@@ -11784,6 +11895,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         onSaved={() => { setShowImpDetails(false); invalidateImportacionesItemsCache(); fetchItems(true) }}
         moduleActions={moduleActions}
         onOpenOrigen={handleOpenOrigen}
+        isAdmin={isAdmin}
       />
 
       {Array.isArray(productHoverCard?.productos) && productHoverCard.productos.length > 0 && createPortal(
@@ -11839,6 +11951,7 @@ function ImportacionesTable({ token, moduleActions, status: statusProp, isTabAct
         open={showEditImp}
         imp={editImp}
         token={token}
+        isAdmin={isAdmin}
         onClose={() => setShowEditImp(false)}
         onSaved={(payload, { cerrar = true } = {}) => {
           // Guardar antes de descargar el Excel no cierra el modal.

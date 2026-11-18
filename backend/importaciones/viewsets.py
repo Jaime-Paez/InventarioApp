@@ -1772,26 +1772,38 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="actualizar-fecha-tracker")
     def actualizar_fecha_tracker(self, request, pk=None):
-        """Edita las fechas del seguimiento en camino (salida del proveedor / llegada
-        a puerto). La fecha de llegada final no se edita aquí, se fija al marcar llegada."""
-        if not self._check_specific_importacion_permission(request, "puede_marcar_llegada"):
+        """Edita las fechas de una importacion.
+
+        - El administrador cambia cualquier fecha (creacion, salida del
+          proveedor, llegada a puerto, llego, organizado) en cualquier etapa.
+        - Los demas (con permiso de marcar la llegada) solo pueden registrar
+          la salida del proveedor o la llegada a puerto cuando todavia estan
+          vacias y la importacion esta en camino; cambiar una fecha ya
+          registrada es solo del administrador."""
+        es_admin = is_app_admin(request.user)
+        if not es_admin and not self._check_specific_importacion_permission(request, "puede_marcar_llegada"):
             return Response(
                 {"detail": "No tienes permiso para ejecutar esta acción."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         instance = self.get_object()
-        if instance.estado != Importacion.ESTADO_EN_CAMINO:
-            return Response(
-                {"detail": "Solo se puede editar el seguimiento mientras está en camino."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
+        campos_admin = {"fecha", "fecha_importacion", "fecha_puerto", "fecha_llegada", "fecha_organizado"}
         campo = str(request.data.get("campo") or "").strip()
-        if campo not in {"fecha_importacion", "fecha_puerto"}:
-            return Response(
-                {"detail": "Debes indicar un campo válido: fecha_importacion o fecha_puerto."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if campo not in campos_admin:
+            return Response({"detail": "Campo de fecha inválido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not es_admin:
+            if campo not in {"fecha_importacion", "fecha_puerto"} or instance.estado != Importacion.ESTADO_EN_CAMINO:
+                return Response(
+                    {"detail": "Solo el administrador puede cambiar las fechas de la importación."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if getattr(instance, campo) is not None:
+                return Response(
+                    {"detail": "Esa fecha ya está registrada: solo el administrador puede cambiarla."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         fecha_raw = str(request.data.get("fecha") or "").strip()
         fecha_valor = None
@@ -1802,12 +1814,28 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             except ValueError:
                 return Response({"detail": "Fecha inválida."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Fechas que no pueden quedar vacias.
+        obligatoria = campo == "fecha" or (
+            instance.estado == Importacion.ESTADO_IMPORTADA and campo in {"fecha_llegada", "fecha_organizado"}
+        )
+        if fecha_valor is None and obligatoria:
+            return Response({"detail": "Esta fecha no puede quedar vacía."}, status=status.HTTP_400_BAD_REQUEST)
+
         update_fields = [campo]
         setattr(instance, campo, fecha_valor)
         if campo == "fecha_importacion" and fecha_valor is not None:
             instance.fecha = fecha_valor
             update_fields.append("fecha")
+        # Dias reales de entrega: de la salida (o la fecha) a la llegada.
+        if campo in {"fecha", "fecha_importacion", "fecha_llegada"}:
+            start = instance.fecha_importacion or instance.fecha
+            instance.dias_reales_entrega = (
+                max(0, (instance.fecha_llegada - start).days) if instance.fecha_llegada and start else None
+            )
+            update_fields.append("dias_reales_entrega")
         instance.save(update_fields=update_fields)
+        if "dias_reales_entrega" in update_fields:
+            self._recalcular_dias_entrega_casa(instance.casa_comercial)
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
