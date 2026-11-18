@@ -261,8 +261,12 @@ function ProductoDetails({
     notifyError(oemError)
   }, [notifyError, oemError])
 
-  // "Mismo nombre a todos": pone un nombre a este producto y a todos sus
+  // "Unificar nombre" (solo administrador): pone un nombre a este producto y a todos sus
   // alternos (todo el grupo) de una vez.
+  const esAdmin = Boolean(
+    currentUser?.is_superuser || currentUser?.is_staff || currentUser?.es_administrador
+    || String(currentUser?.rol || '').trim().toLowerCase() === 'administrador'
+  )
   const [nombreGrupoDialog, setNombreGrupoDialog] = useState(null)
   const [nombreGrupoSaving, setNombreGrupoSaving] = useState(false)
   const handleAplicarNombreGrupo = async () => {
@@ -2319,14 +2323,14 @@ function ProductoDetails({
               <section className="create-user__section">
                 <div className="create-user__section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <h4>Alternos</h4>
-                  {allowEdit && !isEditing && originalAlternativas.length > 0 && (
+                  {esAdmin && allowEdit && !isEditing && originalAlternativas.length > 0 && (
                     <button
                       type="button"
                       className="create-user__action create-user__action--secondary"
                       onClick={() => setNombreGrupoDialog({ nombre: formData.nombre || '' })}
                       data-title="Pone el mismo nombre a este producto y a todos sus alternos"
                     >
-                      Mismo nombre a todos
+                      Unificar nombre
                     </button>
                   )}
                 </div>
@@ -2617,7 +2621,7 @@ function ProductoDetails({
               <Pencil size={18} />
             </div>
             <div className="user-details__confirm-content" style={{ width: '100%' }}>
-              <h4>Mismo nombre a todos los alternos</h4>
+              <h4>Unificar nombre</h4>
               <p>Este nombre quedará en {formData.codigo || 'este producto'} y en sus {originalAlternativas.length} alterno{originalAlternativas.length === 1 ? '' : 's'}.</p>
               <label className="create-user__field" style={{ width: '100%', marginTop: 10 }}>
               <input
@@ -2654,7 +2658,7 @@ function ProductoDetails({
                 onClick={handleAplicarNombreGrupo}
                 disabled={nombreGrupoSaving || !String(nombreGrupoDialog.nombre).trim()}
               >
-                {nombreGrupoSaving ? 'Guardando...' : 'Poner a todos'}
+                {nombreGrupoSaving ? 'Guardando...' : 'Unificar nombre'}
               </button>
             </div>
           </div>

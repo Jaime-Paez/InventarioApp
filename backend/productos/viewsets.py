@@ -475,6 +475,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
         """Pone el mismo nombre a este producto y a todos sus alternos (todo el
         grupo). Se guarda producto por producto para que quede en el
         historial de cada uno."""
+        from usuarios.utils import is_app_admin
+        if not is_app_admin(request.user):
+            raise PermissionDenied("Solo el administrador puede poner el mismo nombre a todos los alternos.")
         producto = self.get_object()
         nombre = str(request.data.get("nombre") or "").strip()
         if not nombre:
