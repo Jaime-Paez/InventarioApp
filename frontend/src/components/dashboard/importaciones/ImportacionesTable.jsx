@@ -3379,8 +3379,11 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     const antes = d.precio_confirmado ?? d.precio_estimado
     return antes != null ? String(Math.round(Number(antes) * 100)) : null
   }
+  const avisarNoLlegada = () => {
+    toastRef.current?.show({ severity: 'warn', summary: 'Todavía no se puede llenar', detail: motivoNoLlegada, life: 4500 })
+  }
   const llenarTodasLlegada = (field) => {
-    if (!puedeLlenarLlegada) return
+    if (!puedeLlenarLlegada) { avisarNoLlegada(); return }
     detalles.forEach((d) => {
       const valor = field === 'precioFinal' ? precioAntesCentavos(d) : String(d.cantidad ?? '')
       if (valor != null && llegadaValorDe(d, field) !== valor) setLlegadaValor(d.id, field, valor)
@@ -3574,6 +3577,22 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
 
               {activeTab === 'productos' && (
                 <section className="create-user__section">
+                  {enCamino && !puedeLlenarLlegada && (
+                    <BlockerNotice
+                      title="Precio final, Cant. final y comentario todavía no se pueden llenar"
+                      reason={canMarcarLlegada
+                        ? (imp.fecha_puerto
+                          ? 'Primero marca que la importación llegó; después llenas lo que llegó.'
+                          : 'Falta la fecha de llegada a puerto (pestaña General) y después marcar que llegó.')
+                        : 'No tienes permiso para verificar la llegada.'}
+                      actionLabel={canMarcarLlegada ? (imp.fecha_puerto ? 'Marcar que llegó' : 'Ir a General') : undefined}
+                      onAction={canMarcarLlegada
+                        ? () => (imp.fecha_puerto
+                          ? setLlegoDialog({ llego: true, fecha: getDefaultFechaLlegada(imp) })
+                          : setActiveTab('general'))
+                        : undefined}
+                    />
+                  )}
                   <ImportProductSearch
                     value={productSearch}
                     onChange={setProductSearch}
@@ -3696,8 +3715,10 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                             onMouseEnter={(e) => showCellHover(e, precio !== '-' ? precio : null, 'Precio')}
                             onMouseLeave={hideCellHover}
                             onDoubleClick={() => {
+                              if (!enCamino) return
+                              if (!puedeLlenarLlegada) { avisarNoLlegada(); return }
                               const antes = precioAntesCentavos(d)
-                              if (enCamino && puedeLlenarLlegada && antes != null) setLlegadaValor(d.id, 'precioFinal', antes)
+                              if (antes != null) setLlegadaValor(d.id, 'precioFinal', antes)
                             }}
                             style={enCamino && puedeLlenarLlegada ? { cursor: 'pointer', userSelect: 'none' } : undefined}
                           >
@@ -3721,7 +3742,11 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => showCellHover(e, String(cantidad ?? ''), 'Cantidad')}
                             onMouseLeave={hideCellHover}
-                            onDoubleClick={() => { if (enCamino && puedeLlenarLlegada) setLlegadaValor(d.id, 'cantidadRecibida', String(d.cantidad ?? '')) }}
+                            onDoubleClick={() => {
+                              if (!enCamino) return
+                              if (!puedeLlenarLlegada) { avisarNoLlegada(); return }
+                              setLlegadaValor(d.id, 'cantidadRecibida', String(d.cantidad ?? ''))
+                            }}
                             style={enCamino && puedeLlenarLlegada ? { cursor: 'pointer', userSelect: 'none' } : undefined}
                           >
                             <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{cantidad}</span>

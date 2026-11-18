@@ -3126,3 +3126,11 @@ body.app-theme-dark .imp-receive-footer-hint {
   color: var(--color-text-secondary, #64748b);
   font-size: 0.88rem;
 }
+
+/* En camino sin marcar que llegó: las casillas de lo que llegó se ven
+   apagadas (antes parecían editables y el doble clic no hacía nada). */
+.imp-details__productos-table input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--color-surface-muted, #f1f5f9);
+}
