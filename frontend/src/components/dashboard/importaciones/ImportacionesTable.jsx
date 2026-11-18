@@ -2986,7 +2986,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     if (field === 'comentarioLlegada') {
       return saved?.comentariosLlegada?.[d.id] ?? d.comentario_llegada ?? ''
     }
-    if (field === 'nombre') return d.nombre || ''
+    if (field === 'nombre') return d.producto?.nombre || d.nombre || ''
     return saved?.cantidadesRecibidas?.[d.id] ?? (d.cantidad_recibida != null ? String(d.cantidad_recibida) : '')
   }
   const guardarLlegadaEdits = useCallback(async () => {
@@ -3008,7 +3008,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       for (const [id, edit] of Object.entries(edits)) {
         if (edit.nombre === undefined) continue
         const detalle = (actual.detalles || []).find((x) => String(x.id) === String(id))
-        if (!detalle || detalle.producto?.id || String(detalle.nombre || '') === edit.nombre) continue
+        if (!detalle || !String(edit.nombre || '').trim() || String(detalle.producto?.nombre || detalle.nombre || '') === edit.nombre) continue
         const r = await authFetch(
           `${API_URL}/importaciones/importaciones/${actual.id}/detalles/${id}/`,
           { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: edit.nombre }) },
@@ -3712,16 +3712,16 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                               escoge de las coincidencias (clic en la "i" del OEM) o se
                               escribe un nombre nuevo, como en la sugerencia. Se guarda
                               con "Guardar". */}
-                          {sinCat && enCamino && canEditDetalle && canMarcarLlegada ? (
+                          {enCamino && canEditDetalle && canMarcarLlegada ? (
                             <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
                               <input
                                 type="text"
                                 className="imp-excel-review__codigo-input"
                                 value={llegadaValorDe(d, 'nombre')}
                                 onChange={(e) => setLlegadaValor(d.id, 'nombre', e.target.value)}
-                                placeholder="Nombre del producto nuevo"
-                                data-title="Escribe el nombre o escógelo de las coincidencias (ícono junto al OEM)"
-                                aria-label="Descripción del producto nuevo"
+                                placeholder="Descripción"
+                                data-title="Escribe la descripción o escógela de las coincidencias (ícono junto al OEM). En un producto del catálogo cambia su nombre en el catálogo al guardar."
+                                aria-label="Descripción del producto"
                                 style={{ width: '100%', minWidth: 0, fontSize: 'inherit', fontFamily: 'inherit' }}
                               />
                             </span>
@@ -3746,7 +3746,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                             <CoincidenciasInfo
                               matches={coincidenciasByKey[d.id]}
                               tituloPick="Clic para usar la descripción de este producto"
-                              onPick={sinCat && enCamino && canEditDetalle && canMarcarLlegada
+                              onPick={enCamino && canEditDetalle && canMarcarLlegada
                                 ? (p) => { if (p?.nombre) setLlegadaValor(d.id, 'nombre', p.nombre) }
                                 : undefined}
                             />

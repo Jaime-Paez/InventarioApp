@@ -2788,13 +2788,19 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     {"detail": "La importación ya está importada: no se puede cambiar la descripción."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            nombre = str(request.data.get("nombre") or "").strip()
+            if not nombre:
+                return Response({"detail": "Escribe la descripción."}, status=status.HTTP_400_BAD_REQUEST)
             if detalle.producto_id:
-                return Response(
-                    {"detail": "La descripción de un producto del catálogo se cambia en el inventario."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            detalle.nombre = str(request.data.get("nombre") or "").strip()[:255]
-            detalle.save(update_fields=["nombre"])
+                # Producto del catalogo: la descripcion es su nombre en el
+                # catalogo (se cambia ahi, para todos los modulos).
+                producto = detalle.producto
+                max_len = Producto._meta.get_field("nombre").max_length or 255
+                producto.nombre = nombre[:max_len]
+                producto.save(update_fields=["nombre", "actualizado_en"])
+            else:
+                detalle.nombre = nombre[:255]
+                detalle.save(update_fields=["nombre"])
         serializer = ImportacionDetalleSerializer(detalle)
         return Response(serializer.data)
 
