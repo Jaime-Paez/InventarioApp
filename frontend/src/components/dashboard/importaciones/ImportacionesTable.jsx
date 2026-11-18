@@ -8140,19 +8140,18 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       toastRef.current?.show({ severity: 'error', summary: 'Error', detail: 'Agrega al menos un producto.', life: 4000 })
       return false
     }
-    // En la sugerencia (borrador) y en la verificacion la cantidad todavia no
-    // es obligatoria (solo no puede ser negativa): se exige al pedir la
-    // confirmacion y despues.
-    const cantidadOpcional = imp?.estado === 'borrador' || imp?.estado === 'cotizacion'
+    // Guardar se puede con cantidades en 0 en cualquier etapa (solo no pueden
+    // ser negativas). Lo que si exige un valor es pasar a la siguiente etapa
+    // (pedir la confirmacion, importar).
     const badKeys = new Set(
       itemsToSubmit.filter((item) => {
         if (item.quitado) return false
-        const n = Number(item.cantidad || 0)
-        if (!Number.isFinite(n) || n < 0) return true
-        // Lo agregado en la verificación puede guardarse sin cantidad: se
-        // exige al pedir la confirmación.
-        if (cantidadOpcional || esAgregadoVerificacion(item)) return false
-        return n <= 0
+        return ['cantidad', 'cantidad_aproximada', 'cantidad_confirmada'].some((campo) => {
+          const raw = item[campo]
+          if (raw === '' || raw == null) return false
+          const n = Number(raw)
+          return !Number.isFinite(n) || n < 0
+        })
       }).map((item) => item._key)
     )
     if (badKeys.size > 0) {
@@ -8160,7 +8159,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       toastRef.current?.show({
         severity: 'error',
         summary: 'Error',
-        detail: cantidadOpcional ? 'Las cantidades no pueden ser negativas.' : 'Todas las cantidades deben ser mayores a cero.',
+        detail: 'Las cantidades no pueden ser negativas.',
         life: 4000,
       })
       return false
@@ -9171,6 +9170,21 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   const handleImportar = async () => {
     const factura = facturaInput.trim()
     if (!factura || !fechaImportar) return
+    // Para importar, lo que se marca con visto necesita una cantidad confirmada
+    // mayor a 0 (guardar si se puede con 0; lo que no llega se marca con x).
+    const sinCantidad = details.filter((item) => itemCheckStates[item._key] === 'check' && !(Number(item.cantidad_confirmada) > 0))
+    if (sinCantidad.length) {
+      setFaltanConfirmar(new Set(sinCantidad.map((item) => item._key)))
+      toastRef.current?.show({
+        severity: 'error',
+        summary: 'Falta la cantidad',
+        detail: `Pon la Cant. conf. de ${sinCantidad.map((item) => item.producto?.codigo || item.codigo || 'un producto').join(', ')} (mayor a 0) o márcalo con x para no importarlo.`,
+        life: 6000,
+      })
+      setShowImportarModal(false)
+      jumpToDetailRow(sinCantidad[0]._key)
+      return
+    }
     setImportarSubmitting(true)
     try {
       const normalizedDetalles = details.map((item) => {
