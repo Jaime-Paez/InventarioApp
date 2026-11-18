@@ -248,23 +248,9 @@ class ImportacionSerializer(serializers.ModelSerializer):
         if self.instance is not None and self.instance.estado != Importacion.ESTADO_BORRADOR:
             for item in value:
                 self._vincular_producto_existente(item)
-        # Un mismo codigo puede estar en varias filas si cada una tiene otra
-        # referencia de la fabrica: siguen juntas hasta el final y al importar
-        # se suman en un solo producto. Con la misma referencia es un repetido:
-        # se permite en la sugerencia y la verificacion (con aviso) y hay que
-        # dejar uno antes de pedir la confirmacion (ver productos_repetidos).
-        estado = self.instance.estado if self.instance is not None else Importacion.ESTADO_BORRADOR
-        if estado not in (Importacion.ESTADO_BORRADOR, Importacion.ESTADO_COTIZACION):
-            codigos_repetidos = [
-                grupo["codigo"]
-                for grupo in self.agrupar_repetidos(
-                    (item["producto"], item.get("referencia")) for item in value if item.get("producto")
-                )
-            ]
-            if codigos_repetidos:
-                raise serializers.ValidationError(
-                    f"No repitas productos dentro de la misma importacion: {', '.join(codigos_repetidos)}."
-                )
+        # Un mismo codigo puede estar en varias filas (con la misma u otra
+        # referencia) en todas las etapas: en la importacion cada fila sigue
+        # separada hasta el final y solo en el inventario se suman.
 
         conflictos = self._find_shared_field_conflicts(value, "oem", "el OEM") + self._find_shared_field_conflicts(
             value, "referencia", "la referencia"
@@ -330,60 +316,25 @@ class ImportacionSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def validar_codigos_nuevos(nuevos, codigos_en_importacion=()):
-        """Un producto no puede quedar dos veces en la importación: antes de
-        crear (o de pedir la confirmación) se revisan todos los códigos nuevos
-        de una vez y se devuelve cada uno con su motivo, para no crear ninguno
-        si alguno está mal. `nuevos` son los (codigo, nombre) de los detalles
-        sin producto que se van a crear; `codigos_en_importacion`, los códigos
-        de los productos del catálogo que ya están en ella. Un código que ya
-        existe en el catálogo es ese mismo producto y se vincula (no es error)
-        salvo que ese producto ya esté en la importación."""
-        # Con referencias (tuplas de 3 / pares (codigo, referencia)): el mismo
-        # codigo con OTRA referencia no es repetido -- siguen separados y se
-        # suman en un solo producto al importar. Sin referencia (None) se
-        # trata como repetido, como antes.
-        def _ref(valor):
-            return None if valor is None else str(valor or "").strip().upper()
-
+        """Antes de crear (o de pedir la confirmación) se revisan todos los
+        códigos nuevos de una vez y se devuelve cada uno con su motivo, para no
+        crear ninguno si alguno está mal. `nuevos` son los (codigo, nombre[,
+        referencia]) de los detalles sin producto que se van a crear. Un código
+        repetido (nuevo o del catálogo, con la misma u otra referencia) no es
+        error: cada fila sigue separada en la importación y en el inventario se
+        suman en un solo producto. `codigos_en_importacion` se acepta por
+        compatibilidad y ya no se usa."""
         max_codigo = Producto._meta.get_field("codigo").max_length
         max_nombre = Producto._meta.get_field("nombre").max_length
-        en_importacion = {}
-        for entry in codigos_en_importacion:
-            codigo, referencia = entry if isinstance(entry, (tuple, list)) else (entry, None)
-            en_importacion.setdefault(str(codigo or "").strip().upper(), []).append(_ref(referencia))
-        normalizados = []
-        for entry in nuevos:
-            codigo, nombre = entry[0], entry[1]
-            referencia = entry[2] if len(entry) > 2 else None
-            codigo = str(codigo or "").strip()
-            if codigo:
-                normalizados.append((codigo, str(nombre or "").strip(), _ref(referencia)))
-        nuevos = normalizados
-        refs_por_codigo = {}
-        for codigo, _, referencia in nuevos:
-            refs_por_codigo.setdefault(codigo.upper(), []).append(referencia)
-
-        def _chocan(refs):
-            if any(ref is None for ref in refs):
-                return len(refs) > 1
-            return len(set(refs)) < len(refs)
-
         invalidos = []
         vistos = set()
-        for codigo, nombre, _ in nuevos:
-            clave = codigo.upper()
-            if clave in vistos:
+        for entry in nuevos:
+            codigo = str(entry[0] or "").strip()
+            nombre = str(entry[1] or "").strip()
+            if not codigo or codigo.upper() in vistos:
                 continue
-            vistos.add(clave)
+            vistos.add(codigo.upper())
             motivos = []
-            refs = refs_por_codigo[clave]
-            existentes = en_importacion.get(clave)
-            if existentes and (
-                None in refs or None in existentes or set(refs) & set(existentes)
-            ):
-                motivos.append("ese producto ya está en esta importación con la misma referencia")
-            if _chocan(refs):
-                motivos.append(f"está repetido {len(refs)} veces en esta importación con la misma referencia")
             if len(codigo) > max_codigo:
                 motivos.append(f"tiene más de {max_codigo} caracteres")
             if len(nombre or codigo) > max_nombre:
@@ -391,48 +342,6 @@ class ImportacionSerializer(serializers.ModelSerializer):
             if motivos:
                 invalidos.append({"codigo": codigo, "motivo": "; ".join(motivos)})
         return invalidos
-
-    @staticmethod
-    def agrupar_repetidos(pares):
-        """pares: (producto, referencia de la fila). Un producto en varias
-        filas con referencias distintas esta bien (se suman al importar); es
-        repetido si dos filas tienen la misma referencia (o ninguna).
-        Devuelve [{codigo, referencias}] de los repetidos."""
-        grupos = {}
-        for producto, referencia in pares:
-            grupo = grupos.setdefault(producto.id, {"codigo": producto.codigo, "referencias": []})
-            grupo["referencias"].append(str(referencia or producto.referencia or "").strip())
-        repetidos = []
-        for grupo in grupos.values():
-            refs = grupo["referencias"]
-            if len(refs) > 1 and len({ref.upper() for ref in refs}) < len(refs):
-                repetidos.append({"codigo": grupo["codigo"], "referencias": [ref for ref in refs if ref]})
-        return repetidos
-
-    @staticmethod
-    def productos_repetidos(detalles):
-        """Productos del catalogo repetidos con la misma referencia (sin contar
-        las quitadas). Se permiten en la sugerencia y la verificacion, pero hay
-        que dejar uno antes de pedir la confirmacion o importar. Con
-        referencias distintas no son repetidos: se suman al importar. Los
-        codigos nuevos repetidos ya los reporta validar_codigos_nuevos.
-        Devuelve [{codigo, referencias}]."""
-        return ImportacionSerializer.agrupar_repetidos(
-            (detalle.producto, detalle.referencia)
-            for detalle in detalles
-            if not getattr(detalle, "quitado", False) and detalle.producto_id
-        )
-
-    @staticmethod
-    def productos_repetidos_response_data(repetidos):
-        lista = "; ".join(
-            f"{row['codigo']}" + (f" (referencias {', '.join(row['referencias'])})" if row["referencias"] else "")
-            for row in repetidos
-        )
-        return {
-            "detail": f"Hay códigos repetidos con la misma referencia, deja solo uno de cada uno (quita los demás): {lista}.",
-            "productos_repetidos": repetidos,
-        }
 
     @staticmethod
     def codigos_invalidos_response_data(invalidos):

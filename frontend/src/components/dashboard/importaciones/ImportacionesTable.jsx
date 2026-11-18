@@ -4171,7 +4171,7 @@ function VerificacionGroupsSummary({ conteo, chipProps, repetidos = [], onIrRepe
                   onIrRepetidos?.()
                 }
               }}
-              data-title={`Clic: ir a los repetidos (${repetidos.map((grupo) => (grupo.referencias.length ? `${grupo.codigo}: ${grupo.referencias.join(', ')}` : grupo.codigo)).join(' · ')}). Con referencias distintas pasan juntos, cada una con su precio, y se suman al importar; con la misma referencia deja solo una fila.`}
+              data-title={`Clic: ir a los repetidos (${repetidos.map((grupo) => (grupo.referencias.length ? `${grupo.codigo}: ${grupo.referencias.join(', ')}` : grupo.codigo)).join(' · ')}). Pasan por todas las etapas, cada fila con su referencia, cantidad y precio; solo en el inventario se suman.`}
               style={{ ...chip, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
             >
               {plural(repetidos.length, 'repetido', 'repetidos')}
@@ -4235,7 +4235,7 @@ function ImportGroupsSummary({ vinculados = 0, oem = 0, otraCasa = 0, codigoNuev
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <span
               {...chipProps('repetidos', 'los productos repetidos')}
-              data-title={`Clic: ir a los repetidos (${repetidos.map((grupo) => (grupo.referencias.length ? `${grupo.codigo}: ${grupo.referencias.join(', ')}` : grupo.codigo)).join(' · ')}). Puedes pedir la cotización así. Con referencias distintas pasan juntos, cada una con su precio, y se suman al importar; con la misma referencia deja solo una fila.`}
+              data-title={`Clic: ir a los repetidos (${repetidos.map((grupo) => (grupo.referencias.length ? `${grupo.codigo}: ${grupo.referencias.join(', ')}` : grupo.codigo)).join(' · ')}). Puedes pedir la cotización así: pasan por todas las etapas, cada fila con su referencia, cantidad y precio; solo en el inventario se suman.`}
               style={{ ...chip, background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d' }}
             >
               {repetidos.length} repetido{repetidos.length !== 1 ? 's' : ''}
@@ -6029,6 +6029,83 @@ function CoincidenciasInfo({ matches, onPick, elegida = -1, oemElegido = '', onP
   )
 }
 
+// Icono "i" junto a la referencia de un producto del catalogo: todas las
+// referencias de ese codigo interno. Con onPick se escoge cual se importa en
+// esta fila (puede ser una u otra segun el pedido); la escogida va en verde.
+function ReferenciasProductoInfo({ producto, elegida = '', onPick }) {
+  const [hover, setHover] = useState(null)
+  const [pos, setPos] = useState(null)
+  const cardRef = useRef(null)
+  const timerRef = useRef(null)
+  const vistas = new Set()
+  const lista = [producto?.referencia, ...(producto?.referencias || []).map((r) => (r && typeof r === 'object' ? r.valor : r))]
+    .map((r) => String(r || '').trim())
+    .filter((r) => r && !vistas.has(oemClave(r)) && vistas.add(oemClave(r)))
+  const elegidas = new Set([oemClave(elegida)].filter(Boolean))
+  const cancelar = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null } }
+  const mostrar = (event) => {
+    cancelar()
+    const rect = event.currentTarget.getBoundingClientRect()
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null
+      setHover({ triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left })
+    }, 150)
+  }
+  const ocultar = () => {
+    cancelar()
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null
+      setHover(null)
+      setPos(null)
+    }, 250)
+  }
+  useEffect(() => cancelar, [])
+  useLayoutEffect(() => {
+    if (!hover || !cardRef.current) return
+    setPos(computeSmartPopoverPosition(hover, cardRef.current))
+  }, [hover, lista.length])
+  if (!producto?.id) return null
+  return (
+    <>
+      <Info
+        size={13}
+        style={{ flexShrink: 0 }}
+        className={`imp-distribucion__info-icon${lista.length > 1 ? '' : ' imp-distribucion__info-icon--empty'}`}
+        onMouseEnter={mostrar}
+        onMouseLeave={ocultar}
+      />
+      {hover && createPortal(
+        <div
+          ref={cardRef}
+          className="imp-alternos-hover-card"
+          style={{ top: pos?.top ?? hover.triggerBottom + 4, left: pos?.left ?? hover.triggerLeft, visibility: pos ? 'visible' : 'hidden' }}
+          onMouseEnter={cancelar}
+          onMouseLeave={ocultar}
+        >
+          <div className="imp-alternos-hover-card__message" style={{ paddingBottom: 4 }}>
+            <strong>Referencias de {producto.codigo || 'este código'}</strong>
+            {onPick && lista.length > 1 && <div>Clic en la que se importa en esta fila.</div>}
+          </div>
+          {lista.length ? (
+            <div style={{ padding: '0 10px 10px' }}>
+              <OemChips
+                oems={lista}
+                elegidos={elegidas}
+                onPick={onPick ? (r) => { if (!elegidas.has(oemClave(r))) onPick(r); cancelar(); setHover(null); setPos(null) } : undefined}
+                tituloActivo="Referencia de esta fila"
+                tituloEscoger="Clic para usar esta referencia en esta fila"
+              />
+            </div>
+          ) : (
+            <div className="imp-alternos-hover-card__message">Este producto no tiene referencias guardadas.</div>
+          )}
+        </div>,
+        getPortalRoot()
+      )}
+    </>
+  )
+}
+
 function ImportacionExcelModal({ token, onClose, onCreated, isTabActive, modo = 'excel', prefill = null }) {
   const esManual = modo === 'manual'
   const toastRef = useRef(null)
@@ -7000,7 +7077,8 @@ const NOTA_QUITADO_EXCEL = 'Eliminado en el Excel'
 // Texto anterior de esa nota (comentarios ya guardados asi).
 const NOTA_QUITADO_EXCEL_ANTERIOR = 'No venía en el Excel'
 const NOTA_AGREGADO_VERIFICACION = 'Agregado en la verificación'
-// Fila repetida que se sumo a otra del mismo codigo al pedir la confirmacion.
+// Fila repetida que se sumaba a otra al pedir la confirmacion (ya no se
+// agrupa; la nota queda en comentarios viejos y se limpia al restaurar).
 const NOTA_AGRUPADO_VERIFICACION = 'Agrupado con otra fila del mismo código'
 const withNotaVerificacion = (comentario, nota) => {
   const actual = String(comentario || '').trim()
@@ -7058,8 +7136,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   // Verificacion: productos a los que les falta PVP Aprox. o Cant. aprox. al
   // pedir la confirmacion (se marcan en rojo hasta completarlos).
   const [faltanConfirmar, setFaltanConfirmar] = useState(new Set())
-  // Repetidos que bloquean pedir la confirmacion: se ofrece agruparlos.
-  const [agruparRepetidos, setAgruparRepetidos] = useState(null)
   const [codigosInvalidos, setCodigosInvalidos] = useState([])
   const [showAceptadosView, setShowAceptadosView] = useState(false)
   const [aceptadosCount, setAceptadosCount] = useState(null)
@@ -7600,6 +7676,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     toastRef.current?.show({ severity: 'success', summary: agregada ? 'Referencia agregada' : 'Referencia quitada', detail: `${ref}. Recuerda guardar.`, life: 3000 })
   }
 
+  // Producto del catalogo: escoge cual de sus referencias va en esta fila.
+  const escogerReferenciaProducto = (_key, ref) => {
+    setDetails((prev) => prev.map((item) => (item._key === _key ? { ...item, referencia: ref } : item)))
+    toastRef.current?.show({ severity: 'success', summary: 'Referencia escogida', detail: `${ref}. Recuerda guardar.`, life: 3000 })
+  }
+
   const handleComentarioChange = (_key, value) => {
     setDetails((prev) => prev.map((item) => item._key === _key ? { ...item, comentario: value } : item))
   }
@@ -8020,6 +8102,9 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     const ambiguas = []
     const porProducto = new Map()
     const porValor = new Map()
+    // Lineas repetidas del Excel que se repartieron entre filas repetidas de
+    // la lista (no son un error).
+    const repartidas = new Set()
     // Referencias que trae el Excel: una fila de la lista cuya referencia viene
     // en el Excel ya tiene su precio en otra linea.
     const refsDelExcel = new Set(filas.map(({ row }) => norm(texto(row, refIdx))).filter(Boolean))
@@ -8069,6 +8154,21 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           }
         }
       }
+      // Varias filas del mismo producto con la misma referencia (se permiten
+      // repetidas): cada linea del Excel va a la siguiente fila libre, en
+      // orden.
+      if (candidatos.length > 1) {
+        const productoId = candidatos[0].producto?.id
+        const mismaFila = (d) => (productoId != null ? d.producto?.id === productoId : codigoDe(d) === codigoDe(candidatos[0]))
+          && norm(d.referencia) === norm(candidatos[0].referencia)
+        if (candidatos.every(mismaFila)) {
+          const libre = candidatos.find((d) => !porProducto.has(d._key))
+          if (libre) {
+            repartidas.add(fila)
+            candidatos = [libre]
+          }
+        }
+      }
       // Ambigua: no se le pone precio, pero esos productos si vinieron en el
       // Excel (no se quitan).
       if (candidatos.length > 1) { ambiguas.push({ fila, etiqueta, keys: candidatos.map((d) => d._key) }); return }
@@ -8077,7 +8177,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     })
     // Repetido: el mismo codigo/referencia/OEM en varias filas, o varias
     // filas que caen en el mismo producto de la lista.
-    const repetidos = [...porValor.values()].filter((grupo) => grupo.length > 1)
+    const repetidos = [...porValor.values()].filter((grupo) => grupo.length > 1 && !grupo.every((x) => repartidas.has(x.fila)))
     porProducto.forEach((grupo) => {
       if (grupo.length < 2) return
       const yaAvisado = repetidos.some((g) => g.some((x) => grupo.some((y) => y.fila === x.fila)))
@@ -8301,18 +8401,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const dataRows = rawRows.slice(1).filter((row) => row.some((c) => String(c ?? '').trim() !== ''))
       // Numero de fila en el Excel (la 1 es el encabezado).
       const filaDe = new Map(rawRows.slice(1).map((row, i) => [row, i + 2]))
-      const porCodigo = new Map()
-      dataRows.forEach((row) => {
-        const codigo = cellText(row, codigoIdx)
-        const codigoLc = codigo.toLowerCase() === 'sin catálogo' ? '' : codigo.toLowerCase()
-        // Por la clave de la fila primero: un mismo codigo puede estar en dos
-        // filas (otra referencia) y cada una tiene su clave.
-        const clave = cellText(row, keyIdx) ? `k:${cellText(row, keyIdx)}` : codigoLc ? `c:${codigoLc}` : ''
-        if (!clave) return
-        porCodigo.set(clave, [...(porCodigo.get(clave) || []), { fila: filaDe.get(row), etiqueta: codigo || cellText(row, refIdx) || cellText(row, oemIdx) }])
-      })
-      const repetidosExcel = [...porCodigo.values()].filter((grupo) => grupo.length > 1)
-      if (repetidosExcel.length) { avisarRepetidos(repetidosExcel); return }
+      // Un codigo repetido en el Excel (con la misma u otra referencia) no
+      // bloquea: cada fila entra aparte y solo en el inventario se suman.
 
       // Las filas del Excel se pueden reordenar (o filtrar/ordenar por
       // cualquier columna) y se pueden agregar productos nuevos: cada fila se
@@ -8327,7 +8417,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const used = new Set()
       const matched = []
       const nuevos = []
-      const repetidos = []
       dataRows.forEach((row, rowIdx) => {
         const fileCode = cellText(row, codigoIdx)
         const fileCodeLc = fileCode.toLowerCase() === 'sin catálogo' ? '' : fileCode.toLowerCase()
@@ -8339,10 +8428,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           matched.push({ item, row })
           return
         }
-        if (fileCodeLc && (current.some((d) => codeOf(d) === fileCodeLc) || nuevos.some((n) => n.codigo.toLowerCase() === fileCodeLc))) {
-          repetidos.push([{ fila: filaDe.get(row), etiqueta: fileCode }])
-          return
-        }
+        // Un codigo que ya esta en la lista (o repetido en el Excel) entra
+        // como otra fila de ese producto.
         const nombre = cellText(row, nombreIdx)
         const oem = cellText(row, oemIdx)
         const referencia = cellText(row, refIdx)
@@ -8382,27 +8469,22 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           if (!found) { resolved.push(n); return }
           if (found.matched_producto_id) {
             const id = String(found.matched_producto_id)
-            const enLista = current.find((d) => String(d.producto?.id ?? '') === id)
+            // Ya estaba en la lista y esa fila quedo libre: es esa fila. Si
+            // no, entra como otra fila del mismo producto (con su propia
+            // referencia); solo en el inventario se suman.
+            const enLista = current.find((d) => String(d.producto?.id ?? '') === id && !used.has(d._key))
             if (enLista) {
-              if (used.has(enLista._key)) {
-                const otra = matched.find((m) => m.item._key === enLista._key)
-                repetidos.push([{ fila: filaDe.get(otra?.row), etiqueta: enLista.producto?.codigo || id }, { fila: filaDe.get(n.row), etiqueta: enLista.producto?.codigo || id }])
-                return
-              }
               used.add(enLista._key)
               matched.push({ item: enLista, row: n.row })
               return
             }
-            const otraNueva = resolved.find((o) => String(o.item.producto?.id ?? '') === id)
-            if (otraNueva) {
-              repetidos.push([{ fila: filaDe.get(otraNueva.row), etiqueta: found.matched_producto_codigo || id }, { fila: filaDe.get(n.row), etiqueta: found.matched_producto_codigo || id }])
-              return
-            }
+            const repetido = current.some((d) => String(d.producto?.id ?? '') === id)
+              || resolved.some((o) => String(o.item.producto?.id ?? '') === id)
             resolved.push({
               ...n,
               item: {
                 ...n.item,
-                _key: id,
+                _key: repetido ? `${id}~x${filaDe.get(n.row)}_${Date.now().toString(36)}` : id,
                 producto: {
                   id: found.matched_producto_id,
                   codigo: found.matched_producto_codigo,
@@ -8410,7 +8492,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                   referencia: found.matched_producto_referencia,
                   precio: found.matched_producto_precio,
                 },
-                codigo: '', nombre: '', oem: '', referencia: '',
+                // Cada fila guarda su propia referencia (la del Excel).
+                codigo: '', nombre: '', oem: '', referencia: n.item.referencia || '',
               },
             })
             return
@@ -8485,7 +8568,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         if (item.precio_estimado) return item
         return { ...item, precio_estimado: String(Math.round(Number(precioJp) * 100)), precio_casa: casa || '' }
       }
-      if (repetidos.length) { avisarRepetidos(repetidos); return }
       const ausentes = current.filter((item) => !used.has(item._key))
       const nuevosQuitados = isVerificar ? ausentes.filter((item) => !item.quitado).length : 0
 
@@ -8584,8 +8666,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     }
   }
 
-  // Codigos nuevos que el backend no deja crear (ya existen en el catalogo,
-  // repetidos...): todos a la vez en el aviso y marcados en la tabla, hasta
+  // Codigos nuevos que el backend no deja crear (p. ej. demasiado largos;
+  // los repetidos ya no son error): todos a la vez en el aviso y marcados en la tabla, hasta
   // que se cambian.
   const showCodigosInvalidos = async (response) => {
     const payload = await response.clone().json().catch(() => null)
@@ -8594,7 +8676,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     setCodigosInvalidos(invalidos)
     toastRef.current?.show({
       severity: 'warn',
-      summary: 'Códigos nuevos repetidos',
+      summary: 'Códigos nuevos con problema',
       detail: `${invalidos.length} código${invalidos.length !== 1 ? 's' : ''} nuevo${invalidos.length !== 1 ? 's' : ''} no se ${invalidos.length !== 1 ? 'pueden' : 'puede'} crear: cambia el código o quita la fila (están marcados en la tabla).`,
       life: 6000,
     })
@@ -8604,91 +8686,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     return true
   }
 
-  // Agrupa cada codigo repetido: solo se juntan las filas con la MISMA
-  // referencia (en la primera de ellas se suman la cantidad y la Cant. aprox.;
-  // el PVP Aprox. queda el de esa fila o el primero que haya, y los OEM se
-  // juntan). Las filas con otra referencia no se tocan: siguen separadas hasta
-  // el final y al importar se suman en ese unico producto, con todas sus
-  // referencias. Las juntadas quedan quitadas con una nota (se pueden
-  // restaurar); las agregadas en esta etapa se borran.
-  const handleAgruparRepetidos = (grupos) => {
-    const sumar = (a, b) => {
-      const total = Number(a || 0) + Number(b || 0)
-      return total > 0 ? String(total) : (a || b || '')
-    }
-    const juntarCodigos = (filas, field) => {
-      const vistos = new Map()
-      filas.forEach((item) => String(item?.[field] || '').split(',').forEach((token) => {
-        const valor = token.trim()
-        if (valor && !vistos.has(valor.toUpperCase())) vistos.set(valor.toUpperCase(), valor)
-      }))
-      return [...vistos.values()].join(', ')
-    }
-    setDetails((prev) => {
-      let next = prev
-      const porReferencia = []
-      for (const grupo of grupos) {
-        const subgrupos = new Map()
-        next.filter((item) => !item.quitado && grupo.keys.includes(item._key)).forEach((item) => {
-          const ref = String(getDetalleReferencia(item) || '').trim().toUpperCase()
-          if (!subgrupos.has(ref)) subgrupos.set(ref, [])
-          subgrupos.get(ref).push(item._key)
-        })
-        subgrupos.forEach((keys) => porReferencia.push(keys))
-      }
-      for (const keys of porReferencia) {
-        const filas = next.filter((item) => !item.quitado && keys.includes(item._key))
-        if (filas.length < 2) continue
-        const [primera, ...resto] = filas
-        const precioDe = (item) => parseInt(String(item.precio_estimado || '').replace(/\D/g, '') || '0', 10)
-        const unida = {
-          ...primera,
-          cantidad: resto.reduce((acc, item) => sumar(acc, item.cantidad), primera.cantidad),
-          cantidad_aproximada: resto.reduce((acc, item) => sumar(acc, item.cantidad_aproximada), primera.cantidad_aproximada),
-          precio_estimado: precioDe(primera) > 0 ? primera.precio_estimado : (resto.find((item) => precioDe(item) > 0)?.precio_estimado || primera.precio_estimado),
-          oem: juntarCodigos(filas, 'oem') || primera.oem,
-        }
-        const restoKeys = new Set(resto.map((item) => item._key))
-        next = next.flatMap((item) => {
-          if (item._key === primera._key) return [unida]
-          if (!restoKeys.has(item._key)) return [item]
-          if (esAgregadoVerificacion(item)) return []
-          return [{ ...item, quitado: true, comentario: withNotaVerificacion(item.comentario, NOTA_AGRUPADO_VERIFICACION) }]
-        })
-      }
-      return next
-    })
-    setAgruparRepetidos(null)
-    toastRef.current?.show({
-      severity: 'success',
-      summary: 'Repetidos agrupados',
-      detail: `${grupos.length} código${grupos.length !== 1 ? 's' : ''} agrupado${grupos.length !== 1 ? 's' : ''}: las filas con otra referencia siguen aparte y se suman al importar. Revisa y vuelve a pedir la confirmación.`,
-      life: 5000,
-    })
-  }
-
   const handleConfirmar = async () => {
     // Los productos quitados en la verificacion ya no pasan a confirmacion.
     const vigentes = details.filter((item) => !item.quitado)
     if (!vigentes.length) {
       toastRef.current?.show({ severity: 'error', summary: 'Sin productos', detail: 'Todos los productos están quitados: restaura al menos uno para pedir confirmación.', life: 5000 })
-      return
-    }
-    // Un codigo repetido con la misma referencia no pasa a confirmacion: hay
-    // que dejar una sola fila. Con referencias distintas si pasa (se suman al
-    // importar).
-    if (codigosRepetidosBloqueados.length > 0) {
-      toastRef.current?.show({
-        severity: 'error',
-        summary: 'Códigos repetidos',
-        detail: `${codigosRepetidosBloqueados.map((grupo) => grupo.codigo).join(', ')} ${codigosRepetidosBloqueados.length === 1 ? 'está' : 'están'} repetido: agrúpalos en una sola fila o quita las demás para pedir la confirmación.`,
-        life: 6000,
-      })
-      jumpToDetailRows(codigosRepetidosBloqueados[0].keys)
-      setAgruparRepetidos(codigosRepetidosBloqueados.map((grupo) => ({
-        ...grupo,
-        filas: details.filter((item) => !item.quitado && grupo.keys.includes(item._key)),
-      })))
       return
     }
     // Guardar se puede sin completar; para pasar a confirmacion cada producto
@@ -8770,7 +8772,11 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
             : null,
           cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
         }
-        const detalleId = item._detalleId != null ? { detalle_id: item._detalleId } : {}
+        // Cada fila manda su propia revision (check / x): las filas del mismo
+        // producto se marcan por separado.
+        const detalleId = item._detalleId != null
+          ? { detalle_id: item._detalleId, revision: ['check', 'x'].includes(itemCheckStates[item._key]) ? itemCheckStates[item._key] : null }
+          : {}
         if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
         return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
       })
@@ -9007,14 +9013,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
     })
     return [...grupos.values()].filter((grupo) => grupo.filas > 1)
   })()
-  // Los que no pasan a confirmacion: el mismo codigo (del catalogo o nuevo)
-  // con la misma referencia. Con referencias distintas siguen separados hasta
-  // el final y se suman en un solo producto al importar.
-  const codigosRepetidosBloqueados = codigosRepetidosVerificacion.filter((grupo) => {
-    const filas = details.filter((item) => !item.quitado && grupo.keys.includes(item._key))
-    const refs = filas.map((item) => String(getDetalleReferencia(item) || '').trim().toUpperCase())
-    return new Set(refs).size < refs.length
-  })
   const verificarConteo = isVerificar
     ? shownDetails.reduce((acc, item) => ({ ...acc, [verificarColorDe(item)]: (acc[verificarColorDe(item)] || 0) + 1 }), {})
     : {}
@@ -9586,12 +9584,26 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                   : undefined}
                               />
                             </span>
-                            <span
-                              className="imp-table-cell-tip"
-                              onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')}
-                              onMouseLeave={hideCellHover}
-                            >
-                              <span className="imp-table-cell-text">{referencia}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                              <span
+                                className="imp-table-cell-tip"
+                                style={{ flex: '1 1 auto', minWidth: 0 }}
+                                onMouseEnter={(e) => showCellHover(e, referencia !== '-' ? referencia : null, 'Referencia')}
+                                onMouseLeave={hideCellHover}
+                              >
+                                <span className="imp-table-cell-text">{referencia}</span>
+                              </span>
+                              {/* Producto del catalogo: sus referencias, para escoger
+                                  cual se importa en esta fila. */}
+                              {!sinCatalogo && (
+                                <ReferenciasProductoInfo
+                                  producto={item.producto}
+                                  elegida={referencia !== '-' ? referencia : ''}
+                                  onPick={!item.quitado && canEdit && !isImportRealizada && (isSugerencia || isVerificar || isConfirmacion)
+                                    ? (r) => escogerReferenciaProducto(item._key, r)
+                                    : undefined}
+                                />
+                              )}
                             </span>
                             {(() => {
                               // Doble clic en el PVP JP: pasa ese precio al Precio conf.
@@ -10055,41 +10067,6 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           onSave={handleSaveAndClose}
         />
 
-        {agruparRepetidos && createPortal(
-          <div className="user-details__confirm-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setAgruparRepetidos(null) }}>
-            <div className="user-details__confirm-dialog">
-              <div className="user-details__confirm-icon">
-                <Info size={18} />
-              </div>
-              <div className="user-details__confirm-content">
-                <h4>Tienes productos repetidos</h4>
-                <p>No se puede pedir la confirmación con estos productos repetidos. ¿Quieres agruparlos como uno solo?</p>
-                <ul style={{ margin: '8px 0', paddingLeft: 18, maxHeight: 220, overflowY: 'auto' }}>
-                  {agruparRepetidos.map((grupo) => (
-                    <li key={grupo.keys.join('|')} style={{ marginBottom: 4 }}>
-                      <strong>{grupo.codigo}</strong>{grupo.nombre ? ` · ${grupo.nombre}` : ''} — {grupo.filas.length} filas
-                      {' '}(cant. {grupo.filas.map((item) => Number(item.cantidad_aproximada || item.cantidad || 0)).join(' + ')})
-                    </li>
-                  ))}
-                </ul>
-                <p>Se juntan las filas con la misma referencia (se suman sus cantidades en una; las otras quedan quitadas y se pueden restaurar). Las filas con otra referencia siguen separadas y al importar se suman en ese único producto, con todas sus referencias.</p>
-              </div>
-              <div className="user-details__confirm-actions">
-                <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setAgruparRepetidos(null)}>
-                  No, lo reviso yo
-                </button>
-                <button
-                  type="button"
-                  className="create-user__action create-user__action--primary"
-                  onClick={() => handleAgruparRepetidos(agruparRepetidos)}
-                >
-                  Agrupar
-                </button>
-              </div>
-            </div>
-          </div>,
-          getPortalRoot()
-        )}
 
         {showNuevoProductoView && (
           <SugerenciaNuevoProductoPopup

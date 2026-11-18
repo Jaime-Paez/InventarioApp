@@ -1108,29 +1108,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # Los códigos nuevos se revisan aquí porque es el último paso donde
         # todavía se pueden cambiar (al importar se vuelven a revisar).
         vigentes = instance.detalles.filter(quitado=False)
-        # Un código en dos filas con la misma referencia se puede tener en la
-        # verificación, pero no pasa a confirmación (con referencias distintas
-        # si: se suman al importar).
-        repetidos = ImportacionSerializer.productos_repetidos(vigentes.select_related("producto"))
+        # Los códigos repetidos (misma u otra referencia) pasan: cada fila
+        # sigue separada y solo en el inventario se suman.
         invalidos = ImportacionSerializer.validar_codigos_nuevos(
             vigentes.filter(producto__isnull=True).values_list("codigo", "nombre", "referencia"),
-            [
-                (detalle.producto.codigo, detalle.referencia or detalle.producto.referencia or "")
-                for detalle in vigentes.filter(producto__isnull=False).select_related("producto")
-            ],
         )
-        if repetidos or invalidos:
-            # Todo lo que hay que corregir, de una vez.
-            data = {}
-            detalles_error = []
-            if repetidos:
-                data.update(ImportacionSerializer.productos_repetidos_response_data(repetidos))
-                detalles_error.append(data["detail"])
-            if invalidos:
-                data.update(ImportacionSerializer.codigos_invalidos_response_data(invalidos))
-                detalles_error.append(data["detail"])
-            data["detail"] = " ".join(detalles_error)
-            return Response(data, status=status.HTTP_400_BAD_REQUEST)
+        if invalidos:
+            return Response(
+                ImportacionSerializer.codigos_invalidos_response_data(invalidos),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         # En la verificacion se puede guardar sin PVP Aprox. ni Cant. aprox.;
         # para pasar a confirmacion tienen que estar todos completos.
         incompletos = vigentes.filter(
@@ -1284,13 +1271,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "El número de factura es requerido."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # Desde cotización se puede importar directo: tampoco con códigos repetidos.
-        repetidos = ImportacionSerializer.productos_repetidos(instance.detalles.select_related("producto"))
-        if repetidos:
-            return Response(
-                ImportacionSerializer.productos_repetidos_response_data(repetidos),
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # Los códigos repetidos (misma u otra referencia) se importan: cada
+        # fila sigue separada en la importación y en el inventario se suman.
 
         fecha_raw = str(request.data.get("fecha_importacion") or "").strip()
         try:
@@ -1300,11 +1282,32 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             fecha_importacion = timezone.localdate()
 
         # Keys of reviewed items: String(producto_id) or "sc_{detalle_id}"
-        # Un producto en varias filas (otra referencia) llega como "<id>~2":
-        # es el mismo producto.
+        # (clientes viejos). Un producto en varias filas llega como "<id>~2".
+        # Los clientes nuevos mandan la revision de cada fila en `detalles`
+        # (`revision`: check / x / null, con su detalle_id), asi cada fila del
+        # mismo producto se marca por separado.
         selected_keys = set(str(k).split("~")[0] for k in (request.data.get("detalles_seleccionados") or []))
         x_keys = set(str(k).split("~")[0] for k in (request.data.get("detalles_x") or []))
-        if not selected_keys:
+        revision_por_detalle = {}
+        for d in request.data.get("detalles") or []:
+            if d.get("detalle_id") is None or "revision" not in d:
+                continue
+            try:
+                revision_por_detalle[int(d["detalle_id"])] = d.get("revision") if d.get("revision") in ("check", "x") else None
+            except (TypeError, ValueError):
+                continue
+
+        def revision_de(detalle):
+            if detalle.id in revision_por_detalle:
+                return revision_por_detalle[detalle.id]
+            key = str(detalle.producto_id) if detalle.producto_id else f"sc_{detalle.id}"
+            if key in selected_keys:
+                return "check"
+            if key in x_keys:
+                return "x"
+            return None
+
+        if not selected_keys and "check" not in revision_por_detalle.values():
             return Response(
                 {"detail": "Selecciona al menos un producto para importar."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -1330,16 +1333,15 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             confirmed = confirmed_by_detalle_id.get(str(detalle.id))
             if not detalle.producto_id and confirmed and confirmed.get("codigo") is not None:
                 detalle.codigo = str(confirmed["codigo"]).strip()
+            # La referencia de la fila se puede escoger en la confirmacion
+            # (entre las del producto).
+            if confirmed and confirmed.get("referencia") is not None:
+                detalle.referencia = str(confirmed["referencia"]).strip()
         invalidos = ImportacionSerializer.validar_codigos_nuevos(
             [
                 (detalle.codigo, detalle.nombre, detalle.referencia or "")
                 for detalle in detalles
-                if not detalle.producto_id and f"sc_{detalle.id}" in selected_keys
-            ],
-            [
-                (detalle.producto.codigo, detalle.referencia or detalle.producto.referencia or "")
-                for detalle in detalles
-                if detalle.producto_id and str(detalle.producto_id) in selected_keys
+                if not detalle.producto_id and revision_de(detalle) == "check"
             ],
         )
         if invalidos:
@@ -1374,18 +1376,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             if comentario is not None:
                 detalle.comentario = str(comentario)
 
-            if key in selected_keys:
-                revision = "check"
-            elif key in x_keys:
-                revision = "x"
-            else:
-                revision = None
+            revision = revision_de(detalle)
             detalle.seleccionado = revision == "check"
 
             historial.append({
                 "codigo": (detalle.producto.codigo if detalle.producto_id else detalle.codigo) or "",
                 "nombre": (detalle.producto.nombre if detalle.producto_id else detalle.nombre) or "",
-                "referencia": (detalle.producto.referencia if detalle.producto_id else detalle.referencia) or "",
+                "referencia": (detalle.referencia or (detalle.producto.referencia if detalle.producto_id else "")) or "",
                 "cantidad": detalle.cantidad,
                 "cantidad_confirmada": detalle.cantidad_confirmada,
                 "precio_confirmado": str(detalle.precio_confirmado) if detalle.precio_confirmado is not None else None,
@@ -1396,7 +1393,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             if revision == "check":
                 detalle.cantidad = detalle.cantidad_confirmada if detalle.cantidad_confirmada is not None else detalle.cantidad
                 detalle.precio_pvp_snapshot = detalle.producto.precio if detalle.producto_id else None
-                detalle.save(update_fields=["codigo", "precio_confirmado", "cantidad_confirmada", "comentario", "seleccionado", "cantidad", "precio_pvp_snapshot"])
+                detalle.save(update_fields=["codigo", "referencia", "precio_confirmado", "cantidad_confirmada", "comentario", "seleccionado", "cantidad", "precio_pvp_snapshot"])
             else:
                 detalles_to_delete.append(detalle.id)
 
@@ -1411,33 +1408,14 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # producto con todas sus referencias.
         self.get_serializer(instance).crear_productos_pendientes(instance)
 
-        # Mismo producto en varias filas (cada una con otra referencia de la
-        # fabrica): desde aqui es un solo producto, con las cantidades sumadas,
-        # todas las referencias en el producto y juntas en el comentario. Va
-        # despues de crear los nuevos para que tambien se sumen sus filas.
-        por_producto = {}
-        for detalle in instance.detalles.select_related("producto").all():
-            if not detalle.producto_id:
-                continue
-            por_producto.setdefault(detalle.producto_id, []).append(detalle)
-        for filas in por_producto.values():
-            if len(filas) < 2:
-                continue
-            for fila in filas:
-                for token in str(fila.referencia or "").split(","):
-                    add_producto_referencia(fila.producto, token)
-            principal, otras = filas[0], filas[1:]
-            principal.cantidad = sum(int(fila.cantidad or 0) for fila in filas)
-            if any(fila.cantidad_confirmada is not None for fila in filas):
-                principal.cantidad_confirmada = sum(int(fila.cantidad_confirmada or 0) for fila in filas)
-            if any(fila.cantidad_aproximada is not None for fila in filas):
-                principal.cantidad_aproximada = sum(int(fila.cantidad_aproximada or 0) for fila in filas)
-            referencias = [str(fila.referencia or "").strip() for fila in filas if str(fila.referencia or "").strip()]
-            nota = f"Referencias: {', '.join(referencias)}" if len(referencias) > 1 else ""
-            comentarios = [c for c in [principal.comentario or ""] + [fila.comentario or "" for fila in otras] if c.strip()]
-            principal.comentario = " | ".join(dict.fromkeys(comentarios + ([nota] if nota else [])))
-            principal.save(update_fields=["cantidad", "cantidad_confirmada", "cantidad_aproximada", "comentario"])
-            ImportacionDetalle.objects.filter(id__in=[fila.id for fila in otras]).delete()
+        # Mismo producto en varias filas (con la misma u otra referencia): en
+        # la importacion siguen separadas hasta el final (cada una con su
+        # cantidad y precio); solo en el inventario se suman (ver
+        # marcar_llegada y los movimientos). Las referencias de todas las
+        # filas quedan en el producto.
+        for detalle in instance.detalles.select_related("producto").filter(producto__isnull=False):
+            for token in str(detalle.referencia or "").split(","):
+                add_producto_referencia(detalle.producto, token)
 
         # El precio se actualiza al marcar llegada (ver marcar_llegada), que es
         # cuando se reparten las cantidades a las sucursales -- no aqui.
@@ -1685,9 +1663,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 detalle = instance.detalles.select_related("producto").get(pk=detalle_id)
                 if not detalle.producto_id:
                     continue
-                envios_by_sucursal.setdefault(sucursal_id, []).append(
-                    {"producto_id": detalle.producto_id, "cantidad": cantidad}
-                )
+                # Varias filas del mismo producto (otra referencia) se suman:
+                # en el inventario es un solo producto.
+                por_producto = envios_by_sucursal.setdefault(sucursal_id, {})
+                por_producto[detalle.producto_id] = por_producto.get(detalle.producto_id, 0) + cantidad
             except Exception:
                 continue
 
@@ -1700,10 +1679,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             ImportacionEnvioDetalle.objects.bulk_create([
                 ImportacionEnvioDetalle(
                     envio=envio,
-                    producto_id=item["producto_id"],
-                    cantidad=item["cantidad"],
+                    producto_id=producto_id,
+                    cantidad=cantidad,
                 )
-                for item in items
+                for producto_id, cantidad in items.items()
             ])
             envios_creados.append(envio)
 
