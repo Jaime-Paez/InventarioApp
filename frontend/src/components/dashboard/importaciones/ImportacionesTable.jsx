@@ -3776,11 +3776,11 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                               ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
                               : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
                           </span>
-                          {/* Producto nuevo (sin catalogo) en camino: la descripcion se
-                              escoge de las coincidencias (clic en la "i" del OEM) o se
-                              escribe un nombre nuevo, como en la sugerencia. Se guarda
-                              con "Guardar". */}
-                          {enCamino && canEditDetalle && canMarcarLlegada ? (
+                          {/* En camino: la descripcion se escoge de las coincidencias
+                              (clic en la "i" del OEM). Solo un producto nuevo (sin
+                              catalogo) tiene ademas el campo para escribir un nombre;
+                              uno que ya existe solo se escoge. Se guarda con "Guardar". */}
+                          {sinCat && enCamino && canEditDetalle && canMarcarLlegada ? (
                             <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
                               <input
                                 type="text"
@@ -3788,7 +3788,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                                 value={llegadaValorDe(d, 'nombre')}
                                 onChange={(e) => setLlegadaValor(d.id, 'nombre', e.target.value)}
                                 placeholder="Descripción"
-                                data-title="Escribe la descripción o escógela de las coincidencias (ícono junto al OEM). En un producto del catálogo cambia su nombre en el catálogo al guardar."
+                                data-title="Escribe la descripción o escógela de las coincidencias (ícono junto al OEM)"
                                 aria-label="Descripción del producto"
                                 style={{ width: '100%', minWidth: 0, fontSize: 'inherit', fontFamily: 'inherit' }}
                               />
@@ -3796,10 +3796,10 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           ) : (
                             <span
                               className="imp-table-cell-tip"
-                              onMouseEnter={(e) => showCellHover(e, nombre !== '-' ? nombre : null, 'Descripción')}
+                              onMouseEnter={(e) => showCellHover(e, (enCamino ? llegadaValorDe(d, 'nombre') : '') || (nombre !== '-' ? nombre : null), 'Descripción')}
                               onMouseLeave={hideCellHover}
                             >
-                              <span className="imp-table-cell-text">{nombre}</span>
+                              <span className="imp-table-cell-text">{(enCamino ? llegadaValorDe(d, 'nombre') : '') || nombre}</span>
                             </span>
                           )}
                           <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
