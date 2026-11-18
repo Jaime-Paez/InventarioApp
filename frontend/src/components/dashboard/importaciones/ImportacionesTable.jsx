@@ -8854,12 +8854,41 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       const used = new Set()
       const matched = []
       const nuevos = []
+      // Sin la clave de la fila, se empareja por codigo Y referencia: el mismo
+      // codigo puede estar en varias filas, cada una con su referencia, y no
+      // hay que cruzarlas (p. ej. P1034CM con KCR10101 y con KCR10103).
+      const refNorm = (v) => String(v || '').trim().toLowerCase()
+      const refOf = (item) => refNorm(item.referencia || getDetalleReferencia(item))
+      const refsDelExcel = new Set(dataRows.map((row) => refNorm(cellText(row, refIdx))).filter(Boolean))
       dataRows.forEach((row, rowIdx) => {
         const fileCode = cellText(row, codigoIdx)
         const fileCodeLc = fileCode.toLowerCase() === 'sin catálogo' ? '' : fileCode.toLowerCase()
+        const fileRef = refNorm(cellText(row, refIdx))
+        const libre = (d) => !used.has(d._key)
         let item = byKey.get(cellText(row, keyIdx))
         if (item && (used.has(item._key) || (fileCodeLc && codeOf(item) !== fileCodeLc))) item = null
-        if (!item && fileCodeLc) item = current.find((d) => !used.has(d._key) && codeOf(d) === fileCodeLc) || null
+        if (!item && fileCodeLc) {
+          const mismoCodigo = current.filter((d) => libre(d) && codeOf(d) === fileCodeLc)
+          item = (fileRef ? mismoCodigo.find((d) => refOf(d) === fileRef) : mismoCodigo[0])
+            // Una fila de ese codigo sin referencia, o con una que ya no viene
+            // en el Excel (le cambiaron la referencia): es esa linea.
+            || mismoCodigo.find((d) => !refOf(d) || !refsDelExcel.has(refOf(d)))
+            || null
+        }
+        // Sin codigo en el Excel (o un codigo que la lista no tiene): por la
+        // referencia, en una fila nueva (sin producto) de la lista.
+        if (!item && fileRef) {
+          item = current.find((d) => libre(d) && !d.producto?.id && refOf(d) === fileRef && (!fileCodeLc || !codeOf(d) || codeOf(d) === fileCodeLc)) || null
+        }
+        // Sugerencia: lo que trae el Excel es lo que queda, tambien el codigo
+        // (de un producto nuevo) y la referencia de la fila.
+        if (item && isSugerencia) {
+          item = {
+            ...item,
+            ...(fileRef ? { referencia: cellText(row, refIdx) } : {}),
+            ...(!item.producto?.id ? { codigo: fileCodeLc ? fileCode : '' } : {}),
+          }
+        }
         if (item) {
           used.add(item._key)
           matched.push({ item, row })
