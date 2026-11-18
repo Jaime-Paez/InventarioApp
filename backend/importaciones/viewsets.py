@@ -1080,8 +1080,23 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # Los productos nuevos todavia no entran al catalogo: se crean al importar.
+        # Lo que se sugirio queda guardado para el Historial de las etapas
+        # siguientes.
+        instance.historial_sugerencia = [
+            {
+                "codigo": (detalle.producto.codigo if detalle.producto_id else detalle.codigo) or "",
+                "nombre": (detalle.producto.nombre if detalle.producto_id else detalle.nombre) or "",
+                "referencia": detalle.referencia or (detalle.producto.referencia if detalle.producto_id else "") or "",
+                "oem": detalle.oem or "",
+                "cantidad": detalle.cantidad,
+                "precio_estimado": str(detalle.precio_estimado) if detalle.precio_estimado is not None else None,
+                "comentario": detalle.comentario or "",
+                "nuevo": not detalle.producto_id,
+            }
+            for detalle in instance.detalles.select_related("producto").order_by("orden", "id")
+        ]
         instance.estado = Importacion.ESTADO_COTIZACION
-        instance.save(update_fields=["estado"])
+        instance.save(update_fields=["estado", "historial_sugerencia"])
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 

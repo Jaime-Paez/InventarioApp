@@ -2912,7 +2912,6 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const canMarcarLlegada = moduleActions?.puede_marcar_llegada === true
   const [showReceive, setShowReceive] = useState(false)
   const [showHistorial, setShowHistorial] = useState(false)
-  const [showHistorialVerificacion, setShowHistorialVerificacion] = useState(false)
   const [activeTab, setActiveTab] = useState('productos')
   const toastRef = useRef(null)
 
@@ -3172,18 +3171,35 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const dragData = useRef({ active: false, offsetX: 0, offsetY: 0 })
   const resizeData = useRef({ active: false, startX: 0, startY: 0, startWidth: 0, startHeight: 0 })
   const modalRestoreRef = useRef(null)
-  const [position, setPosition] = useState(() => {
-    const w = Math.min(680, window.innerWidth - 56)
-    const h = Math.min(700, window.innerHeight * 0.88)
+  // En camino / importada la tabla tiene mas columnas (precio y cantidad
+  // final, comentario, sucursales): abre ancha para verla completa.
+  const [initialSize] = useState(() => {
+    const ancha = impProp?.estado === 'en_camino' || impProp?.estado === 'importada'
     return {
-      x: Math.max((window.innerWidth - w) / 2, DETAILS_VIEWPORT_PADDING + 28),
-      y: Math.max((window.innerHeight - h) / 2, DETAILS_VIEWPORT_PADDING),
+      width: Math.min(ancha ? 1400 : 720, window.innerWidth - 56),
+      height: Math.min(ancha ? 860 : 700, window.innerHeight * (ancha ? 0.92 : 0.88)),
     }
   })
-  const [modalSize, setModalSize] = useState(() => ({
-    width: Math.min(720, window.innerWidth - 56),
-    height: Math.min(700, window.innerHeight * 0.88),
+  const [position, setPosition] = useState(() => ({
+    x: Math.max((window.innerWidth - initialSize.width) / 2, DETAILS_VIEWPORT_PADDING + 28),
+    y: Math.max((window.innerHeight - initialSize.height) / 2, DETAILS_VIEWPORT_PADDING),
   }))
+  const [modalSize, setModalSize] = useState(() => initialSize)
+  // El modal queda montado (sin imp) entre aperturas: cada vez que se abre
+  // una importacion se ajusta el tamaño a su etapa.
+  const abiertoEstado = impProp?.id ? `${impProp.id}-${impProp.estado}` : ''
+  useEffect(() => {
+    if (!abiertoEstado) return
+    const ancha = impProp?.estado === 'en_camino' || impProp?.estado === 'importada'
+    const width = Math.min(ancha ? 1400 : 720, window.innerWidth - 56)
+    const height = Math.min(ancha ? 860 : 700, window.innerHeight * (ancha ? 0.92 : 0.88))
+    setIsMaximized(false)
+    setModalSize({ width, height })
+    setPosition({
+      x: Math.max((window.innerWidth - width) / 2, DETAILS_VIEWPORT_PADDING + 28),
+      y: Math.max((window.innerHeight - height) / 2, DETAILS_VIEWPORT_PADDING),
+    })
+  }, [abiertoEstado]) // eslint-disable-line react-hooks/exhaustive-deps
   const [isMaximized, setIsMaximized] = useState(false)
   const [isResizingModal, setIsResizingModal] = useState(false)
   const positionRef = useRef(position)
@@ -3552,7 +3568,17 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                   <div className="create-user__locations-table importaciones-modal__products-table imp-details__productos-table">
                     <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row" style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
                       <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span>
-                      <span>{imp.estado === 'importada' ? 'Precio final' : 'Precio'}</span>
+                      {enCamino ? (
+                        <span
+                          onDoubleClick={() => llenarTodasLlegada('precioFinal')}
+                          data-title={puedeLlenarLlegada ? 'Doble clic: pasar todos los precios a Precio final' : motivoNoLlegada}
+                          style={puedeLlenarLlegada ? { cursor: 'pointer' } : undefined}
+                        >
+                          Precio
+                        </span>
+                      ) : (
+                        <span>{imp.estado === 'importada' ? 'Precio final' : 'Precio'}</span>
+                      )}
                       {enCamino && (
                         <span
                           onDoubleClick={() => llenarTodasLlegada('precioFinal')}
@@ -3562,7 +3588,17 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           Precio final
                         </span>
                       )}
-                      <span>{imp.estado === 'importada' ? 'Llegó' : 'Cantidad'}</span>
+                      {enCamino ? (
+                        <span
+                          onDoubleClick={() => llenarTodasLlegada('cantidadRecibida')}
+                          data-title={puedeLlenarLlegada ? 'Doble clic: pasar todas las cantidades a Cant. final' : motivoNoLlegada}
+                          style={puedeLlenarLlegada ? { cursor: 'pointer' } : undefined}
+                        >
+                          Cantidad
+                        </span>
+                      ) : (
+                        <span>{imp.estado === 'importada' ? 'Llegó' : 'Cantidad'}</span>
+                      )}
                       {enCamino && (
                         <span
                           onDoubleClick={() => llenarTodasLlegada('cantidadRecibida')}
@@ -3643,6 +3679,11 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => showCellHover(e, precio !== '-' ? precio : null, 'Precio')}
                             onMouseLeave={hideCellHover}
+                            onDoubleClick={() => {
+                              const antes = precioAntesCentavos(d)
+                              if (enCamino && puedeLlenarLlegada && antes != null) setLlegadaValor(d.id, 'precioFinal', antes)
+                            }}
+                            style={enCamino && puedeLlenarLlegada ? { cursor: 'pointer', userSelect: 'none' } : undefined}
                           >
                             <span className="imp-table-cell-text">{precio}</span>
                           </span>
@@ -3664,6 +3705,8 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => showCellHover(e, String(cantidad ?? ''), 'Cantidad')}
                             onMouseLeave={hideCellHover}
+                            onDoubleClick={() => { if (enCamino && puedeLlenarLlegada) setLlegadaValor(d.id, 'cantidadRecibida', String(d.cantidad ?? '')) }}
+                            style={enCamino && puedeLlenarLlegada ? { cursor: 'pointer', userSelect: 'none' } : undefined}
                           >
                             <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{cantidad}</span>
                           </span>
@@ -3772,24 +3815,13 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
           </div>
 
           <div className="create-user__footer">
-            {Array.isArray(imp.historial_verificacion) && imp.historial_verificacion.length > 0 && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--cancel"
-                onClick={() => setShowHistorialVerificacion(true)}
-              >
-                Verificación
-              </button>
-            )}
-            {(imp.estado === 'en_camino' || imp.estado === 'importada') && Array.isArray(imp.historial_confirmacion) && imp.historial_confirmacion.length > 0 && (
-              <button
-                type="button"
-                className="create-user__action create-user__action--cancel"
-                onClick={() => setShowHistorial(true)}
-              >
-                Historial
-              </button>
-            )}
+            <button
+              type="button"
+              className="create-user__action create-user__action--cancel"
+              onClick={() => setShowHistorial(true)}
+            >
+              Historial
+            </button>
             {imp.estado === 'en_camino' && imp.origen_id && (
               <button
                 type="button"
@@ -3870,10 +3902,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
         />
       )}
       {showHistorial && (
-        <HistorialConfirmacionModal imp={imp} onClose={() => setShowHistorial(false)} />
-      )}
-      {showHistorialVerificacion && (
-        <HistorialVerificacionModal imp={imp} onClose={() => setShowHistorialVerificacion(false)} />
+        <HistorialImportacionModal imp={imp} onClose={() => setShowHistorial(false)} />
       )}
       {llegoDialog && createPortal(
         <div className="user-details__confirm-overlay" style={{ zIndex: 3000 }} onMouseDown={(e) => { if (e.target === e.currentTarget && !llegoSaving) setLlegoDialog(null) }}>
@@ -3983,7 +4012,157 @@ const VERIFICACION_ESTADOS = {
   quitado: { label: 'No se pidió', className: ' imp-verificar__row--quitado' },
 }
 
-function HistorialVerificacionModal({ imp, onClose }) {
+// Historial de las etapas anteriores de la importacion (solo las que ya
+// pasaron): en verificacion se ve la sugerencia; en confirmacion, sugerencia y
+// verificacion; en camino tambien la confirmacion; importada tambien lo que
+// llego (en camino).
+const HISTORIAL_ETAPAS = [
+  { key: 'sugerencia', label: 'Sugerencia', desde: ['cotizacion', 'confirmacion', 'en_camino', 'importada'] },
+  { key: 'verificacion', label: 'Verificación', desde: ['confirmacion', 'en_camino', 'importada'] },
+  { key: 'confirmacion', label: 'Confirmación', desde: ['en_camino', 'importada'] },
+  { key: 'en_camino', label: 'En camino', desde: ['importada'] },
+]
+
+function HistorialSugerenciaContent({ imp }) {
+  const [productSearch, setProductSearch] = useState('')
+  const historial = Array.isArray(imp.historial_sugerencia) ? imp.historial_sugerencia : null
+  const gridTemplate = 'minmax(110px, 0.9fr) minmax(220px, 2.4fr) minmax(110px, 1fr) 80px 100px minmax(160px, 1.6fr)'
+  const rowStyle = { gridTemplateColumns: gridTemplate, width: '100%', minWidth: 780 }
+  if (!historial) {
+    return <p className="imp-historial__vacio">Esta importación pidió la cotización antes de que se guardara el historial de la sugerencia.</p>
+  }
+  const filas = productSearch.trim() ? matchesFirst(historial, (row) => importItemMatches(row, productSearch)) : historial
+  return (
+    <div className="imp-historial__embedded">
+      <ImportProductSearch
+        value={productSearch}
+        onChange={setProductSearch}
+        shown={historial.filter((row) => importItemMatches(row, productSearch)).length}
+        total={historial.length}
+      />
+      <div className="imp-historial__table-wrap">
+        <div className="create-user__locations-table importaciones-modal__products-table imp-historial__table">
+          <div className="create-user__locations-row create-user__locations-row--head imp-historial__row imp-historial__row--fluid" style={rowStyle}>
+            <span>Código</span><span>Descripción</span><span>Referencia</span><span>Cant.</span><span>PVP Aprox.</span><span>Comentario</span>
+          </div>
+          {!historial.length ? (
+            <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}>
+              <span>La sugerencia no tenía productos.</span>
+            </div>
+          ) : filas.map((row, i) => (
+            <div key={i} className={`create-user__locations-row imp-historial__row imp-historial__row--fluid${row.nuevo ? ' importaciones-aceptados__row--nuevo' : ''}${productSearch.trim() && importItemMatches(row, productSearch) ? ' imp-search-hit' : ''}`} style={rowStyle}>
+              <span><span className="imp-table-cell-text imp-table-cell-text--full">{row.codigo || '-'}</span></span>
+              <span><span className="imp-table-cell-text">{row.nombre || '-'}</span></span>
+              <span><span className="imp-table-cell-text">{row.referencia || '-'}</span></span>
+              <span>{row.cantidad ?? '-'}</span>
+              <span>{row.precio_estimado != null && row.precio_estimado !== '' ? `$${Number(row.precio_estimado).toFixed(2)}` : '-'}</span>
+              <span><span className="imp-table-cell-text">{row.comentario || '-'}</span></span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Lo que llego (se guarda al verificar la importacion): pedido vs llegó y
+// precio confirmado vs final, con el comentario.
+function HistorialEnCaminoContent({ imp }) {
+  const [productSearch, setProductSearch] = useState('')
+  const detalles = imp.detalles || []
+  const gridTemplate = 'minmax(110px, 0.9fr) minmax(200px, 2.2fr) 76px 76px 100px 100px minmax(160px, 1.6fr)'
+  const rowStyle = { gridTemplateColumns: gridTemplate, width: '100%', minWidth: 822 }
+  const dinero = (v) => (v != null && v !== '' ? `$${Number(v).toFixed(2)}` : '-')
+  const filas = productSearch.trim() ? matchesFirst(detalles, (d) => importItemMatches(d, productSearch)) : detalles
+  return (
+    <div className="imp-historial__embedded">
+      <ImportProductSearch
+        value={productSearch}
+        onChange={setProductSearch}
+        shown={detalles.filter((d) => importItemMatches(d, productSearch)).length}
+        total={detalles.length}
+      />
+      <div className="imp-historial__table-wrap">
+        <div className="create-user__locations-table importaciones-modal__products-table imp-historial__table">
+          <div className="create-user__locations-row create-user__locations-row--head imp-historial__row imp-historial__row--fluid" style={rowStyle}>
+            <span>Código</span><span>Descripción</span><span>Pedido</span><span>Llegó</span><span>Precio conf.</span><span>Precio final</span><span>Comentario</span>
+          </div>
+          {filas.map((d) => {
+            const dif = llegoDiferente(d)
+            return (
+              <div key={d.id} className={`create-user__locations-row imp-historial__row imp-historial__row--fluid${productSearch.trim() && importItemMatches(d, productSearch) ? ' imp-search-hit' : ''}`} style={rowStyle}>
+                <span><span className="imp-table-cell-text imp-table-cell-text--full">{d.producto?.codigo || d.codigo || '-'}</span></span>
+                <span><span className="imp-table-cell-text">{d.producto?.nombre || d.nombre || '-'}</span></span>
+                <span>{d.cantidad ?? '-'}</span>
+                <span style={dif && dif.diferencia !== 0 ? { fontWeight: 700, color: dif.diferencia < 0 ? '#dc2626' : '#d97706' } : undefined}>{d.cantidad_recibida ?? '-'}</span>
+                <span>{dinero(d.precio_confirmado ?? d.precio_estimado)}</span>
+                <span style={dif?.precioCambia ? { fontWeight: 700, color: '#d97706' } : undefined}>{dinero(d.precio_final)}</span>
+                <span><span className="imp-table-cell-text">{String(d.comentario_llegada || '').trim() || '-'}</span></span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HistorialImportacionModal({ imp, onClose }) {
+  const etapas = HISTORIAL_ETAPAS.filter((etapa) => etapa.desde.includes(imp?.estado))
+  const [tab, setTab] = useState(() => etapas[etapas.length - 1]?.key || null)
+  const activa = etapas.find((etapa) => etapa.key === tab) || etapas[etapas.length - 1]
+  return createPortal(
+    <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="imp-aceptados-popup__dialog" style={{ width: 'min(1040px, calc(100vw - 32px))' }} onMouseDown={(e) => e.stopPropagation()}>
+        <header className="imp-aceptados-popup__header">
+          <div>
+            <h3>Historial</h3>
+            <p>{`Lo que pasó en las etapas anteriores de ${imp.codigo}`}</p>
+          </div>
+          <button type="button" className="imp-aceptados-popup__close" onClick={onClose} aria-label="Cerrar">
+            <i className="pi pi-times" />
+          </button>
+        </header>
+        <div className="imp-aceptados-popup__body">
+          {!etapas.length ? (
+            <p className="imp-historial__vacio">La importación está en la sugerencia: todavía no hay etapas anteriores que ver.</p>
+          ) : (
+            <>
+              <div className="create-user__tabs create-salida__tabs imp-historial__tabs" role="tablist">
+                {etapas.map((etapa) => (
+                  <button
+                    key={etapa.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={activa?.key === etapa.key}
+                    className={`create-user__tab${activa?.key === etapa.key ? ' create-user__tab--active' : ''}`}
+                    onClick={() => setTab(etapa.key)}
+                  >
+                    {etapa.label}
+                  </button>
+                ))}
+              </div>
+              {activa?.key === 'sugerencia' && <HistorialSugerenciaContent key="sugerencia" imp={imp} />}
+              {activa?.key === 'verificacion' && (
+                Array.isArray(imp.historial_verificacion) && imp.historial_verificacion.length
+                  ? <HistorialVerificacionModal key="verificacion" imp={imp} onClose={onClose} embedded />
+                  : <p className="imp-historial__vacio">Esta importación no tiene historial de verificación.</p>
+              )}
+              {activa?.key === 'confirmacion' && <HistorialConfirmacionModal key="confirmacion" imp={imp} onClose={onClose} embedded />}
+              {activa?.key === 'en_camino' && <HistorialEnCaminoContent key="en_camino" imp={imp} />}
+            </>
+          )}
+        </div>
+        <div className="imp-aceptados-popup__footer" style={{ justifyContent: 'flex-end' }}>
+          <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cerrar</button>
+        </div>
+      </div>
+    </div>,
+    getPortalRoot()
+  )
+}
+
+function HistorialVerificacionModal({ imp, onClose, embedded = false }) {
   const [productSearch, setProductSearch] = useState('')
   const [filtro, setFiltro] = useState('todos')
   const historial = Array.isArray(imp.historial_verificacion) ? imp.historial_verificacion : []
@@ -3996,20 +4175,8 @@ function HistorialVerificacionModal({ imp, onClose }) {
   const rowStyle = { gridTemplateColumns: gridTemplate, width: '100%', minWidth: 906 }
   const precio = (value) => (value != null && value !== '' ? `$${Number(value).toFixed(2)}` : '-')
 
-  return createPortal(
-    <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="imp-aceptados-popup__dialog" style={{ width: 'min(980px, calc(100vw - 32px))' }} onMouseDown={(e) => e.stopPropagation()}>
-        <header className="imp-aceptados-popup__header">
-          <div>
-            <h3>Historial de verificación</h3>
-            <p>Qué se pidió y qué no en {imp.codigo}</p>
-          </div>
-          <button type="button" className="imp-aceptados-popup__close" onClick={onClose} aria-label="Cerrar">
-            <i className="pi pi-times" />
-          </button>
-        </header>
-
-        <div className="imp-aceptados-popup__body">
+  const body = (
+        <div className={embedded ? 'imp-historial__embedded' : 'imp-aceptados-popup__body'}>
           <div className="imp-verificar__grupos" role="group" aria-label="Filtrar">
             {[
               ['todos', 'Todos', historial.length, ''],
@@ -4062,13 +4229,30 @@ function HistorialVerificacionModal({ imp, onClose }) {
             </div>
           </div>
         </div>
+  )
+  if (embedded) return body
+
+  return createPortal(
+    <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="imp-aceptados-popup__dialog" style={{ width: 'min(980px, calc(100vw - 32px))' }} onMouseDown={(e) => e.stopPropagation()}>
+        <header className="imp-aceptados-popup__header">
+          <div>
+            <h3>Historial de verificación</h3>
+            <p>Qué se pidió y qué no en {imp.codigo}</p>
+          </div>
+          <button type="button" className="imp-aceptados-popup__close" onClick={onClose} aria-label="Cerrar">
+            <i className="pi pi-times" />
+          </button>
+        </header>
+
+        {body}
       </div>
     </div>,
     getPortalRoot()
   )
 }
 
-function HistorialConfirmacionModal({ imp, onClose }) {
+function HistorialConfirmacionModal({ imp, onClose, embedded = false }) {
   // Buscador de productos de esta importacion.
   const [productSearch, setProductSearch] = useState('')
   const historial = Array.isArray(imp.historial_confirmacion) ? imp.historial_confirmacion : []
@@ -4118,21 +4302,20 @@ function HistorialConfirmacionModal({ imp, onClose }) {
 
   useCloseDropdownsOnTabSwitch(hideCellHover)
 
-  return createPortal(
-    <>
-      <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-        <div className="imp-aceptados-popup__dialog" style={{ width: 'min(920px, calc(100vw - 32px))' }} onMouseDown={(e) => e.stopPropagation()}>
-          <header className="imp-aceptados-popup__header">
-            <div>
-              <h3>Historial de confirmación</h3>
-              <p>Revisión guardada al importar {imp.codigo}</p>
-            </div>
-            <button type="button" className="imp-aceptados-popup__close" onClick={onClose} aria-label="Cerrar">
-              <i className="pi pi-times" />
-            </button>
-          </header>
-
-          <div className="imp-aceptados-popup__body">
+  const hoverCard = cellHover && createPortal(
+        <div
+          className="imp-cell-hover-card"
+          style={{ top: cellHover.top, left: cellHover.left }}
+        >
+          <div className="imp-cell-hover-card__title">{cellHover.label}</div>
+          {cellHover.items.map((value, i) => (
+            <div key={i} className="imp-cell-hover-card__row">{value}</div>
+          ))}
+        </div>,
+        getPortalRoot()
+  )
+  const body = (
+          <div className={embedded ? 'imp-historial__embedded' : 'imp-aceptados-popup__body'}>
             {historial.length > 0 && (
               <ImportProductSearch
                 value={productSearch}
@@ -4202,24 +4385,31 @@ function HistorialConfirmacionModal({ imp, onClose }) {
             </div>
             </div>
           </div>
+  )
+  if (embedded) return <>{body}{hoverCard}</>
+
+  return createPortal(
+    <>
+      <div className="imp-aceptados-popup__overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+        <div className="imp-aceptados-popup__dialog" style={{ width: 'min(920px, calc(100vw - 32px))' }} onMouseDown={(e) => e.stopPropagation()}>
+          <header className="imp-aceptados-popup__header">
+            <div>
+              <h3>Historial de confirmación</h3>
+              <p>Revisión guardada al importar {imp.codigo}</p>
+            </div>
+            <button type="button" className="imp-aceptados-popup__close" onClick={onClose} aria-label="Cerrar">
+              <i className="pi pi-times" />
+            </button>
+          </header>
+
+          {body}
 
           <div className="imp-aceptados-popup__footer" style={{ justifyContent: 'flex-end' }}>
             <button type="button" className="create-user__action create-user__action--cancel" onClick={onClose}>Cerrar</button>
           </div>
         </div>
       </div>
-      {cellHover && createPortal(
-        <div
-          className="imp-cell-hover-card"
-          style={{ top: cellHover.top, left: cellHover.left }}
-        >
-          <div className="imp-cell-hover-card__title">{cellHover.label}</div>
-          {cellHover.items.map((value, i) => (
-            <div key={i} className="imp-cell-hover-card__row">{value}</div>
-          ))}
-        </div>,
-        getPortalRoot()
-      )}
+      {hoverCard}
     </>,
     getPortalRoot()
   )
@@ -10003,17 +10193,17 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                     Eliminar
                   </button>
                 )}
-                {Array.isArray(imp?.historial_verificacion) && imp.historial_verificacion.length > 0 && (
+                {imp?.id && (
                   <button
                     type="button"
                     className="create-user__action create-user__action--cancel"
                     onClick={() => setShowHistorialVerificacion(true)}
                   >
-                    Verificación
+                    Historial
                   </button>
                 )}
                 {showHistorialVerificacion && (
-                  <HistorialVerificacionModal imp={imp} onClose={() => setShowHistorialVerificacion(false)} />
+                  <HistorialImportacionModal imp={imp} onClose={() => setShowHistorialVerificacion(false)} />
                 )}
               </div>
               <div className="user-details__footer-right">

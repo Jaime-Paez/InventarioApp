@@ -3093,3 +3093,23 @@ body.app-theme-dark .imp-receive-footer-hint {
     minmax(150px, 1.6fr);
   min-width: 720px;
 }
+
+/* Historial (todas las etapas): pestañas por etapa y tabla embebida. */
+.imp-historial__tabs {
+  margin-bottom: 12px;
+}
+
+.imp-historial__embedded {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.imp-historial__vacio {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border: 1px dashed var(--color-border, #cbd5e1);
+  border-radius: 10px;
+  color: var(--color-text-secondary, #64748b);
+  font-size: 0.88rem;
+}

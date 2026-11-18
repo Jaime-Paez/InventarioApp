@@ -67,6 +67,12 @@ class Importacion(models.Model):
         default=None,
         help_text="Snapshot de los productos revisados en confirmación (check/x, comentarios, precios) al momento de importar.",
     )
+    historial_sugerencia = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Snapshot de la sugerencia al pedir cotización: qué productos se sugirieron, cantidad, PVP aprox. y comentario.",
+    )
     historial_verificacion = models.JSONField(
         null=True,
         blank=True,
