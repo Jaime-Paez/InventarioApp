@@ -46,6 +46,13 @@ class Importacion(models.Model):
         help_text="Fecha real en que llegó la importación, confirmada/editada al marcar la llegada.",
     )
     dias_reales_entrega = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Ultimo paso: se verifico lo que llego (precio y cantidad final) y se
+    # repartio a las sucursales; ahi pasa a importada.
+    fecha_organizado = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Fecha en que se verificó lo que llegó y se organizó/envió a sucursales (pasa a importada).",
+    )
     origen = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -144,6 +151,10 @@ class ImportacionDetalle(models.Model):
     cantidad_confirmada = models.PositiveIntegerField(null=True, blank=True)
     precio_pvp_snapshot = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     cantidad_recibida = models.PositiveIntegerField(null=True, blank=True)
+    # Al verificar lo que llego: precio final y por que cambio el precio o la
+    # cantidad (cantidad final = cantidad_recibida).
+    precio_final = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    comentario_llegada = models.TextField(blank=True, default="")
     seleccionado = models.BooleanField(null=True, blank=True)
     # Producto que se quito durante la verificacion (p. ej. no vino en el
     # Excel subido): se sigue mostrando en rojo para poder restaurarlo, pero

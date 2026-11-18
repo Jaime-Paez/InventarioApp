@@ -561,6 +561,34 @@ function OemAutocomplete({ value, onChange, token, disabled }) {
 
 const toNumberOrNull = (v) => (v === '' || v == null ? null : Number(v))
 
+// Importada: lo que llego (precio final / cantidad final / comentario de la
+// verificacion); las filas viejas sin esos datos muestran lo confirmado.
+const llegoPrecio = (d) => d?.precio_final ?? d?.precio_confirmado ?? null
+const llegoCantidad = (d) => d?.cantidad_recibida ?? d?.cantidad_confirmada ?? d?.cantidad ?? null
+const llegoComentario = (d) => String(d?.comentario_llegada || '').trim() || String(d?.comentario || '').trim()
+// Lo que llego distinto de lo confirmado (cantidad o precio).
+const llegoDiferente = (d) => {
+  if (d?.cantidad_recibida == null && d?.precio_final == null) return null
+  const esperado = Number(d?.cantidad ?? 0)
+  const llego = d?.cantidad_recibida != null ? Number(d.cantidad_recibida) : esperado
+  const precioAntes = d?.precio_confirmado ?? d?.precio_estimado
+  const precioCambia = d?.precio_final != null && precioAntes != null &&
+    Math.round(Number(d.precio_final) * 100) !== Math.round(Number(precioAntes) * 100)
+  if (llego === esperado && !precioCambia) return null
+  return { esperado, llego, diferencia: llego - esperado, precioAntes, precioCambia }
+}
+
+// Al verificar lo que llego: cambia la cantidad final o el precio final
+// respecto de lo confirmado (entonces hay que explicar por que).
+const llegadaCambia = (row) => {
+  const cant = String(row?.cantidadRecibida ?? '').trim()
+  const cantCambia = cant !== '' && parseInt(cant, 10) !== Number(row?.cantidad || 0)
+  const precioFinalC = parseInt(String(row?.precioFinal || '').replace(/\D/g, '') || '0', 10)
+  const antes = row?.precioAntes != null ? Math.round(Number(row.precioAntes) * 100) : null
+  const precioCambia = precioFinalC > 0 && antes != null && precioFinalC !== antes
+  return cantCambia || precioCambia
+}
+
 const getCantidadRecibidaCeiling = (row) => {
   const n = parseInt(row.cantidadRecibida, 10)
   return Number.isFinite(n) ? n : row.cantidad
@@ -887,13 +915,16 @@ const formatCasaLabel = (casa) => {
   return [codigo, nombre].filter(Boolean).join(' - ')
 }
 
-// Seguimiento de una importación "en camino": Creación y Llegó son informativos
-// (se fijan solos), Salida y Puerto se editan haciendo clic en su paso.
+// Seguimiento de una importación "en camino": Creación, Llegó y Organizado son
+// informativos (se fijan solos), Salida y Puerto se editan haciendo clic en su
+// paso. Llegó se marca con "¿La importación llegó?" y Organizado y enviado al
+// verificar lo que llegó (ahí pasa a importada).
 const IMPORT_TRACKER_STEPS = [
   { field: 'creado_en', label: 'Creación de sugerencia', editable: false, isDateTime: true },
   { field: 'fecha_importacion', label: 'Salida del proveedor', editable: true },
   { field: 'fecha_puerto', label: 'Llegada a puerto', editable: true },
   { field: 'fecha_llegada', label: 'Llegó', editable: false },
+  { field: 'fecha_organizado', label: 'Organizado y enviado', editable: false },
 ]
 
 // Fecha del paso anterior del seguimiento con valor cargado (saltando pasos vacíos),
@@ -1090,6 +1121,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     const saved = getSavedDraft(imp)
     const checkedIds = new Set(saved?.checkedIds || [])
     const cantidadesRecibidas = saved?.cantidadesRecibidas || {}
+    const preciosFinales = saved?.preciosFinales || {}
+    const comentariosLlegada = saved?.comentariosLlegada || {}
     return (imp.detalles || []).map(d => ({
       id: d.id,
       orden: d.orden,
@@ -1100,7 +1133,10 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       referencia: getDetalleReferencia(d),
       precio: d.precio_confirmado ?? d.precio_estimado ?? d.producto?.precio ?? null,
       cantidad: d.cantidad,
-      cantidadRecibida: cantidadesRecibidas[d.id] ?? '',
+      cantidadRecibida: cantidadesRecibidas[d.id] ?? (d.cantidad_recibida != null ? String(d.cantidad_recibida) : ''),
+      precioAntes: d.precio_confirmado ?? d.precio_estimado ?? null,
+      precioFinal: preciosFinales[d.id] ?? (d.precio_final != null ? String(Math.round(Number(d.precio_final) * 100)) : ''),
+      comentarioLlegada: comentariosLlegada[d.id] ?? d.comentario_llegada ?? '',
       sinCat: !d.producto?.id,
       creadoAqui: Boolean(d.producto?.id) && d.producto?.creado_desde_importacion === imp.id,
       checked: checkedIds.has(d.id),
@@ -1119,8 +1155,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const [kitForms, setKitForms] = useState([])
   const [kitFormErrors, setKitFormErrors] = useState([])
   const [loadingData, setLoadingData] = useState(true)
-  const [step, setStep] = useState(() => getSavedDraft(imp)?.step || 1)
-  const [fechaLlegada, setFechaLlegada] = useState(() => getSavedDraft(imp)?.fechaLlegada || getDefaultFechaLlegada(imp))
+  // La fecha de llegada ya no es un paso (se marca con "¿La importación llegó?"):
+  // un borrador viejo en el paso 2 sigue en la revisión.
+  const [step, setStep] = useState(() => { const s = getSavedDraft(imp)?.step || 1; return s === 2 ? 3 : s })
   const [sucursales, setSucursales] = useState([])
   const [loadingSucursales, setLoadingSucursales] = useState(false)
   const [sucursalesError, setSucursalesError] = useState(false)
@@ -1140,6 +1177,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         const saved = getSavedDraft(fresh)
         const checkedIds = new Set(saved?.checkedIds || [])
         const cantidadesRecibidas = saved?.cantidadesRecibidas || {}
+        const preciosFinales = saved?.preciosFinales || {}
+        const comentariosLlegada = saved?.comentariosLlegada || {}
         const freshRows = fresh.detalles.map(d => ({
           id: d.id,
           orden: d.orden,
@@ -1150,16 +1189,18 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           referencia: getDetalleReferencia(d),
           precio: d.precio_confirmado ?? d.precio_estimado ?? d.producto?.precio ?? null,
           cantidad: d.cantidad,
-          cantidadRecibida: cantidadesRecibidas[d.id] ?? '',
+          cantidadRecibida: cantidadesRecibidas[d.id] ?? (d.cantidad_recibida != null ? String(d.cantidad_recibida) : ''),
+          precioAntes: d.precio_confirmado ?? d.precio_estimado ?? null,
+          precioFinal: preciosFinales[d.id] ?? (d.precio_final != null ? String(Math.round(Number(d.precio_final) * 100)) : ''),
+          comentarioLlegada: comentariosLlegada[d.id] ?? d.comentario_llegada ?? '',
           sinCat: !d.producto?.id,
           creadoAqui: Boolean(d.producto?.id) && d.producto?.creado_desde_importacion === fresh.id,
           checked: checkedIds.has(d.id),
           newProducto: null,
         }))
         setRows(freshRows)
-        const restoredStep = saved?.step || 1
+        const restoredStep = saved?.step === 2 ? 3 : (saved?.step || 1)
         setStep(restoredStep)
-        if (saved?.fechaLlegada) setFechaLlegada(saved.fechaLlegada)
         if (saved?.recipientsBySucursal) setRecipientsBySucursal(saved.recipientsBySucursal)
 
         // Los pasos previos quedaron guardados sin normalizar sucursales/distribución
@@ -1241,7 +1282,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     draftAutosavePendingRef.current = run
     draftAutosaveTimerRef.current = setTimeout(run, 1500)
     return () => clearTimeout(draftAutosaveTimerRef.current)
-  }, [rows, step, fechaLlegada, distribution, recipientsBySucursal, loadingData, submitting]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, step, distribution, recipientsBySucursal, loadingData, submitting]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cerrar la pestana o mandar la app al fondo con un guardado pendiente: se
   // manda de inmediato.
@@ -1267,6 +1308,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const updateCantidadRecibida = useCallback((id, value) => {
     const sanitized = value.replace(/[^0-9]/g, '')
     setRows(prev => prev.map(r => r.id === id ? { ...r, cantidadRecibida: sanitized } : r))
+  }, [])
+  const updateLlegadaField = useCallback((id, field, value) => {
+    setRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
   }, [])
   const toggleAll = useCallback((checked) => {
     setRows(prev => prev.map(r => ({ ...r, checked })))
@@ -1443,8 +1487,25 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const step1Rows = rows.filter(r => originalSinCatIds.has(r.id))
   const step1Pending = step1Rows.filter(r => r.sinCat && !r.newProducto)
   const canGoNext = step1Pending.length === 0
-  const fechaLlegadaMinDate = getTrackerMinDate(imp, 'fecha_llegada')
-  const fechaLlegadaValid = !fechaLlegadaMinDate || fechaLlegada >= fechaLlegadaMinDate
+  // Revision de lo que llego: precio final y cantidad final de cada producto,
+  // y un comentario si cambia el precio o la cantidad.
+  const llegadaFaltaDe = (row) => {
+    const cant = String(row.cantidadRecibida ?? '').trim()
+    const precioFinalC = parseInt(String(row.precioFinal || '').replace(/\D/g, '') || '0', 10)
+    if (cant === '' || !(precioFinalC > 0)) return 'faltan'
+    if (llegadaCambia(row) && !String(row.comentarioLlegada || '').trim()) return 'comentario'
+    return ''
+  }
+  const step3Faltan = rows.filter((row) => llegadaFaltaDe(row) === 'faltan').length
+  const step3SinComentario = rows.filter((row) => llegadaFaltaDe(row) === 'comentario').length
+  const showStep3Errors = allChecked
+  const step3BlockReason = !allChecked
+    ? 'Marca cada producto como revisado.'
+    : step3Faltan
+      ? `Completa el precio final y la cantidad final (${step3Faltan} sin completar).`
+      : step3SinComentario
+        ? `Escribe por qué cambió el precio o la cantidad (${step3SinComentario} sin comentario).`
+        : ''
   const canFinish = !loadingSucursales && sucursales.length > 0 && rows.every(row => {
     const assigned = Object.values(distribution[row.id] || {}).reduce((s, v) => s + (parseInt(v) || 0), 0)
     return assigned === getCantidadRecibidaCeiling(row)
@@ -1881,10 +1942,15 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
       const destinatarios_por_sucursal = Object.entries(recipientsBySucursal)
         .filter(([, ids]) => ids.length > 0)
         .map(([sucursalId, ids]) => ({ sucursal_id: parseInt(sucursalId), user_ids: ids }))
-      const revisiones = rows.map(row => ({ detalle_id: row.id, cantidad_recibida: getCantidadRecibidaCeiling(row) }))
+      const revisiones = rows.map(row => ({
+        detalle_id: row.id,
+        cantidad_recibida: getCantidadRecibidaCeiling(row),
+        precio_final: (parseInt(String(row.precioFinal || '').replace(/\D/g, '') || '0', 10) / 100).toFixed(2),
+        comentario: String(row.comentarioLlegada || '').trim(),
+      }))
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/marcar-llegada/`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ distribuciones, destinatarios_por_sucursal, revisiones, fecha_llegada: fechaLlegada }) },
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ distribuciones, destinatarios_por_sucursal, revisiones }) },
         token
       )
       if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo marcar la llegada.'))
@@ -1905,7 +1971,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
     const source = rowsOverride || rows
     const checkedIds = source.filter(r => r.checked).map(r => r.id)
     const cantidadesRecibidas = Object.fromEntries(source.map(r => [r.id, r.cantidadRecibida]))
-    const borrador = { step, fechaLlegada, checkedIds, cantidadesRecibidas, distribution, recipientsBySucursal }
+    const preciosFinales = Object.fromEntries(source.map(r => [r.id, r.precioFinal]))
+    const comentariosLlegada = Object.fromEntries(source.map(r => [r.id, r.comentarioLlegada]))
+    const borrador = { step, checkedIds, cantidadesRecibidas, preciosFinales, comentariosLlegada, distribution, recipientsBySucursal }
     try {
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/guardar-borrador-llegada/`,
@@ -1942,7 +2010,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
         <div
           className={`quick-actions__receive-dialog ${mode}`}
           style={{
-            width: isMaximized ? 'min(1600px, 95vw)' : step === 3 ? 'min(950px, 95vw)' : step === 4 ? 'min(860px, 95vw)' : step === 5 ? 'min(700px, 95vw)' : 'min(640px, 90vw)',
+            width: isMaximized ? 'min(1600px, 95vw)' : step === 3 ? 'min(1280px, 96vw)' : step === 4 ? 'min(860px, 95vw)' : step === 5 ? 'min(700px, 95vw)' : 'min(640px, 90vw)',
             maxHeight: isMaximized ? '95dvh' : undefined,
             gridTemplateRows: 'auto 1fr auto',
             transition: 'width .25s, max-height .25s',
@@ -1980,7 +2048,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 ))}
               </div>
               <span style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
-                Paso {step} de 5 — {step === 1 ? 'Productos nuevos' : step === 2 ? 'Fecha de llegada' : step === 3 ? 'Revisión de llegada' : step === 4 ? 'Distribución a sucursales' : 'Destinatarios del envío'}
+                Paso {step === 1 ? 1 : step - 1} de 4 — {step === 1 ? 'Productos nuevos' : step === 3 ? 'Precio y cantidad final' : step === 4 ? 'Distribución a sucursales' : 'Destinatarios del envío'}
               </span>
             </div>
           )}
@@ -2055,35 +2123,6 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   </div>
                 )}
               </div>
-            ) : step === 2 ? (
-              /* ── PASO 2: fecha de llegada ── */
-              <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
-                <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
-                  <div className="quick-actions__receive-stage-copy">
-                    <p className="quick-actions__receive-stage-kicker">Paso 2 — Fecha de llegada</p>
-                    <h5>¿Cuándo llegó la importación?</h5>
-                    <p className="quick-actions__receive-stage-name">
-                      Por defecto se usa la fecha de hoy. Puedes editarla si la mercadería llegó en otro momento.
-                    </p>
-                  </div>
-                </article>
-                <div style={{ padding: '4px 16px 8px', maxWidth: 260 }}>
-                  <label className="create-user__field create-user__field--required">
-                    <span>Fecha de llegada</span>
-                    <input
-                      type="date"
-                      value={fechaLlegada}
-                      onChange={(e) => setFechaLlegada(e.target.value)}
-                      min={fechaLlegadaMinDate || undefined}
-                    />
-                    {fechaLlegadaMinDate && (
-                      <small style={{ color: 'var(--color-text-secondary)' }}>
-                        No puede ser anterior a {formatDate(fechaLlegadaMinDate)}.
-                      </small>
-                    )}
-                  </label>
-                </div>
-              </div>
             ) : step === 3 ? (
               /* ── PASO 3: verificar cantidades recibidas ── */
               <div
@@ -2093,9 +2132,9 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-head">
                     <div className="quick-actions__receive-stage-copy">
-                      <p className="quick-actions__receive-stage-kicker">Paso 3 — Revisión de llegada</p>
-                      <h5>Confirma los productos recibidos</h5>
-                      <p className="quick-actions__receive-stage-name">Marca cada producto cuando confirmes físicamente haberlo recibido.</p>
+                      <p className="quick-actions__receive-stage-kicker">Paso 2 — Precio y cantidad final</p>
+                      <h5>Confirma lo que llegó</h5>
+                      <p className="quick-actions__receive-stage-name">Pon el precio final y la cantidad final de cada producto. Si cambian, escribe por qué (cambió el precio, llegaron menos o más). Marca cada producto al revisarlo.</p>
                     </div>
                     <div className="quick-actions__receive-stage-toolbar">
                       <label className="quick-actions__receive-check quick-actions__receive-check--bulk">
@@ -2127,14 +2166,22 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     <span>Referencia</span>
                     <span>OEM</span>
                     <span>Precio</span>
+                    <span
+                      onDoubleClick={() => setRows(prev => prev.map(r => (r.precioAntes != null ? { ...r, precioFinal: String(Math.round(Number(r.precioAntes) * 100)) } : r)))}
+                      data-title="Doble clic: llenar todas con el precio"
+                      style={{ cursor: 'pointer' }}
+                    >
+                      Precio final
+                    </span>
                     <span>Cant. Esperada</span>
                     <span
                       onDoubleClick={() => setRows(prev => prev.map(r => ({ ...r, cantidadRecibida: String(r.cantidad) })))}
-                      title="Doble click: llenar todas con la cantidad esperada"
+                      data-title="Doble clic: llenar todas con la cantidad esperada"
                       style={{ cursor: 'pointer' }}
                     >
-                      Cant. Recibida
+                      Cant. final
                     </span>
+                    <span>Comentario</span>
                     <span
                       onDoubleClick={() => toggleAll(!allChecked)}
                       title="Doble click: marcar/desmarcar todas"
@@ -2193,6 +2240,16 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         >
                           <span className="imp-table-cell-text">{precioLabel}</span>
                         </span>
+                        <span>
+                          <PrecioCentavosInput
+                            disabled={submitting}
+                            invalid={showStep3Errors && !(parseInt(String(row.precioFinal || '').replace(/\D/g, '') || '0', 10) > 0)}
+                            value={row.precioFinal}
+                            onChange={(cents) => updateLlegadaField(row.id, 'precioFinal', cents)}
+                            title="Doble clic: usar el precio"
+                            onDoubleClick={() => row.precioAntes != null && updateLlegadaField(row.id, 'precioFinal', String(Math.round(Number(row.precioAntes) * 100)))}
+                          />
+                        </span>
                         <span
                           className="imp-table-cell-text"
                           style={{ textAlign: 'center', fontWeight: 600, cursor: 'pointer' }}
@@ -2214,6 +2271,17 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                             disabled={submitting}
                           />
                         </span>
+                        <span>
+                          <input
+                            type="text"
+                            className="imp-receive__comentario-input"
+                            value={row.comentarioLlegada || ''}
+                            placeholder={llegadaCambia(row) ? '¿Por qué cambió?' : 'Comentario'}
+                            style={showStep3Errors && llegadaFaltaDe(row) === 'comentario' ? { borderColor: '#ef4444' } : undefined}
+                            onChange={(e) => updateLlegadaField(row.id, 'comentarioLlegada', e.target.value)}
+                            disabled={submitting}
+                          />
+                        </span>
                         <span className="imp-receive__check-cell">
                           <Checkbox binary checked={row.checked} onChange={() => toggleRow(row.id)} disabled={submitting} />
                         </span>
@@ -2232,7 +2300,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
               <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-copy">
-                    <p className="quick-actions__receive-stage-kicker">Paso 4 — Distribución</p>
+                    <p className="quick-actions__receive-stage-kicker">Paso 3 — Distribución</p>
                     <h5>Envía los productos a las sucursales</h5>
                     <p className="quick-actions__receive-stage-name">Indica cuántas unidades de cada producto van a cada sucursal. El total debe coincidir con la cantidad recibida.</p>
                   </div>
@@ -2356,7 +2424,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
               <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-copy">
-                    <p className="quick-actions__receive-stage-kicker">Paso 5 — Destinatarios del envío</p>
+                    <p className="quick-actions__receive-stage-kicker">Paso 4 — Destinatarios del envío</p>
                     <h5>Vas a enviar productos a varias sucursales</h5>
                     <p className="quick-actions__receive-stage-name">Escoge a quién debe llegarle el recordatorio de cada envío. Pasa el mouse sobre el ícono junto al nombre de la sucursal para ver qué productos le llegarán. Cada sucursal que recibe productos necesita al menos un destinatario.</p>
                   </div>
@@ -2428,16 +2496,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
             {step === 1 ? (
               <>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={handleClose}>Cancelar</button>
-                <button type="button" className={`quick-actions__receive-btn${canGoNext ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={() => setStep(2)} disabled={loadingData || !canGoNext}>Siguiente</button>
-              </>
-            ) : step === 2 ? (
-              <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)}>Atrás</button>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--success" onClick={() => setStep(3)} disabled={loadingData || !fechaLlegada || !fechaLlegadaValid}>Siguiente</button>
+                <button type="button" className={`quick-actions__receive-btn${canGoNext ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={() => setStep(3)} disabled={loadingData || !canGoNext}>Siguiente</button>
               </>
             ) : step === 3 ? (
               <>
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(2)}>Atrás</button>
+                {step3BlockReason && <span className="imp-receive-footer-hint">{step3BlockReason}</span>}
+                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)}>Atrás</button>
                 <div className="imp-verificar-excel-dropdown" ref={receiveExcelDropdownRef}>
                   <button
                     type="button"
@@ -2465,7 +2529,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) withExcelLoading(setUploadingExcel, () => handleUploadReceiveExcel(file)) }}
                   />
                 </div>
-                <button type="button" className={`quick-actions__receive-btn${allChecked ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep4} disabled={!allChecked}>Siguiente</button>
+                <button type="button" title={step3BlockReason || undefined} className={`quick-actions__receive-btn${!step3BlockReason ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep4} disabled={Boolean(step3BlockReason)}>Siguiente</button>
               </>
             ) : step === 4 ? (
               <>
@@ -2486,7 +2550,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 {confirmBlockReason && <span className="imp-receive-footer-hint">{confirmBlockReason}</span>}
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(4)} disabled={submitting}>Atrás</button>
                 <button type="button" title={confirmBlockReason || undefined} className={`quick-actions__receive-btn${canConfirmStep4 ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={handleConfirm} disabled={submitting || !canConfirmStep4}>
-                  {submitting ? 'Confirmando...' : 'Confirmar llegada y enviar a sucursales'}
+                  {submitting ? 'Confirmando...' : 'Verificada: enviar a sucursales'}
                 </button>
               </>
             )}
@@ -2885,6 +2949,28 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const [trackerDateDraft, setTrackerDateDraft] = useState('')
   const [trackerMinDate, setTrackerMinDate] = useState(null)
   const [trackerSaving, setTrackerSaving] = useState(false)
+  // "¿La importación llegó?": se confirma (con la fecha) antes de guardarlo.
+  const [llegoDialog, setLlegoDialog] = useState(null)
+  const [llegoSaving, setLlegoSaving] = useState(false)
+  const saveLlego = async () => {
+    if (!llegoDialog || !imp) return
+    setLlegoSaving(true)
+    try {
+      const resp = await authFetch(
+        `${API_URL}/importaciones/importaciones/${imp.id}/marcar-llego/`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ llego: llegoDialog.llego, fecha_llegada: llegoDialog.fecha }) },
+        token
+      )
+      if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo guardar la llegada.'))
+      // El modal sigue abierto (despues viene "Importación verificada").
+      setImpOverride(await resp.json())
+      setLlegoDialog(null)
+    } catch (e) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: e.message, life: 5000 })
+    } finally {
+      setLlegoSaving(false)
+    }
+  }
 
   const openTrackerEditor = (field, currentValue) => {
     setTrackerEditingField(field)
@@ -2994,9 +3080,9 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
         nombre: d.producto?.nombre || d.nombre || '-',
         oem: getProductoOem(d.producto) || d.oem || '-',
         referencia: getDetalleReferencia(d) || '-',
-        precio: d.precio_confirmado != null ? Number(d.precio_confirmado).toFixed(2) : '-',
-        cantidad: d.cantidad_confirmada ?? d.cantidad ?? '-',
-        comentario: d.comentario || '',
+        precio: llegoPrecio(d) != null ? Number(llegoPrecio(d)).toFixed(2) : '-',
+        cantidad: llegoCantidad(d) ?? '-',
+        comentario: llegoComentario(d),
       }
       sucursales.forEach((s) => {
         const found = envios.find((e) => e.sucursalId === s.id)
@@ -3139,6 +3225,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
 
   if (!imp) return null
   const detalles = imp.detalles || []
+  const llegoMinDate = getTrackerMinDate(imp, 'fecha_llegada')
   const sucursalesCols = enviosDistribucion.sucursales
   // Columnas con minmax(px, fr): crecen para llenar el modal, pero nunca por
   // debajo de su mínimo en px. El mínimo es un número fijo (no depende del
@@ -3274,6 +3361,38 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                     </div>
                   )}
 
+                  {imp.estado === 'en_camino' && (
+                    <div className="imp-llego">
+                      {!imp.fecha_llegada && !imp.fecha_puerto ? (
+                        <BlockerNotice
+                          title="Todavía no se puede marcar que llegó"
+                          reason="Falta la fecha de llegada a puerto en el seguimiento del envío."
+                          actionLabel={canMarcarLlegada ? 'Poner la fecha de llegada a puerto' : undefined}
+                          onAction={canMarcarLlegada ? () => openTrackerEditor('fecha_puerto', '') : undefined}
+                        />
+                      ) : (
+                        <label className={`imp-llego__check${imp.fecha_llegada ? ' is-checked' : ''}${!canMarcarLlegada ? ' is-disabled' : ''}`}>
+                          <Checkbox
+                            binary
+                            checked={Boolean(imp.fecha_llegada)}
+                            disabled={!canMarcarLlegada || llegoSaving}
+                            onChange={() => setLlegoDialog(imp.fecha_llegada
+                              ? { llego: false }
+                              : { llego: true, fecha: getDefaultFechaLlegada(imp) })}
+                          />
+                          <span>
+                            <strong>¿La importación llegó?</strong>
+                            <small>
+                              {imp.fecha_llegada
+                                ? `Sí, llegó el ${formatDate(imp.fecha_llegada)}. Falta verificar el precio y la cantidad final ("Importación verificada").`
+                                : 'Márcalo cuando la mercadería llegue al local: se guarda la fecha de llegada.'}
+                            </small>
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                  )}
+
                   <div className="create-salida__field-groups">
                     <div className="create-salida__field-group create-salida__field-group--defined">
                       <div className="create-user__grid create-user__grid--two">
@@ -3324,7 +3443,9 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                   <div className="imp-details__productos-table-wrap">
                   <div className="create-user__locations-table importaciones-modal__products-table imp-details__productos-table">
                     <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row" style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
-                      <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span><span>Precio</span><span>Cantidad</span>
+                      <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span>
+                      <span>{imp.estado === 'importada' ? 'Precio final' : 'Precio'}</span>
+                      <span>{imp.estado === 'importada' ? 'Llegó' : 'Cantidad'}</span>
                       {sucursalesCols.map((s) => <span key={s.id} title={s.nombre}>{shortSucursalLabel(s.nombre)}</span>)}
                       <span>Comentario</span>
                     </div>
@@ -3338,9 +3459,11 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const oem = String(getProductoOem(d.producto) || d.oem || (d.oem_quitado ? '' : oemPorDefecto(coincidenciasByKey[d.id])) || '').trim() || '-'
                       const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                       const referencia = getDetalleReferencia(d) || '-'
-                      const precio = d.precio_confirmado != null ? `$${Number(d.precio_confirmado).toFixed(2)}` : '-'
-                      const cantidad = d.cantidad_confirmada ?? d.cantidad ?? '-'
-                      const comentario = d.comentario || '-'
+                      const esImportada = imp.estado === 'importada'
+                      const precioValor = esImportada ? llegoPrecio(d) : d.precio_confirmado
+                      const precio = precioValor != null ? `$${Number(precioValor).toFixed(2)}` : '-'
+                      const cantidad = esImportada ? (llegoCantidad(d) ?? '-') : (d.cantidad_confirmada ?? d.cantidad ?? '-')
+                      const comentario = (esImportada ? llegoComentario(d) : d.comentario) || '-'
                       const envios = d.producto?.id != null ? (enviosDistribucion.porProducto.get(d.producto.id) || []) : []
                       return (
                         <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${productSearch.trim() && importItemMatches(d, productSearch) ? ' imp-search-hit' : ''}`} style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
@@ -3412,6 +3535,49 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                     })}
                   </div>
                   </div>
+                  {imp.estado === 'importada' && (() => {
+                    const diferentes = detalles
+                      .map((d) => ({ d, dif: llegoDiferente(d) }))
+                      .filter((item) => item.dif)
+                    if (!diferentes.length) return null
+                    return (
+                      <div className="imp-llego-dif">
+                        <p className="create-user__eyebrow">{`Llegaron diferente (${diferentes.length})`}</p>
+                        <div className="create-user__locations-table importaciones-modal__products-table imp-llego-dif__table">
+                          <div className="create-user__locations-row create-user__locations-row--head imp-llego-dif__row">
+                            <span>Código</span><span>Descripción</span><span>Pedido</span><span>Llegó</span><span>Diferencia</span><span>Precio</span><span>Comentario</span>
+                          </div>
+                          {diferentes.map(({ d, dif }) => {
+                            const precioTexto = dif.precioCambia
+                              ? `$${Number(dif.precioAntes).toFixed(2)} → $${Number(d.precio_final).toFixed(2)}`
+                              : (llegoPrecio(d) != null ? `$${Number(llegoPrecio(d)).toFixed(2)}` : '-')
+                            return (
+                              <div key={d.id} className="create-user__locations-row imp-llego-dif__row">
+                                <span className="imp-table-cell-text">{d.producto?.codigo || d.codigo || '-'}</span>
+                                <span className="imp-table-cell-text">{d.producto?.nombre || d.nombre || '-'}</span>
+                                <span className="imp-table-cell-text" style={{ textAlign: 'center' }}>{dif.esperado}</span>
+                                <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{dif.llego}</span>
+                                <span
+                                  className="imp-table-cell-text"
+                                  style={{ textAlign: 'center', fontWeight: 600, color: dif.diferencia < 0 ? '#dc2626' : dif.diferencia > 0 ? '#d97706' : undefined }}
+                                >
+                                  {dif.diferencia === 0 ? '—' : dif.diferencia > 0 ? `+${dif.diferencia}` : dif.diferencia}
+                                </span>
+                                <span className="imp-table-cell-text" style={dif.precioCambia ? { color: '#d97706', fontWeight: 600 } : undefined}>{precioTexto}</span>
+                                <span
+                                  className="imp-table-cell-tip"
+                                  onMouseEnter={(e) => showCellHover(e, llegoComentario(d) || null, 'Comentario')}
+                                  onMouseLeave={hideCellHover}
+                                >
+                                  <span className="imp-table-cell-text">{llegoComentario(d) || '-'}</span>
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </section>
               )}
 
@@ -3451,19 +3617,20 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                 type="button"
                 className="create-user__action create-user__action--primary"
                 onClick={() => {
-                  if (!imp.fecha_puerto) {
+                  if (!imp.fecha_llegada) {
                     toastRef.current?.show({
                       severity: 'warn',
-                      summary: 'Falta la fecha de llegada a puerto',
-                      detail: 'Registra la fecha de llegada a puerto en el seguimiento del envío antes de marcar la llegada al local.',
+                      summary: 'Primero marca que llegó',
+                      detail: 'En la pestaña General marca "¿La importación llegó?"; después verificas el precio y la cantidad final.',
                       life: 5000,
                     })
+                    setActiveTab('general')
                     return
                   }
                   setShowReceive(true)
                 }}
               >
-                Llegó importación
+                Importación verificada
               </button>
             )}
             {imp.estado === 'importada' && (
@@ -3512,6 +3679,51 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       )}
       {showHistorialVerificacion && (
         <HistorialVerificacionModal imp={imp} onClose={() => setShowHistorialVerificacion(false)} />
+      )}
+      {llegoDialog && createPortal(
+        <div className="user-details__confirm-overlay" style={{ zIndex: 3000 }} onMouseDown={(e) => { if (e.target === e.currentTarget && !llegoSaving) setLlegoDialog(null) }}>
+          <div className="user-details__confirm-dialog">
+            <div className="user-details__confirm-icon">
+              <Info size={18} />
+            </div>
+            <div className="user-details__confirm-content">
+              {llegoDialog.llego ? (
+                <>
+                  <h4>¿Seguro que la importación llegó?</h4>
+                  <p>Se guarda la fecha de llegada. Después, con &quot;Importación verificada&quot;, confirmas el precio y la cantidad final de lo que llegó.</p>
+                  <label className="create-user__field" style={{ maxWidth: 220, marginTop: 8 }}>
+                    <span>Fecha de llegada</span>
+                    <input
+                      type="date"
+                      value={llegoDialog.fecha || ''}
+                      min={llegoMinDate || undefined}
+                      onChange={(e) => setLlegoDialog((prev) => ({ ...prev, fecha: e.target.value }))}
+                    />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <h4>¿Quitar la llegada?</h4>
+                  <p>{`Se borra la fecha de llegada (${formatDate(imp.fecha_llegada)}) y la importación vuelve a quedar en camino sin llegar.`}</p>
+                </>
+              )}
+            </div>
+            <div className="user-details__confirm-actions">
+              <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setLlegoDialog(null)} disabled={llegoSaving}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={saveLlego}
+                disabled={llegoSaving || (llegoDialog.llego && (!llegoDialog.fecha || Boolean(llegoMinDate && llegoDialog.fecha < llegoMinDate)))}
+              >
+                {llegoSaving ? 'Guardando...' : llegoDialog.llego ? 'Sí, llegó' : 'Quitar llegada'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        getPortalRoot()
       )}
       {trackerEditingField && createPortal(
         <div

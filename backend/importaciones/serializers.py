@@ -55,7 +55,7 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ImportacionDetalle
-        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "oem_quitado", "referencia", "cantidad", "comentario", "precio_estimado", "precio_casa", "coincidencia", "coincidencia_codigo", "coincidencia_casa", "coincidencia_precio", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "precio_pvp_snapshot", "cantidad_recibida", "seleccionado", "quitado", "solicitud_id", "orden"]
+        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "oem_quitado", "referencia", "cantidad", "comentario", "precio_estimado", "precio_casa", "coincidencia", "coincidencia_codigo", "coincidencia_casa", "coincidencia_precio", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "precio_pvp_snapshot", "cantidad_recibida", "precio_final", "comentario_llegada", "seleccionado", "quitado", "solicitud_id", "orden"]
 
     def validate(self, data):
         producto = data.get("producto")
@@ -107,6 +107,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
             "fecha_puerto",
             "fecha_llegada",
             "dias_reales_entrega",
+            "fecha_organizado",
             "origen_id",
             "origen_codigo",
             "en_camino_id",
@@ -129,6 +130,7 @@ class ImportacionSerializer(serializers.ModelSerializer):
             "fecha_puerto",
             "fecha_llegada",
             "dias_reales_entrega",
+            "fecha_organizado",
             "origen_id",
             "origen_codigo",
             "en_camino_id",
@@ -548,6 +550,8 @@ class ImportacionSerializer(serializers.ModelSerializer):
                     cantidad_confirmada=item.get("cantidad_confirmada"),
                     precio_pvp_snapshot=item.get("precio_pvp_snapshot"),
                     cantidad_recibida=item.get("cantidad_recibida"),
+                    precio_final=item.get("precio_final"),
+                    comentario_llegada=str(item.get("comentario_llegada") or ""),
                     solicitud=item.get("solicitud"),
                     seleccionado=item.get("seleccionado"),
                     quitado=bool(item.get("quitado")),

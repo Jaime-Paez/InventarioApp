@@ -608,6 +608,8 @@
   max-height: none;
 }
 
+/* Codigo, Descripcion, Referencia, OEM, Precio, Precio final, Cant. esperada,
+   Cant. final, Comentario, Acciones. */
 .imp-receive__productos-row {
   grid-template-columns:
     minmax(90px, 0.85fr)
@@ -615,8 +617,10 @@
     minmax(100px, 0.95fr)
     minmax(90px, 0.85fr)
     minmax(72px, 0.65fr)
+    minmax(104px, 0.8fr)
     92px
-    minmax(104px, 0.95fr)
+    minmax(96px, 0.8fr)
+    minmax(150px, 1.3fr)
     76px;
 }
 
@@ -677,6 +681,17 @@
   border: 1px solid var(--color-border, #e2e8f0);
   border-radius: 6px;
   padding: 4px 6px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: inherit;
+  background: var(--modal-color, #fff);
+}
+
+.imp-receive__comentario-input {
+  width: 100%;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 6px;
+  padding: 4px 8px;
   font: inherit;
   font-size: 0.85rem;
   color: inherit;
@@ -2995,4 +3010,74 @@ body.app-theme-dark .imp-receive-footer-hint {
 .dashboard-shell.dark .imp-search-hit > td:first-child,
 .dashboard-shell.dark .create-user__locations-row.imp-search-hit > span:first-child {
   box-shadow: inset 4px 0 0 0 #60a5fa;
+}
+
+/* En camino: "¿La importación llegó?" (pestaña General). */
+.imp-llego {
+  margin-bottom: 20px;
+}
+
+.imp-llego__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--modal-color, #fff);
+  cursor: pointer;
+}
+
+.imp-llego__check.is-checked {
+  border-color: #86efac;
+  background: rgba(22, 163, 74, 0.07);
+}
+
+.imp-llego__check.is-disabled {
+  cursor: default;
+}
+
+.imp-llego__check > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.imp-llego__check strong {
+  font-size: 0.92rem;
+}
+
+.imp-llego__check small {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.dashboard-shell.dark .imp-llego__check {
+  border-color: var(--color-border-dark, #334155);
+}
+
+.dashboard-shell.dark .imp-llego__check.is-checked {
+  border-color: rgba(34, 197, 94, 0.45);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+/* Importadas: lo que llegó diferente (debajo de los productos). */
+.imp-llego-dif {
+  margin-top: 18px;
+}
+
+.imp-llego-dif .create-user__eyebrow {
+  margin-bottom: 8px;
+}
+
+.imp-llego-dif__row {
+  grid-template-columns:
+    minmax(80px, 0.8fr)
+    minmax(140px, 1.6fr)
+    70px
+    70px
+    80px
+    minmax(120px, 1fr)
+    minmax(150px, 1.6fr);
+  min-width: 720px;
 }

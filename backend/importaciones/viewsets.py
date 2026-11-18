@@ -1485,8 +1485,79 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         return round(sum(filtered) / len(filtered))
 
     @transaction.atomic
+    def _recalcular_dias_entrega_casa(self, casa_comercial):
+        """Promedio de los ultimos 5 tiempos reales de entrega de la casa."""
+        if casa_comercial is None:
+            return
+        ultimos = list(
+            Importacion.objects.filter(
+                casa_comercial=casa_comercial,
+                dias_reales_entrega__isnull=False,
+            )
+            .order_by("-id")
+            .values_list("dias_reales_entrega", flat=True)[:5]
+        )
+        nuevo_promedio = self._smart_average(ultimos)
+        if nuevo_promedio is not None and nuevo_promedio > 0:
+            casa_comercial.dias_entrega = nuevo_promedio
+            casa_comercial.save(update_fields=["dias_entrega"])
+
+    @action(detail=True, methods=["post"], url_path="marcar-llego")
+    def marcar_llego(self, request, pk=None):
+        """Primer paso al llegar: "¿La importación llegó?". Solo guarda la fecha
+        de llegada (sigue en camino hasta verificar lo que llegó). Con
+        `llego: false` se deshace mientras no se haya verificado."""
+        if not self._check_specific_importacion_permission(request, "puede_marcar_llegada"):
+            return Response(
+                {"detail": "No tienes permiso para ejecutar esta acción."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        instance = self.get_object()
+        if instance.estado != Importacion.ESTADO_EN_CAMINO:
+            return Response(
+                {"detail": "Solo se puede marcar la llegada mientras la importación está en camino."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        llego = request.data.get("llego", True)
+        llego = str(llego).strip().lower() not in {"false", "0", "no", ""}
+        if not llego:
+            instance.fecha_llegada = None
+            instance.dias_reales_entrega = None
+            instance.save(update_fields=["fecha_llegada", "dias_reales_entrega"])
+            self._recalcular_dias_entrega_casa(instance.casa_comercial)
+            return Response(self.get_serializer(instance).data)
+
+        if not instance.fecha_puerto:
+            return Response(
+                {"detail": "Registra la fecha de llegada a puerto en el seguimiento del envío antes de marcar que llegó."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        fecha_raw = str(request.data.get("fecha_llegada") or "").strip()
+        try:
+            from datetime import date
+            fecha_llegada = date.fromisoformat(fecha_raw) if fecha_raw else timezone.localdate()
+        except ValueError:
+            return Response({"detail": "Fecha inválida."}, status=status.HTTP_400_BAD_REQUEST)
+        if fecha_llegada < instance.fecha_puerto:
+            return Response(
+                {"detail": "La fecha de llegada no puede ser anterior a la llegada a puerto."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        start = instance.fecha_importacion or instance.fecha
+        instance.fecha_llegada = fecha_llegada
+        instance.dias_reales_entrega = (fecha_llegada - start).days if start else None
+        instance.save(update_fields=["fecha_llegada", "dias_reales_entrega"])
+        self._recalcular_dias_entrega_casa(instance.casa_comercial)
+        return Response(self.get_serializer(instance).data)
+
+    @transaction.atomic
     @action(detail=True, methods=["post"], url_path="marcar-llegada")
     def marcar_llegada(self, request, pk=None):
+        """"Importación verificada": con lo que llegó (precio y cantidad final,
+        con comentario si cambian) se reparte a las sucursales y pasa a
+        importada. Antes hay que haber marcado que llegó (marcar-llego)."""
         if not self._check_specific_importacion_permission(request, "puede_marcar_llegada"):
             return Response(
                 {"detail": "No tienes permiso para ejecutar esta acción."},
@@ -1498,39 +1569,69 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 {"detail": "Solo se puede marcar llegada desde estado en camino."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if not instance.fecha_llegada:
+            return Response(
+                {"detail": "Primero marca que la importación llegó (pestaña General)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        fecha_llegada_raw = str(request.data.get("fecha_llegada") or "").strip()
-        try:
-            from datetime import date
-            fecha_llegada = date.fromisoformat(fecha_llegada_raw) if fecha_llegada_raw else timezone.localdate()
-        except ValueError:
-            fecha_llegada = timezone.localdate()
+        # Precio final y cantidad final de cada producto (y comentario si
+        # alguno cambia): sin eso no pasa a importada.
+        from decimal import Decimal, InvalidOperation
 
-        start = instance.fecha_importacion or instance.fecha
-        dias_reales = (fecha_llegada - start).days if start else None
+        revisiones = {}
+        for revision in request.data.get("revisiones", []) or []:
+            try:
+                revisiones[int(revision.get("detalle_id"))] = revision
+            except (TypeError, ValueError):
+                continue
+        detalles_llegada = list(instance.detalles.select_related("producto").all())
+        faltan = []
+        sin_comentario = []
+        datos_llegada = {}
+        for detalle in detalles_llegada:
+            etiqueta = (detalle.producto.codigo if detalle.producto_id else detalle.codigo) or f"#{detalle.id}"
+            revision = revisiones.get(detalle.id) or {}
+            try:
+                cantidad_recibida = int(revision.get("cantidad_recibida"))
+                precio_final = Decimal(str(revision.get("precio_final"))).quantize(Decimal("0.01"))
+            except (TypeError, ValueError, InvalidOperation):
+                faltan.append(etiqueta)
+                continue
+            if cantidad_recibida < 0 or precio_final <= 0:
+                faltan.append(etiqueta)
+                continue
+            comentario = str(revision.get("comentario") or "").strip()
+            precio_antes = detalle.precio_confirmado if detalle.precio_confirmado is not None else detalle.precio_estimado
+            cambio = cantidad_recibida != int(detalle.cantidad or 0) or (
+                precio_antes is not None and Decimal(precio_antes).quantize(Decimal("0.01")) != precio_final
+            )
+            if cambio and not comentario:
+                sin_comentario.append(etiqueta)
+            datos_llegada[detalle.id] = (cantidad_recibida, precio_final, comentario)
+        if faltan or sin_comentario:
+            partes = []
+            if faltan:
+                partes.append(f"Completa el precio final y la cantidad final de: {', '.join(faltan)}.")
+            if sin_comentario:
+                partes.append(f"Escribe por qué cambió el precio o la cantidad de: {', '.join(sin_comentario)}.")
+            return Response({"detail": " ".join(partes)}, status=status.HTTP_400_BAD_REQUEST)
 
         instance.estado = Importacion.ESTADO_IMPORTADA
-        instance.fecha_llegada = fecha_llegada
-        instance.dias_reales_entrega = dias_reales
+        instance.fecha_organizado = timezone.localdate()
         instance.borrador_llegada = None
         instance.save()
 
         # Register cantidad recibida per detalle and log faltante/sobrante inconvenientes
         inconvenientes_resumen = []
-        for revision in request.data.get("revisiones", []):
-            try:
-                detalle_id = revision.get("detalle_id")
-                cantidad_recibida = int(revision.get("cantidad_recibida"))
-                if cantidad_recibida < 0 or not detalle_id:
-                    continue
-                detalle = instance.detalles.select_related("producto").get(pk=detalle_id)
-            except Exception:
-                continue
+        for detalle in detalles_llegada:
+            cantidad_recibida, precio_final, comentario = datos_llegada[detalle.id]
+            detalle.cantidad_recibida = cantidad_recibida
+            detalle.precio_final = precio_final
+            detalle.comentario_llegada = comentario
+            detalle.save(update_fields=["cantidad_recibida", "precio_final", "comentario_llegada"])
             if not detalle.producto_id:
                 continue
-
-            detalle.cantidad_recibida = cantidad_recibida
-            detalle.save(update_fields=["cantidad_recibida"])
 
             cantidad_esperada = int(detalle.cantidad or 0)
             if cantidad_recibida == cantidad_esperada:
@@ -1560,6 +1661,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 detalle=(
                     f"Se detecto un {tipo_label} de {diferencia} unidades al revisar la llegada. "
                     f"Esperado: {cantidad_esperada}, recibido: {cantidad_recibida}."
+                    + (f" Comentario: {comentario}" if comentario else "")
                 ),
                 actor=request.user,
             )
@@ -1569,20 +1671,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             verbo = "faltan" if tipo == ImportacionInconveniente.Tipos.FALTANTE else "sobran"
             inconvenientes_resumen.append(f"{producto_label}: {verbo} {diferencia}")
 
-        # Recalculate casa_comercial.dias_entrega from last 5 real delivery times
-        if dias_reales is not None:
-            ultimos = list(
-                Importacion.objects.filter(
-                    casa_comercial=instance.casa_comercial,
-                    dias_reales_entrega__isnull=False,
-                )
-                .order_by("-id")
-                .values_list("dias_reales_entrega", flat=True)[:5]
-            )
-            nuevo_promedio = self._smart_average(ultimos)
-            if nuevo_promedio is not None and nuevo_promedio > 0:
-                instance.casa_comercial.dias_entrega = nuevo_promedio
-                instance.casa_comercial.save(update_fields=["dias_entrega"])
+        # (Los dias reales de entrega ya se calcularon al marcar que llego.)
 
         # Group distributions by sucursal and create ImportacionEnvio records
         envios_by_sucursal = {}
@@ -1629,10 +1718,12 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # se reparten las cantidades a las sucursales -- no antes (al aceptar,
         # cuando el precio todavia puede ajustarse) ni despues (al confirmar
         # recepcion en cada sucursal, que puede tardar dias/semanas).
+        # Es el precio final (el que se verifico al llegar), o el confirmado si
+        # una fila vieja no lo tiene.
         precio_by_producto = {
-            d.producto_id: d.precio_confirmado
-            for d in instance.detalles.filter(precio_confirmado__isnull=False)
-            if d.producto_id
+            d.producto_id: d.precio_final if d.precio_final is not None else d.precio_confirmado
+            for d in instance.detalles.all()
+            if d.producto_id and (d.precio_final is not None or d.precio_confirmado is not None)
         }
         for product_id, nuevo_precio in precio_by_producto.items():
             Producto.objects.filter(pk=product_id).update(precio=nuevo_precio)
