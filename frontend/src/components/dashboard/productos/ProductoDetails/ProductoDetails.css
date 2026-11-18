@@ -108,3 +108,27 @@
 .alternos-grupo__oem {
   opacity: 0.75;
 }
+
+/* Unificar nombre: cada producto del grupo se puede escoger con clic. */
+.nombre-grupo__opcion {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.84rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.nombre-grupo__opcion strong { min-width: 110px; flex-shrink: 0; }
+.nombre-grupo__opcion span { color: var(--color-text-secondary); }
+.nombre-grupo__opcion:hover:not(:disabled) { background: var(--color-surface-hover, rgba(148, 163, 184, 0.14)); }
+.nombre-grupo__opcion.is-elegido { border-color: var(--color-primary, #1e3a5f); background: rgba(30, 58, 95, 0.08); }
+.nombre-grupo__opcion.is-elegido span { color: inherit; font-weight: 600; }
+.nombre-grupo__opcion:disabled { cursor: default; opacity: 0.6; }

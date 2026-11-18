@@ -2634,13 +2634,25 @@ function ProductoDetails({
                 autoFocus
               />
               </label>
-              <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px', marginTop: 12, maxHeight: 220, overflowY: 'auto' }}>
-                {[{ id: resolvedProductoId, codigo: formData.codigo, nombre: originalData?.nombre }, ...originalAlternativas].map((item) => (
-                  <div key={`nombre-grupo-${item.id}`} style={{ display: 'flex', gap: 10, fontSize: '0.84rem', padding: '3px 0' }}>
-                    <strong style={{ minWidth: 110 }}>{item.codigo || '-'}</strong>
-                    <span className="muted">{item.nombre || 'Sin nombre'}</span>
-                  </div>
-                ))}
+              <small className="muted" style={{ display: 'block', marginTop: 12 }}>Escribe el nombre o haz clic en uno de abajo para usarlo.</small>
+              <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 6, marginTop: 6, maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {/* Clic en un producto: su nombre pasa tal cual al campo de arriba. */}
+                {[{ id: resolvedProductoId, codigo: formData.codigo, nombre: originalData?.nombre }, ...originalAlternativas].map((item) => {
+                  const elegido = Boolean(item.nombre) && String(item.nombre) === String(nombreGrupoDialog.nombre)
+                  return (
+                    <button
+                      type="button"
+                      key={`nombre-grupo-${item.id}`}
+                      className={`nombre-grupo__opcion${elegido ? ' is-elegido' : ''}`}
+                      onClick={() => item.nombre && setNombreGrupoDialog((prev) => ({ ...prev, nombre: item.nombre }))}
+                      disabled={!item.nombre || nombreGrupoSaving}
+                      data-title={item.nombre ? 'Clic para usar este nombre' : undefined}
+                    >
+                      <strong>{item.codigo || '-'}</strong>
+                      <span>{item.nombre || 'Sin nombre'}</span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
             <div className="user-details__confirm-actions" style={{ width: '100%' }}>
