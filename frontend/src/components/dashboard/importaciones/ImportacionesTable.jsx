@@ -3394,7 +3394,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const productosMinWidth = productosCols.reduce((sum, c) => sum + c.min, 0)
   const badge = STATUS_BADGE[imp.estado] || { label: imp.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
 
-  const ribbonLabel = imp.estado === 'importada' ? 'Importada' : imp.estado === 'en_camino' ? 'En\ncamino' : badge.label
+  const etapaTitulo = imp.estado === 'importada' ? 'Importada' : imp.estado === 'en_camino' ? 'En camino' : badge.label
 
   const modal = createPortal(
     <div className="create-user__overlay" role="dialog" aria-modal="true" style={{ padding: '16px' }}>
@@ -3419,8 +3419,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
               Confirmación; ya no la etiqueta amarilla de la esquina. */}
           <header className="create-user__header" onMouseDown={handleHeaderMouseDown}>
             <div className="create-user__header-text">
-              <h3>{`${String(ribbonLabel || '').replace(/
-/g, ' ')}: ${imp.codigo}`}</h3>
+              <h3>{`${etapaTitulo}: ${imp.codigo}`}</h3>
             </div>
             <div className="create-user__header-actions">
               <button
