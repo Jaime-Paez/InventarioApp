@@ -2945,6 +2945,70 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       .finally(() => { if (!cancelled) setLoadingImp(false) })
     return () => { cancelled = true }
   }, [impProp?.id, token])
+
+  // En camino: precio final y cantidad final de lo que llego, directo en la
+  // tabla de productos. Se guardan en la base (el mismo borrador que usa
+  // "Importación verificada") mientras se escribe.
+  const [llegadaEdits, setLlegadaEdits] = useState({})
+  const llegadaEditsRef = useRef({})
+  const llegadaSaveTimerRef = useRef(null)
+  const impRef = useRef(imp)
+  impRef.current = imp
+  const llegadaValorDe = (d, field) => {
+    const edit = llegadaEdits[d.id]?.[field]
+    if (edit !== undefined) return edit
+    const saved = getSavedDraft(imp)
+    if (field === 'precioFinal') {
+      return saved?.preciosFinales?.[d.id] ?? (d.precio_final != null ? String(Math.round(Number(d.precio_final) * 100)) : '')
+    }
+    return saved?.cantidadesRecibidas?.[d.id] ?? (d.cantidad_recibida != null ? String(d.cantidad_recibida) : '')
+  }
+  const guardarLlegadaEdits = useCallback(async () => {
+    if (llegadaSaveTimerRef.current) { clearTimeout(llegadaSaveTimerRef.current); llegadaSaveTimerRef.current = null }
+    const edits = llegadaEditsRef.current
+    const actual = impRef.current
+    if (!actual?.id || !Object.keys(edits).length) return
+    const saved = getSavedDraft(actual) || {}
+    const preciosFinales = { ...(saved.preciosFinales || {}) }
+    const cantidadesRecibidas = { ...(saved.cantidadesRecibidas || {}) }
+    Object.entries(edits).forEach(([id, edit]) => {
+      if (edit.precioFinal !== undefined) preciosFinales[id] = edit.precioFinal
+      if (edit.cantidadRecibida !== undefined) cantidadesRecibidas[id] = edit.cantidadRecibida
+    })
+    const borrador = { step: 1, ...saved, preciosFinales, cantidadesRecibidas }
+    try {
+      const resp = await authFetch(
+        `${API_URL}/importaciones/importaciones/${actual.id}/guardar-borrador-llegada/`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ borrador }) },
+        token
+      )
+      if (!resp.ok) throw new Error(await readErrorMessage(resp, 'No se pudo guardar el precio y la cantidad final.'))
+      const fresh = await resp.json()
+      // Lo que se escribio mientras se guardaba sigue pendiente.
+      const siguen = {}
+      Object.entries(llegadaEditsRef.current).forEach(([id, edit]) => {
+        const nuevo = {}
+        if (edit.precioFinal !== undefined && edit.precioFinal !== preciosFinales[id]) nuevo.precioFinal = edit.precioFinal
+        if (edit.cantidadRecibida !== undefined && edit.cantidadRecibida !== cantidadesRecibidas[id]) nuevo.cantidadRecibida = edit.cantidadRecibida
+        if (Object.keys(nuevo).length) siguen[id] = nuevo
+      })
+      llegadaEditsRef.current = siguen
+      impRef.current = fresh
+      setImpOverride(fresh)
+      setLlegadaEdits(siguen)
+    } catch (e) {
+      toastRef.current?.show({ severity: 'error', summary: 'Error', detail: e.message, life: 5000 })
+    }
+  }, [token])
+  const setLlegadaValor = (id, field, value) => {
+    const next = { ...llegadaEditsRef.current, [id]: { ...(llegadaEditsRef.current[id] || {}), [field]: value } }
+    llegadaEditsRef.current = next
+    setLlegadaEdits(next)
+    if (llegadaSaveTimerRef.current) clearTimeout(llegadaSaveTimerRef.current)
+    llegadaSaveTimerRef.current = setTimeout(() => { guardarLlegadaEdits() }, 700)
+  }
+  // Al cerrar el modal no se pierde lo ultimo que se escribio.
+  useEffect(() => () => { if (llegadaSaveTimerRef.current) guardarLlegadaEdits() }, [guardarLlegadaEdits])
   const [trackerEditingField, setTrackerEditingField] = useState(null)
   const [trackerDateDraft, setTrackerDateDraft] = useState('')
   const [trackerMinDate, setTrackerMinDate] = useState(null)
@@ -3242,10 +3306,29 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     { min: 72, fr: 0.7 }, // OEM
     { min: 82, fr: 0.8 }, // Referencia
     { min: 60, fr: 0.55 }, // Precio
+    ...(imp.estado === 'en_camino' ? [{ min: 96, fr: 0.65 }] : []), // Precio final
     { min: 70, fr: 0.5 }, // Cantidad
+    ...(imp.estado === 'en_camino' ? [{ min: 78, fr: 0.5 }] : []), // Cant. final
     ...sucursalesCols.map(() => ({ min: 70, fr: 0.5 })),
     { min: 120, fr: 1.2 }, // Comentario
   ]
+  // Se llenan cuando ya se marco que llego.
+  const enCamino = imp.estado === 'en_camino'
+  const puedeLlenarLlegada = enCamino && canMarcarLlegada && Boolean(imp.fecha_llegada)
+  const motivoNoLlegada = !canMarcarLlegada
+    ? 'No tienes permiso para verificar la llegada.'
+    : 'Primero marca que la importación llegó (pestaña General).'
+  const precioAntesCentavos = (d) => {
+    const antes = d.precio_confirmado ?? d.precio_estimado
+    return antes != null ? String(Math.round(Number(antes) * 100)) : null
+  }
+  const llenarTodasLlegada = (field) => {
+    if (!puedeLlenarLlegada) return
+    detalles.forEach((d) => {
+      const valor = field === 'precioFinal' ? precioAntesCentavos(d) : String(d.cantidad ?? '')
+      if (valor != null && llegadaValorDe(d, field) !== valor) setLlegadaValor(d.id, field, valor)
+    })
+  }
   const productosGridTemplate = productosCols.map((c) => `minmax(${c.min}px, ${c.fr}fr)`).join(' ')
   const productosMinWidth = productosCols.reduce((sum, c) => sum + c.min, 0)
   const badge = STATUS_BADGE[imp.estado] || { label: imp.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
@@ -3445,7 +3528,25 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                     <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row" style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
                       <span>Código</span><span>Descripción</span><span>OEM</span><span>Referencia</span>
                       <span>{imp.estado === 'importada' ? 'Precio final' : 'Precio'}</span>
+                      {enCamino && (
+                        <span
+                          onDoubleClick={() => llenarTodasLlegada('precioFinal')}
+                          data-title={puedeLlenarLlegada ? 'Precio de lo que llegó · Doble clic: llenar todas con el precio' : motivoNoLlegada}
+                          style={puedeLlenarLlegada ? { cursor: 'pointer' } : undefined}
+                        >
+                          Precio final
+                        </span>
+                      )}
                       <span>{imp.estado === 'importada' ? 'Llegó' : 'Cantidad'}</span>
+                      {enCamino && (
+                        <span
+                          onDoubleClick={() => llenarTodasLlegada('cantidadRecibida')}
+                          data-title={puedeLlenarLlegada ? 'Cantidad que llegó · Doble clic: llenar todas con la cantidad' : motivoNoLlegada}
+                          style={puedeLlenarLlegada ? { cursor: 'pointer' } : undefined}
+                        >
+                          Cant. final
+                        </span>
+                      )}
                       {sucursalesCols.map((s) => <span key={s.id} title={s.nombre}>{shortSucursalLabel(s.nombre)}</span>)}
                       <span>Comentario</span>
                     </div>
@@ -3508,6 +3609,20 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           >
                             <span className="imp-table-cell-text">{precio}</span>
                           </span>
+                          {enCamino && (
+                            <span>
+                              <PrecioCentavosInput
+                                disabled={!puedeLlenarLlegada}
+                                value={llegadaValorDe(d, 'precioFinal')}
+                                onChange={(cents) => setLlegadaValor(d.id, 'precioFinal', cents)}
+                                title={puedeLlenarLlegada ? 'Doble clic: usar el precio' : motivoNoLlegada}
+                                onDoubleClick={() => {
+                                  const antes = precioAntesCentavos(d)
+                                  if (puedeLlenarLlegada && antes != null) setLlegadaValor(d.id, 'precioFinal', antes)
+                                }}
+                              />
+                            </span>
+                          )}
                           <span
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => showCellHover(e, String(cantidad ?? ''), 'Cantidad')}
@@ -3515,6 +3630,27 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           >
                             <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{cantidad}</span>
                           </span>
+                          {enCamino && (() => {
+                            const valor = llegadaValorDe(d, 'cantidadRecibida')
+                            const n = parseInt(valor, 10)
+                            const diff = Number.isFinite(n) ? n - Number(d.cantidad || 0) : 0
+                            const diffClass = diff < 0 ? ' imp-receive__cantidad-input--faltante' : diff > 0 ? ' imp-receive__cantidad-input--sobrante' : ''
+                            return (
+                              <span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  maxLength={6}
+                                  className={`imp-receive__cantidad-input${diffClass}`}
+                                  value={valor}
+                                  disabled={!puedeLlenarLlegada}
+                                  data-title={!puedeLlenarLlegada ? motivoNoLlegada : diff < 0 ? `Faltan ${-diff}` : diff > 0 ? `Sobran ${diff}` : 'Doble clic: usar la cantidad'}
+                                  onChange={(e) => setLlegadaValor(d.id, 'cantidadRecibida', e.target.value.replace(/[^0-9]/g, ''))}
+                                  onDoubleClick={() => puedeLlenarLlegada && setLlegadaValor(d.id, 'cantidadRecibida', String(d.cantidad ?? ''))}
+                                />
+                              </span>
+                            )
+                          })()}
                           {sucursalesCols.map((s) => {
                             const found = envios.find((e) => e.sucursalId === s.id)
                             return (
@@ -3627,7 +3763,8 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                     setActiveTab('general')
                     return
                   }
-                  setShowReceive(true)
+                  // Lo escrito en la tabla se guarda antes de abrir la verificacion.
+                  guardarLlegadaEdits().then(() => setShowReceive(true))
                 }}
               >
                 Importación verificada
@@ -3670,7 +3807,14 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
         <ImportacionReceiveModal
           imp={imp}
           token={token}
-          onClose={() => setShowReceive(false)}
+          onClose={() => {
+            setShowReceive(false)
+            // Lo que se cambio en la verificacion se ve en la tabla.
+            authFetch(`${API_URL}/importaciones/importaciones/${imp.id}/`, {}, token)
+              .then((r) => (r.ok ? r.json() : null))
+              .then((fresh) => { if (fresh) setImpOverride(fresh) })
+              .catch(() => {})
+          }}
           onConfirmed={(payload) => { onSaved?.(payload); onClose?.() }}
         />
       )}
