@@ -534,6 +534,18 @@
   border-right: 1px solid var(--color-border, #cbd5e1);
 }
 
+/* Historial de verificacion: columnas proporcionales; cada celda se recorta
+   (con "...") en vez de empujar a la siguiente. */
+.imp-historial__row--fluid > span {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.importaciones-modal__products-table .imp-historial__row--fluid:not(.create-user__locations-row--head) > span:nth-child(n+4):nth-child(-n+6) {
+  padding-left: 6px;
+  justify-content: center;
+}
+
 .imp-historial__row:not(.create-user__locations-row--empty) > span:last-child {
   border-right: none;
 }

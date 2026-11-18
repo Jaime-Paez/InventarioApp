@@ -3938,7 +3938,11 @@ function HistorialVerificacionModal({ imp, onClose }) {
   const historial = Array.isArray(imp.historial_verificacion) ? imp.historial_verificacion : []
   const conteo = historial.reduce((acc, row) => ({ ...acc, [row.estado]: (acc[row.estado] || 0) + 1 }), {})
   const visibles = historial.filter((row) => filtro === 'todos' || row.estado === filtro)
-  const gridTemplate = '120px minmax(160px, 1fr) 110px 80px 90px 100px minmax(140px, 1fr)'
+  // Todas las filas con el mismo ancho (el de la tabla, nunca menos que la
+  // suma de los minimos): antes cada fila tomaba el ancho de su contenido
+  // (width: max-content) y las columnas no se alineaban.
+  const gridTemplate = 'minmax(110px, 0.9fr) minmax(220px, 2.4fr) minmax(110px, 1fr) 96px 100px 110px minmax(160px, 1.6fr)'
+  const rowStyle = { gridTemplateColumns: gridTemplate, width: '100%', minWidth: 906 }
   const precio = (value) => (value != null && value !== '' ? `$${Number(value).toFixed(2)}` : '-')
 
   return createPortal(
@@ -3983,7 +3987,7 @@ function HistorialVerificacionModal({ imp, onClose }) {
           )}
           <div className="imp-historial__table-wrap">
             <div className="create-user__locations-table importaciones-modal__products-table imp-historial__table">
-              <div className="create-user__locations-row create-user__locations-row--head imp-historial__row" style={{ gridTemplateColumns: gridTemplate }}>
+              <div className="create-user__locations-row create-user__locations-row--head imp-historial__row imp-historial__row--fluid" style={rowStyle}>
                 <span>Código</span><span>Descripción</span><span>Referencia</span><span>Cant. aprox.</span><span>PVP Aprox.</span><span>Estado</span><span>Comentario</span>
               </div>
               {visibles.length === 0 ? (
@@ -3993,7 +3997,7 @@ function HistorialVerificacionModal({ imp, onClose }) {
               ) : (productSearch.trim() ? matchesFirst(visibles, (row) => importItemMatches(row, productSearch)) : visibles).map((row, i) => {
                 const estado = VERIFICACION_ESTADOS[row.estado] || VERIFICACION_ESTADOS.pedido
                 return (
-                  <div key={i} className={`create-user__locations-row imp-historial__row${estado.className}${productSearch.trim() && importItemMatches(row, productSearch) ? ' imp-search-hit' : ''}`} style={{ gridTemplateColumns: gridTemplate }}>
+                  <div key={i} className={`create-user__locations-row imp-historial__row imp-historial__row--fluid${estado.className}${productSearch.trim() && importItemMatches(row, productSearch) ? ' imp-search-hit' : ''}`} style={rowStyle}>
                     <span><span className="imp-table-cell-text imp-table-cell-text--full">{row.codigo || '-'}</span></span>
                     <span><span className="imp-table-cell-text">{row.nombre || '-'}</span></span>
                     <span><span className="imp-table-cell-text">{row.referencia || '-'}</span></span>

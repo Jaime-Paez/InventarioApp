@@ -2746,6 +2746,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             if request.data.get("nuevo") and producto.creado_desde_importacion_id is None:
                 producto.creado_desde_importacion = instance
                 producto.save(update_fields=["creado_desde_importacion"])
+        if "referencia" in request.data:
+            # Cual de las referencias del producto se importa en esta fila
+            # (en camino tambien se puede escoger); ya importada no cambia.
+            if instance.estado == Importacion.ESTADO_IMPORTADA:
+                return Response(
+                    {"detail": "La importación ya está importada: no se puede cambiar la referencia."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            detalle.referencia = str(request.data.get("referencia") or "").strip()[:500]
+            detalle.save(update_fields=["referencia"])
         serializer = ImportacionDetalleSerializer(detalle)
         return Response(serializer.data)
 
