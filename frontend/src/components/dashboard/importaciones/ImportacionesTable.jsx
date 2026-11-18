@@ -3371,10 +3371,11 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   ]
   // Se llenan cuando ya se marco que llego.
   const enCamino = imp.estado === 'en_camino'
-  const puedeLlenarLlegada = enCamino && canMarcarLlegada && Boolean(imp.fecha_llegada)
-  const motivoNoLlegada = !canMarcarLlegada
-    ? 'No tienes permiso para verificar la llegada.'
-    : 'Primero marca que la importación llegó (pestaña General).'
+  // Se pueden llenar en cualquier momento mientras esta en camino (queda
+  // guardado como borrador); lo que exige haber marcado que llego es
+  // "Importación verificada".
+  const puedeLlenarLlegada = enCamino && canMarcarLlegada
+  const motivoNoLlegada = 'No tienes permiso para verificar la llegada.'
   const precioAntesCentavos = (d) => {
     const antes = d.precio_confirmado ?? d.precio_estimado
     return antes != null ? String(Math.round(Number(antes) * 100)) : null
@@ -3393,11 +3394,6 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   const productosMinWidth = productosCols.reduce((sum, c) => sum + c.min, 0)
   const badge = STATUS_BADGE[imp.estado] || { label: imp.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
 
-  const ribbonClass = imp.estado === 'importada'
-    ? 'entrada-details__pending-ribbon--accepted'
-    : imp.estado === 'en_camino'
-      ? 'entrada-details__pending-ribbon--pending'
-      : ''
   const ribbonLabel = imp.estado === 'importada' ? 'Importada' : imp.estado === 'en_camino' ? 'En\ncamino' : badge.label
 
   const modal = createPortal(
@@ -3419,12 +3415,12 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
           flexDirection: 'column',
         }}
       >
-        <div className={`entrada-details__pending-ribbon${ribbonClass ? ` ${ribbonClass}` : ''}`}>
-          <span className="entrada-details__pending-ribbon-label">{ribbonLabel}</span>
-        </div>
+          {/* La etapa va en el titulo ("En camino: IMP-MS-1"), como en
+              Confirmación; ya no la etiqueta amarilla de la esquina. */}
           <header className="create-user__header" onMouseDown={handleHeaderMouseDown}>
             <div className="create-user__header-text">
-              <h3>{imp.codigo}</h3>
+              <h3>{`${String(ribbonLabel || '').replace(/
+/g, ' ')}: ${imp.codigo}`}</h3>
             </div>
             <div className="create-user__header-actions">
               <button
@@ -3579,18 +3575,8 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                 <section className="create-user__section">
                   {enCamino && !puedeLlenarLlegada && (
                     <BlockerNotice
-                      title="Precio final, Cant. final y comentario todavía no se pueden llenar"
-                      reason={canMarcarLlegada
-                        ? (imp.fecha_puerto
-                          ? 'Primero marca que la importación llegó; después llenas lo que llegó.'
-                          : 'Falta la fecha de llegada a puerto (pestaña General) y después marcar que llegó.')
-                        : 'No tienes permiso para verificar la llegada.'}
-                      actionLabel={canMarcarLlegada ? (imp.fecha_puerto ? 'Marcar que llegó' : 'Ir a General') : undefined}
-                      onAction={canMarcarLlegada
-                        ? () => (imp.fecha_puerto
-                          ? setLlegoDialog({ llego: true, fecha: getDefaultFechaLlegada(imp) })
-                          : setActiveTab('general'))
-                        : undefined}
+                      title="Precio final, Cant. final y comentario no se pueden llenar"
+                      reason="No tienes permiso para verificar la llegada: pídeselo a un administrador."
                     />
                   )}
                   <ImportProductSearch
