@@ -2986,6 +2986,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     if (field === 'comentarioLlegada') {
       return saved?.comentariosLlegada?.[d.id] ?? d.comentario_llegada ?? ''
     }
+    if (field === 'nombre') return d.nombre || ''
     return saved?.cantidadesRecibidas?.[d.id] ?? (d.cantidad_recibida != null ? String(d.cantidad_recibida) : '')
   }
   const guardarLlegadaEdits = useCallback(async () => {
@@ -3003,6 +3004,18 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
     })
     const borrador = { step: 1, ...saved, preciosFinales, cantidadesRecibidas, comentariosLlegada }
     try {
+      // Descripcion de los productos nuevos (escogida o escrita en la tabla).
+      for (const [id, edit] of Object.entries(edits)) {
+        if (edit.nombre === undefined) continue
+        const detalle = (actual.detalles || []).find((x) => String(x.id) === String(id))
+        if (!detalle || detalle.producto?.id || String(detalle.nombre || '') === edit.nombre) continue
+        const r = await authFetch(
+          `${API_URL}/importaciones/importaciones/${actual.id}/detalles/${id}/`,
+          { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: edit.nombre }) },
+          token
+        )
+        if (!r.ok) throw new Error(await readErrorMessage(r, 'No se pudo guardar la descripción.'))
+      }
       const resp = await authFetch(
         `${API_URL}/importaciones/importaciones/${actual.id}/guardar-borrador-llegada/`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ borrador }) },
@@ -3695,13 +3708,32 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                               ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
                               : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
                           </span>
-                          <span
-                            className="imp-table-cell-tip"
-                            onMouseEnter={(e) => showCellHover(e, nombre !== '-' ? nombre : null, 'Descripción')}
-                            onMouseLeave={hideCellHover}
-                          >
-                            <span className="imp-table-cell-text">{nombre}</span>
-                          </span>
+                          {/* Producto nuevo (sin catalogo) en camino: la descripcion se
+                              escoge de las coincidencias (clic en la "i" del OEM) o se
+                              escribe un nombre nuevo, como en la sugerencia. Se guarda
+                              con "Guardar". */}
+                          {sinCat && enCamino && canEditDetalle && canMarcarLlegada ? (
+                            <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                              <input
+                                type="text"
+                                className="imp-excel-review__codigo-input"
+                                value={llegadaValorDe(d, 'nombre')}
+                                onChange={(e) => setLlegadaValor(d.id, 'nombre', e.target.value)}
+                                placeholder="Nombre del producto nuevo"
+                                data-title="Escribe el nombre o escógelo de las coincidencias (ícono junto al OEM)"
+                                aria-label="Descripción del producto nuevo"
+                                style={{ width: '100%', minWidth: 0, fontSize: 'inherit', fontFamily: 'inherit' }}
+                              />
+                            </span>
+                          ) : (
+                            <span
+                              className="imp-table-cell-tip"
+                              onMouseEnter={(e) => showCellHover(e, nombre !== '-' ? nombre : null, 'Descripción')}
+                              onMouseLeave={hideCellHover}
+                            >
+                              <span className="imp-table-cell-text">{nombre}</span>
+                            </span>
+                          )}
                           <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                             <span
                               className="imp-table-cell-tip"
@@ -3711,7 +3743,13 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                             >
                               <span className="imp-table-cell-text">{oem}</span>
                             </span>
-                            <CoincidenciasInfo matches={coincidenciasByKey[d.id]} />
+                            <CoincidenciasInfo
+                              matches={coincidenciasByKey[d.id]}
+                              tituloPick="Clic para usar la descripción de este producto"
+                              onPick={sinCat && enCamino && canEditDetalle && canMarcarLlegada
+                                ? (p) => { if (p?.nombre) setLlegadaValor(d.id, 'nombre', p.nombre) }
+                                : undefined}
+                            />
                           </span>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                             <span
@@ -6421,7 +6459,7 @@ const useCoincidencias = (token, casaId, items) => {
 // Icono "i" junto al OEM en las tablas de importaciones: que productos del
 // catalogo tienen ese OEM o esa referencia (la misma tarjeta que en la
 // sugerencia). Sin coincidencias el icono se ve opaco.
-function CoincidenciasInfo({ matches, onPick, elegida = -1, oemElegido = '', onPickOem, referenciaElegida = '', onPickReferencia }) {
+function CoincidenciasInfo({ matches, onPick, elegida = -1, oemElegido = '', onPickOem, referenciaElegida = '', onPickReferencia, tituloPick = 'Clic para usar el PVP (sin IVA) de este producto' }) {
   const [hover, setHover] = useState(null)
   const [pos, setPos] = useState(null)
   const cardRef = useRef(null)
@@ -6480,7 +6518,7 @@ function CoincidenciasInfo({ matches, onPick, elegida = -1, oemElegido = '', onP
                 {lista.map((p, i) => (
                   <tr
                     key={i}
-                    data-title={i === elegida ? 'Escogido: su PVP es el PVP JP de este producto' : onPick ? 'Clic para usar el PVP (sin IVA) de este producto' : undefined}
+                    data-title={i === elegida ? 'Escogido: su PVP es el PVP JP de este producto' : onPick ? tituloPick : undefined}
                     className={[onPick ? 'imp-alternos-hover-card__row--pickable' : '', i === elegida ? 'imp-alternos-hover-card__row--elegida' : ''].filter(Boolean).join(' ') || undefined}
                     onClick={onPick ? () => { onPick(p); cancelar(); setHover(null); setPos(null) } : undefined}
                   >

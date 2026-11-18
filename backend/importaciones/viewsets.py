@@ -2779,6 +2779,22 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 )
             detalle.referencia = str(request.data.get("referencia") or "").strip()[:500]
             detalle.save(update_fields=["referencia"])
+        if "nombre" in request.data:
+            # Descripcion de un producto nuevo (sin catalogo): se escoge de las
+            # coincidencias o se escribe (tambien en camino). La de un producto
+            # del catalogo es la del catalogo; ya importada no cambia.
+            if instance.estado == Importacion.ESTADO_IMPORTADA:
+                return Response(
+                    {"detail": "La importación ya está importada: no se puede cambiar la descripción."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if detalle.producto_id:
+                return Response(
+                    {"detail": "La descripción de un producto del catálogo se cambia en el inventario."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            detalle.nombre = str(request.data.get("nombre") or "").strip()[:255]
+            detalle.save(update_fields=["nombre"])
         serializer = ImportacionDetalleSerializer(detalle)
         return Response(serializer.data)
 

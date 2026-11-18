@@ -261,6 +261,35 @@ function ProductoDetails({
     notifyError(oemError)
   }, [notifyError, oemError])
 
+  // "Mismo nombre a todos": pone un nombre a este producto y a todos sus
+  // alternos (todo el grupo) de una vez.
+  const [nombreGrupoDialog, setNombreGrupoDialog] = useState(null)
+  const [nombreGrupoSaving, setNombreGrupoSaving] = useState(false)
+  const handleAplicarNombreGrupo = async () => {
+    const nombre = String(nombreGrupoDialog?.nombre || '').trim()
+    if (!nombre || !resolvedProductoId) return
+    setNombreGrupoSaving(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/productos/listado/${resolvedProductoId}/nombre-grupo/`,
+        { method: 'POST', body: JSON.stringify({ nombre }) },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data?.detail || data?.nombre?.[0] || data?.nombre || 'No se pudo cambiar el nombre.')
+      setFormData((prev) => ({ ...prev, nombre }))
+      setOriginalData((prev) => ({ ...prev, nombre }))
+      setAlternativas((prev) => prev.map((item) => ({ ...item, nombre })))
+      setOriginalAlternativas((prev) => prev.map((item) => ({ ...item, nombre })))
+      setNombreGrupoDialog(null)
+      onUpdated?.({ id: resolvedProductoId, nombre })
+    } catch (e) {
+      notifyError(e?.message || 'No se pudo cambiar el nombre.')
+    } finally {
+      setNombreGrupoSaving(false)
+    }
+  }
+
   useEffect(() => {
     if (!referenciaError) return
     notifyError(referenciaError)
@@ -2288,8 +2317,18 @@ function ProductoDetails({
 
             {activeTab === 'alternos' && (
               <section className="create-user__section">
-                <div className="create-user__section-header">
+                <div className="create-user__section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <h4>Alternos</h4>
+                  {allowEdit && !isEditing && originalAlternativas.length > 0 && (
+                    <button
+                      type="button"
+                      className="create-user__action create-user__action--secondary"
+                      onClick={() => setNombreGrupoDialog({ nombre: formData.nombre || '' })}
+                      data-title="Pone el mismo nombre a este producto y a todos sus alternos"
+                    >
+                      Mismo nombre a todos
+                    </button>
+                  )}
                 </div>
 
                 <div className="create-user__locations-table create-user__locations-table--alternos">
@@ -2570,6 +2609,57 @@ function ProductoDetails({
       </div>
 
       {alternoDropdownPanel}
+
+      {nombreGrupoDialog && (
+        <div className="user-details__confirm-overlay">
+          <div className="user-details__confirm-dialog" style={{ width: 'min(560px, 92vw)', alignItems: 'flex-start' }}>
+            <div className="user-details__confirm-icon">
+              <Pencil size={18} />
+            </div>
+            <div className="user-details__confirm-content" style={{ width: '100%' }}>
+              <h4>Mismo nombre a todos los alternos</h4>
+              <p>Este nombre quedará en {formData.codigo || 'este producto'} y en sus {originalAlternativas.length} alterno{originalAlternativas.length === 1 ? '' : 's'}.</p>
+              <label className="create-user__field" style={{ width: '100%', marginTop: 10 }}>
+              <input
+                type="text"
+                value={nombreGrupoDialog.nombre}
+                onChange={(e) => setNombreGrupoDialog((prev) => ({ ...prev, nombre: e.target.value }))}
+                onKeyDown={(e) => { if (e.key === 'Enter' && String(nombreGrupoDialog.nombre).trim() && !nombreGrupoSaving) handleAplicarNombreGrupo() }}
+                placeholder="Nombre del producto"
+                aria-label="Nombre para todos los alternos"
+                autoFocus
+              />
+              </label>
+              <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px', marginTop: 12, maxHeight: 220, overflowY: 'auto' }}>
+                {[{ id: resolvedProductoId, codigo: formData.codigo, nombre: originalData?.nombre }, ...originalAlternativas].map((item) => (
+                  <div key={`nombre-grupo-${item.id}`} style={{ display: 'flex', gap: 10, fontSize: '0.84rem', padding: '3px 0' }}>
+                    <strong style={{ minWidth: 110 }}>{item.codigo || '-'}</strong>
+                    <span className="muted">{item.nombre || 'Sin nombre'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="user-details__confirm-actions" style={{ width: '100%' }}>
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={() => setNombreGrupoDialog(null)}
+                disabled={nombreGrupoSaving}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={handleAplicarNombreGrupo}
+                disabled={nombreGrupoSaving || !String(nombreGrupoDialog.nombre).trim()}
+              >
+                {nombreGrupoSaving ? 'Guardando...' : 'Poner a todos'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingAlternoSync && (
         <div className="user-details__confirm-overlay">

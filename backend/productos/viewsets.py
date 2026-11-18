@@ -470,6 +470,29 @@ class ProductoViewSet(viewsets.ModelViewSet):
             sync_group_oems(get_alterno_group_ids(producto.id))
         return Response({"creados": len(nuevos)}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["post"], url_path="nombre-grupo")
+    def nombre_grupo(self, request, pk=None):
+        """Pone el mismo nombre a este producto y a todos sus alternos (todo el
+        grupo). Se guarda producto por producto para que quede en el
+        historial de cada uno."""
+        producto = self.get_object()
+        nombre = str(request.data.get("nombre") or "").strip()
+        if not nombre:
+            raise ValidationError({"nombre": "Escribe el nombre."})
+        max_len = Producto._meta.get_field("nombre").max_length
+        if max_len and len(nombre) > max_len:
+            raise ValidationError({"nombre": f"El nombre puede tener hasta {max_len} caracteres."})
+        grupo = get_alterno_group_ids(producto.id) | {producto.id}
+        cambiados = []
+        with transaction.atomic():
+            for item in Producto.objects.filter(id__in=grupo).order_by("codigo"):
+                if item.nombre == nombre:
+                    continue
+                item.nombre = nombre
+                item.save(update_fields=["nombre", "actualizado_en"])
+                cambiados.append(item.codigo)
+        return Response({"nombre": nombre, "cambiados": cambiados, "total": len(grupo)}, status=status.HTTP_200_OK)
+
     def _alterno_a_quitar(self, request, producto):
         raw = request.query_params.get("alterno_id") if request.method == "GET" else request.data.get("alterno_id")
         try:
