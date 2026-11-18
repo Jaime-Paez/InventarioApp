@@ -44,12 +44,23 @@ const getOemDeCoincidencias = (matches) => [...new Set(
 
 // OEM por defecto de una fila sin OEM propio: el primero del producto base
 // escogido (posicion "elegida") o, si no tiene, el primero de la lista.
+const oemClave = (o) => String(o || '').trim().toUpperCase()
+// Junta listas de OEM ("a, b" o arrays) sin repetir, en orden.
+const unirOems = (...listas) => {
+  const vistos = new Map()
+  listas.flat().forEach((valor) => String(valor || '').split(',').forEach((token) => {
+    const oem = token.trim()
+    if (oem && !vistos.has(oemClave(oem))) vistos.set(oemClave(oem), oem)
+  }))
+  return [...vistos.values()].join(', ')
+}
+// Los productos de un grupo (alternos: mismo OEM, referencia o codigo base)
+// comparten sus OEM: por defecto la fila lleva TODOS los del grupo (el del
+// producto base primero). Se pueden desmarcar los que no correspondan.
 const oemPorDefecto = (matches, elegida = -1) => {
   const lista = Array.isArray(matches) ? matches : []
-  const delBase = (lista[elegida]?.oems || []).map((o) => String(o || '').trim()).find(Boolean)
-  return delBase || lista.flatMap((m) => m?.oems || []).map((o) => String(o || '').trim()).find(Boolean) || ''
+  return unirOems(lista[elegida]?.oems || [], ...lista.map((m) => m?.oems || []))
 }
-const oemClave = (o) => String(o || '').trim().toUpperCase()
 // Referencias y OEMs: se pueden escoger uno o varios; clic agrega o quita ese.
 const toggleReferencia = (actual, ref) => {
   const lista = String(actual || '').split(',').map((r) => r.trim()).filter(Boolean)
@@ -3623,7 +3634,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const creadoAqui = !sinCat && d.producto?.creado_desde_importacion === imp.id
                       const codigo = d.producto?.codigo || d.codigo || '-'
                       const nombre = d.producto?.nombre || d.nombre || '-'
-                      const oem = String(getProductoOem(d.producto) || d.oem || (d.oem_quitado ? '' : oemPorDefecto(coincidenciasByKey[d.id])) || '').trim() || '-'
+                      const oem = String(d.oem || (d.oem_quitado ? '' : unirOems(getProductoOem(d.producto), oemPorDefecto(coincidenciasByKey[d.id]))) || '').trim() || '-'
                       const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                       const referencia = getDetalleReferencia(d) || '-'
                       const esImportada = imp.estado === 'importada'
@@ -8178,12 +8189,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
       // orden: la posición del producto en el Excel de sugerencia original --
       // el backend borra y vuelve a crear todos los detalles al guardar, así
       // que si no se reenvía aquí se pierde en cada "Guardar" (quedaba null).
-      if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || item.cantidad_aproximada || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
+      if (item.producto?.id) return { producto_id: item.producto.id, oem: oemEfectivoDe(item), oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || item.cantidad_aproximada || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
       const manualPrecio = item.precio != null && item.precio !== '' ? Number(item.precio) : undefined
       return {
         codigo: item.codigo || '',
         nombre: item.nombre || '',
-        oem: item.oem || '',
+        oem: oemEfectivoDe(item),
         oem_quitado: Boolean(item.oem_quitado),
         referencia: item.referencia || '',
         cantidad: Number(item.cantidad || item.cantidad_aproximada || 0),
@@ -9043,8 +9054,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
             ? (parseInt(String(item.precio_estimado).replace(/\D/g, '') || '0', 10) / 100).toFixed(2)
             : null,
         }
-        if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
+        if (item.producto?.id) return { producto_id: item.producto.id, oem: oemEfectivoDe(item), oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: oemEfectivoDe(item), oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...precioEstimado, ...solId }
       })
       const saveResponse = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -9131,8 +9142,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           quitado: Boolean(item.quitado),
         }
         const cantidad = Number(item.cantidad || item.cantidad_aproximada || 0)
-        if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
+        if (item.producto?.id) return { producto_id: item.producto.id, oem: oemEfectivoDe(item), oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: oemEfectivoDe(item), oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad, comentario: item.comentario || '', orden: item.orden, ...estimadoFields, ...solId }
       })
       const saveResponse = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -9179,8 +9190,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
         const detalleId = item._detalleId != null
           ? { detalle_id: item._detalleId, revision: ['check', 'x'].includes(itemCheckStates[item._key]) ? itemCheckStates[item._key] : null }
           : {}
-        if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
+        if (item.producto?.id) return { producto_id: item.producto.id, oem: oemEfectivoDe(item), oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: oemEfectivoDe(item), oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId, ...detalleId }
       })
       const selectedKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'check').map(([k]) => k)
       const xKeys = Object.entries(itemCheckStates).filter(([, s]) => s === 'x').map(([k]) => k)
@@ -9237,8 +9248,8 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
           cantidad_confirmada: toNumberOrNull(item.cantidad_confirmada),
           seleccionado: itemCheckStates[item._key] === 'check' ? true : itemCheckStates[item._key] === 'x' ? false : null,
         } : {}
-        if (item.producto?.id) return { producto_id: item.producto.id, referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
-        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: item.oem || '', oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
+        if (item.producto?.id) return { producto_id: item.producto.id, oem: oemEfectivoDe(item), oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
+        return { codigo: item.codigo || '', nombre: item.nombre || '', oem: oemEfectivoDe(item), oem_quitado: Boolean(item.oem_quitado), referencia: item.referencia || '', cantidad: Number(item.cantidad || 0), comentario: item.comentario || '', orden: item.orden, ...confirmedFields, ...solId }
       })
       const response = await authFetch(
         `${API_URL}/importaciones/importaciones/${imp.id}/`,
@@ -9333,6 +9344,12 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
   }
   // Posicion en la tarjeta de la coincidencia escogida: la que se eligio con
   // clic (mismo PVP y casa) o, si no se eligio, la primera con precio.
+  // OEM con el que queda la fila: el escogido (o quitado a proposito) o, si
+  // no se toco, los del producto mas todos los de su grupo. Es lo que se
+  // guarda y lo que recibe el producto al importar.
+  const oemEfectivoDe = (item) => (
+    item.oem || (item.oem_quitado ? '' : unirOems(getProductoOem(item.producto), oemPorDefecto(coincidenciasByKey[item._key], coincidenciaElegidaDe(item))))
+  )
   const coincidenciaElegidaDe = (item) => {
     if (item.producto?.id) return -1
     const lista = coincidenciasByKey[item._key] || []
@@ -9913,7 +9930,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                         const creadoAqui = !sinCatalogo && item.producto?.creado_desde_importacion === imp.id
                         const codigo = item.producto?.codigo || item.codigo || ''
                         const nombre = item.producto?.nombre || item.nombre || ''
-                        const oem = String(getProductoOem(item.producto) || item.oem || (item.oem_quitado ? '' : oemPorDefecto(coincidenciasByKey[item._key], coincidenciaElegidaDe(item))) || '').trim() || '-'
+                        const oem = String(oemEfectivoDe(item) || '').trim() || '-'
                         const oemList = oem !== '-' ? oem.split(',').map((s) => s.trim()).filter(Boolean) : []
                         const referencia = getDetalleReferencia(item) || '-'
                         const precioEstimadoValue = item.precio_estimado ? Number(item.precio_estimado) / 100 : null
@@ -9981,7 +9998,7 @@ function EditImportacionModal({ open, imp: impProp, token, onClose, onSaved, onO
                                 onPickReferencia={sinCatalogo && !item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
                                   ? (r) => usarReferencia(item._key, r)
                                   : undefined}
-                                onPickOem={sinCatalogo && !item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
+                                onPickOem={!item.quitado && canEdit && (isVerificar || (isConfirmacion && !isImportRealizada))
                                   ? (o) => usarOem(item._key, o, oem !== '-' ? oem : '')
                                   : undefined}
                               />

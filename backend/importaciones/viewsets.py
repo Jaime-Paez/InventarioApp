@@ -40,7 +40,7 @@ from inventario.por_ubicar import (
     take_stock,
 )
 from movimientos.inconveniente_borrador import parse_borrador_items
-from productos.models import OEMProducto, Producto, ProductoAlterno, ProductoReferencia, add_producto_referencia
+from productos.models import OEM, OEMProducto, Producto, ProductoAlterno, ProductoReferencia, add_producto_referencia
 
 from .importacion_movimientos import (
     MovimientosImportacionError,
@@ -1431,6 +1431,14 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         for detalle in instance.detalles.select_related("producto").filter(producto__isnull=False):
             for token in str(detalle.referencia or "").split(","):
                 add_producto_referencia(detalle.producto, token)
+            # Los OEM escogidos en la fila (por defecto todos los del grupo de
+            # alternos) quedan en el producto; los que ya tenia se mantienen.
+            for oem_codigo in str(detalle.oem or "").split(","):
+                oem_codigo = oem_codigo.strip()
+                if not oem_codigo:
+                    continue
+                oem_obj, _ = OEM.objects.get_or_create(codigo=oem_codigo)
+                OEMProducto.objects.get_or_create(producto=detalle.producto, oem=oem_obj)
 
         # El precio se actualiza al marcar llegada (ver marcar_llegada), que es
         # cuando se reparten las cantidades a las sucursales -- no aqui.
