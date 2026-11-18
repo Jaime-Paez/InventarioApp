@@ -1417,28 +1417,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         if detalles_to_delete:
             ImportacionDetalle.objects.filter(id__in=detalles_to_delete).delete()
 
-        # Fin del proceso: recien ahora los productos nuevos que si se importan
-        # entran al catalogo (los negados ya se borraron arriba). Un codigo
-        # nuevo en varias filas (otra referencia cada una) queda en un solo
-        # producto con todas sus referencias.
-        self.get_serializer(instance).crear_productos_pendientes(instance)
-
-        # Mismo producto en varias filas (con la misma u otra referencia): en
-        # la importacion siguen separadas hasta el final (cada una con su
-        # cantidad y precio); solo en el inventario se suman (ver
-        # marcar_llegada y los movimientos). Las referencias de todas las
-        # filas quedan en el producto.
-        for detalle in instance.detalles.select_related("producto").filter(producto__isnull=False):
-            for token in str(detalle.referencia or "").split(","):
-                add_producto_referencia(detalle.producto, token)
-            # Los OEM escogidos en la fila (por defecto todos los del grupo de
-            # alternos) quedan en el producto; los que ya tenia se mantienen.
-            for oem_codigo in str(detalle.oem or "").split(","):
-                oem_codigo = oem_codigo.strip()
-                if not oem_codigo:
-                    continue
-                oem_obj, _ = OEM.objects.get_or_create(codigo=oem_codigo)
-                OEMProducto.objects.get_or_create(producto=detalle.producto, oem=oem_obj)
+        # Los productos nuevos NO se crean aqui: recien se crean (y el catalogo
+        # recibe las referencias/OEM de cada fila) al dar "Importacion
+        # verificada" (marcar_llegada). Hasta entonces quedan como detalles
+        # pendientes con su codigo.
 
         # El precio se actualiza al marcar llegada (ver marcar_llegada), que es
         # cuando se reparten las cantidades a las sucursales -- no aqui.
@@ -1453,11 +1435,23 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         instance.save(update_fields=["estado", "numero_factura", "fecha_importacion", "fecha", "historial_confirmacion"])
 
         serializer = self.get_serializer(instance)
-        data = dict(serializer.data)
-        # Productos nuevos con codigo sugerido de otra casa: el frontend
-        # pregunta si se agregan como alternos de ese producto.
-        data["alternos_sugeridos"] = self._alternos_sugeridos(instance)
-        return Response(data)
+        return Response(serializer.data)
+
+    def _crear_productos_al_verificar(self, instance):
+        """"Importacion verificada": recien aqui los productos nuevos entran al
+        catalogo (un codigo en varias filas queda en un solo producto con
+        todas sus referencias) y cada producto recibe la referencia y los OEM
+        escogidos en su fila (los que ya tenia se mantienen)."""
+        self.get_serializer(instance).crear_productos_pendientes(instance)
+        for detalle in instance.detalles.select_related("producto").filter(producto__isnull=False):
+            for token in str(detalle.referencia or "").split(","):
+                add_producto_referencia(detalle.producto, token)
+            for oem_codigo in str(detalle.oem or "").split(","):
+                oem_codigo = oem_codigo.strip()
+                if not oem_codigo:
+                    continue
+                oem_obj, _ = OEM.objects.get_or_create(codigo=oem_codigo)
+                OEMProducto.objects.get_or_create(producto=detalle.producto, oem=oem_obj)
 
     @staticmethod
     def _smart_average(tiempos):
@@ -1618,6 +1612,30 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 partes.append(f"Escribe por qué cambió el precio o la cantidad de: {', '.join(sin_comentario)}.")
             return Response({"detail": " ".join(partes)}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Una fila sin producto y sin codigo no se puede crear: se completa en
+        # el paso "Productos nuevos".
+        sin_codigo = [
+            d.nombre or d.referencia or f"#{d.id}"
+            for d in detalles_llegada
+            if not d.producto_id and not str(d.codigo or "").strip()
+        ]
+        if sin_codigo:
+            return Response(
+                {"detail": f"Completa los datos de los productos sin código: {', '.join(sin_codigo)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        invalidos = ImportacionSerializer.validar_codigos_nuevos(
+            [(d.codigo, d.nombre, d.referencia or "") for d in detalles_llegada if not d.producto_id],
+        )
+        if invalidos:
+            return Response(
+                ImportacionSerializer.codigos_invalidos_response_data(invalidos),
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Recien ahora se crean los productos nuevos en el catalogo.
+        self._crear_productos_al_verificar(instance)
+        detalles_llegada = list(instance.detalles.select_related("producto").all())
+
         instance.estado = Importacion.ESTADO_IMPORTADA
         instance.fecha_organizado = timezone.localdate()
         instance.borrador_llegada = None
@@ -1746,7 +1764,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             )
 
         serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+        data = dict(serializer.data)
+        # Productos nuevos con codigo sugerido de otra casa: el frontend
+        # pregunta si se agregan como alternos de ese producto.
+        data["alternos_sugeridos"] = self._alternos_sugeridos(instance)
+        return Response(data)
 
     @action(detail=True, methods=["post"], url_path="guardar-borrador-llegada")
     def guardar_borrador_llegada(self, request, pk=None):

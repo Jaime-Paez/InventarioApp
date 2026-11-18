@@ -357,7 +357,8 @@ class SugerenciaProductosNuevosTests(TestCase):
         self.assertEqual([f.id for f in filas], [base.id, r9.id])
         self.assertEqual(filas[1].referencia, "R9B")
         self.assertEqual(filas[1].cantidad, 1)
-        self.assertTrue(self.existente.referencias.filter(valor="R9B").exists())
+        # El catalogo recien recibe la referencia al dar "Importacion verificada".
+        self.assertFalse(self.existente.referencias.filter(valor="R9B").exists())
 
     def test_confirmar_avisa_todos_los_codigos_nuevos_con_problema(self):
         importacion = self._crear(cantidad_nuevo=3)
@@ -452,16 +453,15 @@ class SugerenciaProductosNuevosTests(TestCase):
         self._importar(importacion, [str(self.existente.id)])
         self.assertFalse(Producto.objects.filter(codigo="NUEVO-CI").exists())
 
-    def test_importar_crea_solo_los_productos_nuevos_importados(self):
+    def test_importar_no_crea_los_productos_hasta_verificar(self):
+        """Los productos nuevos recien se crean al dar "Importacion
+        verificada" (marcar-llegada), no al importar."""
         importacion = self._crear(cantidad_nuevo=3)
         self._pedir_cotizacion(importacion)
         detalle_nuevo = importacion.detalles.get(codigo="NUEVO-CI")
         self._importar(importacion, [f"sc_{detalle_nuevo.id}"])
-        producto = Producto.objects.get(codigo="NUEVO-CI")
-        self.assertEqual(producto.precio, Decimal("12.30"))
-        self.assertEqual(producto.creado_desde_importacion_id, importacion.id)
-        self.assertTrue(producto.casas_comerciales.filter(pk=self.casa.pk).exists())
-        self.assertEqual(importacion.detalles.get(codigo="NUEVO-CI").producto_id, producto.id)
+        self.assertFalse(Producto.objects.filter(codigo="NUEVO-CI").exists())
+        self.assertIsNone(importacion.detalles.get(codigo="NUEVO-CI").producto_id)
 
     def test_importar_un_codigo_nuevo_repetido_crea_un_solo_producto(self):
         """El mismo código nuevo en dos filas: se crea un solo producto y las

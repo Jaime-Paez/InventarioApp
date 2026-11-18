@@ -1123,9 +1123,11 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   )
 
   const storageKey = `imp-receive-${imp.id}`
-  // IDs de ítems que eran sinCat al abrir el modal (fijo, no cambia con el fetch fresco)
+  // IDs de ítems sin producto Y sin código al abrir el modal (fijo): esos se
+  // completan en el paso "Productos nuevos". Los que tienen código se crean
+  // solos en el catálogo al confirmar "Importación verificada".
   const [originalSinCatIds] = useState(() =>
-    new Set((imp.detalles || []).filter(d => !d.producto?.id).map(d => d.id))
+    new Set((imp.detalles || []).filter(d => !d.producto?.id && !String(d.codigo || '').trim()).map(d => d.id))
   )
 
   const [rows, setRows] = useState(() => {
@@ -3772,7 +3774,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                             onMouseEnter={(e) => !sinCat && showCellHover(e, codigo, 'Código')}
                             onMouseLeave={hideCellHover}
                           >
-                            {sinCat
+                            {sinCat && !String(d.codigo || '').trim()
                               ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
                               : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
                           </span>
@@ -11893,7 +11895,20 @@ function ImportacionesTable({ token, user, moduleActions, status: statusProp, is
         imp={showImpDetails && isTabActive !== false ? selectedImp : null}
         token={token}
         onClose={() => setShowImpDetails(false)}
-        onSaved={() => { setShowImpDetails(false); invalidateImportacionesItemsCache(); fetchItems(true) }}
+        onSaved={(payload) => {
+          setShowImpDetails(false)
+          invalidateImportacionesItemsCache()
+          fetchItems(true)
+          // Al verificar se crean los productos nuevos: los que salieron de un
+          // codigo sugerido de otra casa se ofrecen como alternos.
+          if (Array.isArray(payload?.alternos_sugeridos) && payload.alternos_sugeridos.length) {
+            setAlternosSugeridos({
+              importacionId: payload.id,
+              casa: payload.casa_comercial?.nombre || '',
+              items: payload.alternos_sugeridos,
+            })
+          }
+        }}
         moduleActions={moduleActions}
         onOpenOrigen={handleOpenOrigen}
         isAdmin={isAdmin}
