@@ -4037,8 +4037,14 @@ function HistorialSugerenciaContent({ imp }) {
     return <p className="imp-historial__vacio">Esta importación pidió la cotización antes de que se guardara el historial de la sugerencia.</p>
   }
   const filas = productSearch.trim() ? matchesFirst(historial, (row) => importItemMatches(row, productSearch)) : historial
+  const reconstruido = historial.some((row) => row?.reconstruido)
   return (
     <div className="imp-historial__embedded">
+      {reconstruido && (
+        <p className="imp-historial__vacio" style={{ margin: 0 }}>
+          La sugerencia original no se guardó en su momento: se reconstruyó con lo que quedó guardado después (productos y cantidades sugeridas; el PVP Aprox. puede ser el de la verificación).
+        </p>
+      )}
       <ImportProductSearch
         value={productSearch}
         onChange={setProductSearch}
