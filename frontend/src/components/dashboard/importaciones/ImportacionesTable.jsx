@@ -2060,20 +2060,6 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
             </div>
           </header>
 
-          {/* Step indicator */}
-          {!loadingData && (
-            <div style={{ padding: '12px 20px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', gap: 5 }}>
-                {pasosVisibles.map(n => (
-                  <div key={n} style={{ flex: 1, height: 3, borderRadius: 2, background: step >= n ? 'var(--color-primary, #2563eb)' : 'var(--color-border, #e2e8f0)', transition: 'background .3s' }} />
-                ))}
-              </div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
-                Paso {Math.max(1, pasosVisibles.indexOf(step) + 1)} de {pasosVisibles.length} — {step === 1 ? 'Productos nuevos' : step === 4 ? 'Distribución a sucursales' : 'Destinatarios del envío'}
-              </span>
-            </div>
-          )}
-
           <div className="quick-actions__receive-body">
             {loadingData ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: 12 }}>
