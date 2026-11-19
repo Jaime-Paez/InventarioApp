@@ -2360,13 +2360,14 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   </div>
                 ) : (() => {
                   const matrizSucursal = findMatrizSucursal(sucursales)
-                  const gridCols = `minmax(72px, 0.4fr) minmax(140px, 1.6fr) 56px repeat(${sucursales.length}, 62px)`
+                  const gridCols = `minmax(72px, 0.4fr) minmax(80px, 0.5fr) minmax(140px, 1.6fr) 56px repeat(${sucursales.length}, 62px)`
                   return (
                     <>
                     <ImportProductSearch value={filter} onChange={setFilter} shown={rowMatchCount} total={rows.length} />
                     <div className="create-user__locations-table importaciones-modal__products-table imp-distribucion__table" onKeyDown={handleDistributionGridKeyDown}>
                       <div className="create-user__locations-row create-user__locations-row--head imp-distribucion__productos-row" style={{ gridTemplateColumns: gridCols }}>
                         <span style={{ justifyContent: 'flex-start' }}>Código</span>
+                        <span style={{ justifyContent: 'flex-start' }}>Referencia</span>
                         <span style={{ justifyContent: 'flex-start' }}>Descripción</span>
                         <span style={{ justifyContent: 'center' }}>Total</span>
                         {sucursales.map(suc => (
@@ -2382,14 +2383,13 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         return (
                           <div key={row.id} className="create-user__locations-row imp-distribucion__productos-row" style={{ gridTemplateColumns: gridCols }}>
                             <span style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-start', minWidth: 0, overflow: 'hidden' }}>
-                              {/* Código arriba y su referencia (la de esta fila) debajo. */}
                               <span
-                                className="imp-table-cell-tip imp-distribucion__codigo"
-                                onMouseEnter={(e) => showCellHover(e, [row.codigo, row.referencia && `Ref: ${row.referencia}`], 'Código')}
+                                className="imp-table-cell-tip"
+                                style={{ justifyContent: 'flex-start' }}
+                                onMouseEnter={(e) => showCellHover(e, row.codigo, 'Código')}
                                 onMouseLeave={hideCellHover}
                               >
                                 <span className="imp-table-cell-text imp-table-cell-text--full">{row.codigo || '-'}</span>
-                                {row.referencia && <span className="imp-distribucion__referencia">{row.referencia}</span>}
                               </span>
                               {row.productoId != null && (
                                 <Info
@@ -2399,6 +2399,15 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                                   onMouseLeave={hideAlternosHover}
                                 />
                               )}
+                            </span>
+                            {/* Referencia de esta fila, en su propia columna. */}
+                            <span
+                              className="imp-table-cell-tip"
+                              style={{ justifyContent: 'flex-start' }}
+                              onMouseEnter={(e) => showCellHover(e, row.referencia, 'Referencia')}
+                              onMouseLeave={hideCellHover}
+                            >
+                              <span className="imp-table-cell-text">{row.referencia || '-'}</span>
                             </span>
                             <span
                               className="imp-table-cell-tip"
