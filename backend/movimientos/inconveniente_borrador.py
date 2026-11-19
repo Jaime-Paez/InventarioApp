@@ -25,6 +25,7 @@ DECISIONES = {
     "devolver_proveedor",
     "olvidar",
     "solucion",
+    "corregir_cantidad",
     # Inconveniente "otro" de traslado.
     "solucionado",
 }
@@ -57,6 +58,13 @@ def sanitize_borrador(raw):
         number = _positive_int(raw.get(key))
         if number is not None:
             clean[key] = number
+    # Cantidad real que llego (puede ser 0).
+    try:
+        cantidad_real = int(str(raw.get("cantidad_real")).strip())
+    except (TypeError, ValueError):
+        cantidad_real = None
+    if cantidad_real is not None and cantidad_real >= 0:
+        clean["cantidad_real"] = cantidad_real
     for key in ("subdivision_label", "subdivision_proveedora_label"):
         label = _text(raw.get(key), MAX_LABEL)
         if label:

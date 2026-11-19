@@ -805,6 +805,16 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             return {"sucursal_origen_id": None, "sucursal_origen_nombre": ""}
         return {"sucursal_origen_id": int(origen.id), "sucursal_origen_nombre": str(origen.nombre or "").strip()}
 
+    def _llegada_sucursal_payload(self, inconveniente):
+        if inconveniente.envio_id:
+            return {"sucursal_llegada_id": None, "sucursal_llegada_nombre": ""}
+        if not hasattr(self, "_matriz_cache"):
+            self._matriz_cache = get_matriz_sucursal()
+        matriz = self._matriz_cache
+        if matriz is None:
+            return {"sucursal_llegada_id": None, "sucursal_llegada_nombre": ""}
+        return {"sucursal_llegada_id": int(matriz.id), "sucursal_llegada_nombre": str(matriz.nombre or "").strip()}
+
     def _serialize_importacion_inconveniente(self, inconveniente):
         historial_rows = list(
             sorted(
@@ -849,6 +859,9 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             # De donde salio el envio (la matriz): si las unidades nunca
             # salieron, se suman ahi.
             **self._envio_origin_payload(inconveniente),
+            # Llegada desde la casa comercial: llega a la matriz (sucursal por
+            # defecto al corregir la cantidad).
+            **self._llegada_sucursal_payload(inconveniente),
             # Conteo de la llegada a la matriz de ese producto (facturado vs
             # recibido): si ya ahi vino de menos, el faltante del envio es del
             # proveedor (reclamo), no del envio.
@@ -2032,15 +2045,65 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
         elif inconveniente.estado == ImportacionInconveniente.Estados.RECLAMADO:
-            valid_decisions = {"olvidar", "solucion"}
+            valid_decisions = {"olvidar", "solucion", "corregir_cantidad"}
         else:
             es_sobrante = inconveniente.tipo == ImportacionInconveniente.Tipos.SOBRANTE
             valid_decisions = {"devolver_proveedor", "aceptado"} if es_sobrante else {"aceptado", "reportado_proveedor"}
+            valid_decisions.add("corregir_cantidad")
         if decision not in valid_decisions:
             return Response(
                 {"detail": f"Debes enviar una decision valida: {' o '.join(sorted(valid_decisions))}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Corregir cantidad (llegada desde la casa comercial): cuantas
+        # llegaron de verdad, con comentario; la diferencia contra lo que se
+        # registro se suma (o resta) en la ubicacion escogida.
+        cantidad_real = None
+        corregir_delta = 0
+        corregir_subdivision = None
+        if decision == "corregir_cantidad":
+            try:
+                cantidad_real = int(str(request.data.get("cantidad_real")).strip())
+            except (TypeError, ValueError):
+                cantidad_real = None
+            if cantidad_real is None or cantidad_real < 0:
+                return Response(
+                    {"detail": "Escribe cuantas unidades llegaron realmente."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not motivo:
+                return Response(
+                    {"detail": "Escribe un comentario de por que se corrige la cantidad."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            recibido_actual = (
+                int(inconveniente.detalle.cantidad_recibida)
+                if inconveniente.detalle_id and inconveniente.detalle.cantidad_recibida is not None
+                else int(inconveniente.cantidad_recibida or 0)
+            )
+            corregir_delta = cantidad_real - recibido_actual
+            if corregir_delta:
+                try:
+                    subdivision_id = int(request.data.get("subdivision_id"))
+                except (TypeError, ValueError):
+                    subdivision_id = 0
+                corregir_subdivision = (
+                    SubDivision.objects.select_related("division__bodega__sucursal")
+                    .filter(pk=subdivision_id)
+                    .first()
+                )
+                if corregir_subdivision is None:
+                    return Response(
+                        {
+                            "detail": (
+                                "Elige la ubicacion donde sumar las unidades."
+                                if corregir_delta > 0
+                                else "Elige la ubicacion de donde restar las unidades."
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
         cantidad_prometida = None
         fecha_entrega_prometida = None
@@ -2102,6 +2165,45 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 resolucion = ImportacionInconveniente.Resoluciones.PERDIDO
                 estado_resultado = ImportacionInconveniente.Estados.PERDIDO
                 action_label = "marcado_como_perdido"
+            elif decision == "corregir_cantidad":
+                if corregir_delta:
+                    inv = (
+                        Inventario.objects.select_for_update()
+                        .filter(
+                            producto_id=inconveniente_locked.producto_id,
+                            subdivision_id=corregir_subdivision.id,
+                            referencia="",
+                        )
+                        .first()
+                    )
+                    if corregir_delta < 0 and (inv is None or int(inv.cantidad or 0) < -corregir_delta):
+                        disponible = int(inv.cantidad or 0) if inv else 0
+                        return Response(
+                            {
+                                "detail": (
+                                    f"En esa ubicacion solo hay {disponible}: no se pueden restar "
+                                    f"{-corregir_delta}. Escoge otra ubicacion."
+                                )
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    if inv is None:
+                        inv = Inventario.objects.create(
+                            producto_id=inconveniente_locked.producto_id,
+                            subdivision_id=corregir_subdivision.id,
+                            referencia="",
+                            cantidad=0,
+                        )
+                    Inventario.objects.filter(pk=inv.pk).update(cantidad=F("cantidad") + corregir_delta)
+                if inconveniente_locked.detalle_id:
+                    detalle_corr = inconveniente_locked.detalle
+                    detalle_corr.cantidad_recibida = cantidad_real
+                    detalle_corr.save(update_fields=["cantidad_recibida"])
+                recibido_antes = int(inconveniente_locked.cantidad_recibida or 0)
+                inconveniente_locked.cantidad_recibida = cantidad_real
+                resolucion = ImportacionInconveniente.Resoluciones.CANTIDAD_CORREGIDA
+                estado_resultado = ImportacionInconveniente.Estados.RESUELTO
+                action_label = "cantidad_corregida"
             elif decision == "reportado_proveedor":
                 resolucion = ImportacionInconveniente.Resoluciones.REPORTADO_PROVEEDOR
                 estado_resultado = ImportacionInconveniente.Estados.RECLAMADO
@@ -2132,6 +2234,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             inconveniente_locked.resuelto_por = request.user
             inconveniente_locked.borrador = {}
             update_fields = ["estado", "resolucion", "motivo", "resuelto_por", "borrador", "updated_at"]
+            if decision == "corregir_cantidad":
+                update_fields.append("cantidad_recibida")
             if decision == "solucion":
                 inconveniente_locked.cantidad_prometida = cantidad_prometida
                 inconveniente_locked.fecha_entrega_prometida = fecha_entrega_prometida
@@ -2151,6 +2255,21 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                     f"{envio_subdivision.division.bodega.sucursal.nombre}: se sumaron ahi "
                     f"({envio_subdivision.division.nombre} / {envio_subdivision.nombre})."
                 )
+            elif decision == "corregir_cantidad":
+                detail_text = (
+                    f"Se corrigio la cantidad que llego: {recibido_antes} -> {cantidad_real} "
+                    f"(pedido: {inconveniente_locked.cantidad_esperada})."
+                )
+                if corregir_delta:
+                    ubicacion = (
+                        f"{corregir_subdivision.division.bodega.sucursal.nombre} "
+                        f"({corregir_subdivision.division.nombre} / {corregir_subdivision.nombre})"
+                    )
+                    detail_text += (
+                        f" Se sumaron {corregir_delta} en {ubicacion}."
+                        if corregir_delta > 0
+                        else f" Se restaron {-corregir_delta} de {ubicacion}."
+                    )
             elif decision == "perdido":
                 detail_text = (
                     f"Las {inconveniente_locked.cantidad_diferencia} unidades faltantes del envio se marcaron "

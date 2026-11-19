@@ -343,6 +343,9 @@ class ImportacionInconveniente(models.Model):
         # Faltantes del envio a una sucursal (como un traslado).
         SUMADO_SUCURSAL = "sumado_sucursal", "Sumado a la sucursal destino"
         SUMADO_ORIGEN = "sumado_origen", "Sumado a la sucursal de origen (matriz)"
+        # Se corrigio cuantas llegaron de verdad (con comentario) y la
+        # diferencia se sumo/resto en la ubicacion escogida.
+        CANTIDAD_CORREGIDA = "cantidad_corregida", "Cantidad corregida"
 
     # Los faltantes del envio de una compra local no tienen importacion.
     importacion = models.ForeignKey(

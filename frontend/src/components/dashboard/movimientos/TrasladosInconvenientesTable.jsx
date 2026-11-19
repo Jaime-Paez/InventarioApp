@@ -94,6 +94,7 @@ const formatResolucion = (value) => {
   if (normalized === 'aceptado') return 'Aceptado sin cambios'
   if (normalized === 'devolver_proveedor') return 'Devuelto al proveedor'
   if (normalized === 'reposicion_acordada') return 'Reposición acordada'
+  if (normalized === 'cantidad_corregida') return 'Cantidad corregida'
   return '-'
 }
 
@@ -137,6 +138,7 @@ const DECISION_LABELS = {
   olvidar: 'Olvidar proceso',
   solucion: 'Solución acordada con el proveedor',
   solucionado: 'Solucionado',
+  corregir_cantidad: 'Corregir cantidad',
 }
 
 const DECISION_HINTS = {
@@ -152,10 +154,17 @@ const DECISION_HINTS = {
   olvidar: 'El reclamo se cierra como perdido / no recuperable.',
   solucion: 'Registra la cantidad que enviará el proveedor y la fecha de entrega acordada.',
   solucionado: 'Escribe cómo se solucionó este inconveniente.',
+  corregir_cantidad: 'Pon cuántas llegaron realmente, con un comentario. La diferencia con lo registrado se suma (o se resta) en la ubicación que escojas y el inconveniente queda resuelto.',
 }
 
 // Sin nota no se acepta: queda constancia de que paso.
-const NOTE_REQUIRED_DECISIONS = new Set(['perdido', 'solucionado'])
+const NOTE_REQUIRED_DECISIONS = new Set(['perdido', 'solucionado', 'corregir_cantidad'])
+
+// Corregir cantidad: lo que se registro como llegado (antes de corregir).
+const getRecibidoRegistrado = (issue) => {
+  const n = Number.parseInt(String(issue?.llegada_recibido ?? issue?.cantidad_recibida ?? 0), 10)
+  return Number.isFinite(n) ? n : 0
+}
 
 const LOCATION_DECISIONS = new Set(['sumar_solicitante', 'sumar_proveedora', 'sumar_origen', 'devolver_proveedora'])
 
@@ -167,12 +176,16 @@ const getDecisionOptions = (issue) => {
   if (issue.tipo === 'otro') return [option('solucionado', 'Solucionar', 'success')]
   // Reclamado al proveedor (de la llegada o de un envio): se sigue igual.
   if (issue.origen === 'importacion' && String(issue.estado || '').toLowerCase() === 'reclamado') {
-    return [option('olvidar', 'Olvidar proceso', 'neutral'), option('solucion', 'Solución acordada', 'warning')]
+    return [
+      option('olvidar', 'Olvidar proceso', 'neutral'),
+      option('solucion', 'Solución acordada', 'warning'),
+      ...(!issue.envio_id ? [option('corregir_cantidad', 'Corregir cantidad', 'primary')] : []),
+    ]
   }
   if (issue.origen === 'importacion' && !issue.envio_id) {
     return issue.tipo === 'sobrante'
-      ? [option('devolver_proveedor', 'Devolver a proveedor', 'warning'), option('aceptado', 'No hacer nada', 'neutral')]
-      : [option('aceptado', 'No hacer nada', 'neutral'), option('reportado_proveedor', 'Reclamar al proveedor', 'warning')]
+      ? [option('devolver_proveedor', 'Devolver a proveedor', 'warning'), option('aceptado', 'No hacer nada', 'neutral'), option('corregir_cantidad', 'Corregir cantidad', 'primary')]
+      : [option('aceptado', 'No hacer nada', 'neutral'), option('reportado_proveedor', 'Reclamar al proveedor', 'warning'), option('corregir_cantidad', 'Corregir cantidad', 'primary')]
   }
   if (issue.tipo === 'sobrante') {
     return [option('devolver_proveedora', 'Devolver', 'warning'), option('sin_cambios', 'Mantener', 'neutral')]
@@ -206,6 +219,9 @@ const describeDraft = (draft) => {
     if (draft.subdivision_proveedora_label) parts.push(`devolver a ${draft.subdivision_proveedora_label}`)
   } else if (draft.subdivision_label) {
     parts.push(draft.subdivision_label)
+  }
+  if (draft.decision === 'corregir_cantidad' && draft.cantidad_real != null) {
+    parts.splice(1, 0, `llegaron ${draft.cantidad_real}`)
   }
   if (draft.decision === 'solucion' && draft.cantidad_prometida) {
     parts.push(`${draft.cantidad_prometida} u. para el ${draft.fecha_entrega_prometida || '-'}`)
@@ -376,6 +392,11 @@ function TrasladosInconvenientesTable({
   const [resolverMotivo, setResolverMotivo] = useState('')
   const [resolverCantidadPrometida, setResolverCantidadPrometida] = useState('')
   const [resolverFechaPrometida, setResolverFechaPrometida] = useState('')
+  // Corregir cantidad: cuantas llegaron de verdad y en que sucursal se
+  // suma/resta la diferencia.
+  const [resolverCantidadReal, setResolverCantidadReal] = useState('')
+  const [resolverCorregirSucursalId, setResolverCorregirSucursalId] = useState('')
+  const [corregirSucursales, setCorregirSucursales] = useState([])
   const [resolverBodegaId, setResolverBodegaId] = useState('')
   const [resolverDivisionId, setResolverDivisionId] = useState('')
   const [resolverSubdivisionId, setResolverSubdivisionId] = useState('')
@@ -632,8 +653,9 @@ function TrasladosInconvenientesTable({
     if (resolverDecision === 'sumar_solicitante' || resolverDecision === 'devolver_proveedora') return normalizeId(selectedIssue?.sucursal_solicitante_id)
     if (resolverDecision === 'sumar_proveedora' || resolverDecision === 'restar_proveedora') return normalizeId(selectedIssue?.sucursal_proveedora_id)
     if (resolverDecision === 'sumar_origen') return normalizeId(selectedIssue?.sucursal_origen_id)
+    if (resolverDecision === 'corregir_cantidad') return normalizeId(resolverCorregirSucursalId)
     return ''
-  }, [resolverDecision, selectedIssue])
+  }, [resolverCorregirSucursalId, resolverDecision, selectedIssue])
 
   const resolverTargetBranchLabel = useMemo(() => {
     if (!selectedIssue) return ''
@@ -646,8 +668,48 @@ function TrasladosInconvenientesTable({
     if (resolverDecision === 'sumar_origen') {
       return String(selectedIssue?.sucursal_origen_nombre || '').trim() || 'Matriz'
     }
+    if (resolverDecision === 'corregir_cantidad') {
+      const suc = corregirSucursales.find((item) => normalizeId(item?.id) === normalizeId(resolverCorregirSucursalId))
+      return String(suc?.nombre || '').trim() || 'Sucursal'
+    }
     return ''
-  }, [resolverDecision, selectedIssue])
+  }, [corregirSucursales, resolverCorregirSucursalId, resolverDecision, selectedIssue])
+
+  // Corregir cantidad: diferencia contra lo registrado (0 = no se toca el inventario).
+  const corregirDelta = useMemo(() => {
+    if (resolverDecision !== 'corregir_cantidad' || !selectedIssue) return 0
+    const real = Number.parseInt(String(resolverCantidadReal ?? ''), 10)
+    if (!Number.isFinite(real) || real < 0) return 0
+    return real - getRecibidoRegistrado(selectedIssue)
+  }, [resolverCantidadReal, resolverDecision, selectedIssue])
+
+  // Sucursales para escoger donde sumar/restar la diferencia (se cargan una vez).
+  useEffect(() => {
+    if (resolverDecision !== 'corregir_cantidad' || !token || corregirSucursales.length) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const response = await authFetch(`${API_URL}/inventario/sucursales/?page_size=200&modulo=movimientos_inconvenientes`, {}, token)
+        if (!response.ok) return
+        const payload = await response.json().catch(() => ({}))
+        const list = (Array.isArray(payload) ? payload : payload?.results || [])
+          .filter((item) => item?.id != null)
+          .sort((a, b) => String(a?.nombre || '').localeCompare(String(b?.nombre || ''), 'es'))
+        if (!cancelled) setCorregirSucursales(list)
+      } catch {
+        // sin lista: el aviso del dialogo lo explica
+      }
+    })()
+    return () => { cancelled = true }
+  }, [corregirSucursales.length, resolverDecision, token])
+
+  // Por defecto, la sucursal donde llego la importacion (matriz).
+  useEffect(() => {
+    if (resolverDecision !== 'corregir_cantidad' || resolverCorregirSucursalId || !corregirSucursales.length) return
+    const preferida = normalizeId(selectedIssue?.sucursal_llegada_id)
+    const existe = preferida && corregirSucursales.some((item) => normalizeId(item?.id) === preferida)
+    setResolverCorregirSucursalId(existe ? preferida : normalizeId(corregirSucursales[0]?.id))
+  }, [corregirSucursales, resolverCorregirSucursalId, resolverDecision, selectedIssue?.sucursal_llegada_id])
 
   const resolverSubdivisionPathById = useMemo(() => {
     const map = new Map()
@@ -1113,6 +1175,8 @@ function TrasladosInconvenientesTable({
     setResolverMotivo('')
     setResolverCantidadPrometida('')
     setResolverFechaPrometida('')
+    setResolverCantidadReal('')
+    setResolverCorregirSucursalId('')
     setResolverBodegaId('')
     setResolverDivisionId('')
     setResolverSubdivisionId('')
@@ -1279,6 +1343,9 @@ function TrasladosInconvenientesTable({
       setSelectedIssue(issue)
       setResolverDecision(decision)
       setResolverMotivo(String(draft?.motivo || ''))
+      if (decision === 'corregir_cantidad') {
+        setResolverCantidadReal(String(same && draft?.cantidad_real != null ? draft.cantidad_real : getRecibidoRegistrado(issue)))
+      }
       if (same && decision === 'solucion') {
         setResolverCantidadPrometida(String(draft?.cantidad_prometida || ''))
         setResolverFechaPrometida(String(draft?.fecha_entrega_prometida || ''))
@@ -1858,6 +1925,24 @@ function TrasladosInconvenientesTable({
     const motivo = String(resolverMotivo || '').trim()
     const draft = { decision }
     if (motivo) draft.motivo = motivo
+    if (decision === 'corregir_cantidad') {
+      const real = Number.parseInt(String(resolverCantidadReal ?? '').trim(), 10)
+      if (!Number.isFinite(real) || real < 0 || String(resolverCantidadReal ?? '').trim() === '') {
+        setResolverError('Escribe cuántas unidades llegaron realmente.')
+        return
+      }
+      draft.cantidad_real = real
+      if (real !== getRecibidoRegistrado(issue)) {
+        if (!normalizeId(resolverSubdivisionId)) {
+          setResolverError(real > getRecibidoRegistrado(issue)
+            ? 'Selecciona la ubicación donde sumar las unidades que faltaban.'
+            : 'Selecciona la ubicación de donde restar las unidades de más.')
+          return
+        }
+        draft.subdivision_id = Number.parseInt(String(resolverSubdivisionId), 10)
+        draft.subdivision_label = formatSubdivisionLocationLabel(selectedResolverSubdivision)
+      }
+    }
     if (LOCATION_DECISIONS.has(decision)) {
       if (!normalizeId(resolverSubdivisionId)) {
         setResolverError(
@@ -1895,7 +1980,9 @@ function TrasladosInconvenientesTable({
       setResolverError(
         decision === 'perdido'
           ? 'Escribe qué pasó con las unidades desaparecidas.'
-          : 'Escribe cómo se solucionó este inconveniente.'
+          : decision === 'corregir_cantidad'
+            ? 'Escribe un comentario de por qué se corrige la cantidad.'
+            : 'Escribe cómo se solucionó este inconveniente.'
       )
       return
     }
@@ -1905,6 +1992,7 @@ function TrasladosInconvenientesTable({
   }, [
     closeDecisionDialog,
     resolverCantidadPrometida,
+    resolverCantidadReal,
     resolverDecision,
     resolverFechaPrometida,
     resolverMotivo,
@@ -1923,6 +2011,7 @@ function TrasladosInconvenientesTable({
       const body = { decision: draft.decision, motivo: String(draft.motivo || '').trim() }
       if (draft.subdivision_id) body.subdivision_id = draft.subdivision_id
       if (draft.subdivision_proveedora_id) body.subdivision_proveedora_id = draft.subdivision_proveedora_id
+      if (draft.decision === 'corregir_cantidad') body.cantidad_real = draft.cantidad_real
       if (draft.decision === 'solucion') {
         body.cantidad_prometida = draft.cantidad_prometida
         body.fecha_entrega_prometida = draft.fecha_entrega_prometida
@@ -2849,9 +2938,54 @@ function TrasladosInconvenientesTable({
                     </header>
                     <div className="transfer-issues-dialog__body">
                       <p className="muted transfer-issues-details__hint">{DECISION_HINTS[resolverDecision] || ''}</p>
-  {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'sumar_origen' || resolverDecision === 'restar_proveedora' || resolverDecision === 'devolver_proveedora') && (
+                      {resolverDecision === 'corregir_cantidad' ? (
+                        <div className="transfer-issues-details__decisions transfer-issues-details__decisions--two">
+                          <div className="create-user__field transfer-issues-details__field">
+                            <span>Pedido · Registrado</span>
+                            <div className="create-salida__static-value">
+                              {`${Number(selectedIssue?.cantidad_esperada || 0)} · ${getRecibidoRegistrado(selectedIssue)}`}
+                            </div>
+                          </div>
+                          <label className="create-user__field transfer-issues-details__field">
+                            <span>¿Cuántas llegaron realmente?</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={resolverCantidadReal}
+                              onChange={(event) => setResolverCantidadReal(String(event.target.value || '').replace(/[^0-9]/g, ''))}
+                            />
+                          </label>
+                          {corregirDelta !== 0 ? (
+                            <>
+                              <p className="muted transfer-issues-details__hint" style={{ gridColumn: '1 / -1', margin: 0 }}>
+                                {corregirDelta > 0
+                                  ? `Se sumarán ${corregirDelta} al inventario en la ubicación que escojas.`
+                                  : `Se restarán ${-corregirDelta} del inventario de la ubicación que escojas.`}
+                              </p>
+                              <label className="create-user__field create-user__field--full transfer-issues-details__field" style={{ gridColumn: '1 / -1' }}>
+                                <span>Sucursal</span>
+                                <select
+                                  value={resolverCorregirSucursalId}
+                                  onChange={(event) => setResolverCorregirSucursalId(event.target.value)}
+                                >
+                                  {!corregirSucursales.length ? <option value="">Cargando...</option> : null}
+                                  {corregirSucursales.map((suc) => (
+                                    <option key={suc.id} value={normalizeId(suc.id)}>{String(suc.nombre || '').trim()}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            </>
+                          ) : (
+                            <p className="muted transfer-issues-details__hint" style={{ gridColumn: '1 / -1', margin: 0 }}>
+                              Es la misma cantidad registrada: no se mueve inventario, solo queda resuelto con el comentario.
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+  {(resolverDecision === 'sumar_solicitante' || resolverDecision === 'sumar_proveedora' || resolverDecision === 'sumar_origen' || resolverDecision === 'restar_proveedora' || resolverDecision === 'devolver_proveedora' || (resolverDecision === 'corregir_cantidad' && corregirDelta !== 0)) && (
                           <label className="create-user__field create-user__field--full transfer-issues-details__field">
-                            <span>{resolverDecision === 'devolver_proveedora' ? `Donde restar en destino (${resolverTargetBranchLabel})` : `Ubicacion (${resolverTargetBranchLabel})`}</span>
+                            <span>{resolverDecision === 'devolver_proveedora' ? `Donde restar en destino (${resolverTargetBranchLabel})` : resolverDecision === 'corregir_cantidad' && corregirDelta < 0 ? `De dónde restar (${resolverTargetBranchLabel})` : `Ubicacion (${resolverTargetBranchLabel})`}</span>
                             <div className="create-entrada__location-picker-grid">
                               <div className="create-entrada__location-picker-item">
                                 <small>Bodega</small>
@@ -3375,7 +3509,9 @@ function TrasladosInconvenientesTable({
                             ? '¿Cómo se solucionó? (obligatorio)'
                             : resolverDecision === 'perdido'
                               ? '¿Qué pasó? (obligatorio)'
-                              : 'Nota (opcional)'}
+                              : resolverDecision === 'corregir_cantidad'
+                                ? 'Comentario (obligatorio)'
+                                : 'Nota (opcional)'}
                         </span>
                         <textarea
                           rows={2}
