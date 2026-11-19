@@ -1212,7 +1212,11 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           newProducto: null,
         }))
         setRows(freshRows)
-        const restoredStep = saved?.step === 2 ? 3 : (saved?.step || 1)
+        // Solo quedan las sucursales: precio final, cant. final y comentarios
+        // se llenan en la tabla de en camino. "Productos nuevos" solo si a
+        // alguno le falta el codigo.
+        const necesitaProductosNuevos = freshRows.some((row) => originalSinCatIds.has(row.id) && row.sinCat && !row.newProducto)
+        const restoredStep = necesitaProductosNuevos ? 1 : (saved?.step === 5 ? 5 : 4)
         setStep(restoredStep)
         if (saved?.recipientsBySucursal) setRecipientsBySucursal(saved.recipientsBySucursal)
 
@@ -1498,6 +1502,10 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const canConfirm = allChecked && sinCatFilled === sinCatRows.length
   // Todos los ítems que originalmente no tenían producto (incluye los ya vinculados en sesiones anteriores)
   const step1Rows = rows.filter(r => originalSinCatIds.has(r.id))
+  // Pasos que se ven: productos nuevos (solo si a alguno le faltaba el codigo),
+  // distribucion a sucursales y destinatarios.
+  const conPasoProductosNuevos = step1Rows.length > 0
+  const pasosVisibles = conPasoProductosNuevos ? [1, 4, 5] : [4, 5]
   const step1Pending = step1Rows.filter(r => r.sinCat && !r.newProducto)
   const canGoNext = step1Pending.length === 0
   // Revision de lo que llego: precio final y cantidad final de cada producto,
@@ -2056,12 +2064,12 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           {!loadingData && (
             <div style={{ padding: '12px 20px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', gap: 5 }}>
-                {[1,2,3,4,5].map(n => (
+                {pasosVisibles.map(n => (
                   <div key={n} style={{ flex: 1, height: 3, borderRadius: 2, background: step >= n ? 'var(--color-primary, #2563eb)' : 'var(--color-border, #e2e8f0)', transition: 'background .3s' }} />
                 ))}
               </div>
               <span style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-secondary)' }}>
-                Paso {step === 1 ? 1 : step - 1} de 4 — {step === 1 ? 'Productos nuevos' : step === 3 ? 'Precio y cantidad final' : step === 4 ? 'Distribución a sucursales' : 'Destinatarios del envío'}
+                Paso {Math.max(1, pasosVisibles.indexOf(step) + 1)} de {pasosVisibles.length} — {step === 1 ? 'Productos nuevos' : step === 4 ? 'Distribución a sucursales' : 'Destinatarios del envío'}
               </span>
             </div>
           )}
@@ -2313,7 +2321,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
               <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-copy">
-                    <p className="quick-actions__receive-stage-kicker">Paso 3 — Distribución</p>
+                    <p className="quick-actions__receive-stage-kicker">{`Paso ${pasosVisibles.indexOf(4) + 1} — Distribución`}</p>
                     <h5>Envía los productos a las sucursales</h5>
                     <p className="quick-actions__receive-stage-name">Indica cuántas unidades de cada producto van a cada sucursal. El total debe coincidir con la cantidad recibida.</p>
                   </div>
@@ -2437,7 +2445,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
               <div className="quick-actions__receive-step quick-actions__receive-step--list" style={{ '--receive-list-received-column': '0px' }}>
                 <article className="quick-actions__receive-stage quick-actions__receive-stage--list">
                   <div className="quick-actions__receive-stage-copy">
-                    <p className="quick-actions__receive-stage-kicker">Paso 4 — Destinatarios del envío</p>
+                    <p className="quick-actions__receive-stage-kicker">{`Paso ${pasosVisibles.indexOf(5) + 1} — Destinatarios del envío`}</p>
                     <h5>Vas a enviar productos a varias sucursales</h5>
                     <p className="quick-actions__receive-stage-name">Escoge a quién debe llegarle el recordatorio de cada envío. Pasa el mouse sobre el ícono junto al nombre de la sucursal para ver qué productos le llegarán. Cada sucursal que recibe productos necesita al menos un destinatario.</p>
                   </div>
@@ -2509,7 +2517,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
             {step === 1 ? (
               <>
                 <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={handleClose}>Cancelar</button>
-                <button type="button" className={`quick-actions__receive-btn${canGoNext ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={() => setStep(3)} disabled={loadingData || !canGoNext}>Siguiente</button>
+                <button type="button" className={`quick-actions__receive-btn${canGoNext ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep4} disabled={loadingData || !canGoNext}>Siguiente</button>
               </>
             ) : step === 3 ? (
               <>
@@ -2555,7 +2563,11 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                         : 'Para continuar, reparte el total de cada producto entre las sucursales.'}
                   </span>
                 )}
-                <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(3)} disabled={submitting}>Atrás</button>
+                {conPasoProductosNuevos ? (
+                  <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={() => setStep(1)} disabled={submitting}>Atrás</button>
+                ) : (
+                  <button type="button" className="quick-actions__receive-btn quick-actions__receive-btn--cancel" onClick={handleClose} disabled={submitting}>Cancelar</button>
+                )}
                 <button type="button" className={`quick-actions__receive-btn${canFinish ? ' quick-actions__receive-btn--success' : ' quick-actions__receive-btn--primary'}`} onClick={enterStep5} disabled={!canFinish}>Siguiente</button>
               </>
             ) : (
