@@ -319,29 +319,41 @@ function ProductoDetails({
     }
   }
 
-  // "Unificar ubicaciones" (solo administrador): se listan todas las ubicaciones
-  // que tiene alguien del grupo (este producto o sus alternos); las marcadas se
-  // copian a todos (en 0 donde no la tengan). El stock no se mueve.
+  // "Unificar ubicaciones" (solo administrador), por sucursal: se escoge UNA
+  // ubicacion y todo el grupo (este producto y sus alternos) pasa a ella: el
+  // stock de las otras ubicaciones de esa sucursal se mueve ahi y esas se
+  // quitan; quien no tenga stock queda con la ubicacion en 0.
   const [ubicGrupoDialog, setUbicGrupoDialog] = useState(null)
   const [ubicGrupoSaving, setUbicGrupoSaving] = useState(false)
+  // La que mas productos del grupo ya tienen (y despues la de mas stock).
+  const ubicacionSugerida = (ubicaciones, sucursalId) => {
+    const delaSucursal = ubicaciones.filter((u) => String(u.sucursal_id ?? '') === String(sucursalId))
+    const stock = (u) => u.productos.reduce((sum, p) => sum + (Number(p.cantidad) || 0), 0)
+    const mejor = [...delaSucursal].sort((a, b) => (b.productos.length - a.productos.length) || (stock(b) - stock(a)))[0]
+    return mejor ? mejor.subdivision_id : null
+  }
   const abrirUbicacionesGrupo = async () => {
     if (!resolvedProductoId) return
-    setUbicGrupoDialog({ loading: true, ubicaciones: [], seleccion: new Set(), totalProductos: 0 })
+    setUbicGrupoDialog({ loading: true, ubicaciones: [], elegida: null, totalProductos: 0 })
     try {
       const response = await authFetch(`${API_URL}/productos/listado/${resolvedProductoId}/ubicaciones-grupo/`, {}, token)
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data?.detail || 'No se pudieron cargar las ubicaciones del grupo.')
       const ubicaciones = Array.isArray(data?.ubicaciones) ? data.ubicaciones : []
       const totalProductos = Number(data?.total_productos) || 0
-      // Es por sucursal: empieza en la primera donde a alguien le falte una ubicacion.
-      const conFaltantes = ubicaciones.find((u) => u.productos.length < totalProductos)
-      const sucursalId = String((conFaltantes || ubicaciones[0])?.sucursal_id ?? '')
+      // Empieza en la primera sucursal donde el grupo no esta todo en una sola ubicacion.
+      const sucursalIds = [...new Set(ubicaciones.map((u) => String(u.sucursal_id ?? '')))]
+      const desordenada = sucursalIds.find((id) => {
+        const lista = ubicaciones.filter((u) => String(u.sucursal_id ?? '') === id)
+        return lista.length > 1 || lista.some((u) => u.productos.length < totalProductos)
+      })
+      const sucursalId = desordenada ?? sucursalIds[0] ?? ''
       setUbicGrupoDialog({
         loading: false,
         ubicaciones,
         totalProductos,
         sucursalId,
-        seleccion: new Set(ubicaciones.filter((u) => String(u.sucursal_id) === sucursalId).map((u) => u.subdivision_id)),
+        elegida: ubicacionSugerida(ubicaciones, sucursalId),
       })
     } catch (e) {
       setUbicGrupoDialog(null)
@@ -352,30 +364,24 @@ function ProductoDetails({
     setUbicGrupoDialog((prev) => (prev ? {
       ...prev,
       sucursalId: String(sucursalId),
-      seleccion: new Set(prev.ubicaciones.filter((u) => String(u.sucursal_id) === String(sucursalId)).map((u) => u.subdivision_id)),
+      elegida: ubicacionSugerida(prev.ubicaciones, sucursalId),
     } : prev))
   }
-  const toggleUbicacionGrupo = (subdivisionId) => {
-    setUbicGrupoDialog((prev) => {
-      if (!prev) return prev
-      const seleccion = new Set(prev.seleccion)
-      if (seleccion.has(subdivisionId)) seleccion.delete(subdivisionId)
-      else seleccion.add(subdivisionId)
-      return { ...prev, seleccion }
-    })
+  const escogerUbicacionGrupo = (subdivisionId) => {
+    setUbicGrupoDialog((prev) => (prev ? { ...prev, elegida: subdivisionId } : prev))
   }
   const handleAplicarUbicacionesGrupo = async () => {
-    const ids = [...(ubicGrupoDialog?.seleccion || [])]
-    if (!ids.length || !resolvedProductoId) return
+    const elegida = ubicGrupoDialog?.elegida
+    if (elegida == null || !resolvedProductoId) return
     setUbicGrupoSaving(true)
     try {
       const response = await authFetch(
         `${API_URL}/productos/listado/${resolvedProductoId}/ubicaciones-grupo/`,
-        { method: 'POST', body: JSON.stringify({ subdivision_ids: ids, sucursal_id: ubicGrupoDialog?.sucursalId || null }) },
+        { method: 'POST', body: JSON.stringify({ subdivision_id: elegida }) },
         token
       )
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data?.detail || data?.subdivision_ids?.[0] || data?.subdivision_ids || 'No se pudieron unificar las ubicaciones.')
+      if (!response.ok) throw new Error(data?.detail || data?.subdivision_id?.[0] || data?.subdivision_id || 'No se pudieron unificar las ubicaciones.')
       setUbicGrupoDialog(null)
       refreshInventoryContext()
       onUpdated?.({ id: resolvedProductoId })
@@ -2845,8 +2851,8 @@ function ProductoDetails({
             <div className="user-details__confirm-content" style={{ width: '100%' }}>
               <h4>Unificar ubicaciones</h4>
               <p>
-                Escoge la sucursal: las ubicaciones marcadas quedarán en {formData.codigo || 'este producto'} y en sus {originalAlternativas.length} alterno{originalAlternativas.length === 1 ? '' : 's'}
-                {' '}(en 0 donde no la tengan). El stock no se mueve.
+                Escoge la sucursal y la ubicación: {formData.codigo || 'este producto'} y sus {originalAlternativas.length} alterno{originalAlternativas.length === 1 ? '' : 's'}
+                {' '}pasan a esa ubicación. Su stock en las otras ubicaciones de esa sucursal se mueve ahí y esas ubicaciones se quitan.
               </p>
               {ubicGrupoDialog.loading ? (
                 <p className="muted" style={{ marginTop: 10 }}>Cargando...</p>
@@ -2872,17 +2878,18 @@ function ProductoDetails({
                       </button>
                     ))}
                   </div>
-                  <div className="ubic-grupo__lista">
+                  <div className="ubic-grupo__lista" role="radiogroup" aria-label="Ubicación a la que pasa el grupo">
                     {ubicSucursal.map((ubic) => {
-                      const marcada = ubicGrupoDialog.seleccion.has(ubic.subdivision_id)
+                      const marcada = ubicGrupoDialog.elegida === ubic.subdivision_id
                       const faltan = Math.max(0, ubicGrupoDialog.totalProductos - ubic.productos.length)
                       return (
                         <label key={`ubic-grupo-${ubic.subdivision_id}`} className={`ubic-grupo__fila${marcada ? ' is-elegido' : ''}`}>
                           <input
-                            type="checkbox"
+                            type="radio"
+                            name="ubic-grupo-elegida"
                             className="ubic-grupo__check"
                             checked={marcada}
-                            onChange={() => toggleUbicacionGrupo(ubic.subdivision_id)}
+                            onChange={() => escogerUbicacionGrupo(ubic.subdivision_id)}
                             disabled={ubicGrupoSaving}
                           />
                           <span className="ubic-grupo__ubicacion">
@@ -2892,13 +2899,27 @@ function ProductoDetails({
                           <span className="ubic-grupo__productos" data-title={ubic.productos.map((p) => `${p.codigo} (${p.cantidad})`).join(', ')}>
                             {ubic.productos.map((p) => `${p.codigo} (${p.cantidad})`).join(', ')}
                           </span>
-                          <span className={`ubic-grupo__estado${faltan > 0 ? ' is-falta' : ''}`}>
-                            {faltan > 0 ? `Se agrega a ${faltan}` : 'Ya la tienen todos'}
+                          <span className="ubic-grupo__estado">
+                            {faltan > 0 ? `${ubic.productos.length} de ${ubicGrupoDialog.totalProductos}` : 'Todos'}
                           </span>
                         </label>
                       )
                     })}
                   </div>
+                  {(() => {
+                    const elegida = ubicSucursal.find((u) => u.subdivision_id === ubicGrupoDialog.elegida)
+                    if (!elegida) return null
+                    const otras = ubicSucursal.filter((u) => u.subdivision_id !== elegida.subdivision_id)
+                    const unidades = otras.reduce((sum, u) => sum + u.productos.reduce((s2, p) => s2 + (Number(p.cantidad) || 0), 0), 0)
+                    return (
+                      <p className="ubic-grupo__resumen">
+                        Todo el grupo queda en <strong>{elegida.nombre}</strong>.
+                        {otras.length > 0
+                          ? ` Se mueven ${unidades} unidad${unidades === 1 ? '' : 'es'} y se quitan ${otras.length} ubicaci${otras.length === 1 ? 'ón' : 'ones'} de esta sucursal.`
+                          : ' No hay otras ubicaciones del grupo en esta sucursal.'}
+                      </p>
+                    )
+                  })()}
                 </>
               )}
             </div>
@@ -2915,7 +2936,7 @@ function ProductoDetails({
                 type="button"
                 className="create-user__action create-user__action--primary"
                 onClick={handleAplicarUbicacionesGrupo}
-                disabled={ubicGrupoSaving || ubicGrupoDialog.loading || ubicGrupoDialog.seleccion.size === 0}
+                disabled={ubicGrupoSaving || ubicGrupoDialog.loading || ubicGrupoDialog.elegida == null}
               >
                 {ubicGrupoSaving ? 'Guardando...' : 'Unificar ubicaciones'}
               </button>

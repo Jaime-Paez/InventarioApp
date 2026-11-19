@@ -207,3 +207,10 @@
   white-space: nowrap;
 }
 .ubic-grupo__estado.is-falta { color: #b45309; font-weight: 600; }
+.ubic-grupo__lista input.ubic-grupo__check[type='radio'] { border-radius: 50%; }
+.ubic-grupo__resumen {
+  margin: 10px 0 0;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+.ubic-grupo__resumen strong { color: var(--color-text-primary, inherit); }

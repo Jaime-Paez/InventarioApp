@@ -514,9 +514,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
     def ubicaciones_grupo(self, request, pk=None):
         """"Unificar ubicaciones" (solo administrador).
         GET: todas las ubicaciones que tiene este producto o alguno de sus
-        alternos, con quien la tiene. POST {subdivision_ids}: copia esas
-        ubicaciones a todo el grupo (en 0 donde no la tenga); el stock no se
-        mueve. POR UBICAR, TEMPORAL y SIN UBICACION no se copian."""
+        alternos, con quien la tiene. POST {subdivision_id}: todo el grupo
+        pasa a esa ubicacion en su sucursal (ver abajo). POR UBICAR, TEMPORAL
+        y SIN UBICACION no se pueden escoger."""
         from usuarios.utils import is_app_admin
         from inventario.por_ubicar import is_special_subdivision
         from inventario.models import SubDivision
@@ -564,40 +564,75 @@ class ProductoViewSet(viewsets.ModelViewSet):
             data.sort(key=lambda u: (u["sucursal"] or "", u["bodega"] or "", u["nombre"]))
             return Response({"total_productos": len(grupo), "ubicaciones": data}, status=status.HTTP_200_OK)
 
-        raw_ids = request.data.get("subdivision_ids")
-        if not isinstance(raw_ids, list) or not raw_ids:
-            raise ValidationError({"subdivision_ids": "Escoge al menos una ubicacion."})
+        # POST: se escoge UNA ubicacion de una sucursal y todo el grupo pasa a
+        # ella: el stock que cada producto tiene en las otras ubicaciones de
+        # esa sucursal se mueve ahi (el total no cambia, no es ajuste) y esas
+        # ubicaciones se quitan. POR UBICAR y TEMPORAL no se tocan. Quien no
+        # tenga stock queda con la ubicacion en 0. Queda como principal.
+        from inventario.models import ProductoUbicacionOrden
+
         try:
-            ids = {int(value) for value in raw_ids}
+            destino_id = int(request.data.get("subdivision_id"))
         except (TypeError, ValueError):
-            raise ValidationError({"subdivision_ids": "Ubicaciones no validas."})
-        # Solo ubicaciones que ya tiene alguien del grupo.
-        del_grupo = set(filas.values_list("subdivision_id", flat=True))
-        subs = [
-            sub for sub in SubDivision.objects.filter(id__in=ids & del_grupo).select_related("division__bodega", "division__tipo_division")
-            if copiable(sub)
-        ]
-        if not subs:
-            raise ValidationError({"subdivision_ids": "Esas ubicaciones no son de este grupo de alternos."})
-        # Se unifica por sucursal: todas las ubicaciones deben ser de la misma.
-        sucursales = {sub.division.bodega.sucursal_id for sub in subs}
-        sucursal_pedida = str(request.data.get("sucursal_id") or "").strip()
-        if len(sucursales) > 1 or (sucursal_pedida and sucursal_pedida not in {str(x) for x in sucursales}):
-            raise ValidationError({"subdivision_ids": "Unifica las ubicaciones de una sola sucursal a la vez."})
-        existentes = set(
-            Inventario.objects.filter(producto_id__in=grupo, subdivision_id__in=[s.id for s in subs])
-            .values_list("producto_id", "subdivision_id")
+            raise ValidationError({"subdivision_id": "Escoge la ubicacion."})
+        destino = (
+            SubDivision.objects.select_related("division__bodega", "division__tipo_division")
+            .filter(id=destino_id)
+            .first()
         )
-        nuevas = [
-            Inventario(producto_id=pid, subdivision_id=sub.id, cantidad=0, referencia="")
-            for pid in sorted(grupo)
-            for sub in subs
-            if (pid, sub.id) not in existentes
-        ]
+        if not destino or not copiable(destino):
+            raise ValidationError({"subdivision_id": "Esa ubicacion no se puede usar."})
+        if not filas.filter(subdivision_id=destino_id).exists():
+            raise ValidationError({"subdivision_id": "Esa ubicacion no es de este grupo de alternos."})
+        sucursal_id = destino.division.bodega.sucursal_id
+
+        movidas = 0
+        quitadas = 0
         with transaction.atomic():
-            Inventario.objects.bulk_create(nuevas, ignore_conflicts=True)
+            origenes = list(
+                Inventario.objects.select_for_update()
+                .filter(producto_id__in=grupo, subdivision__division__bodega__sucursal_id=sucursal_id)
+                .exclude(subdivision_id=destino_id)
+                .select_related("subdivision__division__tipo_division", "subdivision__division__bodega")
+            )
+            for origen in origenes:
+                if is_special_subdivision(origen.subdivision):
+                    continue
+                cantidad = int(origen.cantidad or 0)
+                if cantidad > 0:
+                    fila, _ = Inventario.objects.select_for_update().get_or_create(
+                        producto_id=origen.producto_id,
+                        subdivision_id=destino_id,
+                        referencia=origen.referencia or "",
+                        defaults={"cantidad": 0},
+                    )
+                    fila.cantidad = int(fila.cantidad or 0) + cantidad
+                    fila.save(update_fields=["cantidad"])
+                    movidas += cantidad
+                origen.delete()
+                quitadas += 1
+            tienen = set(
+                Inventario.objects.filter(producto_id__in=grupo, subdivision_id=destino_id).values_list("producto_id", flat=True)
+            )
+            Inventario.objects.bulk_create(
+                [Inventario(producto_id=pid, subdivision_id=destino_id, cantidad=0, referencia="") for pid in grupo if pid not in tienen],
+                ignore_conflicts=True,
+            )
+            # La escogida queda como ubicacion principal en esa sucursal.
+            ProductoUbicacionOrden.objects.filter(
+                producto_id__in=grupo, subdivision__division__bodega__sucursal_id=sucursal_id
+            ).delete()
+            ProductoUbicacionOrden.objects.bulk_create(
+                [ProductoUbicacionOrden(producto_id=pid, subdivision_id=destino_id, orden=0) for pid in grupo]
+            )
         return Response(
-            {"agregadas": len(nuevas), "ubicaciones": len(subs), "total_productos": len(grupo)},
+            {
+                "ubicacion": f"{destino.division.nombre} - {destino.nombre}",
+                "unidades_movidas": movidas,
+                "ubicaciones_quitadas": quitadas,
+                "agregada_a": len(set(grupo) - tienen),
+                "total_productos": len(grupo),
+            },
             status=status.HTTP_200_OK,
         )
 
