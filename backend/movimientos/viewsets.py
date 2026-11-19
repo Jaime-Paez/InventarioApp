@@ -3613,10 +3613,84 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             action_key=action_key,
         )
 
+    def _acumular_en_solicitud_guardada_del_dia(self, request):
+        """Pedido a sucursal guardado (no por Uber): si hoy ya hay uno guardado
+        de la misma sucursal destino a la misma proveedora, los productos se
+        agregan a ese (las cantidades del mismo producto se suman) en vez de
+        crear otro; al final del dia se crea la solicitud con todo junto.
+        Devuelve la Response, o None si no hay una guardada de hoy."""
+        try:
+            solicitante_id = int(request.data.get("sucursal_solicitante_id"))
+            proveedora_id = int(request.data.get("sucursal_proveedora_id"))
+        except (TypeError, ValueError):
+            return None
+        existente = (
+            SolicitudTraslado.objects.filter(
+                estado=SolicitudTraslado.Estados.GUARDADO,
+                sucursal_solicitante_id=solicitante_id,
+                sucursal_proveedora_id=proveedora_id,
+                fecha=timezone.localdate(),
+                urgente=False,
+            )
+            .order_by("-id")
+            .first()
+        )
+        if existente is None:
+            return None
+        self._ensure_solicitud_traslado_write_access(
+            sucursal_solicitante_id=solicitante_id,
+            sucursal_proveedora_id=proveedora_id,
+            action_key="puede_crear",
+        )
+        merged = {}
+        for det in existente.detalles.all():
+            merged[int(det.producto_id)] = {
+                "producto_id": int(det.producto_id),
+                "cantidad": int(det.cantidad or 0),
+                "valor": str(det.valor or 0),
+                "importante": bool(det.importante),
+            }
+        for raw in request.data.get("detalles") or []:
+            try:
+                producto_id = int(raw.get("producto_id"))
+                cantidad = int(raw.get("cantidad") or 0)
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if producto_id in merged:
+                merged[producto_id]["cantidad"] += cantidad
+                merged[producto_id]["importante"] = merged[producto_id]["importante"] or bool(raw.get("importante"))
+            else:
+                merged[producto_id] = {
+                    "producto_id": producto_id,
+                    "cantidad": cantidad,
+                    "valor": raw.get("valor") or 0,
+                    "importante": bool(raw.get("importante")),
+                }
+        data = {"detalles": list(merged.values())}
+        nota_nueva = str(request.data.get("descripcion") or "").strip()
+        nota_actual = str(existente.descripcion or "").strip()
+        if nota_nueva and nota_nueva not in nota_actual:
+            data["descripcion"] = f"{nota_actual}\n{nota_nueva}".strip()
+        serializer = SolicitudTrasladoSerializer(
+            instance=existente,
+            data=data,
+            partial=True,
+            context={"is_borrador": True},
+        )
+        serializer.is_valid(raise_exception=True)
+        updated = serializer.save()
+        output = dict(SolicitudTrasladoSerializer(instance=updated).data)
+        output["agregado_a_guardada"] = True
+        return Response(output, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=["get", "post"], url_path="solicitudes-traslado")
     def solicitudes_traslado(self, request):
         if request.method.lower() == "post":
             guardar_borrador = bool(request.data.get("guardar_borrador"))
+            if guardar_borrador and not bool(request.data.get("urgente")):
+                acumulada = self._acumular_en_solicitud_guardada_del_dia(request)
+                if acumulada is not None:
+                    return acumulada
             serializer = SolicitudTrasladoSerializer(
                 data=request.data,
                 context={"is_borrador": guardar_borrador},

@@ -1101,7 +1101,9 @@ function EntradasTable({
       severity: 'success',
       summary: 'Exito',
       detail: isGuardado
-        ? 'Pedido a sucursal guardado'
+        ? (createdPayload?.agregado_a_guardada
+          ? `Se agregó al pedido guardado de hoy${createdPayload?.no_documento ? ` ${createdPayload.no_documento}` : ''} (${(createdPayload?.detalles || []).length} productos en total)`
+          : 'Pedido a sucursal guardado')
         : (isSolicitudTraslado ? 'Solicitud creada correctamente' : 'Entrada creada correctamente'),
       life: 2500,
     })
