@@ -4276,13 +4276,35 @@ function CreateEntrada({
                   </div>
 
                   <div className="create-salida__field-groups">
-                    {isSucursalPrincipalLocked && (
+                    {(isSucursalPrincipalLocked || isTraslado) && (
                       <div className="create-salida__field-group create-salida__field-group--defined create-salida__field-group--paired">
                         <div className={`create-user__grid ${isDevolucion || isCompraEntrada ? 'create-user__grid--three' : 'create-user__grid--two'}`}>
-                          <StaticFieldDisplay
-                            label={isTraslado ? 'Sucursal destino' : 'Sucursal'}
-                            value={selectedSucursalName}
-                          />
+                          {/* Traslado pedido desde Inventario sin sucursal fija (p. ej.
+                              administrador): mismo recuadro, pero la destino se escoge. */}
+                          {isSucursalPrincipalLocked ? (
+                            <StaticFieldDisplay
+                              label={isTraslado ? 'Sucursal destino' : 'Sucursal'}
+                              value={selectedSucursalName}
+                            />
+                          ) : (
+                            <label className="create-user__field">
+                              <span>Sucursal destino</span>
+                              <select
+                                name="sucursalId"
+                                value={formData.sucursalId}
+                                onChange={handleChange}
+                                disabled={loading}
+                                required
+                              >
+                                <option value="">Selecciona una sucursal</option>
+                                {branches.map((branch) => (
+                                  <option key={branch.id} value={branch.id}>
+                                    {branch.nombre || `Sucursal ${branch.id}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                           {isCompraEntrada && (
                             <label className="create-user__field create-user__field--required">
                               <span>No. de Factura</span>
@@ -4369,47 +4391,7 @@ function CreateEntrada({
 
                     <div className="create-user__grid create-user__grid--two">
                       {isTraslado ? (
-                        <>
-                          {!isSucursalPrincipalLocked && (
-                            <label className="create-user__field">
-                              <span>Sucursal destino</span>
-                              <select
-                                name="sucursalId"
-                                value={formData.sucursalId}
-                                onChange={handleChange}
-                                disabled={loading || isSucursalPrincipalLocked}
-                                required
-                              >
-                                <option value="">Selecciona una sucursal</option>
-                                {branches.map((branch) => (
-                                  <option key={branch.id} value={branch.id}>
-                                    {branch.nombre || `Sucursal ${branch.id}`}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          )}
-
-                          {!isSucursalPrincipalLocked && (
-                            <label className="create-user__field create-user__field--full">
-                              <span>Sucursal proveedora</span>
-                              <select
-                                name="sucursalObjetivoId"
-                                value={formData.sucursalObjetivoId}
-                                onChange={handleChange}
-                                disabled={loading}
-                                required={requiresSucursalObjetivo}
-                              >
-                                <option value="">Selecciona una sucursal</option>
-                                {destinationBranches.map((branch) => (
-                                  <option key={branch.id} value={branch.id}>
-                                    {branch.nombre || `Sucursal ${branch.id}`}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          )}
-                        </>
+                        null
                       ) : !isEditableEntryDate ? (
                         <>
                           {!isSucursalPrincipalLocked && (
