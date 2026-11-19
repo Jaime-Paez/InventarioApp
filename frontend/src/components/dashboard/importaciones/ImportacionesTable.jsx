@@ -11015,8 +11015,8 @@ function AlternosSugeridosDialog({ token, data, onClose, notify }) {
       <div className="imp-alternos-sug" role="dialog" aria-modal="true" aria-labelledby="imp-alternos-sug-title">
         <h3 id="imp-alternos-sug-title">¿Agregar como alternos?</h3>
         <p className="imp-alternos-sug__lead">
-          Estos productos nuevos de <strong>{data.casa || 'esta casa'}</strong> tomaron su código de un producto de otra casa
-          (la misma pieza). ¿Los agrego a su lista de alternos? También comparten OEM.
+          Estos productos nuevos de <strong>{data.casa || 'esta casa'}</strong> son la misma pieza (mismo código base) que un
+          producto de otra casa. Al agregarlos quedan como alternos de ese producto y de todo su grupo de alternos, y comparten OEM.
         </p>
         <div className="imp-alternos-sug__list">
           {items.map((it) => {
