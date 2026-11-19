@@ -4275,6 +4275,7 @@ const HISTORIAL_ETAPAS = [
   { key: 'verificacion', label: 'Verificación', desde: ['confirmacion', 'en_camino', 'importada'] },
   { key: 'confirmacion', label: 'Confirmación', desde: ['en_camino', 'importada'] },
   { key: 'en_camino', label: 'En camino', desde: ['importada'] },
+  { key: 'importada', label: 'Importada', desde: ['importada'] },
 ]
 
 function HistorialSugerenciaContent({ imp }) {
@@ -4367,6 +4368,76 @@ function HistorialEnCaminoContent({ imp }) {
   )
 }
 
+// Importada: como quedo al final (lo que llego, precio final y cuanto fue a
+// cada sucursal).
+function HistorialImportadaContent({ imp }) {
+  const [productSearch, setProductSearch] = useState('')
+  const detalles = imp.detalles || []
+  const { sucursales, porProducto } = useMemo(() => {
+    const envios = Array.isArray(imp?.envios) ? imp.envios : []
+    const mapa = new Map()
+    const sucursalesMap = new Map()
+    envios.forEach((envio) => {
+      const sucursalId = envio.sucursal_id
+      if (sucursalId != null) sucursalesMap.set(sucursalId, envio.sucursal_nombre || `Sucursal ${sucursalId}`)
+      ;(envio.detalles || []).forEach((det) => {
+        if (det.producto_id == null) return
+        const key = `${det.producto_id}:${sucursalId}`
+        mapa.set(key, (mapa.get(key) || 0) + Number(det.cantidad || 0))
+      })
+    })
+    return {
+      porProducto: mapa,
+      sucursales: Array.from(sucursalesMap.entries()).map(([id, nombre]) => ({ id, nombre })).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+    }
+  }, [imp?.envios])
+  const cols = [
+    'minmax(110px, 0.9fr)', 'minmax(200px, 2.2fr)', 'minmax(100px, 1fr)', '76px', '100px',
+    ...sucursales.map(() => '72px'),
+    'minmax(160px, 1.6fr)',
+  ]
+  const rowStyle = { gridTemplateColumns: cols.join(' '), width: '100%', minWidth: 822 + sucursales.length * 72 }
+  const dinero = (v) => (v != null && v !== '' ? `$${Number(v).toFixed(2)}` : '-')
+  const filas = productSearch.trim() ? matchesFirst(detalles, (d) => importItemMatches(d, productSearch)) : detalles
+  return (
+    <div className="imp-historial__embedded">
+      <ImportProductSearch
+        value={productSearch}
+        onChange={setProductSearch}
+        shown={detalles.filter((d) => importItemMatches(d, productSearch)).length}
+        total={detalles.length}
+      />
+      <div className="imp-historial__table-wrap">
+        <div className="create-user__locations-table importaciones-modal__products-table imp-historial__table">
+          <div className="create-user__locations-row create-user__locations-row--head imp-historial__row imp-historial__row--fluid" style={rowStyle}>
+            <span>Código</span><span>Descripción</span><span>Referencia</span><span>Llegó</span><span>Precio final</span>
+            {sucursales.map((suc) => <span key={suc.id} data-title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</span>)}
+            <span>Comentario</span>
+          </div>
+          {!detalles.length ? (
+            <div className="create-user__locations-row create-user__locations-row--empty" style={{ gridTemplateColumns: '1fr' }}>
+              <span>La importación no tiene productos.</span>
+            </div>
+          ) : filas.map((d) => (
+            <div key={d.id} className={`create-user__locations-row imp-historial__row imp-historial__row--fluid${productSearch.trim() && importItemMatches(d, productSearch) ? ' imp-search-hit' : ''}`} style={rowStyle}>
+              <span><span className="imp-table-cell-text imp-table-cell-text--full">{d.producto?.codigo || d.codigo || '-'}</span></span>
+              <span><span className="imp-table-cell-text">{d.producto?.nombre || d.nombre || '-'}</span></span>
+              <span><span className="imp-table-cell-text">{getDetalleReferencia(d) || '-'}</span></span>
+              <span style={{ fontWeight: 600 }}>{llegoCantidad(d) ?? '-'}</span>
+              <span>{dinero(llegoPrecio(d))}</span>
+              {sucursales.map((suc) => {
+                const cant = d.producto?.id != null ? porProducto.get(`${d.producto.id}:${suc.id}`) : null
+                return <span key={suc.id} style={{ fontWeight: 600 }}>{cant || '-'}</span>
+              })}
+              <span><span className="imp-table-cell-text">{llegoComentario(d) || '-'}</span></span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function HistorialImportacionModal({ imp, onClose }) {
   const etapas = HISTORIAL_ETAPAS.filter((etapa) => etapa.desde.includes(imp?.estado))
   const [tab, setTab] = useState(() => etapas[etapas.length - 1]?.key || null)
@@ -4377,7 +4448,7 @@ function HistorialImportacionModal({ imp, onClose }) {
         <header className="imp-aceptados-popup__header">
           <div>
             <h3>Historial</h3>
-            <p>{`Lo que pasó en las etapas anteriores de ${imp.codigo}`}</p>
+            <p>{`Lo que pasó en cada etapa de ${imp.codigo}`}</p>
           </div>
           <button type="button" className="imp-aceptados-popup__close" onClick={onClose} aria-label="Cerrar">
             <i className="pi pi-times" />
@@ -4410,6 +4481,7 @@ function HistorialImportacionModal({ imp, onClose }) {
               )}
               {activa?.key === 'confirmacion' && <HistorialConfirmacionModal key="confirmacion" imp={imp} onClose={onClose} embedded />}
               {activa?.key === 'en_camino' && <HistorialEnCaminoContent key="en_camino" imp={imp} />}
+              {activa?.key === 'importada' && <HistorialImportadaContent key="importada" imp={imp} />}
             </>
           )}
         </div>
