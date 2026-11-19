@@ -1055,22 +1055,31 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
   const alternosHoverCardRef = useRef(null)
   const alternosHoverTimerRef = useRef(null)
   const alternosCacheRef = useRef({})
-  const showAlternosHover = useCallback((event, productoId) => {
-    if (!productoId) return
+  // `row`: fila de la importacion. Si su producto ya esta en el catalogo se ve
+  // el stock de el y sus alternos; si es nuevo (todavia sin producto), el de
+  // sus posibles alternos (mismo codigo base u OEM).
+  const showAlternosHover = useCallback((event, row) => {
+    const productoId = row?.productoId ?? null
+    const codigo = String(row?.codigo || '').trim()
+    if (!productoId && !codigo) return
+    const cacheKey = productoId ? `p:${productoId}` : `c:${codigo}|${row?.oem || ''}`
+    const url = productoId
+      ? `${API_URL}/productos/listado/${productoId}/stock-alternos/`
+      : `${API_URL}/productos/listado/stock-alternos-codigo/?codigo=${encodeURIComponent(codigo)}&oem=${encodeURIComponent(row?.oem || '')}`
     if (alternosHoverTimerRef.current) clearTimeout(alternosHoverTimerRef.current)
     const rect = event.currentTarget.getBoundingClientRect()
-    const trigger = { triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left }
+    const trigger = { triggerTop: rect.top, triggerBottom: rect.bottom, triggerLeft: rect.left, codigo }
     alternosHoverTimerRef.current = setTimeout(async () => {
       alternosHoverTimerRef.current = null
-      if (alternosCacheRef.current[productoId]) {
-        setAlternosHover({ ...trigger, data: alternosCacheRef.current[productoId] })
+      if (alternosCacheRef.current[cacheKey]) {
+        setAlternosHover({ ...trigger, data: alternosCacheRef.current[cacheKey] })
         return
       }
       setAlternosHover({ ...trigger, data: 'loading' })
       try {
-        const resp = await authFetch(`${API_URL}/productos/listado/${productoId}/stock-alternos/`, {}, token)
+        const resp = await authFetch(url, {}, token)
         const data = resp.ok ? await resp.json() : null
-        alternosCacheRef.current[productoId] = data
+        if (data) alternosCacheRef.current[cacheKey] = data
         setAlternosHover(prev => (prev ? { ...prev, data } : prev))
       } catch {
         setAlternosHover(prev => (prev ? { ...prev, data: null } : prev))
@@ -2377,11 +2386,11 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                               >
                                 <span className="imp-table-cell-text imp-table-cell-text--full">{row.codigo || '-'}</span>
                               </span>
-                              {row.productoId != null && (
+                              {(row.productoId != null || row.codigo) && (
                                 <Info
                                   size={13}
                                   className="imp-distribucion__info-icon"
-                                  onMouseEnter={(e) => showAlternosHover(e, row.productoId)}
+                                  onMouseEnter={(e) => showAlternosHover(e, row)}
                                   onMouseLeave={hideAlternosHover}
                                 />
                               )}
@@ -2411,8 +2420,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                               return (
                                 <span
                                   key={suc.id}
-                                  onMouseEnter={row.productoId != null ? (e) => showAlternosHover(e, row.productoId) : undefined}
-                                  onMouseLeave={row.productoId != null ? hideAlternosHover : undefined}
+                                  onMouseEnter={(e) => showAlternosHover(e, row)}
+                                  onMouseLeave={hideAlternosHover}
                                 >
                                   <input
                                     type="number" min="0" max={ceiling}
@@ -2420,8 +2429,8 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                                     disabled={isMatriz || submitting}
                                     readOnly={isMatriz}
                                     onChange={(e) => !isMatriz && updateDistribution(row, suc.id, e.target.value)}
-                                    onFocus={row.productoId != null ? (e) => showAlternosHover(e, row.productoId) : undefined}
-                                    onBlur={row.productoId != null ? hideAlternosHover : undefined}
+                                    onFocus={(e) => showAlternosHover(e, row)}
+                                    onBlur={hideAlternosHover}
                                     title={isMatriz ? 'Calculado automáticamente: total menos lo asignado a otras sucursales' : undefined}
                                     className={`imp-distribucion__cantidad-input${isMatriz ? ' imp-distribucion__cantidad-input--matriz' : ''}`}
                                   />
@@ -2859,8 +2868,18 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
           ) : !alternosHover.data ? (
             <div className="imp-alternos-hover-card__message">No se pudo cargar la información.</div>
           ) : alternosHover.data.sucursales.length === 0 ? (
-            <div className="imp-alternos-hover-card__message">Sin stock registrado en ninguna sucursal.</div>
+            <div className="imp-alternos-hover-card__message">
+              {alternosHover.data.posibles
+                ? `${alternosHover.codigo || 'Este producto'} es nuevo y ninguno de sus posibles alternos (mismo código base u OEM) tiene stock.`
+                : 'Sin stock registrado en ninguna sucursal.'}
+            </div>
           ) : (
+            <>
+            {alternosHover.data.posibles && (
+              <div className="imp-alternos-hover-card__message" style={{ paddingBottom: 4 }}>
+                {alternosHover.codigo || 'Este producto'} es nuevo: stock de sus posibles alternos (mismo código base u OEM).
+              </div>
+            )}
             <table className="imp-alternos-hover-card__table imp-alternos-hover-card__table--stock">
               <thead>
                 <tr>
@@ -2879,6 +2898,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                 ))}
               </tbody>
             </table>
+            </>
           )}
         </div>,
         getPortalRoot()

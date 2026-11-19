@@ -699,25 +699,9 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 oems = OEMProducto.objects.filter(producto_id=alterno_id, oem_id__in=oem_ids).delete()[0]
         return Response({"vinculos_borrados": vinculos, "oems_quitados": oems}, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=["get"], url_path="stock-alternos")
-    def stock_alternos(self, request, pk=None):
-        """Stock por sucursal de este producto y todos sus alternos (útil para decidir
-        cuántas unidades enviar a cada sucursal durante una distribución)."""
-        producto = self.get_object()
-        group_ids = get_alterno_group_ids(producto.id)
-
-        productos_list = list(Producto.objects.filter(id__in=group_ids))
-        productos_list.sort(key=lambda p: (p.id != producto.id, p.codigo))
-        productos_payload = [
-            {
-                "id": p.id,
-                "codigo": p.codigo,
-                "nombre": p.nombre,
-                "es_principal": p.id == producto.id,
-            }
-            for p in productos_list
-        ]
-
+    @staticmethod
+    def _stock_por_sucursal(group_ids, principal_id=None, *, solo_con_stock=False):
+        """{productos, sucursales, stock} de esos productos: stock por sucursal."""
         inventario_rows = (
             Inventario.objects.filter(producto_id__in=group_ids)
             .values(
@@ -727,7 +711,6 @@ class ProductoViewSet(viewsets.ModelViewSet):
             )
             .annotate(total=Sum("cantidad"))
         )
-
         sucursales_map = {}
         stock = {}
         for row in inventario_rows:
@@ -738,19 +721,59 @@ class ProductoViewSet(viewsets.ModelViewSet):
             sucursales_map[sucursal_id] = row["subdivision__division__bodega__sucursal__nombre"]
             stock.setdefault(str(row["producto_id"]), {})[str(sucursal_id)] = total
 
+        productos_list = list(Producto.objects.filter(id__in=group_ids))
+        if solo_con_stock:
+            productos_list = [p for p in productos_list if str(p.id) in stock]
+        productos_list.sort(key=lambda p: (p.id != principal_id, p.codigo))
+        productos_payload = [
+            {
+                "id": p.id,
+                "codigo": p.codigo,
+                "nombre": p.nombre,
+                "es_principal": p.id == principal_id,
+            }
+            for p in productos_list
+        ]
         sucursales_payload = [
             {"id": sucursal_id, "nombre": nombre}
             for sucursal_id, nombre in sorted(sucursales_map.items(), key=lambda kv: kv[1])
         ]
+        return {"productos": productos_payload, "sucursales": sucursales_payload, "stock": stock}
 
-        return Response(
-            {
-                "productos": productos_payload,
-                "sucursales": sucursales_payload,
-                "stock": stock,
-            },
-            status=status.HTTP_200_OK,
-        )
+    @action(detail=True, methods=["get"], url_path="stock-alternos")
+    def stock_alternos(self, request, pk=None):
+        """Stock por sucursal de este producto y todos sus alternos (útil para decidir
+        cuántas unidades enviar a cada sucursal durante una distribución)."""
+        producto = self.get_object()
+        group_ids = get_alterno_group_ids(producto.id) | {producto.id}
+        return Response(self._stock_por_sucursal(group_ids, producto.id), status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="stock-alternos-codigo")
+    def stock_alternos_codigo(self, request):
+        """Para un producto que todavia no esta en el catalogo (nuevo de una
+        importacion): stock por sucursal de sus posibles alternos, los que
+        comparten el codigo base (mismos 5 primeros caracteres) o un OEM, mas
+        sus grupos de alternos. Solo los que tienen stock en alguna sucursal.
+        Params: codigo, oem (separados por coma)."""
+        codigo = str(request.query_params.get("codigo") or "").strip()
+        oems = [o.strip().upper() for o in str(request.query_params.get("oem") or "").replace(";", ",").split(",") if o.strip()]
+        filtro = Q()
+        base = codigo_base(codigo)
+        if base:
+            filtro |= Q(codigo__istartswith=base)
+        if oems:
+            filtro |= Q(oem_productos__oem__codigo__in=oems)
+        if not filtro:
+            return Response({"productos": [], "sucursales": [], "stock": {}, "posibles": True}, status=status.HTTP_200_OK)
+        ids = set(Producto.objects.filter(filtro, activo=True).values_list("id", flat=True)[:200])
+        group_ids = set()
+        for pid in ids:
+            if pid not in group_ids:
+                group_ids |= get_alterno_group_ids(pid)
+        group_ids = set(Producto.objects.filter(id__in=group_ids, activo=True).values_list("id", flat=True))
+        data = self._stock_por_sucursal(group_ids, solo_con_stock=True)
+        data["posibles"] = True
+        return Response(data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get", "post"], url_path="comentarios")
     def comentarios(self, request, pk=None):
