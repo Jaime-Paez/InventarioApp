@@ -3592,7 +3592,9 @@ function CreateEntrada({
   const handleSubmit = async (event, options = {}) => {
     event.preventDefault()
     if (isCasaComercialStep || justTransitionedFromCasaRef.current) return
-    const guardarBorrador = Boolean(options?.guardarBorrador) && isTraslado
+    // Traslado que no es por Uber: primero se guarda; la solicitud se crea
+    // despues, al abrirla de nuevo (detalle de la entrada).
+    const guardarBorrador = isTraslado && (Boolean(options?.guardarBorrador) || !formData.urgente)
     setError('')
 
     if (!entradaTipoId) {
@@ -5491,6 +5493,9 @@ function CreateEntrada({
                     {loading ? 'Guardando...' : 'Guardar'}
                   </button>
                 )}
+                {/* Traslado: "Crear solicitud" solo si es por Uber; si no, solo
+                    se guarda y se crea despues al abrirla de nuevo. */}
+                {(!isTraslado || formData.urgente) && (
                 <button
                   type="submit"
                   className="create-user__action create-user__action--primary"
@@ -5502,6 +5507,7 @@ function CreateEntrada({
                       ? 'Verificando ubicaciones...'
                       : (isTraslado ? 'Crear solicitud de traslado' : 'Crear entrada')}
                 </button>
+                )}
               </div>
             )}
           </div>
