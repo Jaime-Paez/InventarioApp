@@ -579,6 +579,11 @@ class ProductoViewSet(viewsets.ModelViewSet):
         ]
         if not subs:
             raise ValidationError({"subdivision_ids": "Esas ubicaciones no son de este grupo de alternos."})
+        # Se unifica por sucursal: todas las ubicaciones deben ser de la misma.
+        sucursales = {sub.division.bodega.sucursal_id for sub in subs}
+        sucursal_pedida = str(request.data.get("sucursal_id") or "").strip()
+        if len(sucursales) > 1 or (sucursal_pedida and sucursal_pedida not in {str(x) for x in sucursales}):
+            raise ValidationError({"subdivision_ids": "Unifica las ubicaciones de una sola sucursal a la vez."})
         existentes = set(
             Inventario.objects.filter(producto_id__in=grupo, subdivision_id__in=[s.id for s in subs])
             .values_list("producto_id", "subdivision_id")

@@ -133,29 +133,77 @@
 .nombre-grupo__opcion.is-elegido span { color: inherit; font-weight: 600; }
 .nombre-grupo__opcion:disabled { cursor: default; opacity: 0.6; }
 
-/* Unificar ubicaciones: una fila por ubicacion, agrupadas por sucursal. */
-.ubic-grupo__sucursal {
-  margin: 6px 4px 2px;
-  font-size: 0.74rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--color-text-secondary);
-}
-.ubic-grupo__opcion {
+/* Unificar ubicaciones: pestanas por sucursal y una fila por ubicacion. */
+.ubic-grupo__sucursales {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
-  align-items: baseline;
-  padding: 6px 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  font-size: 0.84rem;
+  gap: 6px;
+  margin-top: 12px;
+}
+.ubic-grupo__sucursal-tab {
+  padding: 5px 12px;
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
   cursor: pointer;
 }
-.ubic-grupo__opcion input { margin: 0; align-self: center; cursor: pointer; }
-.ubic-grupo__opcion strong { min-width: 90px; }
-.ubic-grupo__bodega { color: var(--color-text-secondary); font-size: 0.78rem; }
-.ubic-grupo__productos { flex-basis: 100%; padding-left: 22px; color: var(--color-text-secondary); font-size: 0.78rem; }
-.ubic-grupo__opcion:hover { background: var(--color-surface-hover, rgba(148, 163, 184, 0.14)); }
-.ubic-grupo__opcion.is-elegido { border-color: var(--color-primary, #1e3a5f); background: rgba(30, 58, 95, 0.08); }
+.ubic-grupo__sucursal-tab:hover:not(:disabled):not(.is-activa) { background: var(--color-surface-hover, rgba(148, 163, 184, 0.14)); }
+.ubic-grupo__sucursal-tab.is-activa {
+  border-color: var(--color-primary, #1e3a5f);
+  background: var(--color-primary, #1e3a5f);
+  color: #fff;
+  font-weight: 600;
+}
+.ubic-grupo__lista {
+  margin-top: 10px;
+  border: 1px solid var(--color-border, #cbd5e1);
+  border-radius: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.ubic-grupo__lista .ubic-grupo__fila {
+  display: grid;
+  grid-template-columns: 16px minmax(90px, 0.9fr) minmax(0, 1.6fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+  font-size: 0.84rem;
+  font-weight: 400;
+  cursor: pointer;
+}
+.ubic-grupo__lista .ubic-grupo__fila:last-child { border-bottom: none; }
+.ubic-grupo__lista .ubic-grupo__fila:hover { background: var(--color-surface-hover, rgba(148, 163, 184, 0.1)); }
+.ubic-grupo__lista .ubic-grupo__fila.is-elegido { background: rgba(30, 58, 95, 0.06); }
+.ubic-grupo__lista input.ubic-grupo__check {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  padding: 0;
+  border-radius: 3px;
+  box-shadow: none;
+  accent-color: var(--color-primary, #1e3a5f);
+  cursor: pointer;
+}
+.ubic-grupo__ubicacion { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.ubic-grupo__ubicacion strong { font-weight: 600; }
+.ubic-grupo__ubicacion small { color: var(--color-text-secondary); font-size: 0.74rem; }
+.ubic-grupo__productos {
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ubic-grupo__estado {
+  font-size: 0.74rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+.ubic-grupo__estado.is-falta { color: #b45309; font-weight: 600; }

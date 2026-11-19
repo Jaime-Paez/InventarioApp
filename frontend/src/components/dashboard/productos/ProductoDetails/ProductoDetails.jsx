@@ -332,16 +332,28 @@ function ProductoDetails({
       const data = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(data?.detail || 'No se pudieron cargar las ubicaciones del grupo.')
       const ubicaciones = Array.isArray(data?.ubicaciones) ? data.ubicaciones : []
+      const totalProductos = Number(data?.total_productos) || 0
+      // Es por sucursal: empieza en la primera donde a alguien le falte una ubicacion.
+      const conFaltantes = ubicaciones.find((u) => u.productos.length < totalProductos)
+      const sucursalId = String((conFaltantes || ubicaciones[0])?.sucursal_id ?? '')
       setUbicGrupoDialog({
         loading: false,
         ubicaciones,
-        totalProductos: Number(data?.total_productos) || 0,
-        seleccion: new Set(ubicaciones.map((u) => u.subdivision_id)),
+        totalProductos,
+        sucursalId,
+        seleccion: new Set(ubicaciones.filter((u) => String(u.sucursal_id) === sucursalId).map((u) => u.subdivision_id)),
       })
     } catch (e) {
       setUbicGrupoDialog(null)
       notifyError(e?.message || 'No se pudieron cargar las ubicaciones del grupo.')
     }
+  }
+  const escogerSucursalUbicGrupo = (sucursalId) => {
+    setUbicGrupoDialog((prev) => (prev ? {
+      ...prev,
+      sucursalId: String(sucursalId),
+      seleccion: new Set(prev.ubicaciones.filter((u) => String(u.sucursal_id) === String(sucursalId)).map((u) => u.subdivision_id)),
+    } : prev))
   }
   const toggleUbicacionGrupo = (subdivisionId) => {
     setUbicGrupoDialog((prev) => {
@@ -359,7 +371,7 @@ function ProductoDetails({
     try {
       const response = await authFetch(
         `${API_URL}/productos/listado/${resolvedProductoId}/ubicaciones-grupo/`,
-        { method: 'POST', body: JSON.stringify({ subdivision_ids: ids }) },
+        { method: 'POST', body: JSON.stringify({ subdivision_ids: ids, sucursal_id: ubicGrupoDialog?.sucursalId || null }) },
         token
       )
       const data = await response.json().catch(() => ({}))
@@ -2817,7 +2829,14 @@ function ProductoDetails({
         </div>
       )}
 
-      {ubicGrupoDialog && (
+      {ubicGrupoDialog && (() => {
+        const sucursalesUbic = []
+        ubicGrupoDialog.ubicaciones.forEach((u) => {
+          const id = String(u.sucursal_id ?? '')
+          if (!sucursalesUbic.some((x) => x.id === id)) sucursalesUbic.push({ id, nombre: u.sucursal || 'Sin sucursal' })
+        })
+        const ubicSucursal = ubicGrupoDialog.ubicaciones.filter((u) => String(u.sucursal_id ?? '') === ubicGrupoDialog.sucursalId)
+        return (
         <div className="user-details__confirm-overlay">
           <div className="user-details__confirm-dialog" style={{ width: 'min(620px, 92vw)', alignItems: 'flex-start' }}>
             <div className="user-details__confirm-icon">
@@ -2826,7 +2845,7 @@ function ProductoDetails({
             <div className="user-details__confirm-content" style={{ width: '100%' }}>
               <h4>Unificar ubicaciones</h4>
               <p>
-                Las ubicaciones marcadas quedarán en {formData.codigo || 'este producto'} y en sus {originalAlternativas.length} alterno{originalAlternativas.length === 1 ? '' : 's'}
+                Escoge la sucursal: las ubicaciones marcadas quedarán en {formData.codigo || 'este producto'} y en sus {originalAlternativas.length} alterno{originalAlternativas.length === 1 ? '' : 's'}
                 {' '}(en 0 donde no la tengan). El stock no se mueve.
               </p>
               {ubicGrupoDialog.loading ? (
@@ -2838,30 +2857,45 @@ function ProductoDetails({
                 />
               ) : (
                 <>
-                  <small className="muted" style={{ display: 'block', marginTop: 10 }}>Desmarca las que no quieras copiar.</small>
-                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 6, marginTop: 6, maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {ubicGrupoDialog.ubicaciones.map((ubic, index, list) => {
-                      const nuevaSucursal = index === 0 || list[index - 1].sucursal_id !== ubic.sucursal_id
+                  <div className="ubic-grupo__sucursales" role="tablist">
+                    {sucursalesUbic.map((suc) => (
+                      <button
+                        type="button"
+                        role="tab"
+                        key={`ubic-suc-${suc.id}`}
+                        className={`ubic-grupo__sucursal-tab${suc.id === ubicGrupoDialog.sucursalId ? ' is-activa' : ''}`}
+                        aria-selected={suc.id === ubicGrupoDialog.sucursalId}
+                        onClick={() => escogerSucursalUbicGrupo(suc.id)}
+                        disabled={ubicGrupoSaving}
+                      >
+                        {suc.nombre}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="ubic-grupo__lista">
+                    {ubicSucursal.map((ubic) => {
                       const marcada = ubicGrupoDialog.seleccion.has(ubic.subdivision_id)
                       const faltan = Math.max(0, ubicGrupoDialog.totalProductos - ubic.productos.length)
                       return (
-                        <div key={`ubic-grupo-${ubic.subdivision_id}`}>
-                          {nuevaSucursal && <div className="ubic-grupo__sucursal">{ubic.sucursal || 'Sin sucursal'}</div>}
-                          <label className={`ubic-grupo__opcion${marcada ? ' is-elegido' : ''}`}>
-                            <input
-                              type="checkbox"
-                              checked={marcada}
-                              onChange={() => toggleUbicacionGrupo(ubic.subdivision_id)}
-                              disabled={ubicGrupoSaving}
-                            />
+                        <label key={`ubic-grupo-${ubic.subdivision_id}`} className={`ubic-grupo__fila${marcada ? ' is-elegido' : ''}`}>
+                          <input
+                            type="checkbox"
+                            className="ubic-grupo__check"
+                            checked={marcada}
+                            onChange={() => toggleUbicacionGrupo(ubic.subdivision_id)}
+                            disabled={ubicGrupoSaving}
+                          />
+                          <span className="ubic-grupo__ubicacion">
                             <strong>{ubic.nombre}</strong>
-                            <span className="ubic-grupo__bodega">{ubic.bodega}</span>
-                            <span className="ubic-grupo__productos">
-                              {ubic.productos.map((p) => `${p.codigo} (${p.cantidad})`).join(', ')}
-                              {faltan > 0 ? ` · se agrega a ${faltan}` : ' · ya la tienen todos'}
-                            </span>
-                          </label>
-                        </div>
+                            <small>{ubic.bodega}</small>
+                          </span>
+                          <span className="ubic-grupo__productos" data-title={ubic.productos.map((p) => `${p.codigo} (${p.cantidad})`).join(', ')}>
+                            {ubic.productos.map((p) => `${p.codigo} (${p.cantidad})`).join(', ')}
+                          </span>
+                          <span className={`ubic-grupo__estado${faltan > 0 ? ' is-falta' : ''}`}>
+                            {faltan > 0 ? `Se agrega a ${faltan}` : 'Ya la tienen todos'}
+                          </span>
+                        </label>
                       )
                     })}
                   </div>
@@ -2888,7 +2922,8 @@ function ProductoDetails({
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {pendingAlternoSync && (
         <div className="user-details__confirm-overlay">
