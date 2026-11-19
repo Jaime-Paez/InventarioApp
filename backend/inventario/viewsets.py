@@ -1144,10 +1144,10 @@ class InventarioViewSet(viewsets.ModelViewSet):
     def _principal_by_product(self, branch_id):
         """{producto_id: (ubicacion, cantidad)} de la ubicacion principal en la
         sucursal, con la misma regla que la celda de la tabla (solo productos
-        con stock en alguna ubicacion de la sucursal)."""
+        con ubicacion en la sucursal, tambien si esta en 0)."""
         product_ids = set(
             Inventario.objects.filter(
-                subdivision__division__bodega__sucursal_id=branch_id, cantidad__gt=0
+                subdivision__division__bodega__sucursal_id=branch_id
             ).values_list("producto_id", flat=True)
         )
         payloads = self._build_branch_location_payloads(product_ids, [branch_id])
@@ -1321,10 +1321,8 @@ class InventarioViewSet(viewsets.ModelViewSet):
 
         payload_by_product = {}
         for (product_id, branch_id), locations in locations_by_product_branch.items():
-            # Sin stock en ninguna ubicacion de la sucursal: igual que antes,
-            # la celda queda vacia.
-            if not any(int(location.get("cantidad") or 0) > 0 for location in locations):
-                continue
+            # Aunque este en 0 en toda la sucursal, se muestra su ubicacion:
+            # es la que indica donde va el repuesto cuando llegue.
             ordered_locations, principal = order_branch_locations(product_id, locations, user_order)
             ordered_locations = [principal] + [
                 location for location in ordered_locations if location is not principal
