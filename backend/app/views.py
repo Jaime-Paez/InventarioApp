@@ -1339,6 +1339,12 @@ def _build_random_inspection_reminder(inspection, user, *, branch_nombre=None, t
         "id": str(int(user.id)),
         "name": _format_user_display_name(user),
     }
+    # Revision compartida: le llega a todos los que la cuentan.
+    recipients = [recipient]
+    if getattr(inspection, "pk", None):
+        for other in [inspection.usuario, *inspection.colaboradores.all()]:
+            if other is not None and int(other.id) != int(user.id):
+                recipients.append({"id": str(int(other.id)), "name": _format_user_display_name(other)})
     total_items = _normalize_int(getattr(inspection, "total_items", 0), 0)
     if total_items <= 0:
         total_items = RANDOM_INSPECTION_DEFAULT_ITEMS_PER_DAY
@@ -1360,7 +1366,7 @@ def _build_random_inspection_reminder(inspection, user, *, branch_nombre=None, t
         "time": reminder_time,
         "description": description,
         "creator": {"id": "sistema", "name": "Sistema"},
-        "recipients": [recipient],
+        "recipients": recipients,
         "context": {
             "type": RANDOM_INSPECTION_CONTEXT_TYPE,
             "id": str(int(inspection.id)),
@@ -1445,13 +1451,16 @@ def _upsert_random_inspection_reminder(
             if branch_nombre is None and existing_reminder.get("description"):
                 merged["description"] = existing_reminder["description"]
         if mark_completed or inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA:
-            completed_by = set(_merge_completed_by(merged.get("completedBy") or [], [recipient_id]))
+            # Compartida: al enviarla uno, queda hecha para todos.
+            done_ids = [recipient_id, *[str(uid) for uid in _random_inspection_participant_ids(inspection)]]
+            completed_by = set(_merge_completed_by(merged.get("completedBy") or [], done_ids))
             merged["completedBy"] = sorted(completed_by)
         existing_payload[target_index] = merged
     else:
         if mark_completed or inspection.estado == InspeccionAleatoriaDiaria.Estados.COMPLETADA:
+            done_ids = [recipient_id, *[str(uid) for uid in _random_inspection_participant_ids(inspection)]]
             reminder["completedBy"] = sorted(
-                set(_merge_completed_by(reminder.get("completedBy") or [], [recipient_id]))
+                set(_merge_completed_by(reminder.get("completedBy") or [], done_ids))
             )
         existing_payload = [reminder, *existing_payload]
 
@@ -2107,6 +2116,12 @@ def _serialize_random_inspection(inspection, *, viewer=None):
         "id": int(inspection.id),
         "codigo": _normalize_text(getattr(inspection, "codigo", "")),
         "usuario_id": int(inspection.usuario_id),
+        # Revision compartida: quienes la cuentan (el asignado primero).
+        "participantes": [
+            {"id": int(person.id), "nombre": _format_user_display_name(person)}
+            for person in [inspection.usuario, *inspection.colaboradores.all()]
+            if person is not None
+        ] if getattr(inspection, "pk", None) else [],
         "fecha_programada": inspection.fecha_programada.isoformat(),
         "estado": str(inspection.estado or "").strip(),
         "total_items": int(inspection.total_items or len(inspection_items)),
@@ -4072,15 +4087,32 @@ def _get_random_inspection_queryset():
             "items__producto",
             "items__verificado_por",
             "items__encontrado_en__division__bodega",
+            "colaboradores",
         )
         .order_by("-fecha_programada", "-id")
     )
 
 
+def _random_inspection_participant_ids(inspection):
+    """El asignado y los que cuentan con el (revision compartida)."""
+    if inspection is None:
+        return []
+    ids = [int(inspection.usuario_id)]
+    if getattr(inspection, "pk", None):
+        ids += [int(uid) for uid in inspection.colaboradores.values_list("id", flat=True) if int(uid) not in ids]
+    return ids
+
+
+def _is_random_inspection_participant(inspection, user):
+    if inspection is None or user is None or not getattr(user, "is_authenticated", False):
+        return False
+    return int(user.id) in _random_inspection_participant_ids(inspection)
+
+
 def _can_access_random_inspection(user, inspection):
     if inspection is None or user is None or not getattr(user, "is_authenticated", False):
         return False
-    if int(inspection.usuario_id) == int(user.id):
+    if _is_random_inspection_participant(inspection, user):
         return True
     return _can_verify_random_inspection(user)
 
@@ -4254,6 +4286,32 @@ def _sync_division_inspection_items(inspection_id):
         inspection.borrador_version = int(inspection.borrador_version or 0) + 1
         inspection.save(update_fields=["total_items", "borrador_version", "updated_at"])
         return True
+
+
+class RandomInspectionVersionAPIView(APIView):
+    """Lo minimo para el tiempo real: version del borrador y estado. Cada
+    dispositivo lo consulta seguido y solo trae la revision completa cuando
+    la version cambio (otro dispositivo o otra persona conto algo)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, inspection_id):
+        inspection = (
+            InspeccionAleatoriaDiaria.objects.filter(pk=inspection_id)
+            .only("id", "usuario_id", "estado", "borrador_version")
+            .first()
+        )
+        if inspection is None:
+            return Response({"detail": "No se encontro la inspeccion aleatoria."}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_access_random_inspection(request.user, inspection):
+            return Response({"detail": "No tienes permiso para acceder a esta inspeccion."}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            {
+                "version": int(inspection.borrador_version or 0),
+                "estado": str(inspection.estado or "").strip(),
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class RandomInspectionDetailAPIView(APIView):
@@ -4484,7 +4542,7 @@ class RandomInspectionRespondAPIView(APIView):
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
-            if int(inspection.usuario_id) != int(request.user.id):
+            if not _is_random_inspection_participant(inspection, request.user):
                 return Response(
                     {"detail": "Solo el usuario asignado puede responder esta inspeccion."},
                     status=status.HTTP_403_FORBIDDEN,
@@ -4903,7 +4961,7 @@ class RandomInspectionSaveDraftAPIView(APIView):
                     {"detail": "No se encontro la inspeccion aleatoria."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
-            if int(inspection.usuario_id) != int(request.user.id):
+            if not _is_random_inspection_participant(inspection, request.user):
                 return Response(
                     {"detail": "Solo el usuario asignado puede modificar este borrador."},
                     status=status.HTTP_403_FORBIDDEN,
@@ -5023,7 +5081,7 @@ def _pending_inspection_for_reviewer(request, inspection_id, *, lock=False):
             {"detail": "No se encontro la inspeccion aleatoria."},
             status=status.HTTP_404_NOT_FOUND,
         )
-    if int(inspection.usuario_id) != int(request.user.id):
+    if not _is_random_inspection_participant(inspection, request.user):
         return None, Response(
             {"detail": "Solo el usuario asignado puede agregar productos a esta inspeccion."},
             status=status.HTTP_403_FORBIDDEN,
@@ -7543,6 +7601,50 @@ class RandomInspectionSendDivisionAPIView(APIView):
                 )
                 .first()
             )
+            # Revision compartida: la misma division/fila mandada a otra persona
+            # hoy y aun pendiente -> se suma a esa (cuentan juntos, en tiempo
+            # real) en vez de crear otra y contar dos veces lo mismo.
+            if inspection is None or not _is_random_inspection_pending(inspection):
+                shared = (
+                    InspeccionAleatoriaDiaria.objects.select_for_update()
+                    .filter(es_por_division=True, fecha_programada=scheduled_date, **scope_filter)
+                    .exclude(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA)
+                    .exclude(usuario=user)
+                    .order_by("id")
+                    .first()
+                )
+                if shared is not None:
+                    already = shared.colaboradores.filter(pk=user.pk).exists()
+                    if not already:
+                        shared.colaboradores.add(user)
+                        shared.borrador_version = int(shared.borrador_version or 0) + 1
+                        shared.save(update_fields=["borrador_version", "updated_at"])
+                    for participant in [shared.usuario, *shared.colaboradores.all()]:
+                        _upsert_random_inspection_reminder(
+                            store,
+                            shared,
+                            participant,
+                            branch_nombre=f"{scope_label} - {sucursal_nombre}",
+                            time_str=time_str,
+                        )
+                    store.save()
+                    return Response(
+                        {
+                            "usuario_id": int(user.id),
+                            "nombre": _format_user_display_name(user),
+                            "sucursal_id": sucursal_id,
+                            "sucursal_nombre": sucursal_nombre,
+                            "division_id": int(division.id),
+                            "division_nombre": division.nombre,
+                            "subdivision_id": int(subdivision.id) if subdivision else None,
+                            "subdivision_nombre": subdivision.nombre if subdivision else "",
+                            "inspeccion_id": int(shared.id),
+                            "productos": shared.items.count(),
+                            "compartida_con": _format_user_display_name(shared.usuario),
+                            "ya_enviada": already,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
 
             if inspection is not None and not _is_random_inspection_pending(inspection):
                 return Response(
@@ -7810,6 +7912,47 @@ class RandomInspectionSendListAPIView(APIView):
                         },
                         status=status.HTTP_200_OK,
                     )
+
+            # Revision compartida: la misma lista ya mandada hoy a otra persona y
+            # aun pendiente -> se suma a esa en vez de crear otra igual.
+            for shared in (
+                InspeccionAleatoriaDiaria.objects.select_for_update()
+                .filter(sucursal_id=sucursal_id, es_por_lista=True, fecha_programada=scheduled_date)
+                .exclude(estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA)
+                .exclude(usuario=user)
+                .order_by("id")
+                .prefetch_related("items")
+            ):
+                if {int(item.producto_id) for item in shared.items.all()} != requested_ids:
+                    continue
+                already = shared.colaboradores.filter(pk=user.pk).exists()
+                if not already:
+                    shared.colaboradores.add(user)
+                    shared.borrador_version = int(shared.borrador_version or 0) + 1
+                    shared.save(update_fields=["borrador_version", "updated_at"])
+                for participant in [shared.usuario, *shared.colaboradores.all()]:
+                    _upsert_random_inspection_reminder(
+                        store,
+                        shared,
+                        participant,
+                        branch_nombre=f"{sucursal.nombre} (lista especifica)",
+                        time_str=time_str,
+                    )
+                store.save()
+                return Response(
+                    {
+                        "usuario_id": int(user.id),
+                        "nombre": _format_user_display_name(user),
+                        "sucursal_id": sucursal_id,
+                        "sucursal_nombre": sucursal.nombre,
+                        "inspeccion_id": int(shared.id),
+                        "productos": len(product_ids),
+                        "codigos_no_encontrados": not_found_codes,
+                        "compartida_con": _format_user_display_name(shared.usuario),
+                        "ya_enviada": already,
+                    },
+                    status=status.HTTP_200_OK,
+                )
 
             coverage = _calculate_random_inspection_coverage(
                 user,

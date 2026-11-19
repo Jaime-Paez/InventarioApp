@@ -123,6 +123,11 @@ urlpatterns = [
         name="recordatorios-inspeccion-aleatoria-quitar-producto",
     ),
     path(
+        "recordatorios/inspeccion-aleatoria/<int:inspection_id>/version/",
+        views.RandomInspectionVersionAPIView.as_view(),
+        name="recordatorios-inspeccion-aleatoria-version",
+    ),
+    path(
         "recordatorios/inspeccion-aleatoria/<int:inspection_id>/borrador/",
         views.RandomInspectionSaveDraftAPIView.as_view(),
         name="recordatorios-inspeccion-aleatoria-borrador",

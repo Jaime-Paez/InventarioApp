@@ -4691,3 +4691,11 @@
 .quick-actions__review-warning-list li + li {
   margin-top: 4px;
 }
+
+/* Revision compartida: quienes cuentan juntos (en tiempo real). */
+.quick-actions__inspection-participantes {
+  margin-top: 2px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #15803d;
+}

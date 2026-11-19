@@ -188,8 +188,12 @@ const buildInspectionLocationsSignature = (inspection) => (
     .sort()
     .join('|')
 )
-const RANDOM_INSPECTION_SYNC_MS = 5000
-const RANDOM_INSPECTION_DRAFT_SAVE_DEBOUNCE_MS = 700
+// Tiempo real: cada 2 s se pregunta solo la version (liviano); la revision
+// completa se trae cuando cambio, o cada RANDOM_INSPECTION_FULL_SYNC_MS por si
+// solo cambiaron ubicaciones desde Inventario.
+const RANDOM_INSPECTION_SYNC_MS = 2000
+const RANDOM_INSPECTION_FULL_SYNC_MS = 15000
+const RANDOM_INSPECTION_DRAFT_SAVE_DEBOUNCE_MS = 400
 const RANDOM_INSPECTION_CONFLICT_MESSAGE =
   'Esta inspección se actualizó desde otro dispositivo. Se cargaron los datos más recientes: revísalos y vuelve a intentarlo.'
 // Lo que se guarda de un producto en el borrador del servidor, incluido el
@@ -3796,11 +3800,33 @@ function QuickActions({
 
     let cancelled = false
     let inFlight = false
-    const syncFromServer = async () => {
+    let lastFullSyncAt = Date.now()
+    const syncFromServer = async ({ forceFull = false } = {}) => {
       if (cancelled || inFlight || randomInspectionSubmittingRef.current) return
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       inFlight = true
       try {
+        // Primero lo liviano: si nadie cambio nada no se trae la revision.
+        if (!forceFull && Date.now() - lastFullSyncAt < RANDOM_INSPECTION_FULL_SYNC_MS) {
+          const versionResponse = await authFetch(
+            `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(activeRandomInspectionId)}/version/`,
+            {},
+            token
+          )
+          if (versionResponse.ok) {
+            const versionPayload = await versionResponse.json().catch(() => ({}))
+            const estado = String(versionPayload?.estado || '').trim().toLowerCase()
+            const remoteVersion = Number(versionPayload?.version)
+            const localVersion = Number(randomInspectionVersionRef.current)
+            if (
+              estado !== 'completada' &&
+              Number.isFinite(remoteVersion) &&
+              Number.isFinite(localVersion) &&
+              remoteVersion <= localVersion
+            ) return
+          }
+        }
+        lastFullSyncAt = Date.now()
         const response = await authFetch(
           `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(activeRandomInspectionId)}/`,
           {},
@@ -3823,9 +3849,9 @@ function QuickActions({
         const locationsChanged =
           buildInspectionLocationsSignature(serverInspection) !== randomInspectionLocationsSignatureRef.current
         if (Number.isFinite(localVersion) && serverVersion <= localVersion && !locationsChanged) return
-        // Con cambios propios sin guardar no se pisa nada: al guardarlos el
-        // servidor avisa el conflicto y ahi se combinan.
-        if (randomInspectionDirtyItemsRef.current.size > 0 || randomInspectionSaveTimerRef.current) return
+        // Se adopta lo de los demas aunque aca haya cambios sin guardar: lo
+        // editado en ESTE dispositivo no se pisa (applyServerRandomInspection
+        // lo salta) y al guardarlo se suma producto por producto.
         applyServerRandomInspection(serverInspection)
       } catch {
         // Sin conexion: se reintenta en el siguiente ciclo.
@@ -3835,7 +3861,7 @@ function QuickActions({
     }
 
     const intervalId = window.setInterval(() => { void syncFromServer() }, RANDOM_INSPECTION_SYNC_MS)
-    const handleFocus = () => { void syncFromServer() }
+    const handleFocus = () => { void syncFromServer({ forceFull: true }) }
     window.addEventListener('focus', handleFocus)
     document.addEventListener('visibilitychange', handleFocus)
     return () => {
@@ -6915,6 +6941,13 @@ function QuickActions({
                     ? `Fecha: ${formatDate(activeRandomInspection.fecha_programada)}`
                     : (isRandomInspectionVerifyMode ? 'Revisión administrativa de diferencias' : 'Revisión diaria de inventario')}
                 </p>
+                {/* Revision compartida: lo que cuenta cada uno se ve al instante. */}
+                {Array.isArray(activeRandomInspection?.participantes) && activeRandomInspection.participantes.length > 1 && (
+                  <p className="quick-actions__inspection-participantes">
+                    <i className="pi pi-users" aria-hidden="true" />
+                    {` Cuentan juntos: ${activeRandomInspection.participantes.map((p) => p?.nombre).filter(Boolean).join(', ')} · se actualiza en tiempo real`}
+                  </p>
+                )}
               </div>
               <button
                 type="button"

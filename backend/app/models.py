@@ -119,6 +119,14 @@ class InspeccionAleatoriaDiaria(models.Model):
         on_delete=models.CASCADE,
         related_name="inspecciones_aleatorias",
     )
+    # Revision compartida: la misma division/fila o lista enviada a varias
+    # personas es UNA revision que cuentan juntas (en tiempo real), no una
+    # por persona (se contaba dos veces lo mismo).
+    colaboradores = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="inspecciones_aleatorias_compartidas",
+    )
     sucursal = models.ForeignKey(
         "inventario.Sucursal",
         on_delete=models.SET_NULL,
