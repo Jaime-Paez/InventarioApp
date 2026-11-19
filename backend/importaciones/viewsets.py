@@ -1657,7 +1657,10 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         instance.borrador_llegada = None
         instance.save()
 
-        # Register cantidad recibida per detalle and log faltante/sobrante inconvenientes
+        # Se guarda lo que llego (cantidad y precio final y comentario). Ya no
+        # se crean inconvenientes: lo que llego se confirmo en En camino, y las
+        # diferencias se ven en la tabla "Llegaron diferente" de la importada.
+        # (Los inconvenientes quedan para los traslados/envios a sucursales.)
         inconvenientes_resumen = []
         for detalle in detalles_llegada:
             cantidad_recibida, precio_final, comentario = datos_llegada[detalle.id]
@@ -1665,46 +1668,6 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             detalle.precio_final = precio_final
             detalle.comentario_llegada = comentario
             detalle.save(update_fields=["cantidad_recibida", "precio_final", "comentario_llegada"])
-            if not detalle.producto_id:
-                continue
-
-            cantidad_esperada = int(detalle.cantidad or 0)
-            if cantidad_recibida == cantidad_esperada:
-                continue
-
-            tipo = (
-                ImportacionInconveniente.Tipos.FALTANTE
-                if cantidad_recibida < cantidad_esperada
-                else ImportacionInconveniente.Tipos.SOBRANTE
-            )
-            diferencia = abs(cantidad_esperada - cantidad_recibida)
-            inconveniente = ImportacionInconveniente.objects.create(
-                importacion=instance,
-                detalle=detalle,
-                producto_id=detalle.producto_id,
-                tipo=tipo,
-                cantidad_esperada=cantidad_esperada,
-                cantidad_recibida=cantidad_recibida,
-                cantidad_diferencia=diferencia,
-                estado=ImportacionInconveniente.Estados.PENDIENTE,
-                creado_por=request.user,
-            )
-            tipo_label = "faltante" if tipo == ImportacionInconveniente.Tipos.FALTANTE else "sobrante"
-            ImportacionInconvenienteHistorial.objects.create(
-                inconveniente=inconveniente,
-                accion="detectado",
-                detalle=(
-                    f"Se detecto un {tipo_label} de {diferencia} unidades al revisar la llegada. "
-                    f"Esperado: {cantidad_esperada}, recibido: {cantidad_recibida}."
-                    + (f" Comentario: {comentario}" if comentario else "")
-                ),
-                actor=request.user,
-            )
-            producto_label = (
-                detalle.producto.nombre or detalle.producto.codigo or f"Producto {detalle.producto_id}"
-            )
-            verbo = "faltan" if tipo == ImportacionInconveniente.Tipos.FALTANTE else "sobran"
-            inconvenientes_resumen.append(f"{producto_label}: {verbo} {diferencia}")
 
         # (Los dias reales de entrega ya se calcularon al marcar que llego.)
 
