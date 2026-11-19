@@ -1174,8 +1174,8 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-    @transaction.atomic
     @staticmethod
+    @transaction.atomic
     def _alternos_sugeridos(instance):
         """Productos que se crearon en esta importacion con un codigo sugerido
         de otro producto (misma pieza en otra casa, por OEM/codigo base):
