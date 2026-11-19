@@ -730,6 +730,7 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 "id": p.id,
                 "codigo": p.codigo,
                 "nombre": p.nombre,
+                "referencia": p.referencia or "",
                 "es_principal": p.id == principal_id,
             }
             for p in productos_list

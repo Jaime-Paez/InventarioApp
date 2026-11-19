@@ -2355,7 +2355,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   </div>
                 ) : (() => {
                   const matrizSucursal = findMatrizSucursal(sucursales)
-                  const gridCols = `minmax(72px, 0.4fr) minmax(80px, 0.5fr) minmax(140px, 1.6fr) 56px repeat(${sucursales.length}, 62px)`
+                  const gridCols = `minmax(130px, 0.55fr) minmax(90px, 0.5fr) minmax(140px, 1.6fr) 56px repeat(${sucursales.length}, 62px)`
                   return (
                     <>
                     <ImportProductSearch value={filter} onChange={setFilter} shown={rowMatchCount} total={rows.length} />
@@ -2384,7 +2384,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                                 onMouseEnter={(e) => showCellHover(e, row.codigo, 'Código')}
                                 onMouseLeave={hideCellHover}
                               >
-                                <span className="imp-table-cell-text imp-table-cell-text--full">{row.codigo || '-'}</span>
+                                <span className="imp-table-cell-text imp-table-cell-text--full" style={{ whiteSpace: 'nowrap' }}>{row.codigo || '-'}</span>
                               </span>
                               {(row.productoId != null || row.codigo) && (
                                 <Info
@@ -2884,13 +2884,17 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
               <thead>
                 <tr>
                   <th>Producto</th>
+                  <th>Referencia</th>
+                  <th>Descripción</th>
                   {alternosHover.data.sucursales.map(suc => <th key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {alternosHover.data.productos.map(p => (
                   <tr key={p.id} className={p.es_principal ? 'imp-alternos-hover-card__row--principal' : undefined}>
-                    <td title={p.nombre}>{p.codigo}</td>
+                    <td>{p.codigo}</td>
+                    <td className="imp-alternos-hover-card__texto">{p.referencia || '-'}</td>
+                    <td className="imp-alternos-hover-card__texto imp-alternos-hover-card__descripcion">{p.nombre || '-'}</td>
                     {alternosHover.data.sucursales.map(suc => (
                       <td key={suc.id}>{alternosHover.data.stock?.[String(p.id)]?.[String(suc.id)] ?? 0}</td>
                     ))}

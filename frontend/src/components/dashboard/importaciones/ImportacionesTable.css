@@ -1295,8 +1295,18 @@
   border-radius: 10px;
   padding: 10px 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.06);
-  max-width: 480px;
+  max-width: min(900px, 94vw);
   pointer-events: none;
+}
+
+/* Referencia y descripcion en la tabla de stock de alternos. */
+.imp-alternos-hover-card__table td.imp-alternos-hover-card__texto {
+  text-align: left;
+}
+.imp-alternos-hover-card__table td.imp-alternos-hover-card__descripcion {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dashboard-shell.dark .imp-alternos-hover-card {
