@@ -1210,10 +1210,8 @@
   position: absolute;
   top: 6px;
   right: 6px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #ef4444;
+  display: inline-flex;
+  border-radius: 5px;
   color: #fff;
   font-size: 12px;
   font-weight: 800;
@@ -1236,8 +1234,6 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
   font-size: 13px;
   line-height: 1;
   flex-shrink: 0;

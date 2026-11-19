@@ -1,3 +1,4 @@
+import UberIcon from '../common/UberIcon'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowUpDown, Bell, Check, ChevronDown, ClipboardCheck, Loader2, Moon, PackageCheck, Search, SunMedium, Truck, X } from 'lucide-react'
@@ -68,10 +69,10 @@ import {
 const URGENT_SHIELD_NEAR_FULL_MS = 5 * 60 * 60 * 1000
 const URGENT_URGENTE_NEAR_FULL_MS = 5 * 60 * 1000
 const URGENT_DECISION_MESSAGE = 'Tienes una solicitud de traslado pendiente.'
-const URGENT_URGENTE_DECISION_MESSAGE = '¡Urgente! Tienes una solicitud de traslado pendiente.'
+const URGENT_URGENTE_DECISION_MESSAGE = 'Pedido por Uber: tienes una solicitud de traslado pendiente.'
 const URGENT_SHIPMENT_MESSAGE = 'Tienes un envío pendiente por despachar.'
 const URGENT_REJECTED_TRANSFER_MESSAGE = 'Corrige tu solicitud de traslado rechazada.'
-const URGENT_URGENTE_REJECTED_TRANSFER_MESSAGE = '¡Urgente! Corrige tu solicitud de traslado rechazada.'
+const URGENT_URGENTE_REJECTED_TRANSFER_MESSAGE = 'Pedido por Uber: corrige tu solicitud de traslado rechazada.'
 const URGENT_MESSAGE_REVEAL_PROGRESS = 0.48
 const URGENT_SHIELD_TICK_MS = 1000
 const REMINDERS_POLL_MS = 4000
@@ -6527,7 +6528,7 @@ function QuickActions({
           }
         >
           {shield.target?.isUrgente && (
-            <span className="quick-actions__urgent-exclamation" aria-hidden="true">!</span>
+            <span className="quick-actions__urgent-exclamation" aria-hidden="true"><UberIcon size={16} /></span>
           )}
           {shield.id === activeUrgentShield?.id && urgentMessageStyle && (
             <span className="quick-actions__urgent-message" style={urgentMessageStyle} aria-hidden="true">

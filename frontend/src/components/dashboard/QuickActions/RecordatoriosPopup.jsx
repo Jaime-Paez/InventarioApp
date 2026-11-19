@@ -36,6 +36,7 @@ import {
 } from '../common/reminders/remindersStorage'
 import './RecordatoriosPopup.css'
 import TransferRoute from './TransferRoute'
+import UberIcon from '../common/UberIcon'
 
 const REJECTED_TRANSFER_EDITING_EVENT = 'inventario-rejected-transfer-editing'
 
@@ -4017,7 +4018,7 @@ function RecordatoriosPopup({
                               </div>
                             </div>
                             {isUrgenteReminder && (
-                              <span className="recordatorios-popup__urgente-dot" aria-hidden="true">!</span>
+                              <span className="recordatorios-popup__urgente-dot" data-title="Pedido por Uber"><UberIcon size={16} /></span>
                             )}
                           </article>
                         ) }
@@ -4045,7 +4046,7 @@ function RecordatoriosPopup({
                       </>
                     )}
                     {Boolean(activeDecisionReminder?.context?.urgente) && (
-                      <span className="recordatorios-popup__urgente-dot recordatorios-popup__urgente-dot--decision" aria-hidden="true">!</span>
+                      <span className="recordatorios-popup__urgente-dot recordatorios-popup__urgente-dot--decision" data-title="Pedido por Uber"><UberIcon size={18} /></span>
                     )}
                   </h4>
                   {/* Traslado: los datos van en una linea bajo el titulo, como

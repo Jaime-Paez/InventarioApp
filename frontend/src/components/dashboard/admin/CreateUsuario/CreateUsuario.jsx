@@ -1229,7 +1229,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                         />
                         <div>
                           <span>Administrador</span>
-                          <p>Tendra acceso total y no recibira alertas urgentes de traslado.</p>
+                          <p>Tendra acceso total y no recibira alertas de traslados pedidos por Uber.</p>
                         </div>
                       </label>
                     </div>

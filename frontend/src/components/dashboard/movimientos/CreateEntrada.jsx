@@ -5014,7 +5014,7 @@ function CreateEntrada({
                 {isTraslado && (
                   <section className="create-entrada__urgente-zone">
                     <div className="create-entrada__urgente-zone-header">
-                      <span className="create-entrada__urgente-zone-title">Urgente</span>
+                      <span className="create-entrada__urgente-zone-title">Pedido por Uber</span>
                     </div>
                     <div className="create-entrada__urgente-zone-body">
                       <label className="create-entrada__urgente-check-row">
@@ -5031,7 +5031,7 @@ function CreateEntrada({
                           }}
                           disabled={loading}
                         />
-                        <span>Marcar solicitud como urgente</span>
+                        <span>Este traslado se pide por Uber</span>
                       </label>
                     </div>
                   </section>
@@ -5478,8 +5478,8 @@ function CreateEntrada({
               className="create-salida__confirm-card create-salida__confirm-card--urgente"
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <h4>Confirmar urgencia</h4>
-              <p>¿Está seguro de que esta solicitud es urgente?</p>
+              <h4>Pedido por Uber</h4>
+              <p>¿Está seguro de que este traslado se pide por Uber?</p>
               <div className="create-salida__confirm-actions">
                 <button
                   type="button"
@@ -5496,7 +5496,7 @@ function CreateEntrada({
                     setShowUrgenteConfirm(false)
                   }}
                 >
-                  Sí, es urgente
+                  Sí, por Uber
                 </button>
               </div>
             </div>

@@ -3260,7 +3260,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                           <StaticFieldDisplay label="No. de Factura" value={formData.factura_referencia} />
                         )}
                         {isTraslado && (
-                          <StaticFieldDisplay label="Urgente" value={formData.urgente ? 'Sí' : 'No'} />
+                          <StaticFieldDisplay label="Pedido por Uber" value={formData.urgente ? 'Sí' : 'No'} />
                         )}
                       </div>
                     </div>
