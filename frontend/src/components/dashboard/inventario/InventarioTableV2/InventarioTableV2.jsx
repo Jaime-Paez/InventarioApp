@@ -297,6 +297,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       params.set('restock_bodega', '1')
       addIfPresent('restock_sucursal', criteria?.restock_sucursal)
     }
+    if (criteria?.faltan_en_sucursal && criteria?.faltan_sucursal) params.set('faltan_sucursal', String(criteria.faltan_sucursal))
     if (criteria?.sin_precio) params.set('sin_precio', '1')
     if (criteria?.sin_casa) params.set('sin_casa', '1')
     if (criteria?.sin_oem) params.set('sin_oem', '1')
@@ -651,6 +652,8 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     cantidad_max: '',
     restock_bodega: false,
     restock_sucursal: '',
+    faltan_en_sucursal: false,
+    faltan_sucursal: '',
     sin_precio: false,
     sin_costo: false,
     sin_casa: false,
@@ -780,6 +783,10 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       if (nextCriteria.restock_sucursal && !selectedBranchColumns.includes(locationField)) {
         setSelectedBranchColumns((prev) => (prev.includes(locationField) ? prev : [...prev, locationField]))
       }
+      setSearchCriteria(nextCriteria)
+    }
+    if (nextCriteria.faltan_en_sucursal) {
+      nextCriteria.faltan_sucursal = nextCriteria.faltan_sucursal || defaultFaltanBranchId
       setSearchCriteria(nextCriteria)
     }
     lastSearchRef.current = nextCriteria
@@ -2186,7 +2193,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
   // Filtros de la Busqueda avanzada aplicados ahora (para el contador del
   // boton Buscar: al cerrar el modal no se ven y es facil olvidarlos).
   const activeSearchFilterCount = Object.entries(lastSearchRef.current || {}).filter(([key, value]) => {
-    if (key === 'restock_sucursal') return false
+    if (key === 'restock_sucursal' || key === 'faltan_sucursal') return false
     // La ubicacion cuenta como un solo filtro (la sucursal siempre va).
     if (key === 'ubic_bodega' || key === 'ubic_division' || key === 'ubic_subdivision') return false
     if (!canSeeCost && (key === 'costo_min' || key === 'costo_max' || key === 'sin_costo')) return false
@@ -2216,6 +2223,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     .map((field) => /^ubicacion_sucursal_(\d+)$/.exec(String(field))?.[1])
     .find((id) => id && restockBranches.some((branch) => String(branch.id) === id))
   const defaultRestockBranchId = visibleLocationBranchId || (restockBranches[0] ? String(restockBranches[0].id) : '')
+  // "Faltan en una sucursal": por defecto 9 de Octubre.
+  const normalizeBranchName = (value) => String(value || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const defaultFaltanBranchId = String(
+    (knownBranches.find((branch) => /9\s*de\s*oct/.test(normalizeBranchName(branch.nombre))) || knownBranches[0] || {}).id || ''
+  )
 
   useLayoutEffect(() => {
     if (!showBulkSelectConfirm) return
@@ -3053,6 +3065,38 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
                         <select name="restock_sucursal" value={searchCriteria.restock_sucursal || defaultRestockBranchId} onChange={handleSearchInputChange}>
                           {restockBranches.map((branch) => (
                             <option key={`restock-branch-${branch.id}`} value={String(branch.id)}>{branch.nombre}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+
+                  <div className={`inv-search__restock${searchCriteria.faltan_en_sucursal ? ' is-active' : ''}`}>
+                    <label className="inv-search__restock-toggle">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(searchCriteria.faltan_en_sucursal)}
+                        onChange={(event) => {
+                          const checked = event.target.checked
+                          setSearchCriteria((prev) => ({
+                            ...prev,
+                            faltan_en_sucursal: checked,
+                            faltan_sucursal: checked ? (prev.faltan_sucursal || defaultFaltanBranchId) : '',
+                          }))
+                        }}
+                      />
+                      <span className="inv-search__restock-eye" aria-hidden="true"><i className="pi pi-eye-slash" /></span>
+                      <span className="inv-search__restock-text">
+                        <strong>No están en {(knownBranches.find((b) => String(b.id) === String(searchCriteria.faltan_sucursal || defaultFaltanBranchId)) || {}).nombre || 'la sucursal'}</strong>
+                        <small>Solo los productos que en esa sucursal tienen 0, pero en alguna otra sucursal hay al menos una unidad.</small>
+                      </span>
+                    </label>
+                    {searchCriteria.faltan_en_sucursal && knownBranches.length > 0 && (
+                      <label className="create-user__field inv-search__restock-branch">
+                        <span>Sucursal</span>
+                        <select name="faltan_sucursal" value={searchCriteria.faltan_sucursal || defaultFaltanBranchId} onChange={handleSearchInputChange}>
+                          {knownBranches.map((branch) => (
+                            <option key={`faltan-branch-${branch.id}`} value={String(branch.id)}>{branch.nombre}</option>
                           ))}
                         </select>
                       </label>

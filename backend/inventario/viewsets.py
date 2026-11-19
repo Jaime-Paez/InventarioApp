@@ -1637,6 +1637,18 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 id__in=self._restock_product_ids([int(b.id) for b in restock_branches])
             )
 
+        # Faltan en una sucursal (Busqueda avanzada): en la sucursal elegida
+        # (por defecto 9 de Octubre) tienen 0 pero en al menos otra sucursal
+        # hay una o mas unidades.
+        faltan_raw = (request.query_params.get("faltan_sucursal") or "").strip()
+        if faltan_raw.isdigit() and any(int(b.id) == int(faltan_raw) for b in all_branches):
+            otras = Q()
+            for branch in all_branches:
+                if int(branch.id) != int(faltan_raw):
+                    otras |= Q(**{f"sucursal_{branch.id}__gt": 0})
+            aggregated_queryset = aggregated_queryset.filter(**{f"sucursal_{int(faltan_raw)}": 0})
+            aggregated_queryset = aggregated_queryset.filter(otras) if otras else aggregated_queryset.none()
+
         aggregated_queryset = self._apply_total_range_filters(aggregated_queryset)
         filtered_column_filters = dict(column_filters)
         filtered_column_filters.pop("casa_comercial_nombre", None)
