@@ -3799,6 +3799,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                                 )}
                                 onMouseLeave={hideCellHover}
                                 aria-label="Descripción del producto"
+                                data-own-hover=""
                                 style={{ width: '100%', minWidth: 0, fontSize: 'inherit', fontFamily: 'inherit' }}
                               />
                             </span>
@@ -10911,6 +10912,85 @@ function AlternosSugeridosDialog({ token, data, onClose, notify }) {
   )
 }
 
+// En todo el proceso de importacion (sugerencia, verificacion, confirmacion,
+// en camino, el asistente de llegada y el Excel): al pasar el mouse por una
+// casilla de texto cuyo contenido no cabe, se ve completo en la misma tarjeta
+// que las celdas. Un solo listener para todo el modulo (aunque haya varias
+// pestañas de Importaciones montadas).
+let importInputHoverOwner = null
+const IMPORT_INPUT_HOVER_SCOPE = '[class*="imp-"], [class*="importaciones"], .quick-actions__receive-dialog'
+const isImportTextField = (el) => {
+  if (!el || typeof el.tagName !== 'string') return false
+  if (el.tagName === 'TEXTAREA') return true
+  if (el.tagName !== 'INPUT') return false
+  const type = String(el.getAttribute('type') || 'text').toLowerCase()
+  return type === 'text' || type === 'search'
+}
+function ImportInputOverflowHover() {
+  const [card, setCard] = useState(null)
+  const ownerRef = useRef({})
+  useEffect(() => {
+    const owner = ownerRef.current
+    if (importInputHoverOwner) return undefined
+    importInputHoverOwner = owner
+    let timer = null
+    let current = null
+    const hide = () => {
+      if (timer) { clearTimeout(timer); timer = null }
+      current = null
+      setCard(null)
+    }
+    const handleOver = (event) => {
+      const el = event.target
+      if (!isImportTextField(el) || el.hasAttribute('data-own-hover') || !el.closest(IMPORT_INPUT_HOVER_SCOPE)) return
+      if (timer) clearTimeout(timer)
+      current = el
+      timer = setTimeout(() => {
+        timer = null
+        if (current !== el) return
+        const value = String(el.value || '').trim()
+        if (!value) return
+        const overflows = el.tagName === 'TEXTAREA'
+          ? el.scrollHeight > el.clientHeight + 1
+          : el.scrollWidth > el.clientWidth + 1
+        if (!overflows) return
+        const rect = el.getBoundingClientRect()
+        const placeholder = String(el.getAttribute('placeholder') || '').trim()
+        const label = String(el.getAttribute('aria-label') || '').trim() ||
+          (placeholder && !placeholder.includes('?') ? placeholder : 'Texto completo')
+        const maxLeft = Math.max(8, window.innerWidth - 392)
+        setCard({ top: rect.bottom + 4, left: Math.min(rect.left, maxLeft), label, value })
+      }, 350)
+    }
+    const handleOut = (event) => {
+      if (event.target === current) hide()
+    }
+    const handleInput = (event) => {
+      if (event.target === current) setCard(null)
+    }
+    document.addEventListener('mouseover', handleOver, true)
+    document.addEventListener('mouseout', handleOut, true)
+    document.addEventListener('input', handleInput, true)
+    window.addEventListener('scroll', hide, true)
+    return () => {
+      document.removeEventListener('mouseover', handleOver, true)
+      document.removeEventListener('mouseout', handleOut, true)
+      document.removeEventListener('input', handleInput, true)
+      window.removeEventListener('scroll', hide, true)
+      if (timer) clearTimeout(timer)
+      if (importInputHoverOwner === owner) importInputHoverOwner = null
+    }
+  }, [])
+  if (!card) return null
+  return createPortal(
+    <div className="imp-cell-hover-card" style={{ top: card.top, left: card.left }}>
+      <div className="imp-cell-hover-card__title">{card.label}</div>
+      <div className="imp-cell-hover-card__row" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{card.value}</div>
+    </div>,
+    getPortalRoot()
+  )
+}
+
 function ImportacionesTable({ token, user, moduleActions, status: statusProp, isTabActive, pendingOpenBorradorData, onPendingOpenBorradorHandled, pendingOpenDetailsId, pendingOpenDetailsStatus, onPendingOpenDetailsHandled, pendingCreatePrefill, onPendingCreatePrefillHandled }) {
   const toast = useRef(null)
   const tableWrapperRef = useRef(null)
@@ -11575,6 +11655,7 @@ function ImportacionesTable({ token, user, moduleActions, status: statusProp, is
 
   return (
     <div className="users-page importaciones-page">
+      <ImportInputOverflowHover />
       <Toast
         ref={toast}
         baseZIndex={12050}
