@@ -757,15 +757,25 @@ class ProductoViewSet(viewsets.ModelViewSet):
         Params: codigo, oem (separados por coma)."""
         codigo = str(request.query_params.get("codigo") or "").strip()
         oems = [o.strip().upper() for o in str(request.query_params.get("oem") or "").replace(";", ",").split(",") if o.strip()]
-        filtro = Q()
-        base = codigo_base(codigo)
+        # Misma regla de codigo base que las importaciones (P2265QH-A <->
+        # P2265CL-A; una variante como -K es otra pieza).
+        from importaciones.viewsets import _codigo_base, CODIGO_BASE_LENGTH
+
+        base = _codigo_base(codigo)
+        ids = set()
         if base:
-            filtro |= Q(codigo__istartswith=base)
+            ids |= {
+                pid for pid, cod in Producto.objects.filter(
+                    codigo__istartswith=base[:CODIGO_BASE_LENGTH], activo=True
+                ).values_list("id", "codigo")[:300]
+                if _codigo_base(cod) == base
+            }
         if oems:
-            filtro |= Q(oem_productos__oem__codigo__in=oems)
-        if not filtro:
+            ids |= set(
+                Producto.objects.filter(oem_productos__oem__codigo__in=oems, activo=True).values_list("id", flat=True)[:200]
+            )
+        if not ids:
             return Response({"productos": [], "sucursales": [], "stock": {}, "posibles": True}, status=status.HTTP_200_OK)
-        ids = set(Producto.objects.filter(filtro, activo=True).values_list("id", flat=True)[:200])
         group_ids = set()
         for pid in ids:
             if pid not in group_ids:

@@ -1203,6 +1203,45 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             .exclude(coincidencia_codigo="")
             .select_related("producto")
         )
+        # Tambien los nuevos sin codigo sugerido: alterno del producto que ya
+        # existe con el mismo codigo base (misma pieza en otra casa), mejor si
+        # comparte un OEM.
+        sin_sugerido = (
+            instance.detalles.filter(producto__creado_desde_importacion=instance, coincidencia_codigo="")
+            .select_related("producto")
+        )
+        for detalle in sin_sugerido:
+            producto = detalle.producto
+            base = _codigo_base(producto.codigo)
+            if not base:
+                continue
+            candidatos = [
+                p for p in Producto.objects.filter(codigo__istartswith=base[:CODIGO_BASE_LENGTH], activo=True)
+                .exclude(creado_desde_importacion=instance)
+                .exclude(id=producto.id)
+                .prefetch_related("oem_productos__oem")
+                if _codigo_base(p.codigo) == base
+            ]
+            if not candidatos:
+                continue
+            oems = {o.strip().upper() for o in str(detalle.oem or "").replace(";", ",").split(",") if o.strip()}
+            candidatos.sort(key=lambda p: (
+                not (oems & {op.oem.codigo.upper() for op in p.oem_productos.all()}),
+                p.codigo,
+            ))
+            origen = candidatos[0]
+            if (producto.id, origen.id) in vistos or producto.id in get_alterno_group_ids(origen.id):
+                continue
+            vistos.add((producto.id, origen.id))
+            sugeridos.append({
+                "producto_id": producto.id,
+                "codigo": producto.codigo,
+                "nombre": producto.nombre,
+                "alterno_id": origen.id,
+                "alterno_codigo": origen.codigo,
+                "alterno_nombre": origen.nombre,
+                "alterno_casa": ", ".join(origen.casas_comerciales.values_list("nombre", flat=True)),
+            })
         for detalle in detalles:
             producto = detalle.producto
             origen = Producto.objects.filter(codigo__iexact=str(detalle.coincidencia_codigo).strip()).first()
