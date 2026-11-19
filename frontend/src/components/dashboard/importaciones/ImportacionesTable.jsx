@@ -3011,6 +3011,8 @@ function FechaImportacionDialog({ imp, token, campo, label, onClose, onSaved, no
 function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, moduleActions, onOpenOrigen, isAdmin = false }) {
   // Buscador de productos de esta importacion.
   const [productSearch, setProductSearch] = useState('')
+  // Buscador propio de la pestaña "Inconvenientes" (importada).
+  const [inconvSearch, setInconvSearch] = useState('')
   const canMarcarLlegada = moduleActions?.puede_marcar_llegada === true
   const [showReceive, setShowReceive] = useState(false)
   const [showHistorial, setShowHistorial] = useState(false)
@@ -3474,8 +3476,8 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
   // espacio de las columnas fr, lo que sí desalinearía filas con distinto
   // contenido (comentarios largos, etc.).
   const productosCols = [
-    { min: 72, fr: 0.7 }, // Código
-    { min: 100, fr: 1 }, // Descripción
+    { min: 118, fr: 0.8 }, // Código (sin partir en dos lineas)
+    { min: 150, fr: 1.4 }, // Descripción
     { min: 72, fr: 0.7 }, // OEM
     { min: 82, fr: 0.8 }, // Referencia
     { min: 60, fr: 0.55 }, // Precio
@@ -3508,6 +3510,21 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
       if (valor != null && llegadaValorDe(d, field) !== valor) setLlegadaValor(d.id, field, valor)
     })
   }
+  // Importada: lo que llego distinto (cantidad o precio), en su propia pestaña.
+  const inconvenientes = imp.estado === 'importada'
+    ? detalles.map((d) => ({ d, dif: llegoDiferente(d) })).filter((item) => item.dif)
+    : []
+  const inconvCols = [
+    { min: 118, fr: 0.8 }, // Código
+    { min: 170, fr: 1.6 }, // Descripción
+    { min: 70, fr: 0.45 }, // Pedido
+    { min: 70, fr: 0.45 }, // Llegó
+    { min: 84, fr: 0.5 }, // Diferencia
+    { min: 130, fr: 0.8 }, // Precio
+    { min: 180, fr: 1.6 }, // Comentario
+  ]
+  const inconvGridTemplate = inconvCols.map((c) => `minmax(${c.min}px, ${c.fr}fr)`).join(' ')
+  const inconvMinWidth = inconvCols.reduce((sum, c) => sum + c.min, 0)
   const productosGridTemplate = productosCols.map((c) => `minmax(${c.min}px, ${c.fr}fr)`).join(' ')
   const productosMinWidth = productosCols.reduce((sum, c) => sum + c.min, 0)
   const badge = STATUS_BADGE[imp.estado] || { label: imp.estado, color: '#64748b', bg: 'rgba(100,116,139,0.1)' }
@@ -3572,6 +3589,11 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
             <button type="button" className={`create-user__tab${activeTab === 'productos' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('productos')}>
               Productos {detalles.length > 0 && `(${detalles.length})`}
             </button>
+            {imp.estado === 'importada' && (
+              <button type="button" className={`create-user__tab${activeTab === 'inconvenientes' ? ' create-user__tab--active' : ''}`} onClick={() => setActiveTab('inconvenientes')}>
+                Inconvenientes {inconvenientes.length > 0 && `(${inconvenientes.length})`}
+              </button>
+            )}
           </div>
 
           <div className="create-user__content create-salida__content">
@@ -3956,49 +3978,64 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                     })}
                   </div>
                   </div>
-                  {imp.estado === 'importada' && (() => {
-                    const diferentes = detalles
-                      .map((d) => ({ d, dif: llegoDiferente(d) }))
-                      .filter((item) => item.dif)
-                    if (!diferentes.length) return null
-                    return (
-                      <div className="imp-llego-dif">
-                        <p className="create-user__eyebrow">{`Llegaron diferente (${diferentes.length})`}</p>
-                        <div className="create-user__locations-table importaciones-modal__products-table imp-llego-dif__table">
-                          <div className="create-user__locations-row create-user__locations-row--head imp-llego-dif__row">
-                            <span>Código</span><span>Descripción</span><span>Pedido</span><span>Llegó</span><span>Diferencia</span><span>Precio</span><span>Comentario</span>
-                          </div>
-                          {diferentes.map(({ d, dif }) => {
-                            const precioTexto = dif.precioCambia
-                              ? `$${Number(dif.precioAntes).toFixed(2)} → $${Number(d.precio_final).toFixed(2)}`
-                              : (llegoPrecio(d) != null ? `$${Number(llegoPrecio(d)).toFixed(2)}` : '-')
-                            return (
-                              <div key={d.id} className="create-user__locations-row imp-llego-dif__row">
-                                <span className="imp-table-cell-text">{d.producto?.codigo || d.codigo || '-'}</span>
-                                <span className="imp-table-cell-text">{d.producto?.nombre || d.nombre || '-'}</span>
-                                <span className="imp-table-cell-text" style={{ textAlign: 'center' }}>{dif.esperado}</span>
-                                <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{dif.llego}</span>
-                                <span
-                                  className="imp-table-cell-text"
-                                  style={{ textAlign: 'center', fontWeight: 600, color: dif.diferencia < 0 ? '#dc2626' : dif.diferencia > 0 ? '#d97706' : undefined }}
-                                >
-                                  {dif.diferencia === 0 ? '—' : dif.diferencia > 0 ? `+${dif.diferencia}` : dif.diferencia}
-                                </span>
-                                <span className="imp-table-cell-text" style={dif.precioCambia ? { color: '#d97706', fontWeight: 600 } : undefined}>{precioTexto}</span>
-                                <span
-                                  className="imp-table-cell-tip"
-                                  onMouseEnter={(e) => showCellHover(e, llegoComentario(d) || null, 'Comentario')}
-                                  onMouseLeave={hideCellHover}
-                                >
-                                  <span className="imp-table-cell-text">{llegoComentario(d) || '-'}</span>
-                                </span>
-                              </div>
-                            )
-                          })}
-                        </div>
+                </section>
+              )}
+
+              {activeTab === 'inconvenientes' && imp.estado === 'importada' && (
+                <section className="create-user__section">
+                  <ImportProductSearch
+                    value={inconvSearch}
+                    onChange={setInconvSearch}
+                    shown={inconvenientes.filter(({ d }) => importItemMatches(d, inconvSearch)).length}
+                    total={inconvenientes.length}
+                  />
+                  <div className="imp-details__productos-table-wrap">
+                    <div className="create-user__locations-table importaciones-modal__products-table imp-details__productos-table">
+                      <div className="create-user__locations-row create-user__locations-row--head imp-details__productos-row" style={{ gridTemplateColumns: inconvGridTemplate, width: '100%', minWidth: inconvMinWidth }}>
+                        <span>Código</span><span>Descripción</span><span>Pedido</span><span>Llegó</span><span>Diferencia</span><span>Precio</span><span>Comentario</span>
                       </div>
-                    )
-                  })()}
+                      {!inconvenientes.length ? (
+                        <div className="create-user__locations-row create-user__locations-row--empty imp-details__productos-row" style={{ gridTemplateColumns: '1fr' }}>
+                          <span>Todo llegó igual a lo confirmado: no hay inconvenientes.</span>
+                        </div>
+                      ) : (inconvSearch.trim()
+                        ? matchesFirst(inconvenientes, ({ d }) => importItemMatches(d, inconvSearch))
+                        : inconvenientes
+                      ).map(({ d, dif }) => {
+                        const codigo = d.producto?.codigo || d.codigo || '-'
+                        const nombre = d.producto?.nombre || d.nombre || '-'
+                        const comentario = llegoComentario(d) || '-'
+                        const precioTexto = dif.precioCambia
+                          ? `$${Number(dif.precioAntes).toFixed(2)} → $${Number(d.precio_final).toFixed(2)}`
+                          : (llegoPrecio(d) != null ? `$${Number(llegoPrecio(d)).toFixed(2)}` : '-')
+                        const hit = inconvSearch.trim() && importItemMatches(d, inconvSearch)
+                        return (
+                          <div key={d.id} className={`create-user__locations-row imp-details__productos-row${hit ? ' imp-search-hit' : ''}`} style={{ gridTemplateColumns: inconvGridTemplate, width: '100%', minWidth: inconvMinWidth }}>
+                            <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, codigo, 'Código')} onMouseLeave={hideCellHover}>
+                              <span className="imp-table-cell-text">{codigo}</span>
+                            </span>
+                            <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, nombre !== '-' ? nombre : null, 'Descripción')} onMouseLeave={hideCellHover}>
+                              <span className="imp-table-cell-text">{nombre}</span>
+                            </span>
+                            <span className="imp-table-cell-text" style={{ textAlign: 'center' }}>{dif.esperado}</span>
+                            <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{dif.llego}</span>
+                            <span
+                              className="imp-table-cell-text"
+                              style={{ textAlign: 'center', fontWeight: 600, color: dif.diferencia < 0 ? '#dc2626' : dif.diferencia > 0 ? '#d97706' : undefined }}
+                            >
+                              {dif.diferencia === 0 ? '—' : dif.diferencia > 0 ? `+${dif.diferencia}` : dif.diferencia}
+                            </span>
+                            <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, precioTexto !== '-' ? precioTexto : null, 'Precio')} onMouseLeave={hideCellHover}>
+                              <span className="imp-table-cell-text" style={dif.precioCambia ? { color: '#d97706', fontWeight: 600 } : undefined}>{precioTexto}</span>
+                            </span>
+                            <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, comentario !== '-' ? comentario : null, 'Comentario')} onMouseLeave={hideCellHover}>
+                              <span className="imp-table-cell-text">{comentario}</span>
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
                 </section>
               )}
 
