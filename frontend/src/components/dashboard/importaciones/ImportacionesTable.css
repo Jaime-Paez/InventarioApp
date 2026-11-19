@@ -3134,3 +3134,21 @@ body.app-theme-dark .imp-receive-footer-hint {
   cursor: not-allowed;
   background: var(--color-surface-muted, #f1f5f9);
 }
+
+/* Distribución a sucursales: código arriba y la referencia de la fila debajo. */
+.imp-distribucion__codigo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  line-height: 1.2;
+}
+.imp-distribucion__referencia {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary, #64748b);
+}
