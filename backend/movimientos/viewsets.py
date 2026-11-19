@@ -3865,11 +3865,14 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
 
         solicitud_token = str(solicitud.id or "")
         if request.method.upper() == "DELETE":
-            self._ensure_solicitud_traslado_write_access(
-                sucursal_solicitante_id=solicitud.sucursal_solicitante_id,
-                sucursal_proveedora_id=solicitud.sucursal_proveedora_id,
-                action_key="puede_eliminar",
-            )
+            # Una solicitud solo guardada no movio inventario: la borra quien
+            # puede editarla (ya revisado arriba), sin el permiso de eliminar.
+            if solicitud.estado != SolicitudTraslado.Estados.GUARDADO:
+                self._ensure_solicitud_traslado_write_access(
+                    sucursal_solicitante_id=solicitud.sucursal_solicitante_id,
+                    sucursal_proveedora_id=solicitud.sucursal_proveedora_id,
+                    action_key="puede_eliminar",
+                )
             if solicitud.estado not in {
                 SolicitudTraslado.Estados.GUARDADO,
                 SolicitudTraslado.Estados.PENDIENTE,

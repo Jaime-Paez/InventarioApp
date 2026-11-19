@@ -1037,6 +1037,9 @@ function EntradaDetails({
     canEditTrasladoState &&
     (allowEdit || isPreviewPendingSolicitud || isPreviewRejectedSolicitud || isPreviewGuardadoSolicitud) &&
     !isSentSolicitud
+  // Una solicitud solo guardada no movio inventario: la puede eliminar quien
+  // puede editarla, aunque no tenga el permiso general de eliminar entradas.
+  const canDeleteEntry = Boolean(allowDelete || (isPreviewGuardadoSolicitud && effectiveAllowEdit))
   const canStartEditingPreviewSolicitud = Boolean(
     hasPreviewData &&
     !readOnly &&
@@ -2896,7 +2899,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
   }
 
   const openDeleteConfirm = () => {
-    if (!allowDelete) return
+    if (!canDeleteEntry) return
     if (isReadOnlyMode) return
     if (!isEditing || deleteLoading) return
     setDeleteInventoryAction(isPendingSolicitudEntry ? 'keep' : 'reverse')
@@ -2910,7 +2913,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
 
   const handleDelete = async () => {
     if (!showDeleteConfirm) return
-    if (!allowDelete) return
+    if (!canDeleteEntry) return
     if (isReadOnlyMode) return
     if (!isEditing || deleteLoading) return
     setDeleteLoading(true)
@@ -4077,7 +4080,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                     >
                       {cancellingTransfer ? 'Cancelando...' : 'Cancelar pedido'}
                     </button>
-                  ) : allowDelete && (
+                  ) : canDeleteEntry && (
                     <button
                       type="button"
                       className="create-user__action user-details__delete"
@@ -4138,9 +4141,9 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
               className="create-salida__confirm-card create-salida__confirm-card--cancel entrada-details__delete-confirm-card"
               onMouseDown={(event) => event.stopPropagation()}
             >
-              <h4>Eliminar entrada</h4>
+              <h4>{isPendingSolicitudEntry ? 'Eliminar solicitud' : 'Eliminar entrada'}</h4>
               <p>
-                Se eliminara la entrada <strong>{String(formData.no_documento || '').trim() || `#${entradaId}`}</strong>.
+                {isPendingSolicitudEntry ? 'Se eliminará la solicitud ' : 'Se eliminara la entrada '}<strong>{String(formData.no_documento || '').trim() || `#${entradaId}`}</strong>.
               </p>
                <p className="create-salida__confirm-warning">
                  {isPendingSolicitudEntry
@@ -4194,7 +4197,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                   onClick={handleDelete}
                   disabled={deleteLoading}
                 >
-                  {deleteLoading ? 'Eliminando...' : 'Eliminar entrada'}
+                  {deleteLoading ? 'Eliminando...' : (isPendingSolicitudEntry ? 'Eliminar solicitud' : 'Eliminar entrada')}
                 </button>
               </div>
             </div>
