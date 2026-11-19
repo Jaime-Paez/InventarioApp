@@ -255,7 +255,7 @@ def _productos_by_referencia(referencia):
     # Un producto puede tener varias referencias (ProductoReferencia): hay
     # que buscar en todas, no solo en Producto.referencia (que es nada más
     # una copia de la primera, ver sync_producto_referencia_primary).
-    candidates = list(Producto.objects.filter(referencias__valor__iexact=referencia).distinct())
+    candidates = list(Producto.objects.filter(activo=True, referencias__valor__iexact=referencia).distinct())
     if not candidates:
         # Los ceros a la izquierda no distinguen la referencia ('0042' es lo
         # mismo que '42'), sin importar de qué lado (Excel o catálogo) estén
@@ -263,7 +263,8 @@ def _productos_by_referencia(referencia):
         # vino del Excel se sigue guardando sin tocar.
         stripped = _strip_leading_zeros(referencia)
         candidates = list(
-            Producto.objects.annotate(referencia_sin_ceros=_StripLeadingZerosSQL("referencias__valor"))
+            Producto.objects.filter(activo=True)
+            .annotate(referencia_sin_ceros=_StripLeadingZerosSQL("referencias__valor"))
             .filter(referencia_sin_ceros__iexact=stripped)
             .distinct()
         )
@@ -333,6 +334,7 @@ def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=Fa
         # nuevo cuando el match directo no alcanza otra casa.
         alterno_productos = [rel.alterno for rel in producto.alternativas.all()]
         alterno_productos += [rel.producto for rel in producto.alternativas_para.all()]
+        alterno_productos = [alt for alt in alterno_productos if getattr(alt, "activo", True)]
         alternos_payload = []
         for alt in alterno_productos:
             alt_precio = float(alt.precio) if alt.precio is not None else None
@@ -431,7 +433,8 @@ def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=Fa
     matched_ids |= {producto_id for grupo in grupo_by_base.values() for producto_id, _ in grupo}
     if matched_ids:
         for producto in (
-            Producto.objects.filter(pk__in=matched_ids).prefetch_related(
+            # Los inactivos no salen como coincidencias.
+            Producto.objects.filter(pk__in=matched_ids, activo=True).prefetch_related(
                 "casas_comerciales",
                 "referencias",
                 "oem_productos__oem",
@@ -483,7 +486,7 @@ def _match_rows(rows, casa_comercial_id, on_progress=None, solo_coincidencias=Fa
         conflicto_precio = None
         if codigo:
             matched = _pick_producto_match(
-                list(Producto.objects.filter(codigo__iexact=codigo)), casa_comercial_id
+                list(Producto.objects.filter(activo=True, codigo__iexact=codigo)), casa_comercial_id
             )
             if matched:
                 matched_via_identity = True

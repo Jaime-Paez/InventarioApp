@@ -377,11 +377,14 @@ class ProductoSerializer(serializers.ModelSerializer):
             "oem_productos",
             "alternativas",
             "creado_desde_importacion",
+            "activo",
             "creado_en",
             "actualizado_en",
         ]
         extra_kwargs = {
             "creado_desde_importacion": {"read_only": True},
+            # Se cambia solo con la accion cambiar-activo.
+            "activo": {"read_only": True},
             # Referencia (singular) es una copia de solo lectura de la
             # primera referencia de `referencias` (ver
             # sync_producto_referencia_primary) -- se administra siempre a

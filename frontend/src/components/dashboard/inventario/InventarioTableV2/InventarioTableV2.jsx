@@ -1718,9 +1718,11 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
 
   const codigoBodyTemplate = (rowData) => {
     const code = rowData?.codigo ?? '-'
+    const inactivo = rowData?.activo === false
     return (
-      <span className="cell-tooltip" data-pr-tooltip={code}>
+      <span className="cell-tooltip" data-pr-tooltip={inactivo ? `${code} · Inactivo: no se usa en ninguna parte` : code}>
         {code}
+        {inactivo && <span className="inventario-row__inactivo-tag">Inactivo</span>}
       </span>
     )
   }
@@ -2381,7 +2383,10 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
           columnResizeMode="expand"
           onRowClick={handleRowClick}
           onRowDoubleClick={handleRowDoubleClick}
-          rowClassName={(rowData) => (selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '')}
+          rowClassName={(rowData) => [
+            selectedRowIds.includes(normId(rowData?.id)) ? 'selected-row-shadow' : '',
+            rowData?.activo === false ? 'inventario-row--inactivo' : '',
+          ].filter(Boolean).join(' ')}
           selectionMode="multiple"
           selection={selectedRows}
           onAllRowsUnselect={handleUnselectAllRows}

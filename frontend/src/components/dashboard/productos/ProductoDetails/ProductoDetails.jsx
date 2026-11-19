@@ -139,6 +139,10 @@ function ProductoDetails({
 }) {
   const [formData, setFormData] = useState(emptyForm)
   const [originalData, setOriginalData] = useState(emptyForm)
+  // Inactivo: ya no sale en busquedas, coincidencias, entradas ni salidas.
+  const [productoActivo, setProductoActivo] = useState(true)
+  const [activoDialog, setActivoDialog] = useState(false)
+  const [activoSaving, setActivoSaving] = useState(false)
   const [suppliers, setSuppliers] = useState([])
   const [selectedCasas, setSelectedCasas] = useState([])
   const [originalCasas, setOriginalCasas] = useState([])
@@ -260,6 +264,27 @@ function ProductoDetails({
     if (!oemError) return
     notifyError(oemError)
   }, [notifyError, oemError])
+
+  const handleCambiarActivo = async () => {
+    if (!resolvedProductoId || activoSaving) return
+    setActivoSaving(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/productos/listado/${resolvedProductoId}/cambiar-activo/`,
+        { method: 'PATCH', body: JSON.stringify({ activo: !productoActivo }) },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data?.detail || 'No se pudo cambiar el estado del producto.')
+      setProductoActivo(data?.activo !== false)
+      setActivoDialog(false)
+      onUpdated?.({ id: resolvedProductoId, activo: data?.activo !== false })
+    } catch (e) {
+      notifyError(e.message)
+    } finally {
+      setActivoSaving(false)
+    }
+  }
 
   // "Unificar nombre" (solo administrador): pone un nombre a este producto y a todos sus
   // alternos (todo el grupo) de una vez.
@@ -448,6 +473,7 @@ function ProductoDetails({
       const normalized = normalizeProducto(data)
       setFormData(normalized)
       setOriginalData(normalized)
+      setProductoActivo(data?.activo !== false)
       const casas = Array.isArray(data?.casas_comerciales) ? data.casas_comerciales : []
       setSelectedCasas(casas)
       setOriginalCasas(casas)
@@ -1864,6 +1890,14 @@ function ProductoDetails({
         </header>
 
         <div className="create-user__content">
+          {!productoActivo && !loadingData && (
+            <BlockerNotice
+              title="Producto inactivo"
+              reason="No sale en búsquedas ni en coincidencias de importaciones, y no se puede usar en entradas, salidas ni solicitudes. Su historial se conserva."
+              actionLabel={allowEdit ? 'Reactivar' : undefined}
+              onAction={allowEdit ? () => setActivoDialog(true) : undefined}
+            />
+          )}
           {loadingData && (
             <div className="create-user__loading-overlay" role="status" aria-live="polite">
               <i className="pi pi-spin pi-spinner" aria-hidden="true" />
@@ -2574,6 +2608,16 @@ function ProductoDetails({
                 <span>{isEditing ? 'Solo lectura' : 'Editar'}</span>
               </button>
             )}
+            {allowEdit && resolvedProductoId && !loadingData && (
+              <button
+                type="button"
+                className={`create-user__action ${productoActivo ? 'user-details__delete' : 'create-user__action--primary'}`}
+                onClick={() => setActivoDialog(true)}
+                disabled={saving || activoSaving}
+              >
+                {productoActivo ? 'Inactivar' : 'Reactivar'}
+              </button>
+            )}
           </div>
 
           <div className="user-details__footer-right">
@@ -2613,6 +2657,37 @@ function ProductoDetails({
       </div>
 
       {alternoDropdownPanel}
+
+      {activoDialog && (
+        <div className="user-details__confirm-overlay">
+          <div className="user-details__confirm-dialog">
+            <div className="user-details__confirm-icon">
+              <Info size={18} />
+            </div>
+            <div className="user-details__confirm-content">
+              <h4>{productoActivo ? `¿Inactivar ${formData.codigo || 'este producto'}?` : `¿Reactivar ${formData.codigo || 'este producto'}?`}</h4>
+              <p>
+                {productoActivo
+                  ? 'Ya no saldrá en búsquedas ni en coincidencias de importaciones, y no se podrá usar en entradas, salidas ni solicitudes. Su historial y su stock se conservan; se puede reactivar cuando quieras.'
+                  : 'Vuelve a salir en búsquedas e importaciones y se puede usar otra vez en entradas, salidas y solicitudes.'}
+              </p>
+            </div>
+            <div className="user-details__confirm-actions">
+              <button type="button" className="create-user__action create-user__action--cancel" onClick={() => setActivoDialog(false)} disabled={activoSaving}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className={`create-user__action ${productoActivo ? 'user-details__delete' : 'create-user__action--primary'}`}
+                onClick={handleCambiarActivo}
+                disabled={activoSaving}
+              >
+                {activoSaving ? 'Guardando...' : productoActivo ? 'Inactivar' : 'Reactivar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {nombreGrupoDialog && (
         <div className="user-details__confirm-overlay">

@@ -221,6 +221,10 @@ class ProductoViewSet(viewsets.ModelViewSet):
         if self.action == "retrieve":
             return queryset
         params = self.request.query_params
+        # Los productos inactivos no salen en las busquedas (entradas,
+        # salidas, solicitudes, importaciones...). Solo con incluir_inactivos.
+        if self.action == "list" and str(params.get("incluir_inactivos") or "").strip().lower() not in {"1", "true", "si"}:
+            queryset = queryset.filter(activo=True)
         iva_rate = ConfiguracionSistema.get_solo().iva_rate
         factor = Decimal("1") + Decimal(str(iva_rate or 0))
 
@@ -394,6 +398,16 @@ class ProductoViewSet(viewsets.ModelViewSet):
                     )
                 }
             )
+
+    @action(detail=True, methods=["patch"], url_path="cambiar-activo")
+    def cambiar_activo(self, request, pk=None):
+        """Inactiva o reactiva el producto (mismo permiso que editarlo)."""
+        producto = self.get_object()
+        activo = str(request.data.get("activo", "")).strip().lower() in {"1", "true", "si"}
+        if producto.activo != activo:
+            producto.activo = activo
+            producto.save(update_fields=["activo", "actualizado_en"])
+        return Response({"id": producto.id, "codigo": producto.codigo, "activo": producto.activo})
 
     @action(detail=True, methods=["get"], url_path="calificacion")
     def calificacion(self, request, pk=None):

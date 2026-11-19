@@ -286,7 +286,8 @@ class DetalleMovimientoSerializer(serializers.ModelSerializer):
     # pagina del catalogo y casi nunca lo encontraban).
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
-        queryset=Producto.objects.all(),
+        queryset=Producto.objects.filter(activo=True),
+        error_messages={"does_not_exist": "El producto {pk_value} está inactivo o no existe: actívalo en Inventario para usarlo."},
     )
     estado_producto = serializers.StringRelatedField(read_only=True)
     estado_producto_id = serializers.PrimaryKeyRelatedField(
@@ -366,7 +367,8 @@ class UbicacionInicialEntradaSerializer(serializers.Serializer):
 
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
-        queryset=Producto.objects.all(),
+        queryset=Producto.objects.filter(activo=True),
+        error_messages={"does_not_exist": "El producto {pk_value} está inactivo o no existe: actívalo en Inventario para usarlo."},
     )
     subdivision_id = serializers.PrimaryKeyRelatedField(
         source="subdivision",
@@ -392,7 +394,8 @@ class SolicitudTrasladoDetalleSerializer(serializers.ModelSerializer):
     producto = serializers.StringRelatedField(read_only=True)
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
-        queryset=Producto.objects.all(),
+        queryset=Producto.objects.filter(activo=True),
+        error_messages={"does_not_exist": "El producto {pk_value} está inactivo o no existe: actívalo en Inventario para usarlo."},
     )
     producto_codigo = serializers.CharField(source="producto.codigo", read_only=True)
     producto_nombre = serializers.CharField(source="producto.nombre", read_only=True)

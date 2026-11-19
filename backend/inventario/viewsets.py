@@ -1440,6 +1440,9 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 "oem_codes": meta.get("oem_codes") or "",
                 "oem_codes_list": meta.get("oem_codes_list") or [],
                 "creado_en": row.get("creado_en"),
+                # Inactivo: sigue en el inventario (para verlo y reactivarlo)
+                # pero ya no se usa en ninguna otra parte.
+                "activo": int(row.get("activo_num", 1) or 0) == 1,
             }
             branch_locations = branch_location_payloads.get(product_id, {})
             for branch in branches:
@@ -1546,6 +1549,7 @@ class InventarioViewSet(viewsets.ModelViewSet):
             costo_minimo=Max("costo_minimo"),
             precio=Max("precio"),
             creado_en=Max("creado_en"),
+            activo_num=Max(Case(When(activo=True, then=Value(1)), default=Value(0), output_field=IntegerField())),
             total_general=Coalesce(
                 Sum(
                     "inventarios__cantidad",

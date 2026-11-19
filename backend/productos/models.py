@@ -42,6 +42,10 @@ class Producto(models.Model):
         related_name="productos_generados",
         help_text="Importación desde la que se creó este producto automáticamente por venir sin catálogo.",
     )
+    # Inactivo: ya no se usa en nada (no sale en busquedas, coincidencias de
+    # importaciones, entradas ni salidas); conserva su historial y se puede
+    # reactivar.
+    activo = models.BooleanField(default=True, db_index=True)
     creado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 

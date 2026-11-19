@@ -757,3 +757,23 @@
   font-size: 0.85rem;
   line-height: 1;
 }
+
+/* Producto inactivo: sigue en el inventario (para verlo y reactivarlo), pero
+   apagado y con etiqueta. */
+.inventario-row--inactivo > td {
+  opacity: 0.55;
+}
+
+.inventario-row__inactivo-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  vertical-align: middle;
+}

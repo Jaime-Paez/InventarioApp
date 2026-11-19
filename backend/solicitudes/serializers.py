@@ -126,7 +126,8 @@ class ProductoSolicitadoSerializer(serializers.ModelSerializer):
     producto = serializers.StringRelatedField(read_only=True)
     producto_id = serializers.PrimaryKeyRelatedField(
         source="producto",
-        queryset=Producto.objects.all(),
+        queryset=Producto.objects.filter(activo=True),
+        error_messages={"does_not_exist": "El producto {pk_value} está inactivo o no existe: actívalo en Inventario para usarlo."},
         allow_null=True,
         required=False,
         write_only=True,
