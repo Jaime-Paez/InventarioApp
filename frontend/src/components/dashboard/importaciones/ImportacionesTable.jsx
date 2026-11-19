@@ -3789,9 +3789,15 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                                 type="text"
                                 className="imp-excel-review__codigo-input"
                                 value={llegadaValorDe(d, 'nombre')}
-                                onChange={(e) => setLlegadaValor(d.id, 'nombre', e.target.value)}
+                                onChange={(e) => { hideCellHover(); setLlegadaValor(d.id, 'nombre', e.target.value) }}
                                 placeholder="Descripción"
-                                data-title="Escribe la descripción o escógela de las coincidencias (ícono junto al OEM)"
+                                // Hover: la descripcion completa (el campo la corta).
+                                onMouseEnter={(e) => showCellHover(
+                                  e,
+                                  String(llegadaValorDe(d, 'nombre') || '').trim() || 'Escribe la descripción o escógela de las coincidencias (ícono junto al OEM)',
+                                  'Descripción'
+                                )}
+                                onMouseLeave={hideCellHover}
                                 aria-label="Descripción del producto"
                                 style={{ width: '100%', minWidth: 0, fontSize: 'inherit', fontFamily: 'inherit' }}
                               />
