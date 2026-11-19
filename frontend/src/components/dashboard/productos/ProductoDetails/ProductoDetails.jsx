@@ -319,6 +319,61 @@ function ProductoDetails({
     }
   }
 
+  // "Unificar ubicaciones" (solo administrador): se listan todas las ubicaciones
+  // que tiene alguien del grupo (este producto o sus alternos); las marcadas se
+  // copian a todos (en 0 donde no la tengan). El stock no se mueve.
+  const [ubicGrupoDialog, setUbicGrupoDialog] = useState(null)
+  const [ubicGrupoSaving, setUbicGrupoSaving] = useState(false)
+  const abrirUbicacionesGrupo = async () => {
+    if (!resolvedProductoId) return
+    setUbicGrupoDialog({ loading: true, ubicaciones: [], seleccion: new Set(), totalProductos: 0 })
+    try {
+      const response = await authFetch(`${API_URL}/productos/listado/${resolvedProductoId}/ubicaciones-grupo/`, {}, token)
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data?.detail || 'No se pudieron cargar las ubicaciones del grupo.')
+      const ubicaciones = Array.isArray(data?.ubicaciones) ? data.ubicaciones : []
+      setUbicGrupoDialog({
+        loading: false,
+        ubicaciones,
+        totalProductos: Number(data?.total_productos) || 0,
+        seleccion: new Set(ubicaciones.map((u) => u.subdivision_id)),
+      })
+    } catch (e) {
+      setUbicGrupoDialog(null)
+      notifyError(e?.message || 'No se pudieron cargar las ubicaciones del grupo.')
+    }
+  }
+  const toggleUbicacionGrupo = (subdivisionId) => {
+    setUbicGrupoDialog((prev) => {
+      if (!prev) return prev
+      const seleccion = new Set(prev.seleccion)
+      if (seleccion.has(subdivisionId)) seleccion.delete(subdivisionId)
+      else seleccion.add(subdivisionId)
+      return { ...prev, seleccion }
+    })
+  }
+  const handleAplicarUbicacionesGrupo = async () => {
+    const ids = [...(ubicGrupoDialog?.seleccion || [])]
+    if (!ids.length || !resolvedProductoId) return
+    setUbicGrupoSaving(true)
+    try {
+      const response = await authFetch(
+        `${API_URL}/productos/listado/${resolvedProductoId}/ubicaciones-grupo/`,
+        { method: 'POST', body: JSON.stringify({ subdivision_ids: ids }) },
+        token
+      )
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data?.detail || data?.subdivision_ids?.[0] || data?.subdivision_ids || 'No se pudieron unificar las ubicaciones.')
+      setUbicGrupoDialog(null)
+      refreshInventoryContext()
+      onUpdated?.({ id: resolvedProductoId })
+    } catch (e) {
+      notifyError(e?.message || 'No se pudieron unificar las ubicaciones.')
+    } finally {
+      setUbicGrupoSaving(false)
+    }
+  }
+
   useEffect(() => {
     if (!referenciaError) return
     notifyError(referenciaError)
@@ -2358,14 +2413,24 @@ function ProductoDetails({
                 <div className="create-user__section-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <h4>Alternos</h4>
                   {esAdmin && allowEdit && !isEditing && originalAlternativas.length > 0 && (
-                    <button
-                      type="button"
-                      className="create-user__action create-user__action--secondary"
-                      onClick={() => setNombreGrupoDialog({ nombre: formData.nombre || '' })}
-                      data-title="Pone el mismo nombre a este producto y a todos sus alternos"
-                    >
-                      Unificar nombre
-                    </button>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="create-user__action create-user__action--secondary"
+                        onClick={() => setNombreGrupoDialog({ nombre: formData.nombre || '' })}
+                        data-title="Pone el mismo nombre a este producto y a todos sus alternos"
+                      >
+                        Unificar nombre
+                      </button>
+                      <button
+                        type="button"
+                        className="create-user__action create-user__action--secondary"
+                        onClick={abrirUbicacionesGrupo}
+                        data-title="Copia las ubicaciones que escojas a este producto y a todos sus alternos"
+                      >
+                        Unificar ubicaciones
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -2746,6 +2811,79 @@ function ProductoDetails({
                 disabled={nombreGrupoSaving || !String(nombreGrupoDialog.nombre).trim()}
               >
                 {nombreGrupoSaving ? 'Guardando...' : 'Unificar nombre'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ubicGrupoDialog && (
+        <div className="user-details__confirm-overlay">
+          <div className="user-details__confirm-dialog" style={{ width: 'min(620px, 92vw)', alignItems: 'flex-start' }}>
+            <div className="user-details__confirm-icon">
+              <Pencil size={18} />
+            </div>
+            <div className="user-details__confirm-content" style={{ width: '100%' }}>
+              <h4>Unificar ubicaciones</h4>
+              <p>
+                Las ubicaciones marcadas quedarán en {formData.codigo || 'este producto'} y en sus {originalAlternativas.length} alterno{originalAlternativas.length === 1 ? '' : 's'}
+                {' '}(en 0 donde no la tengan). El stock no se mueve.
+              </p>
+              {ubicGrupoDialog.loading ? (
+                <p className="muted" style={{ marginTop: 10 }}>Cargando...</p>
+              ) : ubicGrupoDialog.ubicaciones.length === 0 ? (
+                <BlockerNotice
+                  title="Sin ubicaciones para copiar"
+                  reason="Ningún producto del grupo tiene ubicaciones (POR UBICAR, TEMPORAL y SIN UBICACION no se copian). Asigna una ubicación en la pestaña Ubicaciones."
+                />
+              ) : (
+                <>
+                  <small className="muted" style={{ display: 'block', marginTop: 10 }}>Desmarca las que no quieras copiar.</small>
+                  <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 6, marginTop: 6, maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {ubicGrupoDialog.ubicaciones.map((ubic, index, list) => {
+                      const nuevaSucursal = index === 0 || list[index - 1].sucursal_id !== ubic.sucursal_id
+                      const marcada = ubicGrupoDialog.seleccion.has(ubic.subdivision_id)
+                      const faltan = Math.max(0, ubicGrupoDialog.totalProductos - ubic.productos.length)
+                      return (
+                        <div key={`ubic-grupo-${ubic.subdivision_id}`}>
+                          {nuevaSucursal && <div className="ubic-grupo__sucursal">{ubic.sucursal || 'Sin sucursal'}</div>}
+                          <label className={`ubic-grupo__opcion${marcada ? ' is-elegido' : ''}`}>
+                            <input
+                              type="checkbox"
+                              checked={marcada}
+                              onChange={() => toggleUbicacionGrupo(ubic.subdivision_id)}
+                              disabled={ubicGrupoSaving}
+                            />
+                            <strong>{ubic.nombre}</strong>
+                            <span className="ubic-grupo__bodega">{ubic.bodega}</span>
+                            <span className="ubic-grupo__productos">
+                              {ubic.productos.map((p) => `${p.codigo} (${p.cantidad})`).join(', ')}
+                              {faltan > 0 ? ` · se agrega a ${faltan}` : ' · ya la tienen todos'}
+                            </span>
+                          </label>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="user-details__confirm-actions" style={{ width: '100%' }}>
+              <button
+                type="button"
+                className="create-user__action create-user__action--cancel"
+                onClick={() => setUbicGrupoDialog(null)}
+                disabled={ubicGrupoSaving}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="create-user__action create-user__action--primary"
+                onClick={handleAplicarUbicacionesGrupo}
+                disabled={ubicGrupoSaving || ubicGrupoDialog.loading || ubicGrupoDialog.seleccion.size === 0}
+              >
+                {ubicGrupoSaving ? 'Guardando...' : 'Unificar ubicaciones'}
               </button>
             </div>
           </div>

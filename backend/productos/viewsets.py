@@ -510,6 +510,92 @@ class ProductoViewSet(viewsets.ModelViewSet):
                 cambiados.append(item.codigo)
         return Response({"nombre": nombre, "cambiados": cambiados, "total": len(grupo)}, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["get", "post"], url_path="ubicaciones-grupo")
+    def ubicaciones_grupo(self, request, pk=None):
+        """"Unificar ubicaciones" (solo administrador).
+        GET: todas las ubicaciones que tiene este producto o alguno de sus
+        alternos, con quien la tiene. POST {subdivision_ids}: copia esas
+        ubicaciones a todo el grupo (en 0 donde no la tenga); el stock no se
+        mueve. POR UBICAR, TEMPORAL y SIN UBICACION no se copian."""
+        from usuarios.utils import is_app_admin
+        from inventario.por_ubicar import is_special_subdivision
+        from inventario.models import SubDivision
+        from core.search_utils import strip_accents
+
+        if not is_app_admin(request.user):
+            raise PermissionDenied("Solo el administrador puede unificar las ubicaciones de los alternos.")
+        producto = self.get_object()
+        grupo = get_alterno_group_ids(producto.id) | {producto.id}
+
+        def copiable(sub):
+            nombre_div = str(getattr(sub.division, "nombre", "") or "")
+            sin_ubic = "sin ubic" in strip_accents(nombre_div).lower() or "sin ubic" in strip_accents(sub.nombre or "").lower()
+            return not is_special_subdivision(sub) and not sin_ubic
+
+        filas = (
+            Inventario.objects.filter(producto_id__in=grupo)
+            .select_related("producto", "subdivision__division__bodega__sucursal", "subdivision__division__tipo_division")
+        )
+        if request.method == "GET":
+            ubicaciones = {}
+            for fila in filas:
+                sub = fila.subdivision
+                if not copiable(sub):
+                    continue
+                bodega = sub.division.bodega
+                item = ubicaciones.setdefault(sub.id, {
+                    "subdivision_id": sub.id,
+                    "nombre": f"{sub.division.nombre} - {sub.nombre}",
+                    "bodega": bodega.nombre,
+                    "sucursal_id": bodega.sucursal_id,
+                    "sucursal": getattr(bodega.sucursal, "nombre", ""),
+                    "productos": {},
+                })
+                prev = item["productos"].get(fila.producto_id)
+                item["productos"][fila.producto_id] = {
+                    "id": fila.producto_id,
+                    "codigo": fila.producto.codigo,
+                    "cantidad": (prev["cantidad"] if prev else 0) + int(fila.cantidad or 0),
+                }
+            data = []
+            for item in ubicaciones.values():
+                item["productos"] = sorted(item["productos"].values(), key=lambda p: p["codigo"] or "")
+                data.append(item)
+            data.sort(key=lambda u: (u["sucursal"] or "", u["bodega"] or "", u["nombre"]))
+            return Response({"total_productos": len(grupo), "ubicaciones": data}, status=status.HTTP_200_OK)
+
+        raw_ids = request.data.get("subdivision_ids")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise ValidationError({"subdivision_ids": "Escoge al menos una ubicacion."})
+        try:
+            ids = {int(value) for value in raw_ids}
+        except (TypeError, ValueError):
+            raise ValidationError({"subdivision_ids": "Ubicaciones no validas."})
+        # Solo ubicaciones que ya tiene alguien del grupo.
+        del_grupo = set(filas.values_list("subdivision_id", flat=True))
+        subs = [
+            sub for sub in SubDivision.objects.filter(id__in=ids & del_grupo).select_related("division__bodega", "division__tipo_division")
+            if copiable(sub)
+        ]
+        if not subs:
+            raise ValidationError({"subdivision_ids": "Esas ubicaciones no son de este grupo de alternos."})
+        existentes = set(
+            Inventario.objects.filter(producto_id__in=grupo, subdivision_id__in=[s.id for s in subs])
+            .values_list("producto_id", "subdivision_id")
+        )
+        nuevas = [
+            Inventario(producto_id=pid, subdivision_id=sub.id, cantidad=0, referencia="")
+            for pid in sorted(grupo)
+            for sub in subs
+            if (pid, sub.id) not in existentes
+        ]
+        with transaction.atomic():
+            Inventario.objects.bulk_create(nuevas, ignore_conflicts=True)
+        return Response(
+            {"agregadas": len(nuevas), "ubicaciones": len(subs), "total_productos": len(grupo)},
+            status=status.HTTP_200_OK,
+        )
+
     def _alterno_a_quitar(self, request, producto):
         raw = request.query_params.get("alterno_id") if request.method == "GET" else request.data.get("alterno_id")
         try:

@@ -132,3 +132,30 @@
 .nombre-grupo__opcion.is-elegido { border-color: var(--color-primary, #1e3a5f); background: rgba(30, 58, 95, 0.08); }
 .nombre-grupo__opcion.is-elegido span { color: inherit; font-weight: 600; }
 .nombre-grupo__opcion:disabled { cursor: default; opacity: 0.6; }
+
+/* Unificar ubicaciones: una fila por ubicacion, agrupadas por sucursal. */
+.ubic-grupo__sucursal {
+  margin: 6px 4px 2px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-secondary);
+}
+.ubic-grupo__opcion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.ubic-grupo__opcion input { margin: 0; align-self: center; cursor: pointer; }
+.ubic-grupo__opcion strong { min-width: 90px; }
+.ubic-grupo__bodega { color: var(--color-text-secondary); font-size: 0.78rem; }
+.ubic-grupo__productos { flex-basis: 100%; padding-left: 22px; color: var(--color-text-secondary); font-size: 0.78rem; }
+.ubic-grupo__opcion:hover { background: var(--color-surface-hover, rgba(148, 163, 184, 0.14)); }
+.ubic-grupo__opcion.is-elegido { border-color: var(--color-primary, #1e3a5f); background: rgba(30, 58, 95, 0.08); }
