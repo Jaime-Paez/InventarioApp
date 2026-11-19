@@ -179,6 +179,9 @@ function EntradasTable({
   // Compra local armada desde Reposicion: abre el formulario ya lleno.
   pendingCompraLocalPrefill = null,
   onPendingCompraLocalPrefillHandled,
+  // Traslado pedido desde Inventario (doble clic en otra sucursal).
+  pendingTrasladoPrefill = null,
+  onPendingTrasladoPrefillHandled,
 }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
@@ -198,6 +201,8 @@ function EntradasTable({
   const handledTransferRequestKeyRef = useRef('')
   const [createPrefillCompraLocal, setCreatePrefillCompraLocal] = useState(null)
   const handledCompraPrefillKeyRef = useRef('')
+  const handledTrasladoPrefillKeyRef = useRef('')
+  const [createPrefillTraslado, setCreatePrefillTraslado] = useState(null)
   const notificationRefreshInFlightRef = useRef(false)
   const pendingNotificationRefreshRef = useRef(false)
   const refreshDataRef = useRef(() => Promise.resolve([]))
@@ -1156,6 +1161,28 @@ function EntradasTable({
     })()
   }, [normalizedCreateBranchId, onPendingCompraLocalPrefillHandled, pendingCompraLocalPrefill, preloadEntradaCatalogs])
 
+  // Desde Inventario: se abre la solicitud de traslado llena (sucursal que
+  // pide, la que envia y el producto); el usuario decide si la manda.
+  useEffect(() => {
+    const request = pendingTrasladoPrefill
+    if (!request?.requestKey || handledTrasladoPrefillKeyRef.current === request.requestKey) return
+    const targetBranchId = String(request.sucursalId || '').trim()
+    if (targetBranchId && normalizedCreateBranchId !== targetBranchId) return
+    handledTrasladoPrefillKeyRef.current = request.requestKey
+    onPendingTrasladoPrefillHandled?.()
+    ;(async () => {
+      try {
+        await preloadEntradaCatalogs()
+      } catch {
+        // El modal carga sus catalogos como respaldo.
+      }
+      setCreatePrefillTransferRequest(null)
+      setCreatePrefillCompraLocal(null)
+      setCreatePrefillTraslado(request)
+      setShowCreateModal(true)
+    })()
+  }, [normalizedCreateBranchId, onPendingTrasladoPrefillHandled, pendingTrasladoPrefill, preloadEntradaCatalogs])
+
   const handleCancelTransfer = useCallback(async (previewPayload) => {
     const preview = previewPayload && typeof previewPayload === 'object'
       ? previewPayload
@@ -1733,6 +1760,7 @@ function EntradasTable({
           setShowCreateModal(false)
           setCreatePrefillTransferRequest(null)
           setCreatePrefillCompraLocal(null)
+          setCreatePrefillTraslado(null)
         }}
         onCreated={handleCreated}
         token={token}
@@ -1743,6 +1771,7 @@ function EntradasTable({
         prefilledSucursalId={hasSpecificCreateBranch ? normalizedCreateBranchId : ''}
         prefilledTransferRequest={createPrefillTransferRequest}
         prefilledCompraLocal={createPrefillCompraLocal}
+        prefilledNuevoTraslado={createPrefillTraslado}
         currentUser={user}
       />
 

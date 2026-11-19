@@ -198,6 +198,9 @@ function Workspace({
   const [pendingCreateImportacionPrefill, setPendingCreateImportacionPrefill] = useState(null)
   const [pendingCreateImportacionTab, setPendingCreateImportacionTab] = useState(null)
   const [pendingCompraLocalPrefill, setPendingCompraLocalPrefill] = useState(null)
+  // Desde Inventario: doble clic en la cantidad de otra sucursal abre la
+  // solicitud de traslado ya llena (no se guarda nada hasta confirmarla).
+  const [pendingTrasladoPrefill, setPendingTrasladoPrefill] = useState(null)
 
   const handleOpenImportacionPrefill = useCallback((prefill) => {
     const borradorCapableTabs = ['Importaciones', 'En camino']
@@ -216,6 +219,16 @@ function Workspace({
     onSelectTab?.('Entradas')
     setPendingCompraLocalPrefill({ ...prefill, sucursalId, requestKey: `${Date.now()}` })
   }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
+
+  const handleOpenTrasladoPrefill = useCallback((prefill) => {
+    if (!labelHasAccess('Entradas', permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return
+    const sucursalId = String(prefill?.sucursalSolicitanteId || movementBranchSelection?.Entradas || '').trim()
+    if (sucursalId) {
+      setMovementBranchSelection((prev) => ({ ...prev, Entradas: sucursalId }))
+    }
+    onSelectTab?.('Entradas')
+    setPendingTrasladoPrefill({ ...prefill, sucursalId, requestKey: `${Date.now()}` })
+  }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator, movementBranchSelection])
 
   const showWelcome = !activeItem
   const farewellTitle = `Hasta luego, ${username}.`
@@ -677,6 +690,11 @@ function Workspace({
         }
         pendingTransferEntradaRequest={tab === 'Entradas' ? pendingTransferEntradaRequest : null}
         pendingCompraLocalPrefill={tab === 'Entradas' ? pendingCompraLocalPrefill : null}
+        pendingTrasladoPrefill={tab === 'Entradas' ? pendingTrasladoPrefill : null}
+        onPendingTrasladoPrefillHandled={
+          tab === 'Entradas' ? () => setPendingTrasladoPrefill(null) : undefined
+        }
+        onRequestTraslado={tab === 'Inventario' ? handleOpenTrasladoPrefill : undefined}
         onPendingCompraLocalPrefillHandled={
           tab === 'Entradas' ? () => setPendingCompraLocalPrefill(null) : undefined
         }

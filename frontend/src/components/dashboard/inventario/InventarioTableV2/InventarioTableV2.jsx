@@ -139,7 +139,7 @@ const abbreviateBranchName = (name) => {
     .join(' ')
 }
 
-function InventarioTableV2({ token, onSelect, user, moduleActions, permissionIndex }) {
+function InventarioTableV2({ token, onSelect, user, moduleActions, permissionIndex, onRequestTraslado }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
@@ -1133,8 +1133,27 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         ),
       ].join(' · ')
       : ''
+    // Otra sucursal con stock: doble clic pide un traslado de este producto
+    // (abre la solicitud llena en Entradas; nada se guarda hasta confirmar).
+    const puedePedir = Boolean(onRequestTraslado) && branchId != null && shown > 0 && !(isUserScoped && isScoped)
+    const branchNombre = puedePedir ? String(branches.find((b) => String(b.id) === String(branchId))?.nombre || '').trim() : ''
+    const handlePedir = puedePedir
+      ? (event) => {
+        event.stopPropagation()
+        const propias = isUserScoped ? [...permittedBranchIds].filter((id) => String(id) !== String(branchId)) : []
+        onRequestTraslado({
+          sucursalProveedoraId: String(branchId),
+          sucursalSolicitanteId: propias.length ? String(propias[0]) : '',
+          producto: { id: rowData?.producto_id ?? rowData?.id, codigo: rowData?.codigo || '', nombre: rowData?.nombre || '' },
+        })
+      }
+      : undefined
     return (
-      <span className="inventario-v2__quantity-wrap">
+      <span
+        className={`inventario-v2__quantity-wrap${puedePedir ? ' inventario-v2__quantity-wrap--pedir' : ''}`}
+        onDoubleClick={handlePedir}
+        data-title={puedePedir ? `Doble clic: pedir traslado de ${rowData?.codigo || 'este producto'} desde ${branchNombre || 'esta sucursal'}` : undefined}
+      >
         <span
           className={`inventario-v2__quantity${
             isEmpty || shown === 0 ? ' inventario-v2__quantity--empty' : ' inventario-v2__quantity--has-value'
@@ -1167,7 +1186,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         )}
       </span>
     )
-  }, [permittedBranchIds])
+  }, [permittedBranchIds, onRequestTraslado, branches])
 
   const locationBody = useCallback(
     (rowData, branch) => {

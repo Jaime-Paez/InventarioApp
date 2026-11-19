@@ -420,6 +420,11 @@ function CreateEntrada({
   // items: [{ producto_id, codigo, cantidad }] }. Solo llena el formulario;
   // nada se guarda hasta que el usuario lo confirme.
   prefilledCompraLocal = null,
+  // Solicitud de traslado NUEVA pedida desde Inventario: { requestKey,
+  // sucursalId (la que pide), sucursalProveedoraId, producto: {id, codigo,
+  // nombre} }. Solo llena el formulario; se puede agregar mas y decidir si
+  // se manda.
+  prefilledNuevoTraslado = null,
   currentUser = null,
 }) {
   const [formData, setFormData] = useState(initialForm)
@@ -561,6 +566,7 @@ function CreateEntrada({
   const modalRestoreRef = useRef(null)
   const appliedPrefillTransferKeyRef = useRef('')
   const appliedPrefillCompraKeyRef = useRef('')
+  const appliedPrefillTrasladoKeyRef = useRef('')
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -1957,6 +1963,66 @@ function CreateEntrada({
 
   // Compra local desde Reposicion: sucursal, tipo, proveedor y productos con
   // su cantidad, costo y PVP ya puestos. El usuario revisa, edita y decide si
+  // Traslado nuevo desde Inventario: tipo traslado, la sucursal que envia y
+  // el producto ya agregado (cantidad 1, se cambia aqui).
+  useEffect(() => {
+    if (!open) {
+      appliedPrefillTrasladoKeyRef.current = ''
+      return
+    }
+    const request = prefilledNuevoTraslado
+    const requestKey = String(request?.requestKey || '').trim()
+    if (!requestKey || appliedPrefillTrasladoKeyRef.current === requestKey) return
+    const trasladoSubTipo = (subTiposEntrada.length ? subTiposEntrada : subTipos).find(
+      (item) => normalizeValue(item?.nombre).includes('trasl')
+    )
+    if (!trasladoSubTipo?.id || !branches.length) return
+    appliedPrefillTrasladoKeyRef.current = requestKey
+
+    const sucursalId = String(request?.sucursalId || normalizedPrefilledSucursalId || '').trim()
+    const proveedoraId = String(request?.sucursalProveedoraId || '').trim()
+    const trasladoOption = entradaSubTipoOptions.find((option) => option.value === String(trasladoSubTipo.id))
+    if (trasladoOption?.blocked) {
+      notifyError(trasladoOption.blockedReason || 'No tienes permiso para pedir traslados en esta sucursal.')
+      return
+    }
+    setFormData((prev) => ({
+      ...prev,
+      sucursalId: sucursalId || prev.sucursalId,
+      subTipoId: String(trasladoSubTipo.id),
+      sucursalObjetivoId: proveedoraId && proveedoraId !== sucursalId ? proveedoraId : '',
+      fecha: todayISO(),
+    }))
+    setActiveTab('general')
+
+    const productoId = String(request?.producto?.id || '').trim()
+    if (!productoId) return
+    ;(async () => {
+      try {
+        const response = await authFetch(`${API_URL}/productos/listado/${encodeURIComponent(productoId)}/?include_inventory_context=0`, {}, token)
+        if (!response.ok) throw new Error('No se pudo cargar el producto para el traslado.')
+        const producto = await response.json().catch(() => null)
+        if (!producto?.id || appliedPrefillTrasladoKeyRef.current !== requestKey) return
+        setProductos((prev) => (prev.some((item) => String(item.id) === String(producto.id)) ? prev : [...prev, producto]))
+        setDetails((prev) => (prev.some((item) => String(item.productoId) === String(producto.id))
+          ? prev
+          : [...prev, buildDetailRowFromProduct(producto, 1, { estadoProductoId: '', estadoProductoNombre: '', isCompraEntrada: false })]))
+      } catch (err) {
+        notifyError(err?.message || 'No se pudo cargar el producto para el traslado.')
+      }
+    })()
+  }, [
+    branches.length,
+    entradaSubTipoOptions,
+    normalizedPrefilledSucursalId,
+    notifyError,
+    open,
+    prefilledNuevoTraslado,
+    subTipos,
+    subTiposEntrada,
+    token,
+  ])
+
   // la guarda (no se crea nada aqui).
   useEffect(() => {
     if (!open) {
