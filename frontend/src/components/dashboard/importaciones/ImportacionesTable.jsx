@@ -4030,17 +4030,24 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                         const total = g.filas.reduce((sum, d) => sum + (Number(llegoCantidad(d)) || 0), 0)
                         const comentarios = g.filas.map((d) => llegoComentario(d)).filter(Boolean)
                         const envios = enviosDistribucion.porProducto.get(primera.producto?.id) || []
+                        // Se ve como las demas filas (nuevo / sin catalogo); solo la flecha y el
+                        // contador junto al codigo dicen que se despliega.
+                        const grupoSinCat = !primera.producto?.id
+                        const grupoNuevo = !grupoSinCat && primera.producto?.creado_desde_importacion === imp.id
                         const filaGrupo = (
                           <div
                             key={`grupo-${g.clave}`}
-                            className={`create-user__locations-row imp-details__productos-row imp-details__productos-row--grupo${abierto ? ' is-abierto' : ''}${productSearch.trim() && g.filas.some((d) => importItemMatches(d, productSearch)) ? ' imp-search-hit' : ''}`}
+                            className={`create-user__locations-row imp-details__productos-row imp-details__productos-row--grupo${abierto ? ' is-abierto' : ''}${grupoSinCat ? ' importaciones-aceptados__row--no-catalogo' : grupoNuevo ? ' importaciones-aceptados__row--nuevo' : ''}${productSearch.trim() && g.filas.some((d) => importItemMatches(d, productSearch)) ? ' imp-search-hit' : ''}`}
                             style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}
                             onClick={toggle}
                             data-title={abierto ? 'Clic para juntar' : `Clic para ver las ${g.filas.length} referencias`}
                           >
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
-                              {abierto ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                               <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>
+                              <span className="imp-details__grupo-badge">
+                                {abierto ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                                {g.filas.length}
+                              </span>
                             </span>
                             <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, nombre !== '-' ? nombre : null, 'Descripción')} onMouseLeave={hideCellHover}>
                               <span className="imp-table-cell-text">{nombre}</span>
@@ -4049,10 +4056,10 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                               <span className="imp-table-cell-text">{oems.join(', ') || '-'}</span>
                             </span>
                             <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, referencias, 'Referencias')} onMouseLeave={hideCellHover}>
-                              <span className="imp-table-cell-text imp-details__grupo-refs">{g.filas.length} referencias</span>
+                              <span className="imp-table-cell-text">{referencias.join(', ') || '-'}</span>
                             </span>
                             <span className="imp-table-cell-text">{precios.length === 1 ? `$${precios[0]}` : precios.length ? 'Varios' : '-'}</span>
-                            <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 700 }}>{total}</span>
+                            <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>{total}</span>
                             {sucursalesCols.map((suc) => {
                               const found = envios.find((e) => e.sucursalId === suc.id)
                               return (
