@@ -73,3 +73,6 @@ class PrecioFinalAlVerificarTests(APITestCase):
         nuevo = Producto.objects.get(codigo="PF-NUEVO")
         self.assertEqual(self.existente.precio, Decimal("8.00"))
         self.assertEqual(nuevo.precio, Decimal("9.50"))
+        # Queda cuanto de cada fila (referencia) fue a cada sucursal.
+        self.det_nuevo.refresh_from_db()
+        self.assertEqual(self.det_nuevo.reparto_sucursales, {str(self.matriz.id): 5})

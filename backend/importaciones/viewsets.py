@@ -1712,6 +1712,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
 
         # Group distributions by sucursal and create ImportacionEnvio records
         envios_by_sucursal = {}
+        reparto_por_detalle = {}
         for dist in request.data.get("distribuciones", []):
             try:
                 detalle_id = dist.get("detalle_id")
@@ -1726,8 +1727,13 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 # en el inventario es un solo producto.
                 por_producto = envios_by_sucursal.setdefault(sucursal_id, {})
                 por_producto[detalle.producto_id] = por_producto.get(detalle.producto_id, 0) + cantidad
+                reparto = reparto_por_detalle.setdefault(detalle.id, {})
+                reparto[str(sucursal_id)] = reparto.get(str(sucursal_id), 0) + cantidad
             except Exception:
                 continue
+        # Se guarda cuanto de cada fila (referencia) fue a cada sucursal.
+        for detalle_id, reparto in reparto_por_detalle.items():
+            ImportacionDetalle.objects.filter(pk=detalle_id).update(reparto_sucursales=reparto)
 
         envios_creados = []
         for sucursal_id, items in envios_by_sucursal.items():

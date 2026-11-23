@@ -55,7 +55,8 @@ class ImportacionDetalleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ImportacionDetalle
-        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "oem_quitado", "referencia", "cantidad", "comentario", "precio_estimado", "precio_casa", "coincidencia", "coincidencia_codigo", "coincidencia_casa", "coincidencia_precio", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "precio_pvp_snapshot", "cantidad_recibida", "precio_final", "comentario_llegada", "seleccionado", "quitado", "solicitud_id", "orden"]
+        fields = ["id", "producto", "producto_id", "codigo", "nombre", "oem", "oem_quitado", "referencia", "cantidad", "comentario", "precio_estimado", "precio_casa", "coincidencia", "coincidencia_codigo", "coincidencia_casa", "coincidencia_precio", "cantidad_aproximada", "precio_confirmado", "cantidad_confirmada", "precio_pvp_snapshot", "cantidad_recibida", "precio_final", "comentario_llegada", "reparto_sucursales", "seleccionado", "quitado", "solicitud_id", "orden"]
+        read_only_fields = ["reparto_sucursales"]
 
     def validate(self, data):
         producto = data.get("producto")

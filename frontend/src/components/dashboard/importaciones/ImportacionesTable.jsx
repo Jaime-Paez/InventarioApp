@@ -3970,9 +3970,14 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           })()}
                           {sucursalesCols.map((s) => {
                             const found = envios.find((e) => e.sucursalId === s.id)
+                            // Fila de una referencia dentro del grupo: cuanto de ESTA
+                            // referencia fue a cada sucursal (guardado al verificar).
+                            const reparto = d.reparto_sucursales && typeof d.reparto_sucursales === 'object' ? d.reparto_sucursales : {}
+                            const tieneReparto = Object.keys(reparto).length > 0
+                            const valorHijo = tieneReparto ? (Number(reparto[String(s.id)]) || '-') : ''
                             return (
                               <span key={s.id} className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>
-                                {hijo ? '' : (found ? found.cantidad : '-')}
+                                {hijo ? valorHijo : (found ? found.cantidad : '-')}
                               </span>
                             )
                           })}

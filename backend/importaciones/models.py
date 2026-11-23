@@ -161,6 +161,10 @@ class ImportacionDetalle(models.Model):
     # cantidad (cantidad final = cantidad_recibida).
     precio_final = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     comentario_llegada = models.TextField(blank=True, default="")
+    # Cuanto de ESTA fila (esta referencia) se mando a cada sucursal al dar
+    # "Importacion verificada": {"<sucursal_id>": cantidad}. Los envios se
+    # guardan por producto (sumando las filas), esto deja el detalle.
+    reparto_sucursales = models.JSONField(default=dict, blank=True)
     seleccionado = models.BooleanField(null=True, blank=True)
     # Producto que se quito durante la verificacion (p. ej. no vino en el
     # Excel subido): se sigue mostrando en rojo para poder restaurarlo, pero
