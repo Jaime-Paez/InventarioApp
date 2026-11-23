@@ -2886,7 +2886,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                   <th>Producto</th>
                   <th>Referencia</th>
                   <th>Descripción</th>
-                  {alternosHover.data.sucursales.map(suc => <th key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</th>)}
+                  {(sucursales.length ? sucursales : alternosHover.data.sucursales).map(suc => <th key={suc.id} title={suc.nombre}>{shortSucursalLabel(suc.nombre)}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -2895,7 +2895,7 @@ function ImportacionReceiveModal({ imp, token, onClose, onConfirmed }) {
                     <td>{p.codigo}</td>
                     <td className="imp-alternos-hover-card__texto">{p.referencia || '-'}</td>
                     <td className="imp-alternos-hover-card__texto imp-alternos-hover-card__descripcion">{p.nombre || '-'}</td>
-                    {alternosHover.data.sucursales.map(suc => (
+                    {(sucursales.length ? sucursales : alternosHover.data.sucursales).map(suc => (
                       <td key={suc.id}>{alternosHover.data.stock?.[String(p.id)]?.[String(suc.id)] ?? 0}</td>
                     ))}
                   </tr>
