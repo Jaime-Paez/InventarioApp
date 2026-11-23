@@ -7,7 +7,7 @@ import { DataTable } from 'primereact/datatable'
 import { Column } from 'primereact/column'
 import Toast from '../common/AppToast'
 import { Button } from 'primereact/button'
-import { AlertTriangle, Check, Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Info, PackagePlus, Plus, Search, Trash2, X } from 'lucide-react'
 import { Checkbox } from 'primereact/checkbox'
 import { API_URL, authFetch, fetchConMensaje } from '../../../utils/api'
 import { attachAutoExpandColumns, autoFitTableColumns, makeWidthStateHandlers } from '../../../utils/autoFitColumns'
@@ -3031,6 +3031,9 @@ function FechaImportacionDialog({ imp, token, campo, label, onClose, onSaved, no
 function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, moduleActions, onOpenOrigen, isAdmin = false }) {
   // Buscador de productos de esta importacion.
   const [productSearch, setProductSearch] = useState('')
+  // Importada: el mismo producto en varias filas (otra referencia) va en una
+  // sola fila con el total y el reparto; se despliega para ver cada una.
+  const [gruposAbiertos, setGruposAbiertos] = useState(() => new Set())
   // Buscador propio de la pestaña "Inconvenientes" (importada).
   const [inconvSearch, setInconvSearch] = useState('')
   const canMarcarLlegada = moduleActions?.puede_marcar_llegada === true
@@ -3807,7 +3810,8 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                     </div>
                     {!detalles.length ? (
                       <div className="create-user__locations-row create-user__locations-row--empty imp-details__productos-row" style={{ gridTemplateColumns: '1fr' }}><span>Sin productos.</span></div>
-                    ) : (productSearch.trim() ? matchesFirst(detalles, (d) => importItemMatches(d, productSearch)) : detalles).map((d, i) => {
+                    ) : (() => {
+                      const renderDetalleRow = (d, i, hijo = false) => {
                       const sinCat = !d.producto?.id
                       const creadoAqui = !sinCat && d.producto?.creado_desde_importacion === imp.id
                       const codigo = d.producto?.codigo || d.codigo || '-'
@@ -3822,7 +3826,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                       const comentario = (esImportada ? llegoComentario(d) : d.comentario) || '-'
                       const envios = d.producto?.id != null ? (enviosDistribucion.porProducto.get(d.producto.id) || []) : []
                       return (
-                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${sinCat ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${productSearch.trim() && importItemMatches(d, productSearch) ? ' imp-search-hit' : ''}`} style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
+                        <div key={d.id ?? i} className={`create-user__locations-row imp-details__productos-row${hijo ? ' imp-details__productos-row--hijo' : ''}${sinCat ? ' importaciones-aceptados__row--no-catalogo' : creadoAqui ? ' importaciones-aceptados__row--nuevo' : ''}${productSearch.trim() && importItemMatches(d, productSearch) ? ' imp-search-hit' : ''}`} style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}>
                           <span
                             className="imp-table-cell-tip"
                             onMouseEnter={(e) => !sinCat && showCellHover(e, codigo, 'Código')}
@@ -3830,7 +3834,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           >
                             {sinCat && !String(d.codigo || '').trim()
                               ? <span className="importaciones-aceptados__no-catalogo-badge">Sin catálogo</span>
-                              : <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>}
+                              : <span className="imp-table-cell-text imp-table-cell-text--full" style={hijo ? { paddingLeft: 22 } : undefined}>{codigo}</span>}
                           </span>
                           {/* En camino: la descripcion se escoge de las coincidencias
                               (clic en la "i" del OEM). Solo un producto nuevo (sin
@@ -3968,7 +3972,7 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                             const found = envios.find((e) => e.sucursalId === s.id)
                             return (
                               <span key={s.id} className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>
-                                {found ? found.cantidad : '-'}
+                                {hijo ? '' : (found ? found.cantidad : '-')}
                               </span>
                             )
                           })}
@@ -3995,7 +3999,76 @@ function ImportacionDetailsModal({ imp: impProp, token, onClose, onSaved, module
                           )}
                         </div>
                       )
-                    })}
+                      }
+                      const lista = productSearch.trim() ? matchesFirst(detalles, (d) => importItemMatches(d, productSearch)) : detalles
+                      if (imp.estado !== 'importada') return lista.map((d, i) => renderDetalleRow(d, i))
+                      // Importada: las filas del mismo producto (otra referencia) se
+                      // juntan en una con el total y el reparto; al desplegar se ve
+                      // cada referencia con su cantidad.
+                      const grupos = []
+                      const porClave = new Map()
+                      lista.forEach((d) => {
+                        const clave = d.producto?.id != null ? `p:${d.producto.id}` : `d:${d.id}`
+                        if (!porClave.has(clave)) { const g = { clave, filas: [] }; porClave.set(clave, g); grupos.push(g) }
+                        porClave.get(clave).filas.push(d)
+                      })
+                      return grupos.flatMap((g, gi) => {
+                        if (g.filas.length === 1) return [renderDetalleRow(g.filas[0], gi)]
+                        const primera = g.filas[0]
+                        const abierto = gruposAbiertos.has(g.clave)
+                        const toggle = () => setGruposAbiertos((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(g.clave)) next.delete(g.clave)
+                          else next.add(g.clave)
+                          return next
+                        })
+                        const codigo = primera.producto?.codigo || primera.codigo || '-'
+                        const nombre = primera.producto?.nombre || primera.nombre || '-'
+                        const referencias = g.filas.map((d) => getDetalleReferencia(d)).filter(Boolean)
+                        const oems = [...new Set(g.filas.flatMap((d) => String(d.oem || getProductoOem(d.producto) || '').split(',').map((x) => x.trim()).filter(Boolean)))]
+                        const precios = [...new Set(g.filas.map((d) => llegoPrecio(d)).filter((v) => v != null).map((v) => Number(v).toFixed(2)))]
+                        const total = g.filas.reduce((sum, d) => sum + (Number(llegoCantidad(d)) || 0), 0)
+                        const comentarios = g.filas.map((d) => llegoComentario(d)).filter(Boolean)
+                        const envios = enviosDistribucion.porProducto.get(primera.producto?.id) || []
+                        const filaGrupo = (
+                          <div
+                            key={`grupo-${g.clave}`}
+                            className={`create-user__locations-row imp-details__productos-row imp-details__productos-row--grupo${abierto ? ' is-abierto' : ''}${productSearch.trim() && g.filas.some((d) => importItemMatches(d, productSearch)) ? ' imp-search-hit' : ''}`}
+                            style={{ gridTemplateColumns: productosGridTemplate, width: '100%', minWidth: productosMinWidth }}
+                            onClick={toggle}
+                            data-title={abierto ? 'Clic para juntar' : `Clic para ver las ${g.filas.length} referencias`}
+                          >
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                              {abierto ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                              <span className="imp-table-cell-text imp-table-cell-text--full">{codigo}</span>
+                            </span>
+                            <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, nombre !== '-' ? nombre : null, 'Descripción')} onMouseLeave={hideCellHover}>
+                              <span className="imp-table-cell-text">{nombre}</span>
+                            </span>
+                            <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, oems, 'OEM')} onMouseLeave={hideCellHover}>
+                              <span className="imp-table-cell-text">{oems.join(', ') || '-'}</span>
+                            </span>
+                            <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, referencias, 'Referencias')} onMouseLeave={hideCellHover}>
+                              <span className="imp-table-cell-text imp-details__grupo-refs">{g.filas.length} referencias</span>
+                            </span>
+                            <span className="imp-table-cell-text">{precios.length === 1 ? `$${precios[0]}` : precios.length ? 'Varios' : '-'}</span>
+                            <span className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 700 }}>{total}</span>
+                            {sucursalesCols.map((suc) => {
+                              const found = envios.find((e) => e.sucursalId === suc.id)
+                              return (
+                                <span key={suc.id} className="imp-table-cell-text" style={{ textAlign: 'center', fontWeight: 600 }}>
+                                  {found ? found.cantidad : '-'}
+                                </span>
+                              )
+                            })}
+                            <span className="imp-table-cell-tip" onMouseEnter={(e) => showCellHover(e, comentarios, 'Comentario')} onMouseLeave={hideCellHover}>
+                              <span className="imp-table-cell-text">{comentarios.join(' · ') || '-'}</span>
+                            </span>
+                          </div>
+                        )
+                        return [filaGrupo, ...(abierto ? g.filas.map((d, k) => renderDetalleRow(d, `${gi}-${k}`, true)) : [])]
+                      })
+                    })()}
                   </div>
                   </div>
                 </section>
