@@ -1758,9 +1758,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
         # recepcion en cada sucursal, que puede tardar dias/semanas).
         # Es el precio final (el que se verifico al llegar), o el confirmado si
         # una fila vieja no lo tiene.
+        # (Consulta nueva: instance.detalles puede venir precargado de antes de
+        # crear los productos nuevos y dejarlos sin precio final.)
         precio_by_producto = {
             d.producto_id: d.precio_final if d.precio_final is not None else d.precio_confirmado
-            for d in instance.detalles.all()
+            for d in ImportacionDetalle.objects.filter(importacion=instance).order_by("orden", "id")
             if d.producto_id and (d.precio_final is not None or d.precio_confirmado is not None)
         }
         for product_id, nuevo_precio in precio_by_producto.items():
