@@ -222,6 +222,7 @@ const serializeModuleBranchMatrix = (matrix, allowedModules = []) => {
             entry.puede_crear_importacion = canCreate ? Boolean(rawEntry?.puede_crear_importacion ?? false) : false
             entry.puede_crear_traslado = canCreate ? Boolean(rawEntry?.puede_crear_traslado ?? false) : false
             entry.puede_crear_devolucion = canCreate ? Boolean(rawEntry?.puede_crear_devolucion ?? false) : false
+            entry.puede_pedido_rapido = canCreate ? Boolean(rawEntry?.puede_pedido_rapido ?? false) : false
           }
           if (normalizedModKey === SALIDAS_MODULE_KEY) {
             entry.puede_crear_venta = canCreate ? Boolean(rawEntry?.puede_crear_venta ?? false) : false
@@ -1433,6 +1434,7 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                     { key: 'puede_crear_compra_local', label: 'Compras locales' },
                     { key: 'puede_crear_traslado', label: 'Traslados' },
                     { key: 'puede_crear_devolucion', label: 'Devoluciones' },
+                    { key: 'puede_pedido_rapido', label: 'Pedidos rápidos' },
                   ]
                   const salidasSubtypes = [
                     { key: 'puede_crear_venta', label: 'Ventas' },

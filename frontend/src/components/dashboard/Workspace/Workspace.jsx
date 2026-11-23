@@ -220,6 +220,21 @@ function Workspace({
     setPendingCompraLocalPrefill({ ...prefill, sucursalId, requestKey: `${Date.now()}` })
   }, [onSelectTab, permissionIndex, moduleScopeAccessIndex, isAdministrator])
 
+  // Pedidos rapidos (doble clic en Inventario): sucursales desde las que el
+  // usuario puede pedir; null = todas (administrador).
+  const pedidoRapidoBranchIds = (() => {
+    if (isAdministrator) return null
+    const ids = []
+    ;(Array.isArray(user?.sucursales_por_modulo) ? user.sucursales_por_modulo : []).forEach((scope) => {
+      if (String(scope?.modulo || '').trim().toLowerCase() !== 'movimientos_entradas') return
+      ;(Array.isArray(scope?.acciones_por_sucursal) ? scope.acciones_por_sucursal : []).forEach((entry) => {
+        if (entry?.puede_crear && entry?.puede_pedido_rapido && entry?.sucursal_id != null) ids.push(String(entry.sucursal_id))
+      })
+    })
+    return ids
+  })()
+  const puedePedidoRapido = pedidoRapidoBranchIds === null || pedidoRapidoBranchIds.length > 0
+
   const handleOpenTrasladoPrefill = useCallback((prefill) => {
     if (!labelHasAccess('Entradas', permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return
     const sucursalId = String(prefill?.sucursalSolicitanteId || movementBranchSelection?.Entradas || '').trim()
@@ -694,7 +709,8 @@ function Workspace({
         onPendingTrasladoPrefillHandled={
           tab === 'Entradas' ? () => setPendingTrasladoPrefill(null) : undefined
         }
-        onRequestTraslado={tab === 'Inventario' ? handleOpenTrasladoPrefill : undefined}
+        onRequestTraslado={tab === 'Inventario' && puedePedidoRapido ? handleOpenTrasladoPrefill : undefined}
+        pedidoRapidoBranchIds={tab === 'Inventario' ? pedidoRapidoBranchIds : undefined}
         onPendingCompraLocalPrefillHandled={
           tab === 'Entradas' ? () => setPendingCompraLocalPrefill(null) : undefined
         }

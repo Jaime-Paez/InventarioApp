@@ -139,7 +139,7 @@ const abbreviateBranchName = (name) => {
     .join(' ')
 }
 
-function InventarioTableV2({ token, onSelect, user, moduleActions, permissionIndex, onRequestTraslado }) {
+function InventarioTableV2({ token, onSelect, user, moduleActions, permissionIndex, onRequestTraslado, pedidoRapidoBranchIds = null }) {
   const toast = useRef(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
@@ -1135,12 +1135,18 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       : ''
     // Otra sucursal con stock: doble clic pide un traslado de este producto
     // (abre la solicitud llena en Entradas; nada se guarda hasta confirmar).
+    // Pedidos rapidos: solo desde sucursales con ese permiso (null = todas).
+    const sucursalesPedido = Array.isArray(pedidoRapidoBranchIds)
+      ? pedidoRapidoBranchIds.map(String).filter((id) => id !== String(branchId) && (!isUserScoped || permittedBranchIds.has(id)))
+      : null
     const puedePedir = Boolean(onRequestTraslado) && branchId != null && shown > 0 && !(isUserScoped && isScoped)
+      && (sucursalesPedido === null || sucursalesPedido.length > 0)
     const branchNombre = puedePedir ? String(branches.find((b) => String(b.id) === String(branchId))?.nombre || '').trim() : ''
     const handlePedir = puedePedir
       ? (event) => {
         event.stopPropagation()
-        const propias = isUserScoped ? [...permittedBranchIds].filter((id) => String(id) !== String(branchId)) : []
+        const propias = sucursalesPedido
+          ?? (isUserScoped ? [...permittedBranchIds].filter((id) => String(id) !== String(branchId)) : [])
         onRequestTraslado({
           sucursalProveedoraId: String(branchId),
           sucursalSolicitanteId: propias.length ? String(propias[0]) : '',
@@ -1186,7 +1192,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         )}
       </span>
     )
-  }, [permittedBranchIds, onRequestTraslado, branches])
+  }, [permittedBranchIds, onRequestTraslado, branches, pedidoRapidoBranchIds])
 
   const locationBody = useCallback(
     (rowData, branch) => {

@@ -173,6 +173,9 @@ class UsuarioModuloSucursal(models.Model):
     puede_crear_venta = models.BooleanField(default=False)
     puede_importar = models.BooleanField(default=False)
     puede_marcar_llegada = models.BooleanField(default=False)
+    # Entradas: doble clic en Inventario (stock de otra sucursal) abre el
+    # pedido a sucursal lleno ("pedidos rapidos").
+    puede_pedido_rapido = models.BooleanField(default=False)
 
     class Meta:
         verbose_name = "Alcance de sucursal por modulo"
@@ -202,6 +205,7 @@ class UsuarioModuloSucursal(models.Model):
             self.puede_crear_venta = False
             self.puede_importar = False
             self.puede_marcar_llegada = False
+            self.puede_pedido_rapido = False
 
         if not any(
             (

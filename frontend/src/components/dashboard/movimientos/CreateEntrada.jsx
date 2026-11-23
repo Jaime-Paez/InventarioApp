@@ -567,6 +567,12 @@ function CreateEntrada({
   const appliedPrefillTransferKeyRef = useRef('')
   const appliedPrefillCompraKeyRef = useRef('')
   const appliedPrefillTrasladoKeyRef = useRef('')
+  // Pedido rapido (doble clic en Inventario): sin Uber solo se guarda, y si ya
+  // hay un pedido guardado de esta sucursal a la proveedora se abre ese con
+  // sus productos y se le agrega el nuevo.
+  const [pedidoRapido, setPedidoRapido] = useState(false)
+  const [pedidoGuardado, setPedidoGuardado] = useState(null)
+  const pedidoGuardadoKeyRef = useRef('')
 
   const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
@@ -1986,6 +1992,7 @@ function CreateEntrada({
       notifyError(trasladoOption.blockedReason || 'No tienes permiso para pedir traslados en esta sucursal.')
       return
     }
+    setPedidoRapido(true)
     setFormData((prev) => ({
       ...prev,
       sucursalId: sucursalId || prev.sucursalId,
@@ -2022,6 +2029,79 @@ function CreateEntrada({
     subTiposEntrada,
     token,
   ])
+
+  useEffect(() => {
+    if (open) return
+    setPedidoRapido(false)
+    setPedidoGuardado(null)
+    pedidoGuardadoKeyRef.current = ''
+  }, [open])
+
+  // Pedido rapido: al tener la sucursal que pide y la proveedora, si ya hay un
+  // pedido guardado entre ellas se abre ese (sus productos + el nuevo).
+  useEffect(() => {
+    if (!open || !pedidoRapido) return
+    const solicitanteId = String(formData.sucursalId || '').trim()
+    const proveedoraId = String(formData.sucursalObjetivoId || '').trim()
+    const key = solicitanteId && proveedoraId && solicitanteId !== proveedoraId ? `${solicitanteId}-${proveedoraId}` : ''
+    if (pedidoGuardadoKeyRef.current === key) return
+    pedidoGuardadoKeyRef.current = key
+    if (!key) {
+      setPedidoGuardado(null)
+      setDetails((prev) => prev.filter((detail) => !detail.deGuardado))
+      return
+    }
+    ;(async () => {
+      let pedido = null
+      try {
+        const response = await authFetch(
+          `${API_URL}/movimientos/movimiento_inventario/solicitudes-traslado/pedido-guardado/?sucursal_solicitante_id=${encodeURIComponent(solicitanteId)}&sucursal_proveedora_id=${encodeURIComponent(proveedoraId)}`,
+          {},
+          token
+        )
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(resolveApiErrorMessage(data, 'No se pudo revisar si ya hay un pedido guardado.'))
+        pedido = data?.pedido || null
+      } catch (err) {
+        notifyError(err?.message || 'No se pudo revisar si ya hay un pedido guardado.')
+      }
+      if (pedidoGuardadoKeyRef.current !== key) return
+      setPedidoGuardado(pedido ? { id: pedido.id, noDocumento: String(pedido.no_documento || '').trim() } : null)
+      setDetails((prev) => {
+        const nuevos = prev.filter((detail) => !detail.deGuardado)
+        if (!pedido) return nuevos
+        const anteriores = (Array.isArray(pedido.detalles) ? pedido.detalles : [])
+          .map((detalle, index) => {
+            const productoId = String(detalle?.producto_id ?? '').trim()
+            if (!productoId) return null
+            const cantidad = parseIntValue(detalle?.cantidad)
+            const valor = parseNumber(detalle?.valor)
+            const safeCantidad = Number.isFinite(cantidad) && cantidad > 0 ? cantidad : 0
+            const safeValor = Number.isFinite(valor) && valor >= 0 ? valor : 0
+            return {
+              uid: `guardado-${pedido.id}-${detalle?.id ?? index}`,
+              deGuardado: true,
+              productoId,
+              productoCodigo: String(detalle?.producto_codigo || '').trim(),
+              productoNombre: String(detalle?.producto_nombre || '').trim(),
+              estadoProductoId: '',
+              estadoProductoNombre: '',
+              cantidad: safeCantidad,
+              valor: safeValor,
+              valor_total: safeCantidad * safeValor,
+              importante: Boolean(detalle?.importante),
+            }
+          })
+          .filter(Boolean)
+        const idsAnteriores = new Set(anteriores.map((detail) => detail.productoId))
+        // Si el producto ya estaba en el pedido, queda su fila (con su cantidad).
+        return [...anteriores, ...nuevos.filter((detail) => !idsAnteriores.has(String(detail.productoId)))]
+      })
+      if (pedido?.descripcion) {
+        setFormData((prev) => (String(prev.descripcion || '').trim() ? prev : { ...prev, descripcion: String(pedido.descripcion) }))
+      }
+    })()
+  }, [formData.sucursalId, formData.sucursalObjetivoId, notifyError, open, pedidoRapido, token])
 
   // la guarda (no se crea nada aqui).
   useEffect(() => {
@@ -3178,6 +3258,12 @@ function CreateEntrada({
         if (field === 'descuentoPorcentaje') {
           return { ...detail, descuentoPorcentaje: rawValue }
         }
+        if (field === 'cantidad') {
+          const cantidad = parseIntValue(rawValue)
+          const safeCantidad = Number.isFinite(cantidad) && cantidad > 0 ? cantidad : 0
+          const valor = parseNumber(detail.valor)
+          return { ...detail, cantidad: rawValue, valor_total: safeCantidad * (Number.isFinite(valor) ? valor : 0) }
+        }
         return detail
       })
     )
@@ -3592,9 +3678,9 @@ function CreateEntrada({
   const handleSubmit = async (event, options = {}) => {
     event.preventDefault()
     if (isCasaComercialStep || justTransitionedFromCasaRef.current) return
-    // Traslado que no es por Uber: primero se guarda; la solicitud se crea
-    // despues, al abrirla de nuevo (detalle de la entrada).
-    const guardarBorrador = isTraslado && (Boolean(options?.guardarBorrador) || !formData.urgente)
+    // Pedido rapido que no es por Uber: solo se guarda; la solicitud se crea
+    // despues, al abrirla de nuevo. El pedido normal se guarda o se envia.
+    const guardarBorrador = isTraslado && (Boolean(options?.guardarBorrador) || (pedidoRapido && !formData.urgente))
     setError('')
 
     if (!entradaTipoId) {
@@ -3731,6 +3817,7 @@ function CreateEntrada({
             importante: Boolean(detail.importante),
           })),
           guardar_borrador: guardarBorrador,
+          ...(pedidoGuardado?.id ? { pedido_guardado_id: pedidoGuardado.id } : {}),
         }
 
         const response = await authFetch(
@@ -4532,6 +4619,12 @@ function CreateEntrada({
                       reason="El catálogo de estados de producto está vacío y cada producto de la entrada necesita uno. Pide al administrador que cree al menos un estado de producto (por ejemplo, «Disponible»)."
                     />
                   )}
+                  {pedidoRapido && pedidoGuardado && (
+                    <div className="create-entrada__pedido-guardado" role="status">
+                      <strong>{`Pedido guardado${pedidoGuardado.noDocumento ? ` ${pedidoGuardado.noDocumento}` : ''}`}</strong>
+                      <span>Ya había un pedido guardado a esta sucursal: aquí están sus productos y el nuevo. Lo que guardes queda en ese mismo pedido.</span>
+                    </div>
+                  )}
                   {noProviderBranchBlocker ? (
                     <BlockerNotice title={noProviderBranchBlocker.title} reason={noProviderBranchBlocker.reason} goTo={noProviderBranchBlocker.goTo} />
                   ) : isTraslado && !hasSelectedProveedorSucursal ? (
@@ -4999,7 +5092,20 @@ function CreateEntrada({
                           {isCompraEntrada && (
                             <span className="create-salida__numeric">{formatCurrency(valorConIva)}</span>
                           )}
-                          <span>{detail.cantidad}</span>
+                          <span>
+                            {isTraslado ? (
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                className={`create-salida__numeric-input${detailFieldErrors[detail.uid]?.cantidad ? ' create-salida__input--error' : ''}`}
+                                value={detail.cantidad}
+                                onChange={(event) => handleDetailFieldChange(detail.uid, 'cantidad', event.target.value)}
+                                onKeyDown={handleRowArrowKeyDown}
+                                disabled={loading}
+                              />
+                            ) : detail.cantidad}
+                          </span>
                           <span className="create-salida__numeric">{formatCurrency(detail.valor_total)}</span>
                           <span className="create-user__locations-cell create-user__locations-cell--action">
                             <button type="button" className="create-user__locations-remove" onClick={() => handleRemoveDetail(detail.uid)} disabled={loading}>
@@ -5493,9 +5599,9 @@ function CreateEntrada({
                     {loading ? 'Guardando...' : 'Guardar'}
                   </button>
                 )}
-                {/* Traslado: "Crear solicitud" solo si es por Uber; si no, solo
-                    se guarda y se crea despues al abrirla de nuevo. */}
-                {(!isTraslado || formData.urgente) && (
+                {/* Pedido rapido: "Crear solicitud" solo si es por Uber; si no,
+                    solo se guarda. El pedido normal tiene los dos botones. */}
+                {(!isTraslado || !pedidoRapido || formData.urgente) && (
                 <button
                   type="submit"
                   className="create-user__action create-user__action--primary"

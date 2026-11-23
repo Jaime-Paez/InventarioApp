@@ -2399,3 +2399,19 @@
 }
 .create-entrada__star-hint .pi { flex: 0 0 auto; align-self: flex-start; margin-top: 2px; color: #f59e0b; font-size: 13px; }
 .dashboard-shell.dark .create-entrada__star-hint { color: #fcd34d; }
+
+/* Pedido rapido: aviso de que se abrio el pedido guardado que ya existia. */
+.create-entrada__pedido-guardado {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 6px 0 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.08);
+  font-size: 0.85rem;
+}
+.create-entrada__pedido-guardado strong {
+  color: #1d4ed8;
+}

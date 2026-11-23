@@ -154,6 +154,9 @@ def build_sucursal_scope_payload(scopes):
         normalized_flags["puede_marcar_llegada"] = bool(
             getattr(scope, "puede_marcar_llegada", False)
         )
+        normalized_flags["puede_pedido_rapido"] = bool(
+            getattr(scope, "puede_pedido_rapido", False)
+        )
 
         grouped.setdefault(modulo, {})
         grouped[modulo][branch_id] = normalized_flags
@@ -264,6 +267,7 @@ class ModuloSucursalActionSerializer(serializers.Serializer):
     puede_crear_venta = serializers.BooleanField(required=False, default=False)
     puede_importar = serializers.BooleanField(required=False, default=False)
     puede_marcar_llegada = serializers.BooleanField(required=False, default=False)
+    puede_pedido_rapido = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         flags = normalize_scope_action_flags(attrs)
@@ -275,6 +279,7 @@ class ModuloSucursalActionSerializer(serializers.Serializer):
             "puede_crear_venta",
             "puede_importar",
             "puede_marcar_llegada",
+            "puede_pedido_rapido",
         )
         if not flags.get("puede_crear"):
             for key in subtype_keys:
@@ -567,6 +572,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
                     "puede_crear_venta",
                     "puede_importar",
                     "puede_marcar_llegada",
+                    "puede_pedido_rapido",
                 )
                 if not flags.get("puede_crear"):
                     for key in subtype_keys:

@@ -3613,72 +3613,87 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             action_key=action_key,
         )
 
-    def _acumular_en_solicitud_guardada_del_dia(self, request):
-        """Pedido a sucursal guardado (no por Uber): si hoy ya hay uno guardado
-        de la misma sucursal destino a la misma proveedora, los productos se
-        agregan a ese (las cantidades del mismo producto se suman) en vez de
-        crear otro; al final del dia se crea la solicitud con todo junto.
-        Devuelve la Response, o None si no hay una guardada de hoy."""
-        try:
-            solicitante_id = int(request.data.get("sucursal_solicitante_id"))
-            proveedora_id = int(request.data.get("sucursal_proveedora_id"))
-        except (TypeError, ValueError):
-            return None
-        existente = (
+    def _pedido_guardado_de(self, solicitante_id, proveedora_id):
+        """Ultimo pedido a sucursal guardado (no por Uber) de esa sucursal a
+        esa proveedora: los pedidos rapidos se van juntando ahi."""
+        return (
             SolicitudTraslado.objects.filter(
                 estado=SolicitudTraslado.Estados.GUARDADO,
                 sucursal_solicitante_id=solicitante_id,
                 sucursal_proveedora_id=proveedora_id,
-                fecha=timezone.localdate(),
                 urgente=False,
             )
-            .order_by("-id")
+            .order_by("-fecha", "-id")
             .first()
         )
-        if existente is None:
-            return None
+
+    @action(detail=False, methods=["get"], url_path="solicitudes-traslado/pedido-guardado")
+    def pedido_guardado(self, request):
+        """Pedido rapido: el pedido guardado que ya existe para la sucursal que
+        pide y la proveedora (o null), para abrirlo en vez de crear otro."""
+        try:
+            solicitante_id = int(request.query_params.get("sucursal_solicitante_id"))
+            proveedora_id = int(request.query_params.get("sucursal_proveedora_id"))
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "Debes enviar la sucursal que pide y la proveedora."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         self._ensure_solicitud_traslado_write_access(
             sucursal_solicitante_id=solicitante_id,
             sucursal_proveedora_id=proveedora_id,
             action_key="puede_crear",
         )
-        merged = {}
-        for det in existente.detalles.all():
-            merged[int(det.producto_id)] = {
-                "producto_id": int(det.producto_id),
-                "cantidad": int(det.cantidad or 0),
-                "valor": str(det.valor or 0),
-                "importante": bool(det.importante),
-            }
-        for raw in request.data.get("detalles") or []:
-            try:
-                producto_id = int(raw.get("producto_id"))
-                cantidad = int(raw.get("cantidad") or 0)
-            except (TypeError, ValueError, AttributeError):
-                continue
-            if producto_id in merged:
-                merged[producto_id]["cantidad"] += cantidad
-                merged[producto_id]["importante"] = merged[producto_id]["importante"] or bool(raw.get("importante"))
-            else:
-                merged[producto_id] = {
-                    "producto_id": producto_id,
-                    "cantidad": cantidad,
-                    "valor": raw.get("valor") or 0,
-                    "importante": bool(raw.get("importante")),
-                }
-        data = {"detalles": list(merged.values())}
-        nota_nueva = str(request.data.get("descripcion") or "").strip()
-        nota_actual = str(existente.descripcion or "").strip()
-        if nota_nueva and nota_nueva not in nota_actual:
-            data["descripcion"] = f"{nota_actual}\n{nota_nueva}".strip()
+        existente = self._pedido_guardado_de(solicitante_id, proveedora_id)
+        if existente is None:
+            return Response({"pedido": None}, status=status.HTTP_200_OK)
+        return Response(
+            {"pedido": SolicitudTrasladoSerializer(instance=existente).data},
+            status=status.HTTP_200_OK,
+        )
+
+    def _actualizar_pedido_guardado(self, request, pedido_id, guardar_borrador):
+        """Pedido rapido sobre un pedido guardado que ya existia: se reemplazan
+        sus productos con los del formulario (que ya traia los anteriores) y,
+        si no se guarda, pasa a solicitud pendiente."""
+        solicitud = SolicitudTraslado.objects.filter(pk=pedido_id).first()
+        if solicitud is None or solicitud.estado != SolicitudTraslado.Estados.GUARDADO:
+            return None
+        self._ensure_solicitud_traslado_write_access(
+            sucursal_solicitante_id=solicitud.sucursal_solicitante_id,
+            sucursal_proveedora_id=solicitud.sucursal_proveedora_id,
+            action_key="puede_crear",
+        )
+        data = {
+            key: request.data.get(key)
+            for key in (
+                "fecha",
+                "descripcion",
+                "urgente",
+                "descripcion_urgencia",
+                "detalles",
+                "recordatorio_destinatario_ids",
+            )
+            if key in request.data
+        }
         serializer = SolicitudTrasladoSerializer(
-            instance=existente,
+            instance=solicitud,
             data=data,
             partial=True,
-            context={"is_borrador": True},
+            context={"is_borrador": guardar_borrador},
         )
         serializer.is_valid(raise_exception=True)
-        updated = serializer.save()
+        reminder_recipient_ids = serializer.validated_data.get("recordatorio_destinatario_ids") or []
+        save_kwargs = {}
+        if not guardar_borrador:
+            save_kwargs["estado"] = SolicitudTraslado.Estados.PENDIENTE
+        updated = serializer.save(**save_kwargs)
+        if not guardar_borrador:
+            self._append_transfer_request_reminder(
+                solicitud=updated,
+                actor_user=request.user,
+                selected_user_ids=reminder_recipient_ids,
+            )
         output = dict(SolicitudTrasladoSerializer(instance=updated).data)
         output["agregado_a_guardada"] = True
         return Response(output, status=status.HTTP_200_OK)
@@ -3687,10 +3702,13 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
     def solicitudes_traslado(self, request):
         if request.method.lower() == "post":
             guardar_borrador = bool(request.data.get("guardar_borrador"))
-            if guardar_borrador and not bool(request.data.get("urgente")):
-                acumulada = self._acumular_en_solicitud_guardada_del_dia(request)
-                if acumulada is not None:
-                    return acumulada
+            pedido_guardado_id = request.data.get("pedido_guardado_id")
+            if pedido_guardado_id:
+                actualizado = self._actualizar_pedido_guardado(
+                    request, pedido_guardado_id, guardar_borrador
+                )
+                if actualizado is not None:
+                    return actualizado
             serializer = SolicitudTrasladoSerializer(
                 data=request.data,
                 context={"is_borrador": guardar_borrador},
