@@ -294,7 +294,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
   // key -> { bodega, division, subdivisionId, cantidad }
   const [drafts, setDrafts] = useState({})
   const [query, setQuery] = useState('')
-  const [finishTarget, setFinishTarget] = useState(null)
+  const [faltanteTarget, setFaltanteTarget] = useState(null)
   // Filas recien marcadas: el check se ve puesto mientras se guardan.
   const [checkingKeys, setCheckingKeys] = useState(() => new Set())
   // Filas que no se pudieron marcar: muestran por que (como en traslados).
@@ -414,10 +414,10 @@ function PorGuardar({ token, darkMode, onSaved }) {
 
   useEffect(() => {
     if (!open) return undefined
-    const onKey = (event) => { if (event.key === 'Escape' && !saving && !finishTarget) setOpen(false) }
+    const onKey = (event) => { if (event.key === 'Escape' && !saving && !faltanteTarget) setOpen(false) }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [open, saving, finishTarget])
+  }, [open, saving, faltanteTarget])
 
   // Como al recibir un traslado: marcar el check guarda de una vez lo contado
   // en la ubicacion elegida. Si falta algo (cantidad o ubicacion) no se marca
@@ -434,8 +434,20 @@ function PorGuardar({ token, darkMode, onSaved }) {
       })
     }
   }
-  const checkShipmentItems = (shipment, items) =>
-    checkRows(items.map((item) => itemKey(shipment, item)), () => saveShipmentItems(shipment, items))
+  // Si contaron menos de lo que queda, se confirma: lo que falta sale del
+  // inventario y queda como faltante en Inconvenientes al marcar el check.
+  const checkShipmentItems = (shipment, items) => {
+    const item = items[0]
+    const key = itemKey(shipment, item)
+    const total = linesTotal(linesOf(drafts[key]))
+    if (items.length === 1 && total < item.pendiente) {
+      const problem = problemFor(key, item.pendiente, { allowZero: true })
+      if (rejectProblems([{ key, problem }])) return Promise.resolve()
+      setFaltanteTarget({ shipment, item, total })
+      return Promise.resolve()
+    }
+    return checkRows(items.map((it) => itemKey(shipment, it)), () => saveShipmentItems(shipment, items))
+  }
   const checkPorUbicar = (rows) => checkRows(rows.map(porUbicarKey), () => savePorUbicar(rows))
 
   useEffect(() => {
@@ -509,8 +521,9 @@ function PorGuardar({ token, darkMode, onSaved }) {
       return [...lines, { ...emptyLine(), ...located, cantidad: rest > 0 ? String(rest) : '' }]
     })
 
-  const problemFor = (key, max) => {
+  const problemFor = (key, max, { allowZero = false } = {}) => {
     const lines = linesOf(drafts[key])
+    if (allowZero && lines.length === 1 && lineQty(lines[0]) === 0) return ''
     for (const line of lines) {
       if (lineQty(line) <= 0) return lines.length > 1 ? 'Indica cuantas van en cada ubicacion.' : 'Indica cuantas contaste.'
       if (!line.subdivisionId) return 'Elige la bodega, division y subdivision donde lo guardas.'
@@ -548,10 +561,10 @@ function PorGuardar({ token, darkMode, onSaved }) {
     return payload
   }, [token])
 
-  const saveShipmentItems = async (shipment, items) => {
+  const saveShipmentItems = async (shipment, items, { faltante = false } = {}) => {
     const entries = items.map((item) => {
       const key = itemKey(shipment, item)
-      return { key, problem: problemFor(key, item.pendiente) }
+      return { key, problem: problemFor(key, item.pendiente, { allowZero: faltante }) }
     })
     if (rejectProblems(entries)) return
     cancelPersist(entries.map((entry) => entry.key))
@@ -560,18 +573,31 @@ function PorGuardar({ token, darkMode, onSaved }) {
     try {
       // Mueve lo contado desde POR UBICAR a su ubicacion (ya estaba en el
       // stock: no se suma de nuevo).
-      const response = await authFetch(
-        `${shipmentBase(shipment)}/guardar-ubicaciones/`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            items: items.flatMap((item) => linesToItems(itemKey(shipment, item), { producto_id: item.producto_id })),
-          }),
-        },
-        token
-      )
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar.')
+      const toStore = items
+        .flatMap((item) => linesToItems(itemKey(shipment, item), { producto_id: item.producto_id }))
+        .filter((entry) => entry.cantidad > 0)
+      if (toStore.length) {
+        const response = await authFetch(
+          `${shipmentBase(shipment)}/guardar-ubicaciones/`,
+          { method: 'POST', body: JSON.stringify({ items: toStore }) },
+          token
+        )
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo guardar.')
+      }
+      let faltantes = 0
+      if (faltante) {
+        for (const item of items) {
+          const response = await authFetch(
+            `${shipmentBase(shipment)}/faltante-producto/`,
+            { method: 'POST', body: JSON.stringify({ producto_id: item.producto_id }) },
+            token
+          )
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(String(payload?.detail || '').trim() || 'No se pudo registrar el faltante.')
+          faltantes += Number(payload?.faltante) || 0
+        }
+      }
       const fresh = await loadData()
       const updated = fresh?.shipments?.find((row) => shipmentKey(row) === shipmentKey(shipment))
       if (updated && updated.items.every((item) => item.pendiente === 0)) {
@@ -579,6 +605,8 @@ function PorGuardar({ token, darkMode, onSaved }) {
         await finishShipment(updated)
         await loadData()
         onSaved?.(`${shipment.codigo}: todo contado, envío completo.`)
+      } else if (faltantes) {
+        onSaved?.(`Guardado. Faltan ${faltantes}: quedaron en Inconvenientes.`)
       } else {
         onSaved?.(`${items.length} producto(s) guardados en su ubicacion.`)
       }
@@ -1090,15 +1118,6 @@ function PorGuardar({ token, darkMode, onSaved }) {
                                 branchId: shipment.sucursal_id,
                                 sucursal: shipment.sucursal_nombre,
                               }))))}
-                              <button
-                                type="button"
-                                className="quick-actions__receive-btn quick-actions__receive-btn--danger"
-                                onClick={() => setFinishTarget(shipment)}
-                                disabled={saving}
-                                data-title="Terminar el conteo: lo que falta contar queda como faltante en Inconvenientes"
-                              >
-                                Terminar conteo
-                              </button>
                             </>
                           ),
                         })}
@@ -1200,43 +1219,20 @@ function PorGuardar({ token, darkMode, onSaved }) {
       )}
 
       <ConfirmDialog
-        open={Boolean(finishTarget)}
-        title="Terminar conteo"
-        message={(() => {
-          if (!finishTarget) return ''
-          const faltan = finishTarget.items.filter((item) => item.pendiente > 0)
-          return faltan.length
-            ? `Se cierra ${finishTarget.codigo}. Lo que falta contar (no se vendió ni se encontró) sale del inventario y queda como faltante en Inconvenientes.`
-            : `Se cierra ${finishTarget.codigo}: todo está contado.`
-        })()}
-        details={finishTarget && finishTarget.items.some((item) => item.pendiente > 0) ? (
-          <ul className="por-guardar__finish-list">
-            {finishTarget.items.filter((item) => item.pendiente > 0).map((item) => (
-              <li key={item.producto_id}>
-                <strong>{item.producto_codigo}</strong>
-                {` · faltan ${item.pendiente} (enviados ${item.enviado}, vendidos ${item.vendido || 0}, guardados ${item.guardado})`}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        confirmLabel="Terminar conteo"
+        open={Boolean(faltanteTarget)}
+        title="Contaste menos de lo que queda"
+        message={faltanteTarget
+          ? `${faltanteTarget.item.producto_codigo}: contaste ${faltanteTarget.total} de ${faltanteTarget.item.pendiente}. `
+            + `Las ${faltanteTarget.item.pendiente - faltanteTarget.total} que faltan salen del inventario y quedan como faltante en Inconvenientes.`
+          : ''}
+        confirmLabel="Sí, guardar con faltante"
+        cancelLabel="Volver a contar"
         busy={saving}
-        onCancel={() => setFinishTarget(null)}
+        onCancel={() => setFaltanteTarget(null)}
         onConfirm={async () => {
-          const target = finishTarget
-          setSaving(true)
-          setError('')
-          try {
-            const result = await finishShipment(target)
-            setFinishTarget(null)
-            onSaved?.(String(result?.detail || '').trim() || `${target.codigo} terminado.`)
-            await loadData()
-          } catch (requestError) {
-            setFinishTarget(null)
-            setError(requestError?.message || 'No se pudo terminar el envio.')
-          } finally {
-            setSaving(false)
-          }
+          const target = faltanteTarget
+          setFaltanteTarget(null)
+          await checkRows([itemKey(target.shipment, target.item)], () => saveShipmentItems(target.shipment, [target.item], { faltante: true }))
         }}
       />
     </>

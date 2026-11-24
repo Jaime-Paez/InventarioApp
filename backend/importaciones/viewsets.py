@@ -2634,6 +2634,58 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/faltante-producto")
+    def faltante_producto_envio(self, request, envio_id=None):
+        """Por ubicar: al marcar el check con menos de lo que quedaba, lo que
+        no se encontro de ESE producto sale del stock (POR UBICAR) y queda de
+        una vez como faltante en Inconvenientes. Body: {producto_id}."""
+        try:
+            pid = int(request.data.get("producto_id"))
+        except (TypeError, ValueError):
+            return Response({"detail": "Falta el producto."}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            envio, error = self._get_pending_envio_for_user(request, envio_id, lock=True)
+            if error is not None:
+                return error
+            if not envio.llegada_confirmada_en:
+                transaction.set_rollback(True)
+                return Response({"detail": "Primero confirma la llegada del envio."}, status=status.HTTP_400_BAD_REQUEST)
+            progreso = normalize_progress(envio.recepcion_progreso)
+            entry = progreso.get(str(pid))
+            enviado = int(sent_by_product(envio).get(pid, 0))
+            if entry is None or not enviado:
+                transaction.set_rollback(True)
+                return Response({"detail": "Ese producto no es de este envio."}, status=status.HTTP_400_BAD_REQUEST)
+            pendiente = int((serialize_progress(progreso, envio.sucursal_id).get(str(pid)) or {}).get("pendiente_guardar") or 0)
+            vendidos = max(0, entry["por_ubicar"] - pendiente)
+            guardados = max(0, entry["recibido"] - entry["por_ubicar"])
+            por_ubicar_sub = get_por_ubicar_subdivision(envio.sucursal_id, create=False)
+            faltan = take_stock(por_ubicar_sub.id, pid, pendiente) if pendiente and por_ubicar_sub is not None else 0
+            entry["recibido"] = max(0, entry["recibido"] - faltan)
+            entry["por_ubicar"] = 0
+            envio.recepcion_progreso = progreso
+            envio.save(update_fields=["recepcion_progreso"])
+            creados = []
+            if faltan:
+                creados = create_envio_shortage_issues(
+                    envio,
+                    received_by_product(progreso),
+                    actor=request.user,
+                    novedades={
+                        pid: (
+                            f"Al contar no se encontraron {faltan}: enviados {enviado}, "
+                            f"vendidos antes de contar {vendidos}, contados y guardados {guardados}."
+                        )
+                    },
+                )
+            from inventario.models import BorradorUbicacionPorUbicar
+
+            BorradorUbicacionPorUbicar.objects.filter(envio_id=envio.id, producto_id=pid).delete()
+        return Response(
+            {"faltante": faltan, "inconvenientes": len(creados)},
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/recibir-parcial")
     def recibir_parcial_envio(self, request, envio_id=None):
         """Recibe por partes: lo marcado entra ya al stock (en su ubicacion o
