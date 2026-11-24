@@ -2695,6 +2695,12 @@ class ImportacionViewSet(viewsets.ModelViewSet):
                 return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             envio.recepcion_progreso = progreso
             envio.save(update_fields=["recepcion_progreso"])
+            # Ya se guardo: lo escogido en borrador ("Por ubicar") se limpia.
+            from inventario.models import BorradorUbicacionPorUbicar
+
+            BorradorUbicacionPorUbicar.objects.filter(
+                envio_id=envio.id, producto_id__in=[int(pid) for pid in _moved.keys()]
+            ).delete()
         return Response(
             {"recepcion_progreso": serialize_progress(progreso, envio.sucursal_id)},
             status=status.HTTP_200_OK,

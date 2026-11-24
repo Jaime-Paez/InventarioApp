@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Checkbox } from 'primereact/checkbox'
-import { Inbox, Search, X } from 'lucide-react'
+import { FileSpreadsheet, Inbox, Search, X } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
+import { exportToExcel } from '../../../utils/exportUtils'
 import { formatDateTime } from '../../../utils/dateFormat'
 import BlockerNotice from '../common/BlockerNotice'
 import { matchesFirst } from '../common/productDetailMatches'
@@ -33,6 +34,17 @@ const porUbicarKey = (row) => `pu-${row.sucursal_id}-${row.producto_id}`
 const shipmentBase = (shipment) => `${API_URL}/importaciones/importaciones/envios/${encodeURIComponent(shipment.id)}`
 
 const uniqueNames = (list) => [...new Set(list.filter(Boolean))]
+
+// Cada producto puede guardarse en varias ubicaciones: una linea por ubicacion
+// con su cantidad.
+const emptyLine = () => ({ bodega: '', division: '', subdivisionId: '', cantidad: '' })
+const linesOf = (draft) => (Array.isArray(draft?.lines) && draft.lines.length ? draft.lines : [emptyLine()])
+const lineQty = (line) => {
+  const qty = Number.parseInt(String(line?.cantidad || ''), 10)
+  return Number.isFinite(qty) ? qty : 0
+}
+const linesTotal = (lines) => lines.reduce((sum, line) => sum + lineQty(line), 0)
+const MAX_CHIPS = 6
 
 // Desplegable de la recepcion de traslados (Bodega / Division / Subdivision).
 function ReceiveDropdown({ label, value, placeholder, options, onSelect, disabled, darkMode, emptyMessage, searchPlaceholder }) {
@@ -151,6 +163,12 @@ function PorGuardar({ token, darkMode, onSaved }) {
   // Lo guardado de POR UBICAR en esta sesion: sale de la lista del servidor,
   // pero se sigue viendo con su check para que la barra vaya sumando.
   const [savedPorUbicar, setSavedPorUbicar] = useState({})
+  // Lo escogido sin marcar el check se guarda en la base de datos (en cada
+  // cambio) para no perderlo y para el Excel de ubicaciones.
+  const metaRef = useRef({})
+  const draftsRef = useRef({})
+  const autosaveTimers = useRef({})
+  const [chipsAbiertos, setChipsAbiertos] = useState(() => new Set())
 
   const fetchCount = useCallback(async () => {
     if (!token || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return
@@ -182,18 +200,47 @@ function PorGuardar({ token, darkMode, onSaved }) {
       )
       // Cada producto parte con lo que falta guardar y su ubicacion principal;
       // lo que ya se habia elegido se respeta.
+      const meta = {}
+      nextShipments.forEach((shipment) => {
+        shipment.items.forEach((item) => {
+          meta[itemKey(shipment, item)] = { envio_id: shipment.id, sucursal_id: shipment.sucursal_id, producto_id: item.producto_id }
+        })
+      })
+      nextPorUbicar.forEach((row) => {
+        meta[porUbicarKey(row)] = { envio_id: null, sucursal_id: row.sucursal_id, producto_id: row.producto_id }
+      })
+      metaRef.current = meta
       setDrafts((prev) => {
         const next = {}
-        const seed = (key, max, suggestedId) => {
+        // Lo que ya se escogio (en pantalla o guardado como borrador) se
+        // respeta; si no, la ubicacion sugerida con todo lo que queda.
+        const seed = (key, max, row) => {
           const previous = prev[key]
-          next[key] = previous
-            ? { ...previous, cantidad: Number(previous.cantidad) <= max ? previous.cantidad : String(max) }
-            : { bodega: '', division: '', subdivisionId: suggestedId ? String(suggestedId) : '', cantidad: String(max) }
+          if (previous?.lines?.length) {
+            next[key] = previous.lines.length === 1
+              ? { lines: [{ ...previous.lines[0], cantidad: lineQty(previous.lines[0]) <= max ? previous.lines[0].cantidad : String(max) }] }
+              : previous
+            return
+          }
+          const borrador = Array.isArray(row?.borrador) ? row.borrador : []
+          if (borrador.length) {
+            next[key] = {
+              lines: borrador.map((entry) => ({
+                ...emptyLine(),
+                subdivisionId: entry?.subdivision_id ? String(entry.subdivision_id) : '',
+                cantidad: entry?.cantidad != null ? String(entry.cantidad) : '',
+              })),
+            }
+            return
+          }
+          next[key] = {
+            lines: [{ ...emptyLine(), subdivisionId: row?.sugerida_subdivision_id ? String(row.sugerida_subdivision_id) : '', cantidad: String(max) }],
+          }
         }
         nextShipments.forEach((shipment) => {
-          shipment.items.forEach((item) => seed(itemKey(shipment, item), item.pendiente, item.sugerida_subdivision_id))
+          shipment.items.forEach((item) => seed(itemKey(shipment, item), item.pendiente, item))
         })
-        nextPorUbicar.forEach((row) => seed(porUbicarKey(row), row.cantidad, row.sugerida_subdivision_id))
+        nextPorUbicar.forEach((row) => seed(porUbicarKey(row), row.cantidad, row))
         return next
       })
       return { shipments: nextShipments, porUbicar: nextPorUbicar }
@@ -253,24 +300,89 @@ function PorGuardar({ token, darkMode, onSaved }) {
     checkRows(items.map((item) => itemKey(shipment, item)), () => saveShipmentItems(shipment, items))
   const checkPorUbicar = (rows) => checkRows(rows.map(porUbicarKey), () => savePorUbicar(rows))
 
-  const updateDraft = (key, patch) => {
-    setDrafts((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }))
+  useEffect(() => {
+    draftsRef.current = drafts
+  }, [drafts])
+
+  // Guarda en la base de datos lo escogido para el producto (medio segundo
+  // despues del ultimo cambio).
+  const persistDraft = useCallback((key) => {
+    window.clearTimeout(autosaveTimers.current[key])
+    autosaveTimers.current[key] = window.setTimeout(async () => {
+      delete autosaveTimers.current[key]
+      const meta = metaRef.current[key]
+      if (!meta) return
+      const lines = linesOf(draftsRef.current[key])
+      try {
+        await authFetch(
+          `${API_URL}/inventario/inventario/por-guardar/borrador/`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              ...meta,
+              ubicaciones: lines.map((line) => ({
+                subdivision_id: line.subdivisionId ? Number(line.subdivisionId) : null,
+                cantidad: String(line.cantidad || '').trim() === '' ? null : lineQty(line),
+              })),
+            }),
+          },
+          token
+        )
+      } catch {
+        // Se vuelve a intentar con el siguiente cambio.
+      }
+    }, 500)
+  }, [token])
+  const cancelPersist = (keys) => {
+    keys.forEach((key) => {
+      window.clearTimeout(autosaveTimers.current[key])
+      delete autosaveTimers.current[key]
+    })
+  }
+
+  const setLines = (key, updater) => {
+    setDrafts((prev) => ({ ...prev, [key]: { ...prev[key], lines: updater(linesOf(prev[key])) } }))
     setRowErrors((prev) => {
       if (!prev[key]) return prev
       const next = { ...prev }
       delete next[key]
       return next
     })
+    persistDraft(key)
   }
+  const updateLine = (key, index, patch) =>
+    setLines(key, (lines) => lines.map((line, i) => (i === index ? { ...line, ...patch } : line)))
+  const addLine = (key, max) =>
+    setLines(key, (lines) => {
+      const rest = max - linesTotal(lines)
+      return [...lines, { ...emptyLine(), cantidad: rest > 0 ? String(rest) : '' }]
+    })
+  const removeLine = (key, index) =>
+    setLines(key, (lines) => (lines.length > 1 ? lines.filter((_, i) => i !== index) : lines))
+  // Tocar una opcion (propia o de un alterno): llena la primera linea sin
+  // ubicacion; con una sola linea la reemplaza; si no, agrega otra.
+  const applyLocation = (key, subdivisionId, max) =>
+    setLines(key, (lines) => {
+      const located = { bodega: '', division: '', subdivisionId: String(subdivisionId) }
+      const empty = lines.findIndex((line) => !line.subdivisionId)
+      if (empty >= 0) return lines.map((line, i) => (i === empty ? { ...line, ...located } : line))
+      if (lines.length === 1) return [{ ...lines[0], ...located }]
+      const rest = max - linesTotal(lines)
+      return [...lines, { ...emptyLine(), ...located, cantidad: rest > 0 ? String(rest) : '' }]
+    })
 
   const problemFor = (key, max) => {
-    const draft = drafts[key] || {}
-    const qty = Number.parseInt(String(draft.cantidad || ''), 10)
-    if (!Number.isFinite(qty) || qty <= 0) return 'Indica cuantas contaste.'
-    if (qty > max) return `Maximo ${max}.`
-    if (!draft.subdivisionId) return 'Elige la bodega, division y subdivision donde lo guardas.'
+    const lines = linesOf(drafts[key])
+    for (const line of lines) {
+      if (lineQty(line) <= 0) return lines.length > 1 ? 'Indica cuantas van en cada ubicacion.' : 'Indica cuantas contaste.'
+      if (!line.subdivisionId) return 'Elige la bodega, division y subdivision donde lo guardas.'
+    }
+    const total = linesTotal(lines)
+    if (total > max) return lines.length > 1 ? `Maximo ${max} entre todas las ubicaciones (van ${total}).` : `Maximo ${max}.`
     return ''
   }
+  const linesToItems = (key, extra) =>
+    linesOf(drafts[key]).map((line) => ({ ...extra, cantidad: lineQty(line), subdivision_id: Number(line.subdivisionId) }))
 
   // Valida las filas antes de guardar; las que fallan muestran su motivo.
   const rejectProblems = (entries) => {
@@ -304,6 +416,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
       return { key, problem: problemFor(key, item.pendiente) }
     })
     if (rejectProblems(entries)) return
+    cancelPersist(entries.map((entry) => entry.key))
     setSaving(true)
     setError('')
     try {
@@ -314,14 +427,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
         {
           method: 'POST',
           body: JSON.stringify({
-            items: items.map((item) => {
-              const draft = drafts[itemKey(shipment, item)]
-              return {
-                producto_id: item.producto_id,
-                cantidad: Number.parseInt(String(draft.cantidad), 10),
-                subdivision_id: Number(draft.subdivisionId),
-              }
-            }),
+            items: items.flatMap((item) => linesToItems(itemKey(shipment, item), { producto_id: item.producto_id })),
           }),
         },
         token
@@ -351,18 +457,14 @@ function PorGuardar({ token, darkMode, onSaved }) {
       return { key, problem: problemFor(key, row.cantidad) }
     })
     if (rejectProblems(entries)) return
+    cancelPersist(entries.map((entry) => entry.key))
     setSaving(true)
     setError('')
     try {
-      const items = rows.map((row) => {
-        const draft = drafts[porUbicarKey(row)]
-        return {
-          producto_id: row.producto_id,
-          sucursal_id: row.sucursal_id,
-          subdivision_id: Number(draft.subdivisionId),
-          cantidad: Number.parseInt(String(draft.cantidad), 10),
-        }
-      })
+      const totals = rows.map((row) => linesTotal(linesOf(drafts[porUbicarKey(row)])))
+      const items = rows.flatMap((row) =>
+        linesToItems(porUbicarKey(row), { producto_id: row.producto_id, sucursal_id: row.sucursal_id })
+      )
       const response = await authFetch(
         `${API_URL}/inventario/inventario/guardar-por-ubicar/`,
         { method: 'POST', body: JSON.stringify({ items }) },
@@ -374,7 +476,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
         const next = { ...prev }
         rows.forEach((row, index) => {
           const key = porUbicarKey(row)
-          next[key] = { row, guardado: (prev[key]?.guardado || 0) + items[index].cantidad }
+          next[key] = { row, guardado: (prev[key]?.guardado || 0) + totals[index] }
         })
         return next
       })
@@ -424,29 +526,22 @@ function PorGuardar({ token, darkMode, onSaved }) {
     : 0
   const totalCount = shipments.reduce((sum, s) => sum + s.items.length, 0) + porUbicarRows.length
 
-  const renderLocation = (key, branchId) => {
+  const renderLine = (key, branchId, line, index, total) => {
     const options = locationsByBranch[String(branchId)] || []
-    const draft = drafts[key] || {}
-    const selected = options.find((option) => String(option.id) === String(draft.subdivisionId)) || null
-    const bodega = selected?.bodega || draft.bodega || ''
-    const division = selected?.division || (bodega ? draft.division : '') || ''
+    const selected = options.find((option) => String(option.id) === String(line.subdivisionId)) || null
+    const bodega = selected?.bodega || line.bodega || ''
+    const division = selected?.division || (bodega ? line.division : '') || ''
     const bodegas = uniqueNames(options.map((option) => option.bodega))
     const divisions = bodega ? uniqueNames(options.filter((option) => option.bodega === bodega).map((option) => option.division)) : []
     const subdivisions = division
       ? options.filter((option) => option.bodega === bodega && option.division === division)
       : []
-    const sinUbicaciones = Array.isArray(locationsByBranch[String(branchId)]) && !options.length
+    const multi = total > 1
     return (
-      <>
-      {sinUbicaciones && (
-        <BlockerNotice
-          compact
-          title="No hay dónde guardarlo"
-          reason="Esta sucursal no tiene bodegas con divisiones y subdivisiones. Créalas en Bodegas y aparecerán aquí."
-          goTo="Bodegas"
-        />
-      )}
-      <div className="quick-actions__receive-location-row quick-actions__receive-location-row--review">
+      <div
+        key={index}
+        className={`quick-actions__receive-location-row quick-actions__receive-location-row--review por-guardar__linea${multi ? ' is-multi' : ''}${index > 0 ? ' por-guardar__linea--extra' : ''}`}
+      >
         <ReceiveDropdown
           label="Bodega"
           value={bodega}
@@ -454,7 +549,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
           options={bodegas.map((name) => ({ value: name, label: name }))}
           onSelect={(name) => {
             const onlyDivisions = uniqueNames(options.filter((option) => option.bodega === name).map((option) => option.division))
-            updateDraft(key, { bodega: name, division: onlyDivisions.length === 1 ? onlyDivisions[0] : '', subdivisionId: '' })
+            updateLine(key, index, { bodega: name, division: onlyDivisions.length === 1 ? onlyDivisions[0] : '', subdivisionId: '' })
           }}
           disabled={saving}
           darkMode={darkMode}
@@ -466,7 +561,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
           value={division}
           placeholder="Selecciona"
           options={divisions.map((name) => ({ value: name, label: name }))}
-          onSelect={(name) => updateDraft(key, { bodega, division: name, subdivisionId: '' })}
+          onSelect={(name) => updateLine(key, index, { bodega, division: name, subdivisionId: '' })}
           disabled={saving || !divisions.length}
           darkMode={darkMode}
           emptyMessage="Esta bodega no tiene divisiones."
@@ -477,16 +572,191 @@ function PorGuardar({ token, darkMode, onSaved }) {
           value={selected ? String(selected.id) : ''}
           placeholder="Selecciona"
           options={subdivisions.map((option) => ({ value: String(option.id), label: option.subdivision }))}
-          onSelect={(id) => updateDraft(key, { bodega, division, subdivisionId: id })}
+          onSelect={(id) => updateLine(key, index, { bodega, division, subdivisionId: id })}
           disabled={saving || !subdivisions.length}
           darkMode={darkMode}
           emptyMessage="Esta división no tiene subdivisiones."
           searchPlaceholder="Buscar subdivision"
         />
+        {multi && (
+          <label className="por-guardar__linea-cant">
+            <small>Cant.</small>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="0"
+              value={line.cantidad}
+              onChange={(event) => updateLine(key, index, { cantidad: event.target.value.replace(/[^\d]/g, '') })}
+              disabled={saving}
+              aria-label="Cantidad en esta ubicación"
+            />
+          </label>
+        )}
+        {multi && (
+          <button
+            type="button"
+            className="por-guardar__linea-quitar"
+            onClick={() => removeLine(key, index)}
+            disabled={saving}
+            aria-label="Quitar esta ubicación"
+            data-title="Quitar esta ubicación"
+          >
+            <X size={14} />
+          </button>
+        )}
       </div>
+    )
+  }
+
+  // Opciones para tocar: sus ubicaciones y las de sus alternos (o posibles
+  // alternos, mismo codigo base) en esa sucursal.
+  const locationChips = (key, row, max) => {
+    const byId = new Map()
+    ;[...(row.ubicaciones_propias || []), ...(row.ubicaciones_alternos || [])].forEach((option) => {
+      const id = String(option.subdivision_id)
+      const current = byId.get(id)
+      const code = option.propia ? 'Suya' : `${option.producto_codigo}${option.posible ? ' (posible)' : ''}`
+      if (current) {
+        if (!current.codes.includes(code)) current.codes.push(code)
+        current.cantidad += Number(option.cantidad) || 0
+        current.propia = current.propia || option.propia
+      } else {
+        byId.set(id, { id, label: option.label, codes: [code], cantidad: Number(option.cantidad) || 0, propia: Boolean(option.propia) })
+      }
+    })
+    const chips = [...byId.values()]
+    if (!chips.length) return null
+    const abierto = chipsAbiertos.has(key)
+    const visibles = abierto ? chips : chips.slice(0, MAX_CHIPS)
+    const usadas = new Set(linesOf(drafts[key]).map((line) => String(line.subdivisionId)))
+    return (
+      <>
+        {visibles.map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            className={`por-guardar__chip${chip.propia ? ' is-propia' : ''}${usadas.has(chip.id) ? ' is-usada' : ''}`}
+            onClick={() => applyLocation(key, chip.id, max)}
+            disabled={saving}
+            data-title={`${chip.label} · ${chip.codes.join(', ')} · ${chip.cantidad} u.`}
+          >
+            <strong>{chip.label.split(' / ').slice(1).join(' / ') || chip.label}</strong>
+            <span>{chip.codes.length > 2 ? `${chip.codes.slice(0, 2).join(', ')} +${chip.codes.length - 2}` : chip.codes.join(', ')}</span>
+          </button>
+        ))}
+        {chips.length > MAX_CHIPS && (
+          <button
+            type="button"
+            className="por-guardar__chip-mas"
+            onClick={() => setChipsAbiertos((prev) => {
+              const next = new Set(prev)
+              if (next.has(key)) next.delete(key)
+              else next.add(key)
+              return next
+            })}
+          >
+            {abierto ? 'Ver menos' : `+${chips.length - MAX_CHIPS} más`}
+          </button>
+        )}
       </>
     )
   }
+
+  const renderLocation = (key, branchId, row, max) => {
+    const options = locationsByBranch[String(branchId)] || []
+    const sinUbicaciones = Array.isArray(locationsByBranch[String(branchId)]) && !options.length
+    const lines = linesOf(drafts[key])
+    return (
+      <div className="por-guardar__ubicaciones">
+        {sinUbicaciones && (
+          <BlockerNotice
+            compact
+            title="No hay dónde guardarlo"
+            reason="Esta sucursal no tiene bodegas con divisiones y subdivisiones. Créalas en Bodegas y aparecerán aquí."
+            goTo="Bodegas"
+          />
+        )}
+        {lines.map((line, index) => renderLine(key, branchId, line, index, lines.length))}
+        <div className="por-guardar__ubic-tools">
+          <button
+            type="button"
+            className="por-guardar__add-line"
+            onClick={() => addLine(key, max)}
+            disabled={saving}
+          >
+            + Otra ubicación
+          </button>
+          {locationChips(key, row, max)}
+        </div>
+        {row.sugerida_alterno_codigo && lines.length === 1 && String(lines[0].subdivisionId) === String(row.sugerida_subdivision_id) && (
+          <small className="por-guardar__ubic-nota">{`No tiene ubicación propia: sugerida la de ${row.sugerida_alterno_codigo}.`}</small>
+        )}
+      </div>
+    )
+  }
+
+  // Excel con las ubicaciones de un grupo (importacion, compra o POR UBICAR):
+  // lo escogido en pantalla (con el reparto) o la sugerida, y las de alternos.
+  const exportUbicaciones = async (title, entries) => {
+    const labelOf = (branchId, id) =>
+      (locationsByBranch[String(branchId)] || []).find((option) => String(option.id) === String(id))?.label || ''
+    const data = []
+    entries.forEach(({ key, row, pending, branchId, sucursal }) => {
+      if (pending <= 0) return
+      const lines = linesOf(drafts[key])
+      const propias = (row.ubicaciones_propias || []).map((loc) => `${loc.label} (${loc.cantidad})`).join(' | ')
+      const alternos = (row.ubicaciones_alternos || [])
+        .map((loc) => `${loc.producto_codigo}${loc.posible ? ' (posible)' : ''}: ${loc.label} (${loc.cantidad})`)
+        .join(' | ')
+      lines.forEach((line, index) => {
+        const esSugerida = !(row.borrador || []).length && lines.length === 1 && String(line.subdivisionId) === String(row.sugerida_subdivision_id || '')
+        data.push({
+          codigo: row.producto_codigo,
+          descripcion: row.producto_nombre,
+          sucursal,
+          por_guardar: index === 0 ? pending : '',
+          ubicacion: line.subdivisionId ? labelOf(branchId, line.subdivisionId) : 'Sin ubicación',
+          cantidad: line.cantidad || '',
+          origen: !line.subdivisionId
+            ? ''
+            : esSugerida
+              ? (row.sugerida_alterno_codigo ? `Sugerida (de ${row.sugerida_alterno_codigo})` : 'Sugerida (su ubicación)')
+              : 'Escogida',
+          propias: index === 0 ? propias : '',
+          alternos: index === 0 ? alternos : '',
+        })
+      })
+    })
+    await exportToExcel({
+      rows: data,
+      columns: [
+        { key: 'codigo', header: 'Código' },
+        { key: 'descripcion', header: 'Descripción' },
+        { key: 'sucursal', header: 'Sucursal' },
+        { key: 'por_guardar', header: 'Por guardar' },
+        { key: 'ubicacion', header: 'Ubicación' },
+        { key: 'cantidad', header: 'Cantidad' },
+        { key: 'origen', header: 'Origen' },
+        { key: 'propias', header: 'Sus ubicaciones' },
+        { key: 'alternos', header: 'Ubicaciones de alternos' },
+      ],
+      valueGetter: (item, columnKey) => item[columnKey],
+      fileName: `Ubicaciones ${title}`.replace(/[\\/:*?"<>|#]/g, '').trim(),
+    })
+  }
+  const excelButton = (onClick) => (
+    <button
+      type="button"
+      className="quick-actions__receive-btn por-guardar__excel"
+      onClick={onClick}
+      disabled={saving}
+      data-title="Descargar Excel con las ubicaciones (lo escogido aquí y las sugeridas)"
+    >
+      <FileSpreadsheet size={15} aria-hidden="true" />
+      Excel
+    </button>
+  )
 
   // Barra de avance de cada grupo (igual a "Recibidos X de Y productos").
   const renderProgress = ({ done, total, unitsDone, unitsTotal, toStore }) => {
@@ -511,6 +781,8 @@ function PorGuardar({ token, darkMode, onSaved }) {
   const renderRow = ({ key, row, done, pending, quantityLabel, stateText, branchId, onCheck, checkLabel }) => {
     const rowError = done ? '' : rowErrors[key] || ''
     const checked = done || checkingKeys.has(key)
+    const lines = linesOf(drafts[key])
+    const multi = lines.length > 1
     return (
       <article
         key={key}
@@ -560,15 +832,16 @@ function PorGuardar({ token, darkMode, onSaved }) {
               inputMode="numeric"
               maxLength={6}
               placeholder="0"
-              value={done ? String(row.guardado ?? '') : drafts[key]?.cantidad ?? ''}
-              onChange={(event) => updateDraft(key, { cantidad: event.target.value.replace(/[^\d]/g, '') })}
-              disabled={saving || done}
+              value={done ? String(row.guardado ?? '') : multi ? String(linesTotal(lines)) : lines[0]?.cantidad ?? ''}
+              onChange={(event) => updateLine(key, 0, { cantidad: event.target.value.replace(/[^\d]/g, '') })}
+              disabled={saving || done || multi}
+              data-title={multi ? 'Es la suma de las ubicaciones' : undefined}
               aria-label={`Cuantas contaste de ${row.producto_codigo}`}
             />
           </label>
         </div>
 
-        {!done && renderLocation(key, branchId)}
+        {!done && renderLocation(key, branchId, row, pending)}
 
         {stateText && (
           <div className={`quick-actions__receive-item-state${done ? ' is-received' : ' is-to-store'}`}>
@@ -714,15 +987,24 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             shipment.llegada_confirmada_en && `llegó ${formatDateTime(shipment.llegada_confirmada_en)}`,
                           ].filter(Boolean).join(' · '),
                           extra: (
-                            <button
-                              type="button"
-                              className="quick-actions__receive-btn quick-actions__receive-btn--danger"
-                              onClick={() => setFinishTarget(shipment)}
-                              disabled={saving}
-                              title="Terminar el conteo: lo que falta contar queda como faltante en Inconvenientes"
-                            >
-                              Terminar conteo
-                            </button>
+                            <>
+                              {excelButton(() => exportUbicaciones(shipment.codigo, shipment.items.map((item) => ({
+                                key: itemKey(shipment, item),
+                                row: item,
+                                pending: item.pendiente,
+                                branchId: shipment.sucursal_id,
+                                sucursal: shipment.sucursal_nombre,
+                              }))))}
+                              <button
+                                type="button"
+                                className="quick-actions__receive-btn quick-actions__receive-btn--danger"
+                                onClick={() => setFinishTarget(shipment)}
+                                disabled={saving}
+                                data-title="Terminar el conteo: lo que falta contar queda como faltante en Inconvenientes"
+                              >
+                                Terminar conteo
+                              </button>
+                            </>
                           ),
                         })}
                         {renderProgress({
@@ -768,6 +1050,13 @@ function PorGuardar({ token, darkMode, onSaved }) {
                       <section className="por-guardar__group">
                         {renderGroupHead({
                           title: 'En POR UBICAR',
+                          extra: excelButton(() => exportUbicaciones('POR UBICAR', porUbicarRows.filter((row) => !row.done).map((row) => ({
+                            key: row.key,
+                            row,
+                            pending: row.cantidad,
+                            branchId: row.sucursal_id,
+                            sucursal: row.sucursal_nombre,
+                          })))),
                         })}
                         {renderProgress({
                           done: doneCount,

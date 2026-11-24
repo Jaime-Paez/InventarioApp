@@ -51,8 +51,17 @@ from usuarios.sucursal_scope import (
     get_readable_sucursal_ids,
 )
 
-from .models import Bodega, Division, Inventario, SubDivision, Sucursal
+from .models import BorradorUbicacionPorUbicar, Bodega, Division, Inventario, SubDivision, Sucursal
 from .por_ubicar import is_special_subdivision, zero_location_error
+
+
+def is_special_subdivision_name(subdivision_nombre, division_nombre):
+    """POR UBICAR / TEMPORAL no son ubicaciones donde guardar."""
+    especiales = {"POR UBICAR", "TEMPORAL"}
+    return (
+        str(subdivision_nombre or "").strip().upper() in especiales
+        and str(division_nombre or "").strip().upper() in especiales
+    )
 from .serializers import (
     BodegaSerializer,
     DivisionSerializer,
@@ -2126,9 +2135,144 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 ),
             }
 
+        # Alternos: sus ubicaciones en la sucursal sirven de opciones (y de
+        # sugerencia si el producto no tiene ninguna propia).
+        from productos.models import ProductoAlterno
+
+        padre = {}
+
+        def raiz(x):
+            while padre.get(x, x) != x:
+                padre[x] = padre.get(padre[x], padre[x])
+                x = padre[x]
+            return x
+
+        for a, b in ProductoAlterno.objects.values_list("producto_id", "alterno_id"):
+            ra, rb = raiz(int(a)), raiz(int(b))
+            if ra != rb:
+                padre[ra] = rb
+        miembros = defaultdict(set)
+        for pid in list(padre.keys()):
+            miembros[raiz(pid)].add(pid)
+        alternos_de = {
+            pid: sorted(miembros.get(raiz(pid), set()) - {pid}) for pid in product_ids
+        }
+        # Posibles alternos: mismo codigo base (primeros 5 caracteres, como en
+        # importaciones). Van despues de los alternos ya vinculados.
+        from importaciones.viewsets import CODIGO_BASE_LENGTH
+
+        codigos = dict(Producto.objects.filter(id__in=product_ids).values_list("id", "codigo"))
+        prefijos = {
+            pid: str(codigos.get(pid) or "").strip().upper()[:CODIGO_BASE_LENGTH] for pid in product_ids
+        }
+        prefijos_validos = {pref for pref in prefijos.values() if len(pref) == CODIGO_BASE_LENGTH}
+        por_prefijo = defaultdict(list)
+        if prefijos_validos:
+            filtro_prefijos = Q()
+            for pref in prefijos_validos:
+                filtro_prefijos |= Q(codigo__istartswith=pref)
+            for cand_id, cand_codigo in (
+                Producto.objects.filter(filtro_prefijos, activo=True).order_by("codigo").values_list("id", "codigo")
+            ):
+                por_prefijo[str(cand_codigo or "").strip().upper()[:CODIGO_BASE_LENGTH]].append(int(cand_id))
+        posibles_de = {}
+        for pid in product_ids:
+            vinculados = set(alternos_de[pid])
+            posibles_de[pid] = [
+                cand for cand in por_prefijo.get(prefijos[pid], []) if cand != pid and cand not in vinculados
+            ]
+        todos_alternos = sorted(
+            {a for ids in alternos_de.values() for a in ids} | {a for ids in posibles_de.values() for a in ids}
+        )
+        alt_locs = defaultdict(list)
+        if todos_alternos and branch_ids:
+            for loc in (
+                Inventario.objects.filter(
+                    producto_id__in=todos_alternos,
+                    producto__activo=True,
+                    subdivision__division__bodega__sucursal_id__in=branch_ids,
+                )
+                .exclude(
+                    subdivision__nombre__iexact=POR_UBICAR_NOMBRE,
+                    subdivision__division__nombre__iexact=POR_UBICAR_NOMBRE,
+                )
+                .values(
+                    "producto_id",
+                    "producto__codigo",
+                    "subdivision_id",
+                    "subdivision__nombre",
+                    "subdivision__division__nombre",
+                    "subdivision__division__bodega__nombre",
+                    "subdivision__division__bodega__sucursal_id",
+                )
+                .annotate(cantidad=Sum("cantidad"))
+                .order_by("-cantidad", "producto__codigo")
+            ):
+                if is_special_subdivision_name(loc["subdivision__nombre"], loc["subdivision__division__nombre"]):
+                    continue
+                alt_locs[(int(loc["producto_id"]), int(loc["subdivision__division__bodega__sucursal_id"]))].append(
+                    {
+                        "producto_id": int(loc["producto_id"]),
+                        "producto_codigo": loc["producto__codigo"] or "",
+                        "subdivision_id": int(loc["subdivision_id"]),
+                        "label": (
+                            f"{loc['subdivision__division__bodega__nombre']} / "
+                            f"{loc['subdivision__division__nombre']} / {loc['subdivision__nombre']}"
+                        ),
+                        "cantidad": int(loc["cantidad"] or 0),
+                    }
+                )
+
+        def opciones(pid, branch_id):
+            propias = [
+                {
+                    "producto_id": pid,
+                    "producto_codigo": "",
+                    "subdivision_id": loc["subdivision_id"],
+                    "label": f"{loc['bodega_nombre']} / {loc['division_nombre']} / {loc['subdivision_nombre']}",
+                    "cantidad": loc["cantidad"],
+                    "propia": True,
+                }
+                for loc in (existing.get((pid, branch_id)) or [])
+                if not is_special_subdivision_name(loc["subdivision_nombre"], loc["division_nombre"])
+            ]
+            de_alternos = [
+                {**loc, "propia": False, "posible": False}
+                for alt in alternos_de.get(pid, [])
+                for loc in alt_locs.get((alt, branch_id), [])
+            ] + [
+                {**loc, "propia": False, "posible": True}
+                for alt in posibles_de.get(pid, [])
+                for loc in alt_locs.get((alt, branch_id), [])
+            ]
+            return propias, de_alternos
+
+        def sugerencia_completa(pid, branch_id):
+            data = suggestion(pid, branch_id)
+            propias, de_alternos = opciones(pid, branch_id)
+            data["ubicaciones_propias"] = propias
+            data["ubicaciones_alternos"] = de_alternos
+            data["sugerida_alterno_codigo"] = ""
+            if not data["sugerida_subdivision_id"] and de_alternos:
+                # Sin ubicacion propia: la del alterno con mas stock.
+                data["sugerida_subdivision_id"] = de_alternos[0]["subdivision_id"]
+                data["sugerida_label"] = de_alternos[0]["label"]
+                data["sugerida_alterno_codigo"] = de_alternos[0]["producto_codigo"]
+            return data
+
+        # Lo escogido sin marcar el check (borradores guardados).
+        borradores = {}
+        for borrador in BorradorUbicacionPorUbicar.objects.filter(
+            producto_id__in=product_ids, sucursal_id__in=branch_ids
+        ):
+            borradores[(borrador.envio_id, int(borrador.sucursal_id), int(borrador.producto_id))] = borrador.ubicaciones or []
+
         for shipment in shipments:
             for item in shipment["items"]:
-                item.update(suggestion(item["producto_id"], shipment["sucursal_id"]))
+                item.update(sugerencia_completa(item["producto_id"], shipment["sucursal_id"]))
+                item["borrador"] = borradores.get(
+                    (int(shipment["id"]), int(shipment["sucursal_id"]), int(item["producto_id"])), []
+                )
 
         payload = []
         for row in rows:
@@ -2142,7 +2286,8 @@ class InventarioViewSet(viewsets.ModelViewSet):
                     "sucursal_id": branch_id,
                     "sucursal_nombre": row["subdivision__division__bodega__sucursal__nombre"] or "",
                     "cantidad": int(row["total"] or 0),
-                    **suggestion(pid, branch_id),
+                    **sugerencia_completa(pid, branch_id),
+                    "borrador": borradores.get((None, branch_id, pid), []),
                 }
             )
         payload.sort(key=lambda item: (item["sucursal_nombre"].lower(), item["producto_codigo"].lower()))
@@ -2232,7 +2377,63 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 movido = take_stock(por_ubicar.id, pid, cantidad)
                 add_stock(destino.id, pid, movido)
                 results.append({"producto_id": pid, "sucursal_id": branch_id, "subdivision_id": destino.id, "cantidad": movido})
+            # Ya se guardo: lo escogido en borrador se limpia.
+            for result in results:
+                BorradorUbicacionPorUbicar.objects.filter(
+                    envio_id__isnull=True, sucursal_id=result["sucursal_id"], producto_id=result["producto_id"]
+                ).delete()
         return Response({"guardados": results})
+
+    @action(detail=False, methods=["post"], url_path="por-guardar/borrador")
+    def por_guardar_borrador(self, request):
+        """Guarda (en cada cambio) las ubicaciones escogidas para un producto en
+        "Por ubicar" sin marcar el check. Body: {envio_id?, sucursal_id,
+        producto_id, ubicaciones: [{subdivision_id, cantidad}]}; vacio = borrar."""
+        try:
+            branch_id = int(request.data.get("sucursal_id"))
+            pid = int(request.data.get("producto_id"))
+        except (TypeError, ValueError):
+            return Response({"detail": "Falta la sucursal o el producto."}, status=status.HTTP_400_BAD_REQUEST)
+        envio_raw = request.data.get("envio_id")
+        try:
+            envio_id = int(envio_raw) if envio_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            return Response({"detail": "Envio no valido."}, status=status.HTTP_400_BAD_REQUEST)
+        allowed = self._por_guardar_branch_ids(request)
+        if allowed is not None and branch_id not in allowed:
+            return Response({"detail": "No tienes acceso a esa sucursal."}, status=status.HTTP_403_FORBIDDEN)
+        validas = set(
+            SubDivision.objects.filter(division__bodega__sucursal_id=branch_id).values_list("id", flat=True)
+        )
+        ubicaciones = []
+        for raw in request.data.get("ubicaciones") or []:
+            try:
+                sub_id = int(raw.get("subdivision_id")) if raw.get("subdivision_id") not in (None, "") else None
+            except (TypeError, ValueError, AttributeError):
+                sub_id = None
+            if sub_id is not None and sub_id not in validas:
+                sub_id = None
+            try:
+                cantidad = int(raw.get("cantidad")) if raw.get("cantidad") not in (None, "") else None
+            except (TypeError, ValueError, AttributeError):
+                cantidad = None
+            if sub_id is None and cantidad is None:
+                continue
+            ubicaciones.append({"subdivision_id": sub_id, "cantidad": cantidad})
+        filtro = {"sucursal_id": branch_id, "producto_id": pid}
+        qs = BorradorUbicacionPorUbicar.objects.filter(
+            **filtro, **({"envio_id": envio_id} if envio_id is not None else {"envio_id__isnull": True})
+        )
+        if not ubicaciones:
+            qs.delete()
+            return Response({"ubicaciones": []})
+        borrador = qs.first()
+        if borrador is None:
+            borrador = BorradorUbicacionPorUbicar(envio_id=envio_id, **filtro)
+        borrador.ubicaciones = ubicaciones
+        borrador.actualizado_por = request.user
+        borrador.save()
+        return Response({"ubicaciones": ubicaciones})
 
     def perform_create(self, serializer):
         subdivision = serializer.validated_data.get("subdivision")

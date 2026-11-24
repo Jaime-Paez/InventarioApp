@@ -234,3 +234,29 @@ class SaldoInicialInventario(models.Model):
 
     def __str__(self) -> str:  # pragma: no cover - representacion legible
         return f"{self.producto_id} @ {self.sucursal_id}: {self.cantidad}"
+
+
+class BorradorUbicacionPorUbicar(models.Model):
+    """"Por ubicar": las ubicaciones (y cuanto en cada una) que se escogieron
+    para un producto antes de marcar el check. Se guardan en cada cambio para
+    no perderlas y para el Excel de ubicaciones; al marcar el check (guardar de
+    verdad) se borran. envio_id = envio de importacion/compra local; vacio =
+    lo demas que esta en POR UBICAR de la sucursal."""
+
+    envio_id = models.PositiveIntegerField(null=True, blank=True, db_index=True)
+    sucursal = models.ForeignKey(Sucursal, on_delete=models.CASCADE, related_name="borradores_por_ubicar")
+    producto = models.ForeignKey("productos.Producto", on_delete=models.CASCADE, related_name="borradores_por_ubicar")
+    # [{"subdivision_id": int, "cantidad": int|None}]
+    ubicaciones = models.JSONField(default=list, blank=True)
+    actualizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Borrador de ubicacion (Por ubicar)"
+        verbose_name_plural = "Borradores de ubicacion (Por ubicar)"
+        indexes = [models.Index(fields=["sucursal", "producto"], name="inventario__sucursa_bpu_idx")]
+
+    def __str__(self) -> str:  # pragma: no cover
+        return f"{self.envio_id or '-'} {self.producto_id} @ {self.sucursal_id}"

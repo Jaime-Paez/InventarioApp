@@ -72,3 +72,139 @@
   font-size: 0.88rem;
   line-height: 1.6;
 }
+
+/* Varias ubicaciones por producto + opciones de alternos. */
+.quick-actions__receive-step--list .por-guardar__ubicaciones {
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  align-self: start;
+  box-shadow: 1px 0 0 0 var(--color-border);
+  padding-right: 10px;
+}
+
+.por-guardar__ubicaciones .quick-actions__receive-location-row--review.por-guardar__linea {
+  grid-column: auto;
+  grid-row: auto;
+  box-shadow: none;
+  padding-right: 0;
+}
+
+.por-guardar__ubicaciones .por-guardar__linea.is-multi {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 64px 26px;
+  align-items: end;
+}
+
+.por-guardar__linea--extra .quick-actions__receive-location-field > small,
+.por-guardar__linea--extra .por-guardar__linea-cant > small {
+  display: none;
+}
+
+.por-guardar__linea-cant {
+  display: grid;
+  gap: 4px;
+}
+
+.por-guardar__linea-cant small {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.por-guardar__linea-cant input {
+  width: 100%;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface, #fff);
+  color: inherit;
+  text-align: center;
+  font-weight: 700;
+}
+
+.por-guardar__linea-quitar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-bottom: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.por-guardar__linea-quitar:hover:not(:disabled) {
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.por-guardar__ubic-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.por-guardar__add-line,
+.por-guardar__chip-mas {
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+
+.por-guardar__chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 260px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #7c3aed 35%, transparent);
+  background: color-mix(in srgb, #7c3aed 8%, transparent);
+  color: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.por-guardar__chip.is-propia {
+  border-color: color-mix(in srgb, #059669 40%, transparent);
+  background: color-mix(in srgb, #059669 9%, transparent);
+}
+
+.por-guardar__chip.is-usada {
+  outline: 2px solid color-mix(in srgb, #2563eb 55%, transparent);
+}
+
+.por-guardar__chip strong {
+  font-weight: 700;
+}
+
+.por-guardar__chip span {
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.por-guardar__ubic-nota {
+  font-size: 0.75rem;
+  color: #7c3aed;
+}
+
+.por-guardar__excel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
