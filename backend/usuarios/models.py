@@ -205,10 +205,10 @@ class UsuarioModuloSucursal(models.Model):
             self.puede_crear_venta = False
             self.puede_importar = False
             self.puede_marcar_llegada = False
-            self.puede_pedido_rapido = False
 
         if not any(
             (
+                self.puede_pedido_rapido,
                 self.puede_crear,
                 self.puede_leer,
                 self.puede_actualizar,

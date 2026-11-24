@@ -228,12 +228,15 @@ function Workspace({
     ;(Array.isArray(user?.sucursales_por_modulo) ? user.sucursales_por_modulo : []).forEach((scope) => {
       if (String(scope?.modulo || '').trim().toLowerCase() !== 'movimientos_entradas') return
       ;(Array.isArray(scope?.acciones_por_sucursal) ? scope.acciones_por_sucursal : []).forEach((entry) => {
-        if (entry?.puede_crear && entry?.puede_pedido_rapido && entry?.sucursal_id != null) ids.push(String(entry.sucursal_id))
+        if (entry?.puede_pedido_rapido && entry?.sucursal_id != null) ids.push(String(entry.sucursal_id))
       })
     })
     return ids
   })()
   const puedePedidoRapido = pedidoRapidoBranchIds === null || pedidoRapidoBranchIds.length > 0
+  // Con acceso a Entradas el pedido se abre alla; si solo tiene el permiso de
+  // pedidos rapidos, se abre ahi mismo en Inventario.
+  const pedidoRapidoEnEntradas = labelHasAccess('Entradas', permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)
 
   const handleOpenTrasladoPrefill = useCallback((prefill) => {
     if (!labelHasAccess('Entradas', permissionIndex, undefined, moduleScopeAccessIndex, isAdministrator)) return
@@ -709,7 +712,8 @@ function Workspace({
         onPendingTrasladoPrefillHandled={
           tab === 'Entradas' ? () => setPendingTrasladoPrefill(null) : undefined
         }
-        onRequestTraslado={tab === 'Inventario' && puedePedidoRapido ? handleOpenTrasladoPrefill : undefined}
+        onRequestTraslado={tab === 'Inventario' && puedePedidoRapido && pedidoRapidoEnEntradas ? handleOpenTrasladoPrefill : undefined}
+        pedidoRapidoEnInventario={tab === 'Inventario' && puedePedidoRapido && !pedidoRapidoEnEntradas}
         pedidoRapidoBranchIds={tab === 'Inventario' ? pedidoRapidoBranchIds : undefined}
         onPendingCompraLocalPrefillHandled={
           tab === 'Entradas' ? () => setPendingCompraLocalPrefill(null) : undefined

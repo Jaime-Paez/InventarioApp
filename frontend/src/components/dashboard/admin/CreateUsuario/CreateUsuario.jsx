@@ -213,16 +213,18 @@ const serializeModuleBranchMatrix = (matrix, allowedModules = []) => {
           const normalizedBranchId = normalizeBranchId(branchId)
           if (!normalizedBranchId) return null
           const normalizedEntry = applyPermissionDependencies(modulo, rawEntry)
-          if (!hasAnyAllowedActionEnabled(modulo, normalizedEntry)) return null
-          const entry = { sucursal_id: normalizedBranchId, ...normalizedEntry }
           const normalizedModKey = normalizeModuleKey(modulo)
+          // Pedidos rapidos: permiso propio, puede ir sin nada de Entradas.
+          const pedidoRapido = normalizedModKey === ENTRADAS_MODULE_KEY && Boolean(rawEntry?.puede_pedido_rapido)
+          if (!hasAnyAllowedActionEnabled(modulo, normalizedEntry) && !pedidoRapido) return null
+          const entry = { sucursal_id: normalizedBranchId, ...normalizedEntry }
+          if (normalizedModKey === ENTRADAS_MODULE_KEY) entry.puede_pedido_rapido = pedidoRapido
           const canCreate = Boolean(normalizedEntry.puede_crear)
           if (normalizedModKey === ENTRADAS_MODULE_KEY) {
             entry.puede_crear_compra_local = canCreate ? Boolean(rawEntry?.puede_crear_compra_local ?? false) : false
             entry.puede_crear_importacion = canCreate ? Boolean(rawEntry?.puede_crear_importacion ?? false) : false
             entry.puede_crear_traslado = canCreate ? Boolean(rawEntry?.puede_crear_traslado ?? false) : false
             entry.puede_crear_devolucion = canCreate ? Boolean(rawEntry?.puede_crear_devolucion ?? false) : false
-            entry.puede_pedido_rapido = canCreate ? Boolean(rawEntry?.puede_pedido_rapido ?? false) : false
           }
           if (normalizedModKey === SALIDAS_MODULE_KEY) {
             entry.puede_crear_venta = canCreate ? Boolean(rawEntry?.puede_crear_venta ?? false) : false
@@ -515,9 +517,12 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
 
       const branchKey = String(normalizedBranchId)
       const current = nextModuleScopes[branchKey] || EMPTY_PERMISSION_ENTRY
-      const updatedEntry = normalizePermissionEntry(moduleKey, current, actionKey, !current[actionKey])
+      const updatedEntry = {
+        ...normalizePermissionEntry(moduleKey, current, actionKey, !current[actionKey]),
+        ...(current.puede_pedido_rapido ? { puede_pedido_rapido: true } : {}),
+      }
 
-      if (hasAnyAllowedActionEnabled(moduleKey, updatedEntry)) {
+      if (hasAnyAllowedActionEnabled(moduleKey, updatedEntry) || updatedEntry.puede_pedido_rapido) {
         nextModuleScopes[branchKey] = updatedEntry
       } else {
         delete nextModuleScopes[branchKey]
@@ -530,6 +535,28 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
       }
 
       return { ...prevScopes, [normalizedModuleKey]: nextModuleScopes }
+    })
+  }
+
+  // Pedidos rapidos: se marca por sucursal sin necesitar Entradas.
+  const togglePedidoRapido = () => {
+    if (isAdministrator) return
+    const branchKey = String(normalizeBranchId(selectedBranchId) || '')
+    if (!branchKey) return
+    setModuleBranchMatrix((prev) => {
+      const moduleScopes = { ...(prev[ENTRADAS_MODULE_KEY] || {}) }
+      const current = moduleScopes[branchKey] || { ...EMPTY_PERMISSION_ENTRY }
+      const next = { ...current, puede_pedido_rapido: !current.puede_pedido_rapido }
+      if (!next.puede_pedido_rapido && !hasAnyAllowedActionEnabled(ENTRADAS_MODULE_KEY, next)) {
+        delete moduleScopes[branchKey]
+      } else {
+        moduleScopes[branchKey] = next
+      }
+      if (!Object.keys(moduleScopes).length) {
+        const { [ENTRADAS_MODULE_KEY]: _ignored, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [ENTRADAS_MODULE_KEY]: moduleScopes }
     })
   }
 
@@ -1434,7 +1461,6 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                     { key: 'puede_crear_compra_local', label: 'Compras locales' },
                     { key: 'puede_crear_traslado', label: 'Traslados' },
                     { key: 'puede_crear_devolucion', label: 'Devoluciones' },
-                    { key: 'puede_pedido_rapido', label: 'Pedidos rápidos' },
                   ]
                   const salidasSubtypes = [
                     { key: 'puede_crear_venta', label: 'Ventas' },
@@ -1467,6 +1493,22 @@ function CreateUsuario({ open, onClose, onCreated, token, onError }) {
                                 </label>
                               )
                             })}
+                          </div>
+                        </div>
+                      )}
+                      {hasEntradas && (
+                        <div className="create-user__entrada-subtypes">
+                          <p className="create-user__entrada-subtypes-label">Pedidos rápidos</p>
+                          <div className="create-user__entrada-subtypes-options">
+                            <label className={`create-user__subtype-option${baseDisabled ? ' create-user__subtype-option--disabled' : ''}`}>
+                              <input
+                                type="checkbox"
+                                checked={isAdministrator ? true : Boolean(entradasEntry?.puede_pedido_rapido)}
+                                onChange={togglePedidoRapido}
+                                disabled={baseDisabled}
+                              />
+                              <span>Doble clic en Inventario</span>
+                            </label>
                           </div>
                         </div>
                       )}

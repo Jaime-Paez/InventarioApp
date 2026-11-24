@@ -425,6 +425,9 @@ function CreateEntrada({
   // nombre} }. Solo llena el formulario; se puede agregar mas y decidir si
   // se manda.
   prefilledNuevoTraslado = null,
+  // Abierto desde Inventario por quien solo tiene el permiso de pedidos
+  // rapidos (sin Entradas): las sucursales se leen por Inventario.
+  soloPedidoRapido = false,
   currentUser = null,
 }) {
   const [formData, setFormData] = useState(initialForm)
@@ -1381,7 +1384,7 @@ function CreateEntrada({
         productosRes,
         estadosProductoRes,
       ] = await Promise.all([
-        authFetch(`${API_URL}/inventario/sucursales/?modulo=movimientos_entradas&page_size=500`, {}, token),
+        authFetch(`${API_URL}/inventario/sucursales/?modulo=${soloPedidoRapido ? 'inventario' : 'movimientos_entradas'}&page_size=500`, {}, token),
         authFetch(`${API_URL}/movimientos/movimiento_inventario/sucursales-traslado-proveedoras/`, {}, token),
         authFetch(`${API_URL}/tipos/tipos-movimiento/`, {}, token),
         authFetch(`${API_URL}/tipos/subtipos-movimiento/`, {}, token),
@@ -1987,11 +1990,8 @@ function CreateEntrada({
 
     const sucursalId = String(request?.sucursalId || normalizedPrefilledSucursalId || '').trim()
     const proveedoraId = String(request?.sucursalProveedoraId || '').trim()
-    const trasladoOption = entradaSubTipoOptions.find((option) => option.value === String(trasladoSubTipo.id))
-    if (trasladoOption?.blocked) {
-      notifyError(trasladoOption.blockedReason || 'No tienes permiso para pedir traslados en esta sucursal.')
-      return
-    }
+    // Solo llega aqui quien tiene el permiso de pedidos rapidos: eso ya
+    // autoriza el pedido (no hace falta el tipo "Traslados" de Entradas).
     setPedidoRapido(true)
     setFormData((prev) => ({
       ...prev,

@@ -6,7 +6,18 @@ from .utils import (
     get_permisos_efectivos,
     get_usuario_interno_por_correo,
     is_app_admin,
+    tiene_pedido_rapido,
 )
+
+# Acciones de movimientos que necesita el pedido rapido (doble clic en
+# Inventario) para quien tiene ese permiso aunque no tenga Entradas.
+PEDIDO_RAPIDO_ACTIONS = {
+    "pedido_guardado",
+    "siguiente_documento_entrada",
+    "stock_sucursal_global",
+    "sucursales_traslado_proveedoras",
+    "ubicaciones_productos_sucursal",
+}
 
 
 class ModulePermission(BasePermission):
@@ -352,6 +363,12 @@ class MovimientoInventarioModulePermission(ModulePermission):
         if action in {"traslados_inconvenientes", "resolver_traslado_inconveniente"}:
             return is_app_admin(request.user)
 
+        if (
+            action in PEDIDO_RAPIDO_ACTIONS
+            or (action == "solicitudes_traslado" and request.method == "POST")
+        ) and tiene_pedido_rapido(request.user):
+            return True
+
         if action == "decision_solicitud_traslado" and request.method == "POST":
             permission_index = self._get_permission_index(request)
             module_permissions = permission_index.get(
@@ -412,3 +429,14 @@ class MovimientosCatalogosPermission(ModulePermission):
         RolPermiso.Modulos.MOVIMIENTOS_SALIDAS,
         RolPermiso.Modulos.MOVIMIENTOS_INCONVENIENTES,
     ]
+
+    def has_permission(self, request, view):
+        # Pedido rapido: lee los tipos/estados para armar el pedido.
+        if (
+            request.method in ("GET", "HEAD", "OPTIONS")
+            and request.user
+            and request.user.is_authenticated
+            and tiene_pedido_rapido(request.user)
+        ):
+            return True
+        return super().has_permission(request, view)

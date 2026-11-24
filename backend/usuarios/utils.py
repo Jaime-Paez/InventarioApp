@@ -433,3 +433,39 @@ def build_sucursal_scope_summary(usuario):
             }
         )
     return payload
+
+
+def pedido_rapido_sucursal_ids(user):
+    """Sucursales desde las que el usuario puede hacer pedidos rapidos (doble
+    clic en Inventario). None = todas (administrador). Es un permiso propio:
+    no necesita acceso a Entradas."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return set()
+    if is_app_admin(user):
+        return None
+    cached = getattr(user, "_pedido_rapido_ids_cache", None)
+    if cached is not None:
+        return cached
+    from .models import RolPermiso, UsuarioModuloSucursal
+
+    ids = set(
+        UsuarioModuloSucursal.objects.filter(
+            usuario=user,
+            modulo=RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
+            puede_pedido_rapido=True,
+        ).values_list("sucursal_id", flat=True)
+    )
+    user._pedido_rapido_ids_cache = ids
+    return ids
+
+
+def tiene_pedido_rapido(user, sucursal_id=None):
+    ids = pedido_rapido_sucursal_ids(user)
+    if ids is None:
+        return True
+    if sucursal_id is None:
+        return bool(ids)
+    try:
+        return int(sucursal_id) in ids
+    except (TypeError, ValueError):
+        return False

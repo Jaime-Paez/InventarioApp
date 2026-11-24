@@ -69,7 +69,7 @@ from usuarios.sucursal_scope import (
     get_readable_sucursal_ids,
     get_readable_sucursal_ids_for_modules,
 )
-from usuarios.utils import is_app_admin
+from usuarios.utils import is_app_admin, tiene_pedido_rapido
 from .models import (
     DetalleMovimiento,
     MovimientoInventario,
@@ -1734,6 +1734,7 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             UsuarioModuloSucursal.objects.filter(
                 modulo=RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS,
                 sucursal_id=requester_branch_id,
+                puede_leer=True,
             ).values_list("usuario_id", flat=True)
         )
         assigned_user_ids = set(
@@ -3594,6 +3595,12 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
         intenta el lado solicitante primero -- es el caso mas comun -- y
         solo se propaga el error si tampoco pasa por el lado proveedor.
         """
+        # Pedido rapido: quien tiene ese permiso en la sucursal que pide puede
+        # crear/guardar su pedido aunque no tenga Entradas.
+        if action_key == "puede_crear" and tiene_pedido_rapido(
+            self.request.user, sucursal_solicitante_id
+        ):
+            return
         try:
             ensure_sucursal_allowed_for_modules(
                 self.request.user,
@@ -6602,13 +6609,14 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        ensure_sucursal_allowed_for_modules(
-            request.user,
-            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
-            sucursal.id,
-            field_label="sucursal solicitante",
-            action_key="puede_crear",
-        )
+        if not (subtipo_key == "traslado" and tiene_pedido_rapido(request.user, sucursal.id)):
+            ensure_sucursal_allowed_for_modules(
+                request.user,
+                [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+                sucursal.id,
+                field_label="sucursal solicitante",
+                action_key="puede_crear",
+            )
 
         if subtipo_key == "traslado":
             if not sucursal_objetivo_raw.isdigit():
@@ -6782,13 +6790,14 @@ class MovimientoInventarioViewSet(viewsets.ModelViewSet):
             )
 
         sucursal_id = int(sucursal_id_raw)
-        ensure_sucursal_allowed_for_modules(
-            request.user,
-            [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
-            sucursal_id,
-            field_label="sucursal",
-            action_key="puede_leer",
-        )
+        if not tiene_pedido_rapido(request.user, sucursal_id):
+            ensure_sucursal_allowed_for_modules(
+                request.user,
+                [RolPermiso.Modulos.MOVIMIENTOS_ENTRADAS],
+                sucursal_id,
+                field_label="sucursal",
+                action_key="puede_leer",
+            )
 
         # Si solo esta en POR UBICAR no tiene ubicacion propia: se pide la
         # inicial para que la entrada no se sume en POR UBICAR.

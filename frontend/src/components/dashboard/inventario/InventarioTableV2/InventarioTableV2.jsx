@@ -13,6 +13,7 @@ import { Button } from 'primereact/button'
 import { Row } from 'primereact/row'
 
 import CreateProducto from '../../productos/CreateProducto/CreateProducto'
+import CreateEntrada from '../../movimientos/CreateEntrada'
 import ProductoDetails from '../../productos/ProductoDetails/ProductoDetails'
 import '../../admin/UsersTable/UsersTable.css'
 import './InventarioTableV2.css'
@@ -139,8 +140,10 @@ const abbreviateBranchName = (name) => {
     .join(' ')
 }
 
-function InventarioTableV2({ token, onSelect, user, moduleActions, permissionIndex, onRequestTraslado, pedidoRapidoBranchIds = null }) {
+function InventarioTableV2({ token, onSelect, user, moduleActions, permissionIndex, onRequestTraslado, pedidoRapidoBranchIds = null, pedidoRapidoEnInventario = false }) {
   const toast = useRef(null)
+  // Pedido rapido de quien no tiene Entradas: el pedido se abre aqui mismo.
+  const [pedidoRapidoLocal, setPedidoRapidoLocal] = useState(null)
   const opColumns = useRef(null)
   const tableWrapperRef = useRef(null)
 
@@ -1139,7 +1142,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
     const sucursalesPedido = Array.isArray(pedidoRapidoBranchIds)
       ? pedidoRapidoBranchIds.map(String).filter((id) => id !== String(branchId) && (!isUserScoped || permittedBranchIds.has(id)))
       : null
-    const puedePedir = Boolean(onRequestTraslado) && branchId != null && shown > 0 && !(isUserScoped && isScoped)
+    const puedePedir = (Boolean(onRequestTraslado) || pedidoRapidoEnInventario) && branchId != null && shown > 0 && !(isUserScoped && isScoped)
       && (sucursalesPedido === null || sucursalesPedido.length > 0)
     const branchNombre = puedePedir ? String(branches.find((b) => String(b.id) === String(branchId))?.nombre || '').trim() : ''
     const handlePedir = puedePedir
@@ -1147,11 +1150,16 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         event.stopPropagation()
         const propias = sucursalesPedido
           ?? (isUserScoped ? [...permittedBranchIds].filter((id) => String(id) !== String(branchId)) : [])
-        onRequestTraslado({
+        const pedido = {
           sucursalProveedoraId: String(branchId),
           sucursalSolicitanteId: propias.length ? String(propias[0]) : '',
           producto: { id: rowData?.producto_id ?? rowData?.id, codigo: rowData?.codigo || '', nombre: rowData?.nombre || '' },
-        })
+        }
+        if (pedidoRapidoEnInventario) {
+          setPedidoRapidoLocal({ ...pedido, sucursalId: pedido.sucursalSolicitanteId, requestKey: `${Date.now()}` })
+          return
+        }
+        onRequestTraslado(pedido)
       }
       : undefined
     return (
@@ -1192,7 +1200,7 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
         )}
       </span>
     )
-  }, [permittedBranchIds, onRequestTraslado, branches, pedidoRapidoBranchIds])
+  }, [permittedBranchIds, onRequestTraslado, branches, pedidoRapidoBranchIds, pedidoRapidoEnInventario])
 
   const locationBody = useCallback(
     (rowData, branch) => {
@@ -2334,6 +2342,29 @@ function InventarioTableV2({ token, onSelect, user, moduleActions, permissionInd
       <Tooltip position="top" showDelay={1800} target=".cell-tooltip" style={{ maxWidth: '340px' }} />
       <Tooltip position="top" showDelay={120} target=".inventario-v2__in-transit" style={{ maxWidth: '360px' }} />
       <Toast ref={toast} />
+      {pedidoRapidoEnInventario && (
+        <CreateEntrada
+          open={Boolean(pedidoRapidoLocal)}
+          onClose={() => setPedidoRapidoLocal(null)}
+          onCreated={(data) => {
+            const guardado = String(data?.estado || '').trim().toLowerCase() === 'guardado'
+            toast.current?.show({
+              severity: 'success',
+              summary: 'Exito',
+              detail: guardado
+                ? `Pedido a sucursal guardado${data?.no_documento ? ` ${data.no_documento}` : ''} (${(data?.detalles || []).length} productos)`
+                : 'Solicitud creada correctamente',
+              life: 2500,
+            })
+            setPedidoRapidoLocal(null)
+          }}
+          token={token}
+          prefilledSucursalId={pedidoRapidoLocal?.sucursalId || ''}
+          prefilledNuevoTraslado={pedidoRapidoLocal}
+          currentUser={user}
+          soloPedidoRapido
+        />
+      )}
 
       <div className="users-page__top">
         <div className="users-page__actions">

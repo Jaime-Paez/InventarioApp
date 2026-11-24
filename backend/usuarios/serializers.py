@@ -130,7 +130,8 @@ def build_sucursal_scope_payload(scopes):
                 "puede_eliminar": getattr(scope, "puede_eliminar", False),
             }
         )
-        if not any(normalized_flags.values()):
+        pedido_rapido = bool(getattr(scope, "puede_pedido_rapido", False))
+        if not any(normalized_flags.values()) and not pedido_rapido:
             continue
 
         normalized_flags["puede_crear_compra_local"] = bool(
@@ -279,7 +280,6 @@ class ModuloSucursalActionSerializer(serializers.Serializer):
             "puede_crear_venta",
             "puede_importar",
             "puede_marcar_llegada",
-            "puede_pedido_rapido",
         )
         if not flags.get("puede_crear"):
             for key in subtype_keys:
@@ -287,6 +287,8 @@ class ModuloSucursalActionSerializer(serializers.Serializer):
         else:
             for key in subtype_keys:
                 flags[key] = bool(attrs.get(key, False))
+        # Pedidos rapidos: permiso propio, no depende de Entradas.
+        flags["puede_pedido_rapido"] = bool(attrs.get("puede_pedido_rapido", False))
         return {
             "sucursal_id": attrs["sucursal_id"],
             **flags,
@@ -562,7 +564,8 @@ class UsuarioSerializer(serializers.ModelSerializer):
 
                 branch_id = int(sucursal_obj.id if isinstance(sucursal_obj, Sucursal) else sucursal_obj)
                 flags = normalize_scope_action_flags(action_scope)
-                if not any(flags.values()):
+                pedido_rapido = bool(action_scope.get("puede_pedido_rapido", False))
+                if not any(flags.values()) and not pedido_rapido:
                     continue
                 subtype_keys = (
                     "puede_crear_compra_local",
@@ -572,7 +575,6 @@ class UsuarioSerializer(serializers.ModelSerializer):
                     "puede_crear_venta",
                     "puede_importar",
                     "puede_marcar_llegada",
-                    "puede_pedido_rapido",
                 )
                 if not flags.get("puede_crear"):
                     for key in subtype_keys:
@@ -580,6 +582,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
                 else:
                     for key in subtype_keys:
                         flags[key] = bool(action_scope.get(key, False))
+                flags["puede_pedido_rapido"] = pedido_rapido
                 action_map[branch_id] = flags
 
             if action_map:
