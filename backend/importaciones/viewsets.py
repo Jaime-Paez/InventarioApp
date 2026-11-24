@@ -1758,6 +1758,17 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             transaction.set_rollback(True)
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Lo de 9 de Octubre (matriz) ya esta ahi: no se pide confirmar la
+        # llegada, entra directo a POR UBICAR para contarlo y guardarlo.
+        matriz = get_matriz_sucursal()
+        for envio in envios_creados:
+            if matriz is not None and int(envio.sucursal_id) == int(matriz.id):
+                try:
+                    self._confirmar_llegada(envio, request.user)
+                except RecepcionError as exc:
+                    transaction.set_rollback(True)
+                    return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
         # El precio se aplica al catalogo justo aqui -- el mismo momento en que
         # se reparten las cantidades a las sucursales -- no antes (al aceptar,
         # cuando el precio todavia puede ajustarse) ni despues (al confirmar
@@ -2549,6 +2560,26 @@ class ImportacionViewSet(viewsets.ModelViewSet):
     def _sent_by_product(envio):
         return sent_by_product(envio)
 
+    def _confirmar_llegada(self, envio, user):
+        """Todo lo enviado entra al stock de la sucursal en POR UBICAR."""
+        sent = self._sent_by_product(envio)
+        recibido = received_by_product(envio.recepcion_progreso)
+        items = [
+            {"producto_id": pid, "cantidad": qty - int(recibido.get(pid, 0))}
+            for pid, qty in sent.items()
+            if qty - int(recibido.get(pid, 0)) > 0
+        ]
+        if items:
+            envio.recepcion_progreso = receive_items(
+                progress=envio.recepcion_progreso,
+                sucursal_id=envio.sucursal_id,
+                items=items,
+                sent_by_product=sent,
+            )
+        envio.llegada_confirmada_en = timezone.now()
+        envio.llegada_confirmada_por = user
+        envio.save(update_fields=["llegada_confirmada_en", "llegada_confirmada_por", "recepcion_progreso"])
+
     @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/confirmar-llegada")
     def confirmar_llegada_envio(self, request, envio_id=None):
         """Paso 1 de la recepcion: el envio llego. Todo lo enviado entra al
@@ -2560,27 +2591,11 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             if error is not None:
                 return error
             if not envio.llegada_confirmada_en:
-                sent = self._sent_by_product(envio)
-                recibido = received_by_product(envio.recepcion_progreso)
-                items = [
-                    {"producto_id": pid, "cantidad": qty - int(recibido.get(pid, 0))}
-                    for pid, qty in sent.items()
-                    if qty - int(recibido.get(pid, 0)) > 0
-                ]
-                if items:
-                    try:
-                        envio.recepcion_progreso = receive_items(
-                            progress=envio.recepcion_progreso,
-                            sucursal_id=envio.sucursal_id,
-                            items=items,
-                            sent_by_product=sent,
-                        )
-                    except RecepcionError as exc:
-                        transaction.set_rollback(True)
-                        return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-                envio.llegada_confirmada_en = timezone.now()
-                envio.llegada_confirmada_por = request.user
-                envio.save(update_fields=["llegada_confirmada_en", "llegada_confirmada_por", "recepcion_progreso"])
+                try:
+                    self._confirmar_llegada(envio, request.user)
+                except RecepcionError as exc:
+                    transaction.set_rollback(True)
+                    return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"llegada_confirmada_en": envio.llegada_confirmada_en}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"], url_path=r"envios/(?P<envio_id>\d+)/terminar-conteo")
