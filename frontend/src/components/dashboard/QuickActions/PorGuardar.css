@@ -152,8 +152,7 @@
   gap: 6px;
 }
 
-.por-guardar__add-line,
-.por-guardar__chip-mas {
+.por-guardar__add-line {
   border: none;
   background: transparent;
   color: #2563eb;
@@ -163,39 +162,106 @@
   cursor: pointer;
 }
 
-.por-guardar__chip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  max-width: 260px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, #7c3aed 35%, transparent);
-  background: color-mix(in srgb, #7c3aed 8%, transparent);
-  color: inherit;
+.por-guardar__info-label {
+  margin-left: auto;
   font-size: 0.74rem;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.por-guardar__chip.is-propia {
-  border-color: color-mix(in srgb, #059669 40%, transparent);
-  background: color-mix(in srgb, #059669 9%, transparent);
-}
-
-.por-guardar__chip.is-usada {
-  outline: 2px solid color-mix(in srgb, #2563eb 55%, transparent);
-}
-
-.por-guardar__chip strong {
-  font-weight: 700;
-}
-
-.por-guardar__chip span {
   color: var(--color-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.por-guardar__info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #2563eb 40%, transparent);
+  background: color-mix(in srgb, #2563eb 8%, transparent);
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.por-guardar__info.is-empty {
+  opacity: 0.45;
+}
+
+.por-guardar__info-card {
+  max-height: min(320px, 60vh);
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid var(--color-border, #e2e8f0);
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
+  font-size: 0.8rem;
+}
+
+.por-guardar__info-card.dark {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+.por-guardar__info-card table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.por-guardar__info-card th {
+  position: sticky;
+  top: 0;
+  background: inherit;
+  text-align: left;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748b;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+}
+
+.por-guardar__info-card td {
+  padding: 7px 10px;
+  border-bottom: 1px solid color-mix(in srgb, #94a3b8 25%, transparent);
+  white-space: nowrap;
+}
+
+.por-guardar__info-card td:nth-child(2) {
+  white-space: normal;
+}
+
+.por-guardar__info-card td:last-child,
+.por-guardar__info-card th:last-child {
+  text-align: right;
+}
+
+.por-guardar__info-card tr.is-pickable {
+  cursor: pointer;
+}
+
+.por-guardar__info-card tr.is-pickable:hover {
+  background: color-mix(in srgb, #2563eb 9%, transparent);
+}
+
+.por-guardar__info-card tr.is-usada {
+  background: color-mix(in srgb, #16a34a 12%, transparent);
+}
+
+.por-guardar__info-card em {
+  font-style: normal;
+  color: #7c3aed;
+}
+
+.por-guardar__info-check {
+  color: #16a34a;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+.por-guardar__info-empty {
+  margin: 0;
+  padding: 12px;
+  color: #64748b;
 }
 
 .por-guardar__ubic-nota {
@@ -204,7 +270,56 @@
 }
 
 .por-guardar__excel {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+}
+
+/* Celular: las ubicaciones van en su propia fila, a todo el ancho. */
+@media (max-width: 900px) {
+  .quick-actions__receive-step--list .por-guardar__ubicaciones {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    box-shadow: none;
+    padding-right: 0;
+  }
+
+  .por-guardar__ubicaciones .quick-actions__receive-location-row--review.por-guardar__linea {
+    grid-template-columns: 1fr;
+  }
+
+  .por-guardar__ubicaciones .por-guardar__linea.is-multi {
+    grid-template-columns: minmax(0, 1fr) 34px;
+    align-items: end;
+  }
+
+  .por-guardar__ubicaciones .por-guardar__linea.is-multi > .quick-actions__receive-location-field,
+  .por-guardar__ubicaciones .por-guardar__linea.is-multi > .por-guardar__linea-cant {
+    grid-column: 1;
+  }
+
+  .por-guardar__ubicaciones .por-guardar__linea.is-multi > .por-guardar__linea-quitar {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    margin: 18px 0 0;
+  }
+
+  .por-guardar__linea--extra {
+    padding-top: 8px;
+    border-top: 1px dashed var(--color-border);
+  }
+
+  .por-guardar__linea--extra .quick-actions__receive-location-field > small,
+  .por-guardar__linea--extra .por-guardar__linea-cant > small {
+    display: block;
+  }
+
+  .por-guardar__group-actions {
+    width: 100%;
+  }
+
+  .por-guardar__group-actions > :not(.por-guardar__excel) {
+    flex: 1 1 0;
+  }
 }

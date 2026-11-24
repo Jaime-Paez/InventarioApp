@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Checkbox } from 'primereact/checkbox'
-import { FileSpreadsheet, Inbox, Search, X } from 'lucide-react'
+import { Check, Inbox, Info, Search, X } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { exportToExcel } from '../../../utils/exportUtils'
 import { formatDateTime } from '../../../utils/dateFormat'
@@ -10,6 +10,7 @@ import { matchesFirst } from '../common/productDetailMatches'
 import ConfirmDialog from '../common/unsavedChanges/ConfirmDialog'
 import { POR_GUARDAR_REFRESH_EVENT } from './porGuardarEvents'
 import usePillExit from './usePillExit'
+import '../admin/UsersTable/UsersTable.css'
 import './PorGuardar.css'
 
 // "Por ubicar": paso 2 de la recepcion de importaciones. Al confirmar la
@@ -44,7 +45,145 @@ const lineQty = (line) => {
   return Number.isFinite(qty) ? qty : 0
 }
 const linesTotal = (lines) => lines.reduce((sum, line) => sum + lineQty(line), 0)
-const MAX_CHIPS = 6
+
+// Icono "i" (como en importaciones): tabla con las ubicaciones del producto y
+// de sus alternos en la sucursal; clic en una fila la usa. Se abre al pasar el
+// mouse o al tocarlo (celular).
+function UbicacionesInfo({ options, usadas, onPick, darkMode, disabled }) {
+  const [anchor, setAnchor] = useState(null)
+  const [pinned, setPinned] = useState(false)
+  const iconRef = useRef(null)
+  const cardRef = useRef(null)
+  const timerRef = useRef(null)
+  const cancel = () => {
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+  }
+  const open = () => {
+    cancel()
+    const rect = iconRef.current?.getBoundingClientRect()
+    if (rect) setAnchor(rect)
+  }
+  const close = () => {
+    cancel()
+    setAnchor(null)
+    setPinned(false)
+  }
+  const closeSoon = () => {
+    if (pinned) return
+    cancel()
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null
+      setAnchor(null)
+    }, 250)
+  }
+  useEffect(() => cancel, [])
+  useEffect(() => {
+    if (!anchor) return undefined
+    const onDown = (event) => {
+      if (iconRef.current?.contains(event.target) || cardRef.current?.contains(event.target)) return
+      close()
+    }
+    const onScroll = (event) => {
+      if (cardRef.current?.contains(event.target)) return
+      // Abierta con un toque: sigue al icono; con el mouse, se cierra.
+      if (pinned) {
+        const rect = iconRef.current?.getBoundingClientRect()
+        if (rect) setAnchor(rect)
+        return
+      }
+      close()
+    }
+    document.addEventListener('mousedown', onDown, true)
+    document.addEventListener('touchstart', onDown, true)
+    window.addEventListener('scroll', onScroll, true)
+    return () => {
+      document.removeEventListener('mousedown', onDown, true)
+      document.removeEventListener('touchstart', onDown, true)
+      window.removeEventListener('scroll', onScroll, true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(anchor), pinned])
+
+  const width = Math.min(560, window.innerWidth - 24)
+  const left = anchor ? Math.max(12, Math.min(anchor.left - 12, window.innerWidth - width - 12)) : 0
+  const below = anchor ? anchor.bottom + 6 : 0
+  const placeAbove = anchor && below + 260 > window.innerHeight && anchor.top > 280
+  const style = anchor
+    ? {
+        position: 'fixed',
+        left,
+        width,
+        zIndex: 10000,
+        ...(placeAbove ? { bottom: window.innerHeight - anchor.top + 6 } : { top: below }),
+      }
+    : null
+  return (
+    <>
+      <button
+        ref={iconRef}
+        type="button"
+        className={`por-guardar__info${options.length ? '' : ' is-empty'}`}
+        onMouseEnter={open}
+        onMouseLeave={closeSoon}
+        onClick={() => {
+          if (anchor && pinned) {
+            close()
+            return
+          }
+          open()
+          setPinned(true)
+        }}
+        aria-label="Ubicaciones del producto y de sus alternos"
+      >
+        <Info size={14} />
+      </button>
+      {anchor && createPortal(
+        <div
+          ref={cardRef}
+          className={`por-guardar__info-card ${darkMode ? 'dark' : 'light'}`}
+          style={style}
+          onMouseEnter={cancel}
+          onMouseLeave={closeSoon}
+        >
+          {options.length ? (
+            <table>
+              <thead>
+                <tr><th>Producto</th><th>Ubicación</th><th>Stock</th></tr>
+              </thead>
+              <tbody>
+                {options.map((option, index) => {
+                  const usada = usadas.has(String(option.subdivision_id))
+                  return (
+                    <tr
+                      key={`${option.subdivision_id}-${option.producto_id}-${index}`}
+                      className={`${disabled ? '' : 'is-pickable'}${usada ? ' is-usada' : ''}`}
+                      onClick={disabled ? undefined : () => { onPick(option.subdivision_id); close() }}
+                      data-title={disabled ? undefined : 'Clic para usar esta ubicación'}
+                    >
+                      <td>
+                        {usada && <Check size={13} className="por-guardar__info-check" aria-label="En uso" />}
+                        {option.propia ? 'Este producto' : option.producto_codigo}
+                        {!option.propia && option.posible && <em> (posible)</em>}
+                      </td>
+                      <td>{option.label}</td>
+                      <td>{option.cantidad}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <p className="por-guardar__info-empty">Ni este producto ni sus alternos tienen ubicación en esta sucursal.</p>
+          )}
+        </div>,
+        document.body
+      )}
+    </>
+  )
+}
 
 // Desplegable de la recepcion de traslados (Bodega / Division / Subdivision).
 function ReceiveDropdown({ label, value, placeholder, options, onSelect, disabled, darkMode, emptyMessage, searchPlaceholder }) {
@@ -168,7 +307,6 @@ function PorGuardar({ token, darkMode, onSaved }) {
   const metaRef = useRef({})
   const draftsRef = useRef({})
   const autosaveTimers = useRef({})
-  const [chipsAbiertos, setChipsAbiertos] = useState(() => new Set())
 
   const fetchCount = useCallback(async () => {
     if (!token || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return
@@ -609,59 +747,9 @@ function PorGuardar({ token, darkMode, onSaved }) {
     )
   }
 
-  // Opciones para tocar: sus ubicaciones y las de sus alternos (o posibles
+  // Opciones del "i": sus ubicaciones y las de sus alternos (o posibles
   // alternos, mismo codigo base) en esa sucursal.
-  const locationChips = (key, row, max) => {
-    const byId = new Map()
-    ;[...(row.ubicaciones_propias || []), ...(row.ubicaciones_alternos || [])].forEach((option) => {
-      const id = String(option.subdivision_id)
-      const current = byId.get(id)
-      const code = option.propia ? 'Suya' : `${option.producto_codigo}${option.posible ? ' (posible)' : ''}`
-      if (current) {
-        if (!current.codes.includes(code)) current.codes.push(code)
-        current.cantidad += Number(option.cantidad) || 0
-        current.propia = current.propia || option.propia
-      } else {
-        byId.set(id, { id, label: option.label, codes: [code], cantidad: Number(option.cantidad) || 0, propia: Boolean(option.propia) })
-      }
-    })
-    const chips = [...byId.values()]
-    if (!chips.length) return null
-    const abierto = chipsAbiertos.has(key)
-    const visibles = abierto ? chips : chips.slice(0, MAX_CHIPS)
-    const usadas = new Set(linesOf(drafts[key]).map((line) => String(line.subdivisionId)))
-    return (
-      <>
-        {visibles.map((chip) => (
-          <button
-            key={chip.id}
-            type="button"
-            className={`por-guardar__chip${chip.propia ? ' is-propia' : ''}${usadas.has(chip.id) ? ' is-usada' : ''}`}
-            onClick={() => applyLocation(key, chip.id, max)}
-            disabled={saving}
-            data-title={`${chip.label} · ${chip.codes.join(', ')} · ${chip.cantidad} u.`}
-          >
-            <strong>{chip.label.split(' / ').slice(1).join(' / ') || chip.label}</strong>
-            <span>{chip.codes.length > 2 ? `${chip.codes.slice(0, 2).join(', ')} +${chip.codes.length - 2}` : chip.codes.join(', ')}</span>
-          </button>
-        ))}
-        {chips.length > MAX_CHIPS && (
-          <button
-            type="button"
-            className="por-guardar__chip-mas"
-            onClick={() => setChipsAbiertos((prev) => {
-              const next = new Set(prev)
-              if (next.has(key)) next.delete(key)
-              else next.add(key)
-              return next
-            })}
-          >
-            {abierto ? 'Ver menos' : `+${chips.length - MAX_CHIPS} más`}
-          </button>
-        )}
-      </>
-    )
-  }
+  const locationOptions = (row) => [...(row.ubicaciones_propias || []), ...(row.ubicaciones_alternos || [])]
 
   const renderLocation = (key, branchId, row, max) => {
     const options = locationsByBranch[String(branchId)] || []
@@ -687,7 +775,14 @@ function PorGuardar({ token, darkMode, onSaved }) {
           >
             + Otra ubicación
           </button>
-          {locationChips(key, row, max)}
+          <span className="por-guardar__info-label">Ubicaciones de alternos</span>
+          <UbicacionesInfo
+            options={locationOptions(row)}
+            usadas={new Set(lines.map((line) => String(line.subdivisionId)))}
+            onPick={(subdivisionId) => applyLocation(key, subdivisionId, max)}
+            darkMode={darkMode}
+            disabled={saving}
+          />
         </div>
         {row.sugerida_alterno_codigo && lines.length === 1 && String(lines[0].subdivisionId) === String(row.sugerida_subdivision_id) && (
           <small className="por-guardar__ubic-nota">{`No tiene ubicación propia: sugerida la de ${row.sugerida_alterno_codigo}.`}</small>
@@ -748,13 +843,13 @@ function PorGuardar({ token, darkMode, onSaved }) {
   const excelButton = (onClick) => (
     <button
       type="button"
-      className="quick-actions__receive-btn por-guardar__excel"
+      className="users-circle users-circle--excel por-guardar__excel"
       onClick={onClick}
       disabled={saving}
-      data-title="Descargar Excel con las ubicaciones (lo escogido aquí y las sugeridas)"
+      aria-label="Descargar Excel con las ubicaciones"
+      data-title="Excel con las ubicaciones (lo escogido aquí y las sugeridas)"
     >
-      <FileSpreadsheet size={15} aria-hidden="true" />
-      Excel
+      <i className="pi pi-file-excel" />
     </button>
   )
 
