@@ -203,6 +203,11 @@ def get_any_permitted_sucursal_ids(user):
     branch_ids = set()
     for module_actions in scoped_index.values():
         branch_ids.update(_collect_action_scoped_branch_ids(module_actions))
+    # Pedidos rapidos es un permiso propio (sin Entradas): sus sucursales
+    # tambien cuentan como propias para ver el Inventario y pedir desde ahi.
+    from .utils import pedido_rapido_sucursal_ids
+
+    branch_ids.update(pedido_rapido_sucursal_ids(user) or set())
     return branch_ids
 
 

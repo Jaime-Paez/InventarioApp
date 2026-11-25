@@ -407,6 +407,7 @@ def build_sucursal_scope_summary(usuario):
         "puede_crear_traslado",
         "puede_crear_devolucion",
         "puede_crear_venta",
+        "puede_pedido_rapido",
     )
     for row in rows:
         modulo = row.get("modulo")
@@ -414,10 +415,13 @@ def build_sucursal_scope_summary(usuario):
         if not modulo or sucursal_id is None:
             continue
         normalized_flags = normalize_scope_action_flags(row)
-        if not any(normalized_flags.values()):
+        # Pedidos rapidos: permiso propio (doble clic en Inventario); va aunque
+        # la sucursal no tenga nada mas de Entradas.
+        pedido_rapido = bool(row.get("puede_pedido_rapido"))
+        if not any(normalized_flags.values()) and not pedido_rapido:
             continue
         modulo_data = grouped.setdefault(modulo, {})
-        modulo_data[int(sucursal_id)] = normalized_flags
+        modulo_data[int(sucursal_id)] = {**normalized_flags, "puede_pedido_rapido": pedido_rapido}
 
     payload = []
     for modulo, scope_map in grouped.items():
@@ -425,7 +429,17 @@ def build_sucursal_scope_summary(usuario):
         payload.append(
             {
                 "modulo": modulo,
-                "sucursales_ids": branch_ids,
+                # Las sucursales con solo pedidos rapidos no dan acceso al
+                # modulo: van en acciones_por_sucursal, no en sucursales_ids.
+                "sucursales_ids": [
+                    branch_id
+                    for branch_id in branch_ids
+                    if any(
+                        value
+                        for key, value in scope_map[branch_id].items()
+                        if key != "puede_pedido_rapido"
+                    )
+                ],
                 "acciones_por_sucursal": [
                     {"sucursal_id": branch_id, **scope_map[branch_id]}
                     for branch_id in branch_ids
