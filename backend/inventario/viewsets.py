@@ -788,6 +788,11 @@ class InventarioViewSet(viewsets.ModelViewSet):
         # cambie (se revalida en el servidor, no se confia en el cliente).
         if getattr(self, "action", None) == "mover":
             return [IsAuthenticated()]
+        # "Por ubicar" (ver, guardar y el borrador de varias ubicaciones) es de
+        # cualquier usuario: el alcance va por sus sucursales de entradas
+        # (_por_guardar_branch_ids), no por el permiso de Inventario/Productos.
+        if getattr(self, "action", None) in ("por_guardar", "guardar_por_ubicar", "por_guardar_borrador"):
+            return [IsAuthenticated()]
         return super().get_permissions()
 
     @action(detail=False, methods=["post"], url_path="mover")

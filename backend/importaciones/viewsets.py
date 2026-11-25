@@ -777,6 +777,7 @@ class ImportacionViewSet(viewsets.ModelViewSet):
             "confirmar_recepcion_envio",
             "confirmar_llegada_envio",
             "terminar_conteo_envio",
+            "faltante_producto_envio",
             "importacion_inconvenientes",
             "resolver_importacion_inconveniente",
         ):
