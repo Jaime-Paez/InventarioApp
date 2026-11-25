@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Checkbox } from 'primereact/checkbox'
-import { Check, Inbox, Info, Search, X } from 'lucide-react'
+import { Check, ChevronDown, Inbox, Info, Search, X } from 'lucide-react'
 import { API_URL, authFetch } from '../../../utils/api'
 import { exportToExcel } from '../../../utils/exportUtils'
 import { formatDateTime } from '../../../utils/dateFormat'
@@ -295,6 +295,9 @@ function PorGuardar({ token, darkMode, onSaved }) {
   const [drafts, setDrafts] = useState({})
   const [query, setQuery] = useState('')
   const [faltanteTarget, setFaltanteTarget] = useState(null)
+  // Grupos (importaciones / POR UBICAR) desplegables, como en Sucursales:
+  // al abrir solo el primero esta desplegado.
+  const [abiertos, setAbiertos] = useState(null)
   // Filas recien marcadas: el check se ve puesto mientras se guardan.
   const [checkingKeys, setCheckingKeys] = useState(() => new Set())
   // Filas que no se pudieron marcar: muestran por que (como en traslados).
@@ -406,6 +409,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
 
   useEffect(() => {
     if (!open) return undefined
+    setAbiertos(null)
     setSavedPorUbicar({})
     setRowErrors({})
     void loadData()
@@ -1025,15 +1029,37 @@ function PorGuardar({ token, darkMode, onSaved }) {
   )
 
   // Sin "Marcar todo": cada producto se cuenta y se marca uno por uno.
-  const renderGroupHead = ({ title, subtitle, extra }) => (
-    <div className="por-guardar__group-head">
-      <div className="por-guardar__group-copy">
-        <strong>{title}</strong>
-        {subtitle && <span>{subtitle}</span>}
+  const groupKeys = [...shipments.map(shipmentKey), ...(porUbicarRows.length ? ['por-ubicar'] : [])]
+  const abiertosActuales = abiertos ?? new Set(groupKeys.slice(0, 1))
+  // Al buscar se ven todos los grupos abiertos (para no esconder coincidencias).
+  const isCerrado = (key) => !term && !abiertosActuales.has(key)
+  const toggleGrupo = (key) => {
+    const next = new Set(abiertosActuales)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    setAbiertos(next)
+  }
+  const renderGroupHead = ({ groupKey, title, subtitle, extra }) => {
+    const cerrado = isCerrado(groupKey)
+    return (
+      <div className="por-guardar__group-head">
+        <button
+          type="button"
+          className={`por-guardar__group-toggle${cerrado ? ' is-cerrado' : ''}`}
+          onClick={() => toggleGrupo(groupKey)}
+          aria-expanded={!cerrado}
+          aria-label={cerrado ? `Desplegar ${title}` : `Minimizar ${title}`}
+        >
+          <ChevronDown size={18} className="por-guardar__group-chevron" aria-hidden="true" />
+          <span className="por-guardar__group-copy">
+            <strong>{title}</strong>
+            {subtitle && <span>{subtitle}</span>}
+          </span>
+        </button>
+        {extra && <div className="por-guardar__group-actions">{extra}</div>}
       </div>
-      {extra && <div className="por-guardar__group-actions">{extra}</div>}
-    </div>
-  )
+    )
+  }
 
   return (
     <>
@@ -1098,16 +1124,20 @@ function PorGuardar({ token, darkMode, onSaved }) {
                 </p>
               ) : (
                 <div className="quick-actions__receive-step quick-actions__receive-step--list">
-                  {visibleShipments.map((shipment, index) => {
+                  {searchBar}
+                  {visibleShipments.map((shipment) => {
                     const pendientes = shipment.items.filter((item) => item.pendiente > 0)
                     const doneCount = shipment.items.length - pendientes.length
                     return (
                       <section key={shipmentKey(shipment)} className="por-guardar__group">
                         {renderGroupHead({
+                          groupKey: shipmentKey(shipment),
                           title: `${shipment.origen === 'Compra local' ? 'Compra local' : 'Importación'} #${shipment.codigo}`,
                           subtitle: [
                             `Para ${shipment.sucursal_nombre}`,
                             shipment.llegada_confirmada_en && `llegó ${formatDateTime(shipment.llegada_confirmada_en)}`,
+                            `${pendientes.length} de ${shipment.items.length} productos por guardar`,
+                            `${pendientes.reduce((sum, item) => sum + item.pendiente, 0)} unidades`,
                           ].filter(Boolean).join(' · '),
                           extra: (
                             <>
@@ -1121,14 +1151,14 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             </>
                           ),
                         })}
-                        {renderProgress({
+                        {!isCerrado(shipmentKey(shipment)) && renderProgress({
                           done: doneCount,
                           total: shipment.items.length,
                           unitsDone: shipment.items.reduce((sum, item) => sum + item.guardado + (item.vendido || 0), 0),
                           unitsTotal: shipment.items.reduce((sum, item) => sum + item.enviado, 0),
                           toStore: pendientes.length,
                         })}
-                        {index === 0 && searchBar}
+                        {!isCerrado(shipmentKey(shipment)) && (
                         <div className="quick-actions__receive-list">
                           {renderListHeader('Quedan')}
                           {shipment.visibleItems.map((item) => {
@@ -1153,6 +1183,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             })
                           })}
                         </div>
+                        )}
                       </section>
                     )
                   })}
@@ -1163,7 +1194,9 @@ function PorGuardar({ token, darkMode, onSaved }) {
                     return (
                       <section className="por-guardar__group">
                         {renderGroupHead({
+                          groupKey: 'por-ubicar',
                           title: 'En POR UBICAR',
+                          subtitle: `${pendientes.length} ${pendientes.length === 1 ? 'producto' : 'productos'} por guardar · ${pendientes.reduce((sum, row) => sum + row.cantidad, 0)} unidades`,
                           extra: excelButton(() => exportUbicaciones('POR UBICAR', porUbicarRows.filter((row) => !row.done).map((row) => ({
                             key: row.key,
                             row,
@@ -1172,14 +1205,14 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             sucursal: row.sucursal_nombre,
                           })))),
                         })}
-                        {renderProgress({
+                        {!isCerrado('por-ubicar') && renderProgress({
                           done: doneCount,
                           total: porUbicarRows.length,
                           unitsDone: porUbicarRows.reduce((sum, row) => sum + row.guardado, 0),
                           unitsTotal: porUbicarRows.reduce((sum, row) => sum + row.guardado + row.cantidad, 0),
                           toStore: pendientes.length,
                         })}
-                        {!visibleShipments.length && searchBar}
+                        {!isCerrado('por-ubicar') && (
                         <div className="quick-actions__receive-list">
                           {renderListHeader('Por ubicar')}
                           {visiblePorUbicar.map((row) => renderRow({
@@ -1196,6 +1229,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             checkLabel: `Guardar ${row.producto_codigo} en su ubicacion`,
                           }))}
                         </div>
+                        )}
                       </section>
                     )
                   })()}

@@ -323,3 +323,63 @@
     flex: 1 1 0;
   }
 }
+
+/* Encabezado de cada grupo: clic para minimizar / desplegar. */
+.por-guardar__group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 6px 4px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.por-guardar__group-chevron {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  transition: transform 0.18s ease;
+}
+
+.por-guardar__group-toggle.is-cerrado .por-guardar__group-chevron {
+  transform: rotate(-90deg);
+}
+
+.por-guardar__group-toggle:hover .por-guardar__group-copy strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Como los grupos de Sucursales: flecha, nombre en negrita y resumen gris al
+   lado; una linea entre grupos. */
+.por-guardar__group {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.por-guardar__group + .por-guardar__group {
+  margin-top: 10px;
+}
+
+.por-guardar__group-toggle .por-guardar__group-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 12px;
+  row-gap: 2px;
+}
+
+.por-guardar__group-toggle .por-guardar__group-copy span {
+  font-size: 0.85rem;
+}
+
+.por-guardar__group-toggle:hover .por-guardar__group-copy strong {
+  text-decoration: none;
+}
+
+.por-guardar__group-toggle:hover .por-guardar__group-chevron {
+  color: var(--color-text-primary);
+}
