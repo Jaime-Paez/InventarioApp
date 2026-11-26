@@ -1831,6 +1831,58 @@ class MoverProductoDeFilaTests(InspeccionAleatoriaBaseTestCase):
             f"{BASE_URL}/items/{self.item.id}/verificar/", body, format="json"
         )
 
+    def test_pasar_de_fila_no_se_lleva_lo_de_bodega(self):
+        # Caso real (P1488V): 10 en su fila y 19 en bodega. El revisor lo
+        # encuentra en otra fila y lo pasa: solo se pasa lo de su fila; lo de
+        # bodega se sigue contando y al aprobar se queda en bodega.
+        tipo = self.division.tipo_division
+        bodega_div = Division.objects.create(tipo_division=tipo, bodega=self.bodega, nombre="Bodega")
+        sub_c = SubDivision.objects.create(division=bodega_div, nombre="01")
+        Inventario.objects.create(producto=self.producto, subdivision=sub_c, cantidad=19)
+
+        response = self._mover(
+            cantidad=None,
+            movido_desde=[self.sub_a.id],
+            conteo_ubicaciones=[
+                {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": None},
+                {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": 0},
+                {"key": "c", "subdivision_id": sub_c.id, "cantidad": None},
+            ],
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.item.refresh_from_db()
+        self.assertEqual(self.item.movido_desde, [self.sub_a.id])
+        counts = {entry["subdivision_id"]: entry["cantidad_contada"] for entry in self.item.conteo_ubicaciones}
+        self.assertEqual(counts[self.sub_a.id], 0)
+        # Bodega sigue por contar.
+        self.assertIsNone(counts[sub_c.id])
+        self.assertNotIn("Bodega", self.item.observacion)
+
+        response = self.revisor_client.post(
+            f"{BASE_URL}/{self.inspection.id}/responder/",
+            {"items": [{
+                "id": self.item.id,
+                "cantidad_reportada": 25,
+                "cantidad_por_ubicacion": [
+                    {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": 9},
+                    {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": 0},
+                    {"key": "c", "subdivision_id": sub_c.id, "cantidad": 16},
+                ],
+            }]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self._verificar({"accion": "decidir_movimiento", "aprobar_movimiento": True})
+        self.assertEqual(response.status_code, 200, response.data)
+        self.item.refresh_from_db()
+        # Solo lo de su fila pasa a la nueva; bodega no se toca.
+        self.assertEqual(self._stock(subdivision=self.sub_a), 0)
+        self.assertEqual(self._stock(subdivision=self.sub_b), 10)
+        self.assertEqual(self._stock(subdivision=sub_c), 19)
+        sistema = {entry["subdivision_id"]: entry["cantidad_sistema"] for entry in self.item.conteo_ubicaciones}
+        self.assertEqual(sistema[self.sub_b.id], 10)
+        self.assertEqual(sistema[sub_c.id], 19)
+
     def test_mantener_no_mueve_nada(self):
         self._mover()
         self._responder(self.inspection, {self.producto.id: 10})

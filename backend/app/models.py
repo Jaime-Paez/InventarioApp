@@ -378,6 +378,10 @@ class InspeccionAleatoriaItem(models.Model):
     # la revision (`encontrado_en`): ahi se cuenta y sus ubicaciones de antes
     # quedan en 0 ("Movido"). Al aprobar, cada ubicacion queda como se conto.
     movido_por_revisor = models.BooleanField(default=False, db_default=False)
+    # Ubicaciones (subdivision ids) de donde el revisor lo paso: solo esas
+    # quedan "Movido". Las demas (bodega, otra division) se siguen contando y
+    # al aprobar no se tocan. Vacio en los movidos de antes = todas.
+    movido_desde = models.JSONField(default=list, blank=True, db_default=[])
     # Administracion decide primero el cambio de fila ("aprobado" mueve el
     # stock a la fila nueva, "rechazado" no mueve nada) y solo despues, si la
     # cantidad no cuadra, ajusta o manda a recontar.

@@ -107,6 +107,26 @@ const normalizeQuantityInputString = (value) => String(value ?? '').replace(/\D+
 // La division "SIN UBICACION" (de la migracion) no es un lugar fisico.
 const isSinUbicacionLocation = (location) =>
   /^sin ubicaci[oó]n$/i.test(String(location?.division_nombre || '').trim())
+// "Pasar a esta fila": solo se pasa lo de la fila de la revision donde estaba
+// el producto (la de la division / subdivision enviada; en una aleatoria, su
+// primera ubicacion). Sus otras ubicaciones (bodega, otra division, SIN
+// UBICACION) no se movieron: se siguen contando.
+const inspectionMovedFromIds = (inspection, locations, hereId) => {
+  const others = (Array.isArray(locations) ? locations : [])
+    .filter((location) => location?.subdivision_id && String(location.subdivision_id) !== String(hereId))
+  const real = others.filter((location) => !isSinUbicacionLocation(location))
+  let picked
+  if (inspection?.es_por_subdivision) {
+    picked = real.filter((location) => String(location.subdivision_id) === String(inspection?.subdivision_id || ''))
+  } else if (inspection?.es_por_division) {
+    const divisionId = String(inspection?.division_id || '')
+    picked = real.filter((location) => !divisionId || !location?.division_id || String(location.division_id) === divisionId)
+  } else {
+    picked = real.slice(0, 1)
+  }
+  if (!picked.length) picked = real.length ? real.slice(0, 1) : others
+  return picked.map((location) => String(location.subdivision_id))
+}
 const normalizeIntegerInputString = (value) => {
   const text = normalizeQuantityInputString(value)
   if (!text) return ''
@@ -2835,21 +2855,33 @@ function QuickActions({
     randomInspectionRows.forEach((row, rowIndex) => {
       const locations = Array.isArray(row?.ubicaciones_bodega) ? row.ubicaciones_bodega : []
       if (row?.movido_por_revisor && !row?.agregado_por_revisor && row?.encontrado_en) {
-        // Lo paso todo a otra fila: se cuenta en la nueva y en las de antes
-        // queda "Movido -> fila nueva" (ya resuelto, en 0).
+        // Lo paso a otra fila: se cuenta en la nueva y en la(s) de donde lo
+        // paso queda "Movido -> fila nueva" (ya resuelto, en 0). Sus otras
+        // ubicaciones (bodega, otra division) no se movieron: se siguen
+        // contando (lo de SIN UBICACION, debajo de la fila nueva). Los movidos
+        // de antes (sin `movido_desde`) quedan como estaban: todas movidas.
         const foundId = String(row.encontrado_en?.subdivision_id || '')
         const here = locations.find((location) => String(location?.subdivision_id || '') === foundId)
+        const movedFrom = new Set((Array.isArray(row?.movido_desde) ? row.movido_desde : []).map(String))
+        const rest = locations.filter((location) => location !== here)
+        const isMovedFrom = (location) => !movedFrom.size || movedFrom.has(String(location?.subdivision_id || ''))
+        const stillToCount = rest.filter((location) => !isMovedFrom(location))
+        const sinUbicacionHere = here ? stillToCount.filter(isSinUbicacionLocation) : []
         addEntry({ ...row.encontrado_en, sucursal_id: row?.sucursal_id }, here
-          ? { row, rowIndex, location: here, outsideLocations: [], movedHere: true }
+          ? { row, rowIndex, location: here, outsideLocations: sinUbicacionHere, movedHere: true }
           : { row, rowIndex, location: null, movedHere: true })
-        locations
-          .filter((location) => location !== here)
-          .forEach((location) => addEntry(location, {
-            row,
-            rowIndex,
-            location,
-            movedAwayTo: String(row.encontrado_en?.label || '').trim() || 'otra fila',
-          }))
+        rest.forEach((location) => {
+          if (isMovedFrom(location)) {
+            addEntry(location, {
+              row,
+              rowIndex,
+              location,
+              movedAwayTo: String(row.encontrado_en?.label || '').trim() || 'otra fila',
+            })
+          } else if (!sinUbicacionHere.includes(location)) {
+            addEntry(location, { row, rowIndex, location, otraUbicacion: true })
+          }
+        })
         return
       }
       if (row?.agregado_por_revisor && row?.encontrado_en) {
@@ -5415,6 +5447,7 @@ function QuickActions({
         const moveItemId = normalizeId(moveRow?.row_id || moveRow?.id)
         const others = (Array.isArray(moveRow?.ubicaciones_bodega) ? moveRow.ubicaciones_bodega : [])
           .filter((location) => location?.subdivision_id && String(location.subdivision_id) !== hereId)
+        const movedFrom = new Set(inspectionMovedFromIds(activeRandomInspection, others, hereId))
         const response = await authFetch(
           `${RANDOM_INSPECTION_DETAIL_ENDPOINT}/${encodeURIComponent(inspectionId)}/mover-producto/`,
           {
@@ -5423,12 +5456,14 @@ function QuickActions({
               item_id: Number(moveItemId),
               subdivision_id: Number(here.subdivision_id),
               version: randomInspectionVersionRef.current,
+              movido_desde: [...movedFrom].map(Number),
               conteo_ubicaciones: [
                 { key: here.key || buildInspectionLocationKey({ ...here, sucursal_id: here.sucursal_id || moveRow?.sucursal_id }), subdivision_id: Number(here.subdivision_id), cantidad: null },
                 ...others.map((location) => ({
                   key: location.key || buildInspectionLocationKey(location),
                   subdivision_id: Number(location.subdivision_id),
-                  cantidad: 0,
+                  // Las que no se movieron se siguen contando.
+                  cantidad: movedFrom.has(String(location.subdivision_id)) ? 0 : null,
                 })),
               ],
             }),
@@ -5466,7 +5501,7 @@ function QuickActions({
     } catch (error) {
       setRandomInspectionAdd((prev) => (prev ? { ...prev, saving: false, error: error?.message || 'No se pudo mover el producto.' } : prev))
     }
-  }, [activeRandomInspection?.id, flushRandomInspectionDraft, randomInspectionAdd, resetRandomInspectionItemDraftFromServer, token])
+  }, [activeRandomInspection, flushRandomInspectionDraft, randomInspectionAdd, resetRandomInspectionItemDraftFromServer, token])
 
   // Quita un producto que el revisor agrego (se equivoco).
   const [randomInspectionRemovingId, setRandomInspectionRemovingId] = useState('')

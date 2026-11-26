@@ -1818,6 +1818,11 @@ def _serialize_random_inspection_item(item, *, hide_expected=False, live_expecte
         "cambio_ubicacion": bool(getattr(item, "cambio_ubicacion", False)) and not hide_expected,
         "agregado_por_revisor": bool(getattr(item, "agregado_por_revisor", False)),
         "movido_por_revisor": bool(getattr(item, "movido_por_revisor", False)),
+        "movido_desde": [
+            int(sub_id)
+            for sub_id in (getattr(item, "movido_desde", None) or [])
+            if _normalize_int(sub_id, 0)
+        ],
         "movimiento_decision": str(getattr(item, "movimiento_decision", "") or ""),
         # Ubicacion nueva por aceptar o rechazar antes de reenviar el conteo.
         "ubicacion_por_decidir": (not hide_expected) and _new_location_awaiting_decision(item),
@@ -2884,17 +2889,21 @@ def _apply_random_inspection_adjustment(item, cantidad_confirmada, confirmed_by_
     }
 
 
-def _move_inspection_item_stock(item, target_subdivision):
+def _move_inspection_item_stock(item, target_subdivision, only_subdivision_ids=None):
     """"No lo encontre" + el admin sabe donde esta: mueve todo el stock del
-    producto que hay en el alcance revisado a `target_subdivision`."""
-    rows = list(
-        _inspection_scope_stock_rows(
-            sucursal_id=item.sucursal_id,
-            producto_id=item.producto_id,
-            division_id=_inspection_division_scope(item.inspeccion),
-            subdivision_id=_inspection_subdivision_scope(item.inspeccion),
-        ).exclude(subdivision_id=int(target_subdivision.id))
-    )
+    producto que hay en el alcance revisado a `target_subdivision`.
+    Con `only_subdivision_ids` solo desde esas ubicaciones: el alcance ya es
+    toda la sucursal y, si no, se llevaba tambien lo de bodega u otras filas
+    que nadie movio."""
+    queryset = _inspection_scope_stock_rows(
+        sucursal_id=item.sucursal_id,
+        producto_id=item.producto_id,
+        division_id=_inspection_division_scope(item.inspeccion),
+        subdivision_id=_inspection_subdivision_scope(item.inspeccion),
+    ).exclude(subdivision_id=int(target_subdivision.id))
+    if only_subdivision_ids is not None:
+        queryset = queryset.filter(subdivision_id__in=[int(sub_id) for sub_id in only_subdivision_ids])
+    rows = list(queryset)
     moved = 0
     origins = []
     for row in rows:
@@ -5456,12 +5465,28 @@ class RandomInspectionMoveProductAPIView(APIView):
                     {"detail": "Este producto ya esta en esta fila: cuentalo aqui mismo."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            # Solo se pasa lo de la fila donde estaba (`movido_desde`); sus
+            # otras ubicaciones (bodega, otra division) se siguen contando y al
+            # aprobar no se tocan. Sin `movido_desde` (cliente viejo): todas.
+            other_ids = {entry["subdivision_id"] for entry in others}
+            raw_from = request.data.get("movido_desde")
+            moved_from = (
+                [
+                    sub_id
+                    for sub_id in dict.fromkeys(_normalize_int(raw, 0) for raw in raw_from)
+                    if sub_id in other_ids
+                ]
+                if isinstance(raw_from, list)
+                else []
+            ) or sorted(other_ids)
             counts = [
                 {
                     "key": entry["key"],
                     "subdivision_id": entry["subdivision_id"],
                     "cantidad_contada": (
-                        (int(quantity) if quantity is not None else None) if entry is here[0] else 0
+                        (int(quantity) if quantity is not None else None)
+                        if entry is here[0]
+                        else (0 if entry["subdivision_id"] in moved_from else entry["cantidad_contada"])
                     ),
                     "no_encontrado": False,
                 }
@@ -5469,9 +5494,7 @@ class RandomInspectionMoveProductAPIView(APIView):
             ]
             origin_labels = [
                 _subdivision_label(location)
-                for location in SubDivision.objects.filter(
-                    pk__in=[entry["subdivision_id"] for entry in others]
-                ).select_related("division__bodega")
+                for location in SubDivision.objects.filter(pk__in=moved_from).select_related("division__bodega")
             ]
             note = (
                 f"{MOVED_NOTE_PREFIX} Lo pase todo de {', '.join(sorted(origin_labels))} "
@@ -5480,6 +5503,7 @@ class RandomInspectionMoveProductAPIView(APIView):
             observacion = _strip_moved_note(item.observacion)
             item.observacion = f"{observacion}\n{note}".strip() if observacion else note
             item.movido_por_revisor = True
+            item.movido_desde = moved_from
             item.encontrado_en = subdivision
             item.no_encontrado = False
             item.cantidad_reportada = int(quantity) if quantity is not None else None
@@ -5487,6 +5511,7 @@ class RandomInspectionMoveProductAPIView(APIView):
             item.save(
                 update_fields=[
                     "movido_por_revisor",
+                    "movido_desde",
                     "encontrado_en",
                     "no_encontrado",
                     "cantidad_reportada",
@@ -5536,6 +5561,7 @@ class RandomInspectionRemoveAddedProductAPIView(APIView):
                 )
             if item.movido_por_revisor and not item.agregado_por_revisor:
                 item.movido_por_revisor = False
+                item.movido_desde = []
                 item.encontrado_en = None
                 item.cantidad_reportada = None
                 item.conteo_ubicaciones = []
@@ -5544,6 +5570,7 @@ class RandomInspectionRemoveAddedProductAPIView(APIView):
                 item.save(
                     update_fields=[
                         "movido_por_revisor",
+                        "movido_desde",
                         "encontrado_en",
                         "cantidad_reportada",
                         "conteo_ubicaciones",
@@ -5695,11 +5722,25 @@ class RandomInspectionVerifyItemAPIView(APIView):
                     item.movimiento_decision = "aprobado"
                     move_note = f"Ubicacion nueva aprobada: {moved['cantidad']} movida(s) como las conto el revisor."
                 elif approve_move:
-                    moved = _move_inspection_item_stock(item, target)
+                    # Solo lo de las filas de donde lo paso el revisor; lo de
+                    # bodega u otras ubicaciones se conto aparte y se queda.
+                    moved_from = {
+                        _normalize_int(sub_id, 0) for sub_id in (item.movido_desde or [])
+                    } - {0}
+                    moved = _move_inspection_item_stock(
+                        item, target, only_subdivision_ids=sorted(moved_from) if moved_from else None
+                    )
+
+                    def _is_moved_entry(entry):
+                        sub_id = _normalize_int(entry.get("subdivision_id"), 0)
+                        return sub_id != int(target.id) and (not moved_from or sub_id in moved_from)
+
                     # La "foto" del sistema al contar pasa a la fila nueva: asi
-                    # un ajuste posterior compara lo contado aqui contra todo.
+                    # un ajuste posterior compara lo contado aqui contra lo movido.
                     total_system = sum(
-                        _normalize_int(entry.get("cantidad_sistema"), 0) for entry in entries
+                        _normalize_int(entry.get("cantidad_sistema"), 0)
+                        for entry in entries
+                        if _is_moved_entry(entry) or _normalize_int(entry.get("subdivision_id"), 0) == int(target.id)
                     )
                     item.conteo_ubicaciones = [
                         {
@@ -5708,6 +5749,8 @@ class RandomInspectionVerifyItemAPIView(APIView):
                                 total_system
                                 if _normalize_int(entry.get("subdivision_id"), 0) == int(target.id)
                                 else 0
+                                if _is_moved_entry(entry)
+                                else entry.get("cantidad_sistema")
                             ),
                         }
                         for entry in entries
@@ -5825,7 +5868,14 @@ class RandomInspectionVerifyItemAPIView(APIView):
                         {"detail": "Elige la nueva ubicacion (de la misma sucursal)."},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-                moved = _move_inspection_item_stock(item, target)
+                # Solo desde donde no lo encontraron (contado 0 y el sistema
+                # tenia): lo que si se conto en otra ubicacion se queda ahi.
+                not_found_ids = sorted(
+                    entry["subdivision_id"]
+                    for entry in _valid_location_counts(item)
+                    if entry["cantidad_contada"] == 0 and entry["cantidad_sistema"] > 0
+                )
+                moved = _move_inspection_item_stock(item, target, only_subdivision_ids=not_found_ids or None)
                 if moved["cantidad"] <= 0:
                     return Response(
                         {"detail": "No hay stock de este producto en las ubicaciones revisadas para mover."},
