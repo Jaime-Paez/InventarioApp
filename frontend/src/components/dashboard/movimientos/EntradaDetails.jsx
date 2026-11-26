@@ -1857,6 +1857,14 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
     setIsEditing(false)
   }, [effectiveAllowEdit, isEditing])
 
+  // Solicitud de traslado solo guardada: se cambia directo, sin "Editar"
+  // (como al crearla): "Guardar" y "Crear solicitud" siempre a la vista.
+  const isGuardadoDirectEdit = Boolean(isPreviewGuardadoSolicitud && effectiveAllowEdit && !isReadOnlyMode)
+  useEffect(() => {
+    if (!isGuardadoDirectEdit || isEditing || loadingData || saving) return
+    setIsEditing(true)
+  }, [isEditing, isGuardadoDirectEdit, loadingData, saving])
+
   const updateProductDropdownPlacement = useCallback(() => {
     if (!showProductDropdown || !productDropdownTriggerRef.current) return
     const triggerRect = productDropdownTriggerRef.current.getBoundingClientRect()
@@ -4042,12 +4050,12 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
               <button
                 type="button"
                 className="create-user__action create-user__action--cancel"
-                onClick={isEditing ? handleCancelEdit : onClose}
+                onClick={isEditing && !isGuardadoDirectEdit ? handleCancelEdit : onClose}
                 disabled={saving || loadingData}
               >
                 {isReadOnlyMode && !isEditing ? 'Cerrar' : 'Cancelar'}
               </button>
-              {!isReadOnlyMode && effectiveAllowEdit && (
+              {!isReadOnlyMode && effectiveAllowEdit && !isGuardadoDirectEdit && (
                   <span className="entrada-details__edit-hint-wrapper">
                     {isRejectedSolicitudRibbon && !isEditing && (
                       <span className="entrada-details__edit-hint" role="note">
@@ -4109,7 +4117,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                       onClick={handleSave}
                       disabled={saving || loadingData}
                     >
-                      {saving ? 'Guardando...' : 'Guardar cambios'}
+                      {saving ? 'Guardando...' : isGuardadoDirectEdit ? 'Guardar' : 'Guardar cambios'}
                     </button>
                   )}
                 </>
