@@ -2688,7 +2688,7 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
   ])
 
   const handleSave = async () => {
-    if (!allowEdit) return
+    if (!effectiveAllowEdit) return
     if (isReadOnlyMode) return
     if (!isEditing || saving) return
     setError('')
@@ -4099,7 +4099,10 @@ const appendBranchIfMissing = (resolvedBranches, existingBranchIds, branchIdRaw,
                     >
                       {resubmittingTransfer ? 'Reenviando...' : 'Volver a realizar la solicitud'}
                     </button>
-                  ) : allowEdit && (
+                  ) : effectiveAllowEdit && (
+                    // Mismo permiso que "Editar": una solicitud guardada /
+                    // pendiente la edita y guarda quien la puede editar,
+                    // aunque no tenga el permiso general de editar entradas.
                     <button
                       type="button"
                       className="create-user__action create-user__action--secondary"
