@@ -2520,8 +2520,19 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
   gap: 8px;
   cursor: pointer;
 }
-.inspection-admin__temporal-check input { margin-top: 3px; flex: 0 0 auto; }
-.inspection-admin__temporal-check span { display: grid; gap: 2px; min-width: 0; }
+/* La casilla no hereda el estilo del campo grande de cantidad (antes tomaba
+   todo el ancho y alto y el texto quedaba aplastado a la derecha). */
+.inspection-admin__temporal .inspection-admin__temporal-check input[type="checkbox"] {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  min-width: 0;
+  min-height: 0;
+  margin: 2px 0 0;
+  padding: 0;
+  font-size: inherit;
+}
+.inspection-admin__temporal .inspection-admin__temporal-check span { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; text-align: left; }
 .inspection-admin__temporal-check strong { font-size: var(--font-size-sm, 13px); color: #92400e; }
 .inspection-admin__temporal-check small { font-size: var(--font-size-xs, 12px); line-height: 1.4; }
 .quick-actions__inspection-overlay.dark .inspection-admin__temporal-check strong { color: #fcd34d; }
