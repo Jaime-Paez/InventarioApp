@@ -359,7 +359,7 @@ function RandomInspectionAdminTable({
   const [assignmentsLoading, setAssignmentsLoading] = useState(false)
   const [assignmentSearch, setAssignmentSearch] = useState('')
   const [localAssignmentMap, setLocalAssignmentMap] = useState({})
-  const [configData, setConfigData] = useState({ hora_recordatorio: '', cantidad_productos: '', inspeccion_automatica: false, umbral_aviso_diferencia: '5' })
+  const [configData, setConfigData] = useState({ hora_recordatorio: '', cantidad_productos: '', inspeccion_automatica: false, umbral_aviso_diferencia: '3', umbral_aviso_porcentaje: '30' })
   const [configLoading, setConfigLoading] = useState(false)
   const [showSendNowDialog, setShowSendNowDialog] = useState(false)
   const [sendNowLoading, setSendNowLoading] = useState(false)
@@ -443,7 +443,8 @@ function RandomInspectionAdminTable({
         hora_recordatorio: payload?.hora_recordatorio ?? '',
         cantidad_productos: payload?.cantidad_productos != null ? String(payload.cantidad_productos) : '',
         inspeccion_automatica: Boolean(payload?.inspeccion_automatica),
-        umbral_aviso_diferencia: payload?.umbral_aviso_diferencia != null ? String(payload.umbral_aviso_diferencia) : '5',
+        umbral_aviso_diferencia: payload?.umbral_aviso_diferencia != null ? String(payload.umbral_aviso_diferencia) : '3',
+        umbral_aviso_porcentaje: payload?.umbral_aviso_porcentaje != null ? String(payload.umbral_aviso_porcentaje) : '30',
       })
     } catch (error) {
       notifyError(error?.message || 'No se pudo cargar la configuracion.')
@@ -1328,6 +1329,9 @@ function RandomInspectionAdminTable({
     const umbralRaw = String(data?.umbral_aviso_diferencia ?? '').trim()
     const umbral = Number.parseInt(umbralRaw, 10)
     if (umbralRaw && (!Number.isFinite(umbral) || umbral < 0)) return false
+    const porcentajeRaw = String(data?.umbral_aviso_porcentaje ?? '').trim()
+    const porcentaje = Number.parseInt(porcentajeRaw, 10)
+    if (porcentajeRaw && (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 1000)) return false
     setConfigSaveState('saving')
     try {
       const response = await authFetch(
@@ -3724,22 +3728,43 @@ function RandomInspectionAdminTable({
               </div>
 
               <div className="inspection-admin__send-qty-col inspection-admin__config-threshold">
-                <label htmlFor="inspection-config-threshold" className="inspection-admin__send-label">
-                  Avisar &quot;busca bien&quot; si la diferencia es de (unidades)
-                </label>
-                <input
-                  id="inspection-config-threshold"
-                  className="inspection-admin__send-qty"
-                  type="number"
-                  min="0"
-                  step="1"
-                  inputMode="numeric"
-                  value={configData.umbral_aviso_diferencia}
-                  onChange={(e) => editConfig({ umbral_aviso_diferencia: e.target.value })}
-                  disabled={locked}
-                />
+                <span className="inspection-admin__send-label">
+                  Avisar &quot;busca bien&quot; a quien cuenta si la diferencia es de
+                </span>
+                <div className="inspection-admin__config-threshold-row">
+                  <label htmlFor="inspection-config-threshold-pct" className="inspection-admin__config-threshold-field">
+                    <input
+                      id="inspection-config-threshold-pct"
+                      className="inspection-admin__send-qty"
+                      type="number"
+                      min="0"
+                      max="1000"
+                      step="1"
+                      inputMode="numeric"
+                      value={configData.umbral_aviso_porcentaje}
+                      onChange={(e) => editConfig({ umbral_aviso_porcentaje: e.target.value })}
+                      disabled={locked}
+                    />
+                    <span>% o más</span>
+                  </label>
+                  <label htmlFor="inspection-config-threshold" className="inspection-admin__config-threshold-field">
+                    <span>y al menos</span>
+                    <input
+                      id="inspection-config-threshold"
+                      className="inspection-admin__send-qty"
+                      type="number"
+                      min="0"
+                      step="1"
+                      inputMode="numeric"
+                      value={configData.umbral_aviso_diferencia}
+                      onChange={(e) => editConfig({ umbral_aviso_diferencia: e.target.value })}
+                      disabled={locked}
+                    />
+                    <span>unidades</span>
+                  </label>
+                </div>
                 <small className="create-user__hint">
-                  Al enviar un conteo, si un producto se aleja esta cantidad o más de lo que dice el sistema, se le pide a quien cuenta que busque bien (sin mostrarle números). 0 = sin aviso.
+                  Al enviar un conteo, si un producto se aleja ese porcentaje de lo que dice el sistema y además esa cantidad de unidades, se le pide a quien cuenta que busque bien (sin mostrarle números). Ej. con 30% y 3: había 8 y contó 5 avisa; había 105 y contó 100, o había 1 y contó 2, no. Unidades en 0 = sin aviso; porcentaje en 0 = solo unidades.
                 </small>
               </div>
 

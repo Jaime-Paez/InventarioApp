@@ -52,6 +52,9 @@ class InspeccionAleatoriaBaseTestCase(TestCase):
         config.hora_recordatorio = dt_time(0, 0)
         # Estas pruebas cubren tambien la automatica (en produccion esta apagada).
         config.inspeccion_automatica = True
+        # El aviso "busca bien" se prueba aparte (AvisoDiferenciaGrandeTests):
+        # aqui interrumpiria los envios con diferencias a proposito.
+        config.umbral_aviso_diferencia = 0
         config.save()
 
         self.revisor_client = APIClient()
@@ -2019,3 +2022,37 @@ class RevisionPorPerchaEnVivoTests(InspeccionAleatoriaBaseTestCase):
 
         payload = self._detalle()
         self.assertNotIn(self.producto_2.id, self._productos(payload))
+
+
+class AvisoDiferenciaGrandeTests(InspeccionAleatoriaBaseTestCase):
+    """Al enviar, se pide buscar bien si la diferencia es del 30% o mas de lo
+    que habia y ademas de al menos 3 unidades."""
+
+    def setUp(self):
+        super().setUp()
+        config = InspeccionAleatoriaConfiguracion.get_global()
+        config.umbral_aviso_diferencia = 3
+        config.umbral_aviso_porcentaje = 30
+        config.save()
+
+    def _enviar(self, stock, contado):
+        Inventario.objects.filter(pk=self.inv_a.pk).update(cantidad=stock)
+        inspection = self._crear_inspeccion(productos=[self.producto])
+        return self._responder(inspection, {self.producto.id: contado})
+
+    def test_8_y_conto_5_avisa(self):
+        response = self._enviar(8, 5)
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertEqual(len(response.data["revisar_conteo"]), 1)
+
+    def test_105_y_conto_100_no_avisa(self):
+        self.assertEqual(self._enviar(105, 100).status_code, 200)
+
+    def test_1_y_conto_2_no_avisa(self):
+        self.assertEqual(self._enviar(1, 2).status_code, 200)
+
+    def test_con_porcentaje_en_0_solo_cuentan_las_unidades(self):
+        config = InspeccionAleatoriaConfiguracion.get_global()
+        config.umbral_aviso_porcentaje = 0
+        config.save()
+        self.assertEqual(self._enviar(105, 100).status_code, 409)

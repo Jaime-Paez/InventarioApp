@@ -2548,3 +2548,20 @@ body.app-theme-dark .inspection-admin__aparecio-qty input {
 .inspection-admin__config-threshold .inspection-admin__send-qty {
   max-width: 140px;
 }
+
+/* Aviso "busca bien": porcentaje + minimo de unidades en una fila. */
+.inspection-admin__config-threshold-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.inspection-admin__config-threshold-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm, 13px);
+}
+.inspection-admin__config-threshold-field .inspection-admin__send-qty {
+  width: 90px;
+}

@@ -4704,7 +4704,20 @@ class RandomInspectionRespondAPIView(APIView):
             mismatch_count = 0
             # Diferencia grande: antes de enviar se le pide que busque bien
             # (sin decirle cuanto ni hacia donde). Si confirma, queda anotado.
-            umbral_aviso = int(InspeccionAleatoriaConfiguracion.get_global().umbral_aviso_diferencia or 0)
+            aviso_config = InspeccionAleatoriaConfiguracion.get_global()
+            # Unidades minimas (0 = sin aviso) y, ademas, % de lo que habia
+            # (0 = solo unidades). Con 0 en el sistema basta con las unidades.
+            umbral_aviso = int(aviso_config.umbral_aviso_diferencia or 0)
+            umbral_porcentaje = int(getattr(aviso_config, "umbral_aviso_porcentaje", 0) or 0)
+
+            def _diferencia_grande(reported_qty, system_qty):
+                diferencia = abs(int(reported_qty or 0) - int(system_qty or 0))
+                if not umbral_aviso or diferencia < umbral_aviso:
+                    return False
+                if umbral_porcentaje and int(system_qty or 0) > 0:
+                    return diferencia * 100 >= umbral_porcentaje * int(system_qty)
+                return True
+
             confirmar_diferencias = str(request.data.get("confirmar_diferencias") or "").strip().lower() in {
                 "1", "true", "si", "yes",
             }
@@ -4715,7 +4728,7 @@ class RandomInspectionRespondAPIView(APIView):
                 key = (int(item.sucursal_id), int(item.producto_id))
                 system_qty = int(live_expected.get(key, 0))
                 reported = parsed["reported"]
-                if umbral_aviso and abs(int(reported or 0) - system_qty) >= umbral_aviso:
+                if _diferencia_grande(reported, system_qty):
                     aviso_diferencia.append(item)
 
                 location_counts = []
@@ -7267,6 +7280,7 @@ class RandomInspectionConfigAPIView(APIView):
                 "cantidad_productos": int(sys_config.random_inspection_items_per_day),
                 "inspeccion_automatica": bool(config.inspeccion_automatica),
                 "umbral_aviso_diferencia": int(config.umbral_aviso_diferencia or 0),
+                "umbral_aviso_porcentaje": int(getattr(config, "umbral_aviso_porcentaje", 0) or 0),
             },
             status=status.HTTP_200_OK,
         )
@@ -7310,6 +7324,15 @@ class RandomInspectionConfigAPIView(APIView):
                     )
                 config.umbral_aviso_diferencia = umbral
                 update_fields.append("umbral_aviso_diferencia")
+            if request.data.get("umbral_aviso_porcentaje") not in (None, ""):
+                porcentaje = _normalize_int(request.data.get("umbral_aviso_porcentaje"), -1)
+                if porcentaje < 0 or porcentaje > 1000:
+                    return Response(
+                        {"detail": "El porcentaje del aviso debe ser 0 (solo unidades) o un numero entre 1 y 1000."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                config.umbral_aviso_porcentaje = porcentaje
+                update_fields.append("umbral_aviso_porcentaje")
             config.save(update_fields=update_fields)
 
             cantidad_raw = request.data.get("cantidad_productos")
@@ -7333,6 +7356,7 @@ class RandomInspectionConfigAPIView(APIView):
                 "cantidad_productos": int(sys_config.random_inspection_items_per_day),
                 "inspeccion_automatica": bool(config.inspeccion_automatica),
                 "umbral_aviso_diferencia": int(config.umbral_aviso_diferencia or 0),
+                "umbral_aviso_porcentaje": int(getattr(config, "umbral_aviso_porcentaje", 0) or 0),
             },
             status=status.HTTP_200_OK,
         )

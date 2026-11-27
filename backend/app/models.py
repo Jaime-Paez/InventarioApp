@@ -87,7 +87,11 @@ class InspeccionAleatoriaConfiguracion(models.Model):
     # Al enviar un conteo, si un producto se aleja esta cantidad de unidades
     # (o mas) del sistema, se le pide a quien cuenta que busque bien antes de
     # enviar. 0 = sin aviso.
-    umbral_aviso_diferencia = models.PositiveIntegerField(default=5, db_default=5)
+    # Minimo de unidades de diferencia para avisar (0 = sin aviso).
+    umbral_aviso_diferencia = models.PositiveIntegerField(default=3, db_default=3)
+    # Ademas, la diferencia debe ser al menos este % de lo que habia (0 = solo
+    # unidades). Asi 1 vs 2 no avisa y 105 vs 100 tampoco; 8 vs 5 si.
+    umbral_aviso_porcentaje = models.PositiveIntegerField(default=30, db_default=30)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
