@@ -1748,6 +1748,43 @@ class NoEncontradoPorUbicacionTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(self._stock(subdivision=temporal), 3)
         self.assertEqual(self._stock(subdivision=self.sub_a), 5)
 
+    def _reconteo_con_temporal(self):
+        from inventario.por_ubicar import get_temporal_subdivision
+
+        inspection = self._crear_inspeccion()
+        self._responder(inspection, [
+            {"key": "a", "subdivision_id": self.sub_a.id, "cantidad": 5},
+            {"key": "b", "subdivision_id": self.sub_b.id, "cantidad": None, "no_encontrado": True},
+        ])
+        item = inspection.items.get()
+        response = self.admin_client.post(f"{BASE_URL}/items/{item.id}/verificar/", {"accion": "recontar"}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        recount = InspeccionAleatoriaItem.objects.get(reconteo_de=item)
+        return item, recount, get_temporal_subdivision(self.sucursal.id, create=False)
+
+    def _mover(self, origen, destino, cantidad):
+        return self.admin_client.post(
+            "/inventario/inventario/mover/",
+            {"producto_id": self.producto.id, "origen_subdivision_id": origen.id,
+             "destino_subdivision_id": destino.id, "cantidad": cantidad},
+            format="json",
+        )
+
+    def test_ubicarlo_desde_inventario_lo_quita_del_reconteo(self):
+        item, recount, temporal = self._reconteo_con_temporal()
+        self.assertEqual(self._stock(subdivision=temporal), 3)
+        response = self._mover(temporal, self.sub_b, 3)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(InspeccionAleatoriaItem.objects.filter(pk=recount.pk).exists())
+        item.refresh_from_db()
+        self.assertIn("ubicaron desde Inventario", item.nota_verificacion)
+
+    def test_si_queda_algo_en_temporal_sigue_en_el_reconteo(self):
+        item, recount, temporal = self._reconteo_con_temporal()
+        response = self._mover(temporal, self.sub_b, 2)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(InspeccionAleatoriaItem.objects.filter(pk=recount.pk).exists())
+
     def test_no_encontrado_en_todas_es_no_encontrado(self):
         inspection = self._crear_inspeccion()
         self._responder(inspection, [

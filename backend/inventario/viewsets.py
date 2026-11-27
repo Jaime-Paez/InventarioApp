@@ -870,6 +870,13 @@ class InventarioViewSet(viewsets.ModelViewSet):
             destino.cantidad = destino.cantidad + cantidad
             destino.save(update_fields=["cantidad"])
 
+        # Si con esto ya no queda nada en TEMPORAL, su reconteo sin tocar deja
+        # de pedirse (ya lo encontraron y ubicaron).
+        from app.views import drop_recounts_located_from_temporal
+
+        drop_recounts_located_from_temporal(
+            sucursal_id=origen_sucursal_id, producto_ids=[producto_id], actor_user=request.user
+        )
         response_data = {
             "origen": InventarioSerializer(origen).data if origen is not None else None,
             "destino": InventarioSerializer(destino).data,
@@ -2641,6 +2648,13 @@ class InventarioViewSet(viewsets.ModelViewSet):
                 )
 
         response_data = {"ajustes": ajustes}
+        # Si salio todo de TEMPORAL, su reconteo sin tocar deja de pedirse.
+        from app.views import drop_recounts_located_from_temporal
+
+        for sid in sorted(sucursales_tocadas):
+            drop_recounts_located_from_temporal(
+                sucursal_id=sid, producto_ids=[producto_id], actor_user=request.user
+            )
         extra_reason = build_sale_stock_change_extra_reason(None)
         sync = False
         for sid in sorted(sucursales_tocadas):

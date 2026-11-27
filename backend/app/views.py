@@ -3063,6 +3063,71 @@ def _temporal_pending_qty(item):
     )
 
 
+def drop_recounts_located_from_temporal(*, sucursal_id, producto_ids, actor_user=None):
+    """Un administrador saco de TEMPORAL (desde Inventario) todo lo de un
+    producto que estaba ahi por "No lo encontre": ya lo encontro y ubico, asi
+    que su reconteo abierto y aun sin tocar deja de pedirse. Se quita de la
+    revision y el conteo original queda con una nota. Devuelve cuantos quito."""
+    from inventario.por_ubicar import get_temporal_subdivision
+
+    temporal = get_temporal_subdivision(int(sucursal_id), create=False)
+    product_ids = sorted({int(pid) for pid in (producto_ids or []) if pid})
+    if temporal is None or not product_ids:
+        return 0
+    still_in_temporal = set(
+        Inventario.objects.filter(
+            subdivision_id=int(temporal.id), producto_id__in=product_ids, cantidad__gt=0
+        ).values_list("producto_id", flat=True)
+    )
+    located = [pid for pid in product_ids if pid not in still_in_temporal]
+    if not located:
+        return 0
+    candidates = (
+        InspeccionAleatoriaItem.objects.select_related("reconteo_de", "inspeccion", "producto")
+        .filter(
+            sucursal_id=int(sucursal_id),
+            producto_id__in=located,
+            reconteo_de__isnull=False,
+            estado_revision=InspeccionAleatoriaItem.EstadosRevision.PENDIENTE,
+            cantidad_reportada__isnull=True,
+            no_encontrado=False,
+            agregado_por_revisor=False,
+            movido_por_revisor=False,
+        )
+        .exclude(inspeccion__estado=InspeccionAleatoriaDiaria.Estados.COMPLETADA)
+    )
+    removed = 0
+    touched_inspections = set()
+    for item in candidates:
+        if item.conteo_ubicaciones or str(item.observacion or "").strip():
+            continue
+        source = item.reconteo_de
+        if source is None or _temporal_pending_qty(source) <= 0:
+            continue
+        code = _normalize_text(getattr(item.inspeccion, "codigo", ""))
+        note = (
+            f"[Sistema] Lo ubicaron desde Inventario (salio de TEMPORAL): "
+            f"se quito del reconteo {code}."
+        )
+        current_note = _normalize_text(source.nota_verificacion)
+        source.nota_verificacion = f"{current_note}\n{note}".strip() if current_note else note
+        source.save(update_fields=["nota_verificacion", "updated_at"])
+        _record_random_inspection_audit(
+            source,
+            actor_user,
+            f"{_normalize_text(getattr(item.producto, 'codigo', ''))}: ubicado desde Inventario; se quito del reconteo {code}.",
+            {"reconteo_item_id": int(item.id), "inspeccion_id": int(item.inspeccion_id)},
+        )
+        touched_inspections.add(int(item.inspeccion_id))
+        item.delete()
+        removed += 1
+    for inspection in InspeccionAleatoriaDiaria.objects.filter(pk__in=sorted(touched_inspections)):
+        inspection.total_items = inspection.items.count()
+        inspection.borrador_version = int(inspection.borrador_version or 0) + 1
+        inspection.save(update_fields=["total_items", "borrador_version", "updated_at"])
+    return removed
+
+
 def _take_from_temporal(item, quantity, target_subdivision=None):
     """Saca hasta `quantity` unidades del producto de TEMPORAL: las lleva a
     `target_subdivision` o, sin destino, las descuenta. Devuelve cuantas."""
