@@ -1861,7 +1861,10 @@ function RandomInspectionAdminTable({
                 <div className="transfer-issues-branch__list">
                   {sortedItems.map((row) => {
                     const status = getItemStatus(row)
-                    const expected = toCount(row?.cantidad_esperada)
+                    // Lo que paso a TEMPORAL al contar ("No lo encontre") se
+                    // esperaba ahi: se muestra como esperado (1 y no lo encontro),
+                    // no como 0.
+                    const expected = toCount(row?.cantidad_esperada) + toCount(row?.en_temporal)
                     const reported = row?.cantidad_reportada == null ? null : toCount(row.cantidad_reportada)
                     const diff = reported == null ? null : reported - expected
                     const awaitingNewLocation = canUpdate && status.key === 'pendiente' && isNewLocationAwaitingDecision(row)
@@ -2459,6 +2462,9 @@ function RandomInspectionAdminTable({
         const notFoundCandidates = getNotFoundCandidates(item)
         // Ya paso a TEMPORAL al contar ("No lo encontre"): desmarcar = descontarlo.
         const enTemporal = Number(item?.en_temporal || 0)
+        // Solo para mostrar: lo que paso a TEMPORAL al contar se esperaba ahi
+        // ("se esperaba 1 y no lo encontro"); el ajuste sigue usando `expected`.
+        const expectedShown = expected + enTemporal
         const hasNotFoundCandidates = notFoundCandidates.locations.length > 0 || notFoundCandidates.whole || enTemporal > 0
         const perLocationValues = verifiableLocations.map((location) => {
           const raw = String(perLocationDraft?.[String(location.subdivision_id)] ?? '').trim()
@@ -2603,15 +2609,15 @@ function RandomInspectionAdminTable({
                       <div className="quick-actions__inspection-summary-row">
                         <div>
                           <small>Esperado</small>
-                          <strong>{expected}</strong>
+                          <strong>{expectedShown}</strong>
                         </div>
-                        <div className={reported != null && reported !== expected ? 'inspection-admin__verify-diff' : undefined}>
+                        <div className={reported != null && reported !== expectedShown ? 'inspection-admin__verify-diff' : undefined}>
                           <small>Contado</small>
                           <strong>{reported == null ? '-' : reported}</strong>
                         </div>
-                        <div className={reported != null && reported !== expected ? 'inspection-admin__verify-diff' : undefined}>
+                        <div className={reported != null && reported !== expectedShown ? 'inspection-admin__verify-diff' : undefined}>
                           <small>Diferencia</small>
-                          <strong>{reported == null ? '-' : formatSignedInteger(reported - expected)}</strong>
+                          <strong>{reported == null ? '-' : formatSignedInteger(reported - expectedShown)}</strong>
                         </div>
                         {firstCount != null && reported != null && firstCount !== reported ? (
                           <span className="quick-actions__inspection-summary-badge is-mismatch">
