@@ -1042,7 +1042,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
   const renderGroupHead = ({ groupKey, title, subtitle, extra }) => {
     const cerrado = isCerrado(groupKey)
     return (
-      <div className="por-guardar__group-head">
+      <div className={`por-guardar__group-head${cerrado ? ' is-cerrado' : ''}`}>
         <button
           type="button"
           className={`por-guardar__group-toggle${cerrado ? ' is-cerrado' : ''}`}
@@ -1050,13 +1050,25 @@ function PorGuardar({ token, darkMode, onSaved }) {
           aria-expanded={!cerrado}
           aria-label={cerrado ? `Desplegar ${title}` : `Minimizar ${title}`}
         >
-          <ChevronDown size={18} className="por-guardar__group-chevron" aria-hidden="true" />
+          <span className="por-guardar__group-circle" aria-hidden="true">
+            <ChevronDown size={18} className="por-guardar__group-chevron" />
+          </span>
           <span className="por-guardar__group-copy">
             <strong>{title}</strong>
             {subtitle && <span>{subtitle}</span>}
           </span>
         </button>
         {extra && <div className="por-guardar__group-actions">{extra}</div>}
+      </div>
+    )
+  }
+  // Cuerpo del grupo: siempre montado para que abra y cierre con animacion
+  // (altura real con grid 0fr -> 1fr); cerrado queda `inert` (sin tab ni clic).
+  const renderGroupBody = (groupKey, children) => {
+    const cerrado = isCerrado(groupKey)
+    return (
+      <div className={`por-guardar__group-body${cerrado ? ' is-cerrado' : ''}`} inert={cerrado} aria-hidden={cerrado}>
+        <div className="por-guardar__group-body-inner">{children}</div>
       </div>
     )
   }
@@ -1151,14 +1163,14 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             </>
                           ),
                         })}
-                        {!isCerrado(shipmentKey(shipment)) && renderProgress({
+                        {renderGroupBody(shipmentKey(shipment), <>
+                        {renderProgress({
                           done: doneCount,
                           total: shipment.items.length,
                           unitsDone: shipment.items.reduce((sum, item) => sum + item.guardado + (item.vendido || 0), 0),
                           unitsTotal: shipment.items.reduce((sum, item) => sum + item.enviado, 0),
                           toStore: pendientes.length,
                         })}
-                        {!isCerrado(shipmentKey(shipment)) && (
                         <div className="quick-actions__receive-list">
                           {renderListHeader('Quedan')}
                           {shipment.visibleItems.map((item) => {
@@ -1183,7 +1195,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             })
                           })}
                         </div>
-                        )}
+                        </>)}
                       </section>
                     )
                   })}
@@ -1205,14 +1217,14 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             sucursal: row.sucursal_nombre,
                           })))),
                         })}
-                        {!isCerrado('por-ubicar') && renderProgress({
+                        {renderGroupBody('por-ubicar', <>
+                        {renderProgress({
                           done: doneCount,
                           total: porUbicarRows.length,
                           unitsDone: porUbicarRows.reduce((sum, row) => sum + row.guardado, 0),
                           unitsTotal: porUbicarRows.reduce((sum, row) => sum + row.guardado + row.cantidad, 0),
                           toStore: pendientes.length,
                         })}
-                        {!isCerrado('por-ubicar') && (
                         <div className="quick-actions__receive-list">
                           {renderListHeader('Por ubicar')}
                           {visiblePorUbicar.map((row) => renderRow({
@@ -1229,7 +1241,7 @@ function PorGuardar({ token, darkMode, onSaved }) {
                             checkLabel: `Guardar ${row.producto_codigo} en su ubicacion`,
                           }))}
                         </div>
-                        )}
+                        </>)}
                       </section>
                     )
                   })()}
