@@ -1013,9 +1013,9 @@ def _get_random_inspection_branch_ids_for_user(user):
 def _collect_inspection_candidates(*, branch_ids=None, division_id=None, subdivision_id=None):
     """Productos contables en el alcance dado (sucursales, division y/o subdivision).
 
-    Incluye tambien los productos que el sistema tiene en 0 pero con fila de
-    inventario en el alcance (`sin_stock`): son justo los que nunca se
-    revisaban y donde suele esconderse una entrada no registrada.
+    Solo los que tienen stock en el alcance: lo que esta en 0 no se manda a
+    contar (antes entraba a proposito y llenaba la revision de filas vacias
+    y de "no encontrados en ubicacion con 0").
     """
     queryset = Inventario.objects.all()
     if branch_ids is not None:
@@ -1051,7 +1051,7 @@ def _collect_inspection_candidates(*, branch_ids=None, division_id=None, subdivi
         )
         producto_id = _normalize_int(row.get("producto_id"), 0)
         cantidad_esperada = max(0, _normalize_int(row.get("cantidad_esperada"), 0))
-        if sucursal_id <= 0 or producto_id <= 0:
+        if sucursal_id <= 0 or producto_id <= 0 or cantidad_esperada <= 0:
             continue
         try:
             precio = float(row.get("producto__precio") or 0)
@@ -4178,9 +4178,8 @@ def _sync_division_inspection_items(inspection_id):
       se agrega (lo ubicaron ahi desde Inventario).
     - Un producto de la lista que todavia no se toco (sin conteo, sin nota,
       no agregado ni movido por el revisor) y que ya no tiene stock en la
-      percha pero si en otra ubicacion de la sucursal se quita: lo cambiaron
-      a otra percha. Los que estan en 0 en todas partes se quedan (se
-      incluyen a proposito para buscar entradas no registradas).
+      percha se quita: lo cambiaron a otra percha o se acabo (lo que esta en
+      0 no se manda a contar).
 
     Sube `borrador_version` si cambio algo, para que la pantalla abierta lo
     traiga. Devuelve True si hubo cambios.
@@ -4219,8 +4218,8 @@ def _sync_division_inspection_items(inspection_id):
         items = list(inspection.items.all())
         listed_ids = {int(item.producto_id) for item in items}
 
-        # Quitar: intactos que ya no estan en la percha pero si en otra parte.
-        untouched = [
+        # Quitar: intactos que ya no tienen stock en la percha.
+        to_remove = [
             item for item in items
             if stock_in_scope.get(int(item.producto_id), 0) <= 0
             and item.estado_revision == InspeccionAleatoriaItem.EstadosRevision.PENDIENTE
@@ -4232,37 +4231,9 @@ def _sync_division_inspection_items(inspection_id):
             and not item.movido_por_revisor
             and not item.reconteo_de_id
         ]
-        to_remove = []
-        if untouched:
-            stocked_elsewhere = set(
-                Inventario.objects.filter(
-                    producto_id__in=[int(item.producto_id) for item in untouched],
-                    cantidad__gt=0,
-                    subdivision__division__bodega__sucursal_id=sucursal_id,
-                )
-                .values_list("producto_id", flat=True)
-                .distinct()
-            )
-            to_remove = [item for item in untouched if int(item.producto_id) in stocked_elsewhere]
 
-        # Agregar: fuera de la lista y con fila en la percha. Con stock, o en 0
-        # pero sin stock en otra ubicacion de la sucursal (producto recien
-        # creado o ubicado sin unidades); si tiene stock en otra parte y aqui
-        # esta en 0 es que lo movieron, y no entra (si no, la regla de quitar
-        # lo sacaria en la siguiente consulta).
+        # Agregar: fuera de la lista y con stock en la percha (en 0 no entra).
         new_ids = {pid for pid, qty in stock_in_scope.items() if qty > 0 and pid not in listed_ids}
-        zero_ids = {pid for pid, qty in stock_in_scope.items() if qty <= 0 and pid not in listed_ids}
-        if zero_ids:
-            zero_stocked_elsewhere = set(
-                Inventario.objects.filter(
-                    producto_id__in=sorted(zero_ids),
-                    cantidad__gt=0,
-                    subdivision__division__bodega__sucursal_id=sucursal_id,
-                )
-                .values_list("producto_id", flat=True)
-                .distinct()
-            )
-            new_ids |= zero_ids - zero_stocked_elsewhere
         new_candidates = []
         if new_ids:
             new_candidates = [

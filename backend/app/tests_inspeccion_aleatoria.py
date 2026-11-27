@@ -357,7 +357,8 @@ class GeneracionTests(InspeccionAleatoriaBaseTestCase):
         )
         self.assertFalse(productos_1 & productos_2)
 
-    def test_incluye_productos_con_stock_cero(self):
+    def test_no_incluye_productos_con_stock_cero(self):
+        # Lo que esta en 0 no se manda a contar.
         Inventario.objects.filter(pk=self.inv_2.pk).update(cantidad=0)
         for index in range(3, 9):
             producto = Producto.objects.create(codigo=f"P-{index}", nombre=f"Producto {index}")
@@ -369,7 +370,8 @@ class GeneracionTests(InspeccionAleatoriaBaseTestCase):
         )
 
         self.assertEqual(len(selected), 5)
-        self.assertIn(self.producto_2.id, {candidate["producto_id"] for candidate in selected})
+        self.assertNotIn(self.producto_2.id, {candidate["producto_id"] for candidate in selected})
+        self.assertNotIn(self.producto_2.id, {candidate["producto_id"] for candidate in candidates})
 
     def test_enviar_ahora_con_lista_vacia_usa_todas_las_sucursales(self):
         UsuarioPreferencia.objects.filter(usuario=self.revisor).update(inspeccion_aleatoria_sucursales=[])
@@ -1989,14 +1991,12 @@ class RevisionPorPerchaEnVivoTests(InspeccionAleatoriaBaseTestCase):
         self.assertEqual(again["borrador_version"], payload["borrador_version"])
         self.assertEqual(self.inspection.items.count(), 3)
 
-    def test_producto_nuevo_en_cero_en_la_percha_entra_a_la_lista(self):
+    def test_producto_nuevo_en_cero_en_la_percha_no_entra_a_la_lista(self):
         nuevo = Producto.objects.create(codigo="P-4", nombre="Polea", precio=Decimal("3"))
         Inventario.objects.create(producto=nuevo, subdivision=self.sub_a, cantidad=0)
 
         payload = self._detalle()
-        self.assertIn(nuevo.id, self._productos(payload))
-        # La siguiente consulta no lo saca.
-        self.assertIn(nuevo.id, self._productos(self._detalle()))
+        self.assertNotIn(nuevo.id, self._productos(payload))
 
     def test_en_cero_en_la_percha_con_stock_en_otra_no_entra(self):
         nuevo = Producto.objects.create(codigo="P-5", nombre="Correa", precio=Decimal("3"))
@@ -2013,8 +2013,9 @@ class RevisionPorPerchaEnVivoTests(InspeccionAleatoriaBaseTestCase):
         payload = self._detalle()
         self.assertIn(self.producto_2.id, self._productos(payload))
 
-    def test_producto_en_cero_en_todas_partes_se_queda(self):
+    def test_producto_en_cero_en_todas_partes_sale_de_la_lista(self):
+        # Sin tocar y en 0: ya no se manda a contar.
         Inventario.objects.filter(pk=self.inv_2.pk).update(cantidad=0)
 
         payload = self._detalle()
-        self.assertIn(self.producto_2.id, self._productos(payload))
+        self.assertNotIn(self.producto_2.id, self._productos(payload))
